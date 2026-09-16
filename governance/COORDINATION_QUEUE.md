@@ -11,7 +11,7 @@ update. A takeover requires a handoff note and must not overwrite uncommitted wo
 | C4 | WIT, registry, config, and terminology inventory: `specs/wit/**`, `registry/**`, `config/**`, and residual terminology across Aaroneous | Claimed | Antigravity / Gemini 3.8 | codex/repository-hardening (Aaroneous) | 2026-09-16T07:30:00Z | Performing full read-only inventory of WIT definitions, schema registries, config trees, and residual biological/mythological/analogy terms against Wave 11 (`6a80fb2`). Classifying compatibility impact (wire ABI, file format, config breaking, public trait breaking vs internal dead-code) before recommending or executing any deletions/renames. Target artifact: `inventories/c4_wit_registry_config_terminology.md`. |
 
 | F1 | Standalone Rust foundation workspace and explicit-input CLI | Done | Codex | main | 2026-09-16 | `foundation_cli` tests and strict clippy pass. |
-| F2 | Versioned evidence contracts and fixtures | Claimed | Codex | main | 2026-09-16T07:30:54Z | Contract-only lane. |
+| F2 | Versioned evidence contracts and fixtures | Done | Codex | main | 2026-09-16 | Input Report v1 schema, fixture, and conformance test pass. |
 | F3 | Rust stack-manifest validator | Ready | — | — | — | Depends on F1 and F2 design. |
 ## Recent completed context
 

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "foundation.input-report",
+  "checkout": "D:\\example\\aaroneous",
+  "output": "D:\\example\\reports\\inputs.json",
+  "support_directories": [
+    "D:\\example\\models",
+    "D:\\example\\datasets"
+  ]
+}

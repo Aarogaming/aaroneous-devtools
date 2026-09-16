@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aarogaming.github.io/aaroneous-devtools/contracts/input-report-v1.schema.json",
+  "title": "Foundation Input Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "artifact_kind", "checkout", "output", "support_directories"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "artifact_kind": { "const": "foundation.input-report" },
+    "checkout": { "type": "string", "minLength": 1 },
+    "output": { "type": "string", "minLength": 1 },
+    "support_directories": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

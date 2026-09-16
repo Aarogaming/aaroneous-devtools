@@ -30,9 +30,12 @@ enum Command {
     },
 }
 
+const INPUT_REPORT_KIND: &str = "foundation.input-report";
+
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 struct InputReport {
     schema_version: u32,
+    artifact_kind: String,
     checkout: String,
     output: String,
     support_directories: Vec<String>,
@@ -69,6 +72,7 @@ fn validate_inputs(checkout: &Path, output: &Path, support_dirs: &[PathBuf]) -> 
 
     let report = InputReport {
         schema_version: 1,
+        artifact_kind: INPUT_REPORT_KIND.to_owned(),
         checkout: checkout.display().to_string(),
         output: output.display().to_string(),
         support_directories: support_dirs
@@ -107,6 +111,17 @@ mod tests {
     }
 
     #[test]
+    fn fixture_matches_input_report_contract() {
+        let fixture = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../contracts/fixtures/input-report-v1.json"
+        ));
+        let report: InputReport = serde_json::from_str(fixture).expect("valid contract fixture");
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.artifact_kind, INPUT_REPORT_KIND);
+        assert_eq!(report.support_directories.len(), 2);
+    }
+    #[test]
     fn records_declared_support_directories() {
         let temp = tempfile::tempdir().expect("test directory");
         let checkout = temp.path().join("checkout");
@@ -119,6 +134,7 @@ mod tests {
         let report: InputReport =
             serde_json::from_slice(&fs::read(output).expect("report")).expect("valid report");
         assert_eq!(report.schema_version, 1);
+        assert_eq!(report.artifact_kind, INPUT_REPORT_KIND);
         assert_eq!(
             report.support_directories,
             vec![support.display().to_string()]
