@@ -22,22 +22,25 @@ evidence, not just an issue title.
 | Priority | ID | Work | Dependency | Preferred capability |
 | --- | --- | --- | --- | --- |
 | P0 | M1 | Converge and verify the active integration branch | CI result | Codex integration |
-| P0 | M2 | Port the text-encoding checker into `ast_auditor` | C1 | Rust CLI / tests |
-| P0 | M3 | Turn dependency-review evidence into one bounded remediation plan | C3 done | Supply-chain review |
-| P0 | M4 | Decide removal versus repair for dead `studio_hud` plugin API code | C2 handoff | Rust API review |
-| P1 | M5 | Validate and prune the five stale configuration manifests | C4 inventory | Read-only inventory then focused deletion |
+| Done | M2 | Port the text-encoding checker into `ast_auditor` | C1 | Rust CLI / tests |
+| Done | M3 | Turn dependency-review evidence into one bounded remediation plan | C3 done | Supply-chain review |
+| Done | M4 | Decide removal versus repair for dead `studio_hud` plugin API code | C2 handoff | Rust API review |
+| Done | M5 | Validate and prune the five stale configuration manifests | C4 inventory | Read-only inventory then focused deletion |
 | P1 | M6 | Verify WIT and fabrication packaging/runtime usage before archival | C4 inventory | Build/package analysis |
-| P1 | M7 | Deprecate terminology aliases with migration tests | C4 inventory | Compatibility-focused Rust refactor |
+| Done | M7 | Deprecate terminology aliases with migration tests | C4 inventory | Compatibility-focused Rust refactor |
 | P1 | M8 | Establish the bounded reducer reference path | A2 | Deterministic systems testing |
-| P1 | M9 | Build a read-only dogfood harness in devtools | F1–F3 done | Foundation Rust |
+| Done | M9 | Build a read-only dogfood harness in devtools | F1–F3 done | Foundation Rust |
 | P2 | M10 | Enforce execution-host dependency policy | M8 | Architecture and Cargo policy |
 | P2 | M11 | Narrow hypervisor public surface | M10 | API refactor |
 | P2 | M12 | Define plugin lifecycle RFC | M4 | Interface design |
 | P2 | M13 | Publish measured performance assurance | M8 | Benchmarking |
 | P3 | M14 | Add thin platform adapters around stable foundation commands | M9 | Windows/Linux integration |
 | P3 | M15 | Evaluate Candle, Rig, Burn, and ONNX Runtime in isolated foundation crates | M9 | Experimental Rust stacks |
-| P2 | M16 | Add a bounded local-agent proposal path and prompt/evaluation contracts | F7 | Rust foundation / Ollama |
-| P1 | M17 | Build explicit-input component inventory and invariant profile reports | F7, C4 | Rust foundation / component architecture |
+| Done | M16 | Add a bounded local-agent proposal path and prompt/evaluation contracts | F7 | Rust foundation / Ollama |
+| Done | M17 | Build explicit-input component inventory and invariant profile reports | F7, C4 | Rust foundation / component architecture |
+| P0 | M18 | Make local verification and CI command coverage mechanically identical | M7 evidence | CI / xtask / regression tests |
+| P1 | M19 | Audit temporal tests for fixed sleeps and establish deterministic synchronization guidance | Recent platform/hypervisor flake fixes | Test reliability |
+| P1 | M20 | Execute the dependency plan's blocked iroh upgrade in a dedicated compatibility lane | M3 evidence | Cargo dependency remediation |
 
 ## Intake rules
 
