@@ -12,6 +12,7 @@ struct Config {
     schema_version: u32,
     checkout: PathBuf,
     queue: PathBuf,
+    program: PathBuf,
     evidence: Vec<String>,
     endpoint: String,
     output_directory: PathBuf,
@@ -82,7 +83,7 @@ pub(crate) fn run(config_path: &Path) -> Result<()> {
     }
     crate::require_absolute_directory("checkout", &c.checkout)?;
     crate::require_absolute_directory("output directory", &c.output_directory)?;
-    if !c.queue.is_absolute() {
+    if !c.queue.is_absolute() || !c.program.is_absolute() {
         bail!("queue must be absolute");
     }
     if c.output_directory.starts_with(&c.checkout) {
@@ -96,7 +97,14 @@ pub(crate) fn run(config_path: &Path) -> Result<()> {
         .context("review.lock exists: inspect active/stale run before removal")?;
     let _lock = RunLock(lock);
     let queue = read_bounded(&c.queue, 262144)?;
-    let (ids, diagnostics) = queue_ids(&queue);
+    let (mut ids, diagnostics) = queue_ids(&queue);
+    let program = read_bounded(&c.program, 65536)?;
+    for row in program.lines().filter(|r| r.starts_with('|')) {
+        let cols: Vec<_> = row.split('|').map(str::trim).collect();
+        if cols.len() > 3 && matches!(cols[1], "P0" | "P1" | "P2" | "P3" | "Done" | "Retired") {
+            ids.insert(cols[2].to_owned());
+        }
+    }
     let mut evidence = format!("Existing IDs: {ids:?}\nExisting queue scopes (avoid overlaps):\n");
     for row in queue.lines().filter(|r| r.starts_with('|')) {
         let cols: Vec<_> = row.split('|').collect();
@@ -104,6 +112,9 @@ pub(crate) fn run(config_path: &Path) -> Result<()> {
             evidence.push_str(&format!("{} {}\n", cols[1], cols[2]));
         }
     }
+    evidence.push_str(&format!(
+        "Declared existing portfolio (do not duplicate):\n{program}\n"
+    ));
     for relative in &c.evidence {
         evidence.push_str(&format!(
             "\nDeclared source: {relative}\n{}\n",
@@ -202,6 +213,7 @@ mod tests {
             schema_version: 1,
             checkout: d.path().to_owned(),
             queue: d.path().join("queue.md"),
+            program: d.path().join("program.md"),
             evidence: vec!["README.md".into()],
             endpoint: "http://localhost:11434".into(),
             output_directory: d.path().to_owned(),
@@ -240,6 +252,8 @@ mod pipeline_tests {
         let queue = d.path().join("queue.md");
         let original = "| OLD | other.rs | Done | owner |\n";
         fs::write(&queue, original).expect("queue");
+        let program = d.path().join("program.md");
+        fs::write(&program, "| P1 | PLANNED-1 | other task | none | owner |").expect("program");
         let proposal=serde_json::json!({"proposal":{"schema_version":1,"id":"NEW-1","source":"README.md","priority":"P2","scope":["README.md"],"dependencies":[],"verification":["fixture criterion"],"decision":"fixture defect"}}).to_string();
         for (index, outcome) in [
             (0, "pending-owner-review"),
@@ -250,6 +264,7 @@ mod pipeline_tests {
                 schema_version: 1,
                 checkout: checkout.clone(),
                 queue: queue.clone(),
+                program: program.clone(),
                 evidence: vec!["README.md".into()],
                 endpoint,
                 output_directory: inbox.clone(),
@@ -263,6 +278,12 @@ mod pipeline_tests {
             )
             .expect("JSON");
             assert_eq!(report["outcome"], outcome);
+            assert!(
+                report["known_ids"]
+                    .as_array()
+                    .expect("ids")
+                    .contains(&serde_json::json!("PLANNED-1"))
+            );
             assert!(report["requires_owner_review"].as_bool().expect("boolean"));
             assert!(!inbox.join("review.lock").exists());
             assert_eq!(fs::read_to_string(&queue).expect("queue"), original);

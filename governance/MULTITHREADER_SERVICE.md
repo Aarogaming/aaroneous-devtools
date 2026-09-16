@@ -4,12 +4,13 @@ The native `foundation multithreader-review --config ABSOLUTE_FILE` command revi
 
 ## Configuration
 
-A version-1 TOML config requires absolute `checkout`, `queue` and `output_directory` paths, a loopback HTTP `endpoint`, and 1–8 checkout-relative `evidence` file paths. The output directory must exist outside the product checkout. Use the explicit existing devtools checkout, not an assumed `D:\aaroneous-devtools` location.
+A version-1 TOML config requires absolute `checkout`, `queue`, `program` and `output_directory` paths, a loopback HTTP `endpoint`, and 1–8 checkout-relative `evidence` file paths. The output directory must exist outside the product checkout. Use the explicit existing devtools checkout, not an assumed `D:\aaroneous-devtools` location.
 
 ```toml
 schema_version = 1
 checkout = 'D:\Aaroneous'
 queue = 'C:\Users\aarog\.codex\worktrees\aaroneous-devtools\governance\COORDINATION_QUEUE.md'
+program = 'C:\Users\aarog\.codex\worktrees\aaroneous-devtools\governance\MULTITHREAD_PROGRAM.md'
 evidence = ['README.md', 'docs/ARCHITECTURE.md']
 endpoint = 'http://localhost:11434'
 output_directory = 'C:\Users\aarog\.codex\worktrees\aaroneous-devtools\artifacts\multithreader-service\inbox'
@@ -20,7 +21,7 @@ Each evidence file is bounded to 32 KiB and the complete prompt to 64 KiB. Queue
 ## Outcomes and ownership
 
 - `no-new-work`: model returned a null proposal; this is not proof the repository has no defects.
-- `pending-owner-review`: structural, declared-source, existing-file, dependency and queue checks passed. A human or primary owner must still reproduce the defect and approve its priority and acceptance criterion.
+- `pending-owner-review`: structural, declared-source, existing-file, dependency, portfolio ID and queue checks passed. A human or primary owner must still reproduce the defect and approve its priority and acceptance criterion.
 - `rejected`: proposal overlaps a queue scope or fails contextual checks. Completed queue references also require explicit owner reconciliation before repeat work.
 - `duplicate-inbox-candidate`: an existing pending record has the same ID or exact ordered file scope. Semantically similar proposals with different scopes still require owner review.
 - `failed`: model/protocol failure; an inbox failure record is written and the executable returns nonzero. Invalid configs or input acquisition failures return nonzero before creating a report.
