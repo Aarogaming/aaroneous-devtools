@@ -146,6 +146,9 @@ fn save_status(c: &Config, now: u64, outcome: &str) -> Result<()> {
 }
 fn persist(c: &Config, record: &Record) -> Result<()> {
     let data = serde_json::to_vec_pretty(record)?;
+    if data.len() > 1048576 {
+        bail!("result exceeds 1 MiB storage limit");
+    }
     for sequence in 0..10000u32 {
         let destination = c
             .results_directory
@@ -271,6 +274,7 @@ where
         let job: Job = toml::from_str(&read_bounded(&path, 16384)?)?;
         if job.schema_version != 1
             || job.id.is_empty()
+            || job.id.len() > 64
             || !job
                 .id
                 .bytes()
