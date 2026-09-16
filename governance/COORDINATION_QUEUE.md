@@ -13,6 +13,8 @@ update. A takeover requires a handoff note and must not overwrite uncommitted wo
 | F1 | Standalone Rust foundation workspace and explicit-input CLI | Done | Codex | main | 2026-09-16 | `foundation_cli` tests and strict clippy pass. |
 | F2 | Versioned evidence contracts and fixtures | Done | Codex | main | 2026-09-16 | Input Report v1 schema, fixture, and conformance test pass. |
 | F3 | Rust stack-manifest validator | Done | Codex | main | 2026-09-16 | Local Rust manifest validates; tests and strict clippy pass. |
+| F6 | Foundation repository baseline: CI, dependency updates, Git workflow, release and decision records | Claimed | Codex | main | 2026-09-16T07:38:24Z | No Aaroneous product-path changes. |
+
 ## Recent completed context
 
 - **Claude / Sonnet continuity:** completed the native compliance auditor and CI sweep, then
