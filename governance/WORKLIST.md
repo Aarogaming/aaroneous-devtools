@@ -6,11 +6,11 @@ See `MAINTENANCE_SYSTEM.md` for operating rules and `COORDINATION_QUEUE.md` for 
 
 ### A1 — Merge the text-encoding and boundary-audit branch
 
-**Status:** Waiting for GitHub CI result  
+**Status:** CI passed; integration pull request is not currently open
 **Branch:** `codex/text-encoding-integration`
 
-**Done when:** Linux and Windows CI pass, the pull request is reviewed, and the branch merges to
-`main`.
+**Done when:** The current integration branch has an open pull request, its Linux and Windows CI
+passes, the pull request is reviewed, and the branch merges to `main`.
 
 ## Ready
 
