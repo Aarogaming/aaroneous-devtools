@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Foundation Component Inventory v1",
+  "type": "object",
+  "required": ["schema_version", "artifact_kind", "checkout", "crate_path", "package_name", "rust_sources", "test_sources", "dependencies", "public_item_lines", "hot_path_markers"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "artifact_kind": { "const": "foundation.component-inventory" },
+    "checkout": { "type": "string" }, "crate_path": { "type": "string" }, "package_name": { "type": "string" },
+    "rust_sources": { "type": "array", "items": { "type": "string" } },
+    "test_sources": { "type": "array", "items": { "type": "string" } },
+    "dependencies": { "type": "array", "items": { "type": "string" } },
+    "public_item_lines": { "type": "integer", "minimum": 0 },
+    "hot_path_markers": { "type": "integer", "minimum": 0 }
+  }
+}

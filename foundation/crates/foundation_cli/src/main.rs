@@ -1,3 +1,4 @@
+mod component_inventory;
 mod dependency_review;
 mod scheduler;
 
@@ -59,6 +60,18 @@ enum Command {
         #[arg(long, default_value_t = 3)]
         primary_capacity: usize,
     },
+    /// Inventory one declared Cargo component without modifying its checkout.
+    ComponentInventory {
+        /// Absolute path to a Cargo checkout.
+        #[arg(long)]
+        checkout: PathBuf,
+        /// Relative path from checkout root to the component crate.
+        #[arg(long)]
+        crate_path: PathBuf,
+        /// Absolute path for the versioned report file.
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 const INPUT_REPORT_KIND: &str = "foundation.input-report";
@@ -89,6 +102,11 @@ fn main() -> Result<()> {
             output,
             primary_capacity,
         } => scheduler::run(&queue, &program, &output, primary_capacity),
+        Command::ComponentInventory {
+            checkout,
+            crate_path,
+            output,
+        } => component_inventory::run(&checkout, &crate_path, &output),
     }
 }
 
