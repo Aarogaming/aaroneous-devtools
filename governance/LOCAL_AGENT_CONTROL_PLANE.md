@@ -26,6 +26,15 @@ Input consists only of declared artifact paths copied into a versioned evidence 
 proposal record with task ID, input digests, suggested scope, risks, test plan, and optional patch
 text. The proposal is not a queue claim or approval.
 
+## Native proposal command
+
+`foundation local-proposal --endpoint <http-url> --model qwen3.5:9b-q6 --evidence <absolute-file>
+--output <absolute-file>` sends only the declared evidence file to the supplied local endpoint.
+It fixes temperature at `0.0`, rejects a token budget below 4096, limits evidence to 64 KiB, and
+requires the model response to parse as the versioned proposal record in
+`contracts/local-proposal-v1.schema.json`. It never receives a checkout path and cannot mutate a
+queue or apply a patch.
+
 ## Rust stack choices
 
 - **Direct Ollama adapter first:** a small Rust HTTP boundary exposes a stable local-worker

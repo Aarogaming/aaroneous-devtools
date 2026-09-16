@@ -1,5 +1,6 @@
 mod component_inventory;
 mod dependency_review;
+mod local_proposal;
 mod scheduler;
 
 use anyhow::{Context, Result, bail};
@@ -72,6 +73,18 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    LocalProposal {
+        #[arg(long)]
+        endpoint: String,
+        #[arg(long, default_value = "qwen3.5:9b-q6")]
+        model: String,
+        #[arg(long)]
+        evidence: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value_t = 4096)]
+        num_predict: u32,
+    },
 }
 
 const INPUT_REPORT_KIND: &str = "foundation.input-report";
@@ -107,6 +120,13 @@ fn main() -> Result<()> {
             crate_path,
             output,
         } => component_inventory::run(&checkout, &crate_path, &output),
+        Command::LocalProposal {
+            endpoint,
+            model,
+            evidence,
+            output,
+            num_predict,
+        } => local_proposal::run(&endpoint, &model, &evidence, &output, num_predict),
     }
 }
 
