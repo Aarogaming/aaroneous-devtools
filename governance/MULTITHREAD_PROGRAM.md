@@ -41,6 +41,13 @@ evidence, not just an issue title.
 | P0 | M18 | Make local verification and CI command coverage mechanically identical | M7 evidence | CI / xtask / regression tests |
 | P1 | M19 | Audit temporal tests for fixed sleeps and establish deterministic synchronization guidance | Recent platform/hypervisor flake fixes | Test reliability |
 | P1 | M20 | Execute the dependency plan's blocked iroh upgrade in a dedicated compatibility lane | M3 evidence | Cargo dependency remediation |
+| P1 | M21 | Reconcile root README assurance language with reproducible evidence and current contracts | README verification-scope notices | Documentation / measurement review |
+| P1 | M22 | Deprecate legacy `paths` preset keys with persisted-data migration tests | C4 inventory | Compatibility-focused Rust refactor |
+| P2 | M23 | Define the removal window and downstream-consumer policy for deprecated terminology aliases | M7 done | Release / API governance |
+| P1 | M24 | Consolidate root TODO and frontier roadmap into an evidence-labeled product roadmap | Conflicting roadmap/history sources | Documentation architecture |
+| P2 | M25 | Trace reachability of no-patch advisories before accepting, isolating, or replacing them | M3 dependency report | Supply-chain analysis |
+| P2 | M26 | Add property-oriented boundary tests for IPC and wire parsers selected by component profiles | M17 component inventory | Protocol correctness |
+| P2 | M27 | Add a bounded benchmark-result contract and baseline capture for one hot-path component | M8, M13 | Performance assurance |
 
 ## Intake rules
 
