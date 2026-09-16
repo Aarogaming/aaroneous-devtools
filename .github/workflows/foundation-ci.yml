@@ -1,0 +1,36 @@
+name: Foundation CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    name: Foundation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: foundation
+      - name: Format
+        run: cargo fmt --manifest-path foundation/Cargo.toml --all -- --check
+      - name: Test
+        run: cargo test --manifest-path foundation/Cargo.toml
+      - name: Lint
+        run: cargo clippy --manifest-path foundation/Cargo.toml -- -D warnings
+      - name: Validate declared stack
+        run: cargo run --manifest-path foundation/Cargo.toml -p foundation_cli -- validate-stack --manifest ${{ github.workspace }}/stacks/local-rust.toml

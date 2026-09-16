@@ -25,3 +25,10 @@ These files are historical input for a later, separate cleanup. They must not be
 - [Dogfooding protocol](governance/DOGFOOD_PROTOCOL.md)
 - [Foundation contracts](contracts/README.md)
 - [Rust ecosystem catalogue](stacks/RUST_ECOSYSTEMS.md)
+## Repository practices
+
+- [Contributing](CONTRIBUTING.md)
+- [Security reporting](SECURITY.md)
+- [Git workflow](governance/GIT_WORKFLOW.md)
+- [Decision log](governance/DECISIONS.md)
+- [Release practice](governance/RELEASES.md)

@@ -1,0 +1,8 @@
+/foundation/target/
+/foundation/**/target/
+/reports/
+/artifacts/
+*.log
+.env
+.env.*
+!.env.example
