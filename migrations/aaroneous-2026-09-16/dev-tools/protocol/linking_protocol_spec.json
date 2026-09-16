@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MachineNativeLinkingProtocolSpecification",
+  "description": "Canonical schema and opcode dictionary for inter-program communication in Aaroneous Synthetic Intelligence platform",
+  "version": "1.0.0",
+  "constants": {
+    "MAGIC_HEADER": "0x4141524F",
+    "HEADER_SIZE_BYTES": 64,
+    "SYNAPSE_DEFAULT_SIZE_BYTES": 131072,
+    "SENSORY_GRID_WIDTH": 128,
+    "SENSORY_GRID_HEIGHT": 128,
+    "LATENT_VECTOR_DIM": 1024
+  },
+  "opcodes": {
+    "LIFECYCLE": {
+      "0x0001": "HANDSHAKE_ANNOUNCE",
+      "0x0002": "HANDSHAKE_ACK",
+      "0x0003": "HEARTBEAT_PING",
+      "0x0004": "HEARTBEAT_PONG",
+      "0x0005": "SHUTDOWN_REQUEST",
+      "0x0006": "SHUTDOWN_CONFIRM"
+    },
+    "TASK_AND_INTENT": {
+      "0x0100": "TASK_DAG_DISPATCH",
+      "0x0101": "TASK_STEP_ASSIGN",
+      "0x0102": "TASK_STEP_PROGRESS",
+      "0x0103": "TASK_STEP_COMPLETE",
+      "0x0104": "TASK_STEP_FAILED"
+    },
+    "SENSORY_AND_REFLEX": {
+      "0x0200": "VISION_FRAME_UPDATE",
+      "0x0201": "GATE_MASK_UPDATE",
+      "0x0202": "MOTOR_INTENT_DISPATCH",
+      "0x0203": "PROBING_DATALOG_STREAM"
+    },
+    "KNOWLEDGE_AND_EMBEDDINGS": {
+      "0x0300": "VECTOR_QUERY_REQUEST",
+      "0x0301": "VECTOR_QUERY_RESPONSE",
+      "0x0302": "SEMANTIC_INDEX_UPSERT",
+      "0x0303": "MEMORY_EPISODE_STORE"
+    },
+    "CODE_AND_PATCHING": {
+      "0x0400": "AST_DECONSTRUCT_REQUEST",
+      "0x0401": "PATCH_PROPOSAL_DISPATCH",
+      "0x0402": "PATCH_VALIDATION_RESULT",
+      "0x0403": "BYTECODE_SLICING_REPORT"
+    },
+    "TELEMETRY_AND_UI": {
+      "0x0500": "METRICS_BROADCAST",
+      "0x0501": "THERMAL_THROTTLE_ALERT",
+      "0x0502": "TOKEN_BALANCE_UPDATE",
+      "0x0503": "UI_EVENT_USER_INTENT"
+    }
+  },
+  "nats_topics": {
+    "announcements": "aaroneous.v1.discovery.announce",
+    "task_dispatch": "aaroneous.v1.odin.tasks.dispatch",
+    "task_status": "aaroneous.v1.odin.tasks.status",
+    "vector_query": "aaroneous.v1.merlin.query.vector",
+    "vision_stream": "aaroneous.v1.marionette.perception",
+    "motor_intents": "aaroneous.v1.marionette.motor.intent",
+    "patch_proposals": "aaroneous.v1.chimera.patch.proposal",
+    "telemetry_stream": "aaroneous.v1.ariel.telemetry.stream"
+  }
+}
