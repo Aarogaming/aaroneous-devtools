@@ -9,6 +9,7 @@ const SYSTEM: &str = "You are a senior Rust systems reviewer. Do not output a th
 struct Request<'a> {
     model: &'a str,
     stream: bool,
+    think: bool,
     options: Options,
     messages: [Message<'a>; 2],
 }
@@ -86,6 +87,7 @@ pub(crate) fn run(
     let request = Request {
         model,
         stream: false,
+        think: false,
         options: Options {
             temperature: 0.0,
             num_predict,

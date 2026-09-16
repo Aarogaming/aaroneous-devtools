@@ -5,6 +5,7 @@ use std::{fs, path::Path, time::Duration};
 struct Req<'a> {
     model: &'a str,
     stream: bool,
+    think: bool,
     options: Opt,
     messages: [Msg<'a>; 2],
 }
@@ -52,6 +53,7 @@ pub(crate) fn run(endpoint: &str, evidence: &Path, output: &Path) -> Result<()> 
     let req = Req {
         model: "qwen3.5:9b-q6",
         stream: false,
+        think: false,
         options: Opt {
             temperature: 0.0,
             num_predict: 4096,
