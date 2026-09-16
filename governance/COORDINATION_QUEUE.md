@@ -6,10 +6,17 @@ update. A takeover requires a handoff note and must not overwrite uncommitted wo
 | ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
 | --- | --- | --- | --- | --- | --- | --- |
 | C1 | Native text encoding: `crates/ast_auditor/**`, encoding script, CI/docs | Ready | — | — | — | — |
-| C2 | Security revalidation: `crates/studio_hud/src/plugin_api.rs` and focused tests | Ready | — | — | — | — |
-| C3 | Dependency review configuration and report format | Ready | — | — | — | — |
-| C4 | WIT, registry, config, and terminology inventory | Ready | — | — | — | — |
+| C2 | Security revalidation: `crates/studio_hud/src/plugin_api.rs` and focused tests | Ready | — | — | — | Fresh review lane; reproduce before repair. |
+| C3 | Dependency review configuration and report format | Ready | — | — | — | Claude continuity lane after compliance-auditor work. |
+| C4 | WIT, registry, config, and terminology inventory | Ready | — | — | — | Antigravity continuity lane; diff against Wave 11 first. |
 
+## Recent completed context
+
+- **Claude / Sonnet continuity:** completed the native compliance auditor and CI sweep, then
+  repaired `ipc_bus::swmr_shm` crash recovery and snapshot failure reporting.
+- **Antigravity / Gemini continuity:** completed test-hygiene, zero-warning, hot-path unwrap,
+  devtools-migration, terminology, and full-verification waves. Wave 11 is the baseline for any
+  further terminology work.
 ## Claim format
 
 Add the owner, branch, exact paths, UTC start, and intended evidence to the row. On completion,
