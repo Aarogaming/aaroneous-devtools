@@ -266,7 +266,7 @@ where
         .chain(files(&c.archive_directory, "json")?)
     {
         records.push(serde_json::from_str::<Record>(&read_bounded(
-            &path, 200000,
+            &path, 1048576,
         )?)?);
     }
     let queue = read_bounded(&c.queue, 262144)?;
@@ -489,6 +489,26 @@ mod tests {
             "fn reduce() {}"
         );
     }
+    #[test]
+    fn escaped_input_records_remain_readable_at_the_storage_bound() {
+        let (_d, c, config) = fixture();
+        fs::write(c.checkout.join("lib.rs"), vec![0u8; 32700]).expect("bounded input");
+        tick_with(&config, 10, 1, |_, _| {
+            let mut proposal = draft();
+            proposal.rust_draft = Some("\0".repeat(3000));
+            Ok(proposal)
+        })
+        .expect("record");
+        let record = files(&c.results_directory, "json")
+            .expect("results")
+            .pop()
+            .expect("file");
+        assert!(fs::metadata(record).expect("size").len() > 200000);
+        tick_with(&config, 10, 2, |_, _| {
+            panic!("unchanged escaped input dispatched")
+        })
+        .expect("read previous record");
+    }
     fn draft() -> Draft {
         Draft {
             task: "JOB-1".into(),
@@ -534,7 +554,7 @@ mod tests {
         let report: Record = serde_json::from_str(
             &read_bounded(
                 &files(&c.results_directory, "json").expect("files")[0],
-                200000,
+                1048576,
             )
             .expect("read"),
         )
