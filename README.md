@@ -2,6 +2,10 @@
 
 Private companion tooling for the Aaroneous framework. This repository is not a workspace member, build dependency, or runtime dependency of Aaroneous.
 
+## User-facing maintenance program
+
+The [maintenance program delivery map](architecture/MAINTENANCE_PROGRAM.md) builds on the existing Rust Foundation and reviews the uncommitted TypeScript dashboard prototype. The target is guided maintenance, deterministic checks, local-first jobs and budgeted cloud escalation. The current dashboard prototype is not an operational verification system.
+
 ## Foundation boundary
 
 Read [FOUNDATION_BOUNDARY.md](FOUNDATION_BOUNDARY.md) before adding or transferring material.
