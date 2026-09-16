@@ -1,4 +1,5 @@
 mod dependency_review;
+mod scheduler;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
@@ -47,6 +48,17 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Evaluate a coordination queue and write a read-only scheduling report.
+    ScheduleReview {
+        #[arg(long)]
+        queue: PathBuf,
+        #[arg(long)]
+        program: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value_t = 3)]
+        primary_capacity: usize,
+    },
 }
 
 const INPUT_REPORT_KIND: &str = "foundation.input-report";
@@ -71,6 +83,12 @@ fn main() -> Result<()> {
         Command::DependencyReview { checkout, output } => {
             dependency_review::run(&checkout, &output)
         }
+        Command::ScheduleReview {
+            queue,
+            program,
+            output,
+            primary_capacity,
+        } => scheduler::run(&queue, &program, &output, primary_capacity),
     }
 }
 
