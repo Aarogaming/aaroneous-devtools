@@ -4,6 +4,7 @@ mod dogfood;
 mod intake;
 mod intake_generator;
 mod local_proposal;
+mod multithreader;
 mod scheduler;
 
 use anyhow::{Context, Result, bail};
@@ -24,6 +25,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Review declared evidence and populate an owner-reviewed inbox.
+    MultithreaderReview {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Validate declared paths and write a versioned input report.
     ValidateStack {
         /// Absolute path to a stack manifest.
@@ -123,6 +129,7 @@ struct InputReport {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
+        Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::ValidateStack { manifest } => validate_stack(&manifest),
         Command::ValidateInputs {
             checkout,
