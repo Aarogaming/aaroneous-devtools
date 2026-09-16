@@ -4,6 +4,7 @@ mod dogfood;
 mod intake;
 mod intake_generator;
 mod local_proposal;
+mod local_worker;
 mod multithreader;
 mod scheduler;
 
@@ -25,6 +26,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Poll approved scratch jobs once; the operating system schedules subsequent ticks.
+    LocalWorkerTick {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Review declared evidence and populate an owner-reviewed inbox.
     MultithreaderReview {
         #[arg(long)]
@@ -129,6 +135,12 @@ struct InputReport {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
+        Command::LocalWorkerTick { config } => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs();
+            local_worker::tick(&config, ((now / 60) % 60) as u32, now)
+        }
         Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::ValidateStack { manifest } => validate_stack(&manifest),
         Command::ValidateInputs {

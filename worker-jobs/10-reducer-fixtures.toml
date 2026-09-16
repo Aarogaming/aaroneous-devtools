@@ -1,0 +1,5 @@
+schema_version = 1
+id = 'REDUCER-FIXTURES'
+mode = 'test-fixture'
+evidence = ['dev/emulator_harness/src/lib.rs']
+instruction = 'Propose at most three meaningful Rust test fixtures for the bounded reducer using the actual public API. Focus on deterministic replay, boundary inputs and failure behavior. Identify assumptions and avoid tests that just mirror implementation. Output unverified test source in rust_draft; no repository changes or claims that tests passed.'

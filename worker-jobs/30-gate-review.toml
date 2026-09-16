@@ -1,0 +1,5 @@
+schema_version = 1
+id = 'GATE-REVIEW'
+mode = 'analysis'
+evidence = ['xtask/src/gate.rs']
+instruction = 'Review the existing gate implementation for command failure propagation, test coverage and local/CI parity assumptions. Return at most three concrete observations with source symbols and testable acceptance criteria. Avoid claims about CI files not included in the evidence. rust_draft may be null.'
