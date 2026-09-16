@@ -1,0 +1,1 @@
+{"type":"object","required":["schema_version","id","source","priority","scope","dependencies","verification","decision"],"properties":{"schema_version":{"const":1},"priority":{"enum":["P0","P1","P2","P3"]}}}
