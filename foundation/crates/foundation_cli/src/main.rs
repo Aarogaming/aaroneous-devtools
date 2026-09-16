@@ -1,5 +1,6 @@
 mod component_inventory;
 mod dependency_review;
+mod dogfood;
 mod local_proposal;
 mod scheduler;
 
@@ -85,6 +86,12 @@ enum Command {
         #[arg(long, default_value_t = 4096)]
         num_predict: u32,
     },
+    DogfoodMetadata {
+        #[arg(long)]
+        checkout: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 const INPUT_REPORT_KIND: &str = "foundation.input-report";
@@ -127,6 +134,7 @@ fn main() -> Result<()> {
             output,
             num_predict,
         } => local_proposal::run(&endpoint, &model, &evidence, &output, num_predict),
+        Command::DogfoodMetadata { checkout, output } => dogfood::metadata(&checkout, &output),
     }
 }
 

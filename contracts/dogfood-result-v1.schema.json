@@ -1,0 +1,1 @@
+{"type":"object","required":["schema_version","artifact_kind","checkout","operation","exit_code","stdout","stderr"],"properties":{"schema_version":{"const":1},"artifact_kind":{"const":"foundation.dogfood-result"}}}
