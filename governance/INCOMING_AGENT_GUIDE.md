@@ -4,7 +4,7 @@ This is the operational entrypoint for a contributor joining Aaroneous work. Aar
 
 ## Before selecting work
 
-1. Read `FOUNDATION_BOUNDARY.md`, `governance/MAINTENANCE_SYSTEM.md`, and `governance/MULTITHREAD_PROGRAM.md`.
+1. Read `FOUNDATION_BOUNDARY.md`, `governance/AARONEOUS_COMPONENT_FRAMEWORK_PRIMER.md`, `governance/MAINTENANCE_SYSTEM.md`, and `governance/MULTITHREAD_PROGRAM.md`.
 2. Read `governance/COORDINATION_QUEUE.md`. Do not edit a path owned by an active claim.
 3. Review the task's cited evidence, current branch, and repository-local `AGENTS.md`.
 4. Run the read-only scheduler review if capacity or eligible work is unclear.
