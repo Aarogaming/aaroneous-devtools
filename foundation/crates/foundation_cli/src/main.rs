@@ -2,6 +2,7 @@ mod component_inventory;
 mod dependency_review;
 mod dogfood;
 mod intake;
+mod intake_generator;
 mod local_proposal;
 mod scheduler;
 
@@ -99,6 +100,14 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    GenerateIntake {
+        #[arg(long)]
+        endpoint: String,
+        #[arg(long)]
+        evidence: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 const INPUT_REPORT_KIND: &str = "foundation.input-report";
@@ -143,6 +152,11 @@ fn main() -> Result<()> {
         } => local_proposal::run(&endpoint, &model, &evidence, &output, num_predict),
         Command::DogfoodMetadata { checkout, output } => dogfood::metadata(&checkout, &output),
         Command::ValidateIntake { proposal, output } => intake::validate(&proposal, &output),
+        Command::GenerateIntake {
+            endpoint,
+            evidence,
+            output,
+        } => intake_generator::run(&endpoint, &evidence, &output),
     }
 }
 
