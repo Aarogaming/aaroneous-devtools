@@ -36,6 +36,7 @@ evidence, not just an issue title.
 | P2 | M13 | Publish measured performance assurance | M8 | Benchmarking |
 | P3 | M14 | Add thin platform adapters around stable foundation commands | M9 | Windows/Linux integration |
 | P3 | M15 | Evaluate Candle, Rig, Burn, and ONNX Runtime in isolated foundation crates | M9 | Experimental Rust stacks |
+| P2 | M16 | Add a bounded local-agent proposal path and prompt/evaluation contracts | F7 | Rust foundation / Ollama |
 
 ## Intake rules
 

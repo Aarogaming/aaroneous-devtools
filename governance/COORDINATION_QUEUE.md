@@ -16,6 +16,7 @@ update. A takeover requires a handoff note and must not overwrite uncommitted wo
 | F6 | Foundation repository baseline: CI, dependency updates, Git workflow, release and decision records | Done | Codex | main | 2026-09-16 | Cross-platform Foundation CI, Dependabot, and governance docs added; 8 tests and strict clippy pass. |
 
 | F7 | Multithread program: priorities, capacity, dependencies, and maintenance cadence | Done | Codex | main | 2026-09-16 | Prioritized portfolio, capacity model, review gates, and weekly lifecycle published. |
+| F8 | Local-agent control plane: Qwen proposal boundary, Rust stack roles, and delivery gates | Done | Codex | main | 2026-09-16 | `governance/LOCAL_AGENT_CONTROL_PLANE.md`; no autonomous repository mutation or product dependency. |
 
 ## Available portfolio lanes
 
