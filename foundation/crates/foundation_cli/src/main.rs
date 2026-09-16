@@ -1,3 +1,5 @@
+mod dependency_review;
+
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -28,6 +30,18 @@ enum Command {
         #[arg(long = "support-dir")]
         support_dirs: Vec<PathBuf>,
     },
+    /// Run cargo-audit against an explicit checkout and write a versioned,
+    /// schema'd dependency-vulnerability report. Read-only: never touches
+    /// Cargo.lock or the checkout in any way. See S2 in governance/WORKLIST.md
+    /// and the schema doc at contracts/dependency-review/v1/SCHEMA.md.
+    DependencyReview {
+        /// Absolute path to an Aaroneous (or other Cargo workspace) checkout.
+        #[arg(long)]
+        checkout: PathBuf,
+        /// Absolute path for the report file; its parent must already exist.
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 const INPUT_REPORT_KIND: &str = "foundation.input-report";
@@ -48,6 +62,9 @@ fn main() -> Result<()> {
             output,
             support_dirs,
         } => validate_inputs(&checkout, &output, &support_dirs),
+        Command::DependencyReview { checkout, output } => {
+            dependency_review::run(&checkout, &output)
+        }
     }
 }
 
@@ -86,7 +103,7 @@ fn validate_inputs(checkout: &Path, output: &Path, support_dirs: &[PathBuf]) -> 
     Ok(())
 }
 
-fn require_absolute_directory(label: &str, path: &Path) -> Result<()> {
+pub(crate) fn require_absolute_directory(label: &str, path: &Path) -> Result<()> {
     if !path.is_absolute() {
         bail!("{label} must be an absolute path: {}", path.display());
     }
@@ -130,7 +147,7 @@ mod tests {
         fs::create_dir_all(&support).expect("support directory");
         let output = temp.path().join("report.json");
 
-        validate_inputs(&checkout, &output, &[support.clone()]).expect("valid inputs");
+        validate_inputs(&checkout, &output, std::slice::from_ref(&support)).expect("valid inputs");
         let report: InputReport =
             serde_json::from_slice(&fs::read(output).expect("report")).expect("valid report");
         assert_eq!(report.schema_version, 1);
