@@ -24,3 +24,4 @@ These files are historical input for a later, separate cleanup. They must not be
 - [Rust-first hybrid stacks](governance/TECH_STACKS.md)
 - [Dogfooding protocol](governance/DOGFOOD_PROTOCOL.md)
 - [Foundation contracts](contracts/README.md)
+- [Rust ecosystem catalogue](stacks/RUST_ECOSYSTEMS.md)

@@ -32,3 +32,10 @@ The first implementation should be a small `foundation/` Cargo workspace with a 
 Aaroneous crate dependency. It reads a supplied checkout path, runs declared commands, and writes
 versioned reports to a caller-provided directory. Additional tools become separate crates only
 when they have an independent contract and test surface.
+## Explicit external support directories
+
+Foundation commands may accept absolute, caller-provided support directories for model weights,
+datasets, caches, toolchains, or generated reports. They validate that each directory exists and
+record it in the output report. They do not search home directories, environment variables,
+current directories, or machine-specific defaults. This is intentionally permissive about location
+and strict about declaration.
