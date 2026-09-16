@@ -2,4 +2,4 @@ schema_version = 1
 id = 'PATHS-REVIEW'
 mode = 'analysis'
 evidence = ['crates/paths/src/lib.rs']
-instruction = 'Inspect declared path normalization and preset migration for concrete edge cases or risks. Distinguish reproduced evidence from hypotheses; do not invent vulnerabilities. Suggest bounded regression cases and cite function names. Do not propose a wholesale rewrite. rust_draft may be null.'
+instruction = 'Retry after pre-schema protocol failure: schema-constrained generation now enabled. Inspect declared path normalization and preset migration for concrete edge cases or risks. Distinguish reproduced evidence from hypotheses; do not invent vulnerabilities. Suggest bounded regression cases and cite function names. Do not propose a wholesale rewrite. rust_draft may be null.'

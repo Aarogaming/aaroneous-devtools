@@ -116,6 +116,12 @@ pub(crate) mod integration_tests {
         thread,
     };
     pub(crate) fn mock(content: &str, reason: &str) -> (String, thread::JoinHandle<()>) {
+        mock_format(content, reason, false)
+    }
+    pub(crate) fn mock_worker(content: &str, reason: &str) -> (String, thread::JoinHandle<()>) {
+        mock_format(content, reason, true)
+    }
+    fn mock_format(content: &str, reason: &str, schema: bool) -> (String, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("mock listener");
         let endpoint = format!("http://{}", listener.local_addr().expect("address"));
         let body =
@@ -146,7 +152,19 @@ pub(crate) mod integration_tests {
                                 .expect("json");
                         assert_eq!(json["think"], false);
                         assert_eq!(json["stream"], false);
-                        assert_eq!(json["format"], "json");
+                        if schema {
+                            assert_eq!(json["format"]["type"], "object");
+                            assert_eq!(json["format"]["additionalProperties"], false);
+                            assert_eq!(
+                                json["format"]["required"]
+                                    .as_array()
+                                    .expect("schema fields")
+                                    .len(),
+                                6
+                            );
+                        } else {
+                            assert_eq!(json["format"], "json");
+                        }
                         assert_eq!(json["options"]["num_predict"], 4096);
                         break;
                     }

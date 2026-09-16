@@ -40,6 +40,8 @@ The three initial jobs cover emulator reducer fixtures, path edge cases and gate
 
 ## Reviewing results and recovery
 
+The worker uses [Ollama schema-constrained structured output](https://docs.ollama.com/capabilities/structured-outputs) and strict Rust deserialization to reject duplicate or unknown fields. No ambient HTTP proxy is used.
+
 Results are versioned JSON containing job ID, submission time, complete input snapshot, proposed observations/risks/test plan, optional rust_draft, and outcome. No draft is executed, formatted, compiled, applied, merged or pushed automatically. A successful generation means pending-owner-review, not a successful product fix.
 
 Review pending records, then move reviewed records from results/ to archive/ while the task is paused; retain them so unchanged jobs are not regenerated. All complete JSON records in results/ count against the pending limit, including failures. When 8 records await review, dispatch pauses. This bounds review debt.
