@@ -71,3 +71,5 @@ and release the paths.
 - **Gemini 3.8 / Antigravity:** independent implementation or review lane.
 - **Claude Sonnet 5 / Claude:** independent implementation or review lane.
 - **Qwen:** local, bounded, owner-reviewed scratch subtask only.
+
+| C10 | Local polling worker: foundation/crates/foundation_cli/src/local_worker.rs, main.rs; governance/LOCAL_WORKER_SERVICE.md, SCHEDULE.md; worker-jobs/ | Claimed | Codex | main (devtools) | 2026-09-16T21:27:58Z | Rust-only dispatcher for approved scratch jobs; shared review.lock, quiet windows, unchanged-input suppression, backpressure and protocol tests. No product edits or automatic primary queue claims. |
