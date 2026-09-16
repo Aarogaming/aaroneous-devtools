@@ -29,6 +29,32 @@ authorization, deadlock, or numeric-ordering defects.
 Use a lockfile-aware scanner and record advisory paths, fixed versions, and mitigations before
 updating dependencies.
 
+### B1 — Enforce execution-host dependency policy
+
+After the bounded reducer path is proven, create a package-level policy that prevents the execution
+host from acquiring browser, GUI, database, model, filesystem-watch, GPU, network, or async-runtime
+dependencies.
+
+### B2 — Narrow the hypervisor public surface
+
+Keep hypervisor binaries as composition roots and replace broad library re-exports with narrow
+traits and typed frames owned by lower layers.
+
+### B3 — Extract bounded primitives from mixed crates
+
+Move only proven scan-path primitives from `compute` and `ipc_bus`; leave persistence, model
+loading, OS integration, and scheduling outside the execution-host dependency closure.
+
+### B4 — Define the plugin lifecycle contract
+
+Write an RFC covering the distinction between the current in-process Rust trait and any future
+dynamic ABI or process boundary, including ownership, startup, shutdown, compatibility, and
+failure isolation.
+
+### B5 — Publish measured assurance claims
+
+Replace unmeasured latency and verification claims with reproducible benchmark reports covering
+machine, profile, inputs, warmup, allocation observation, and latency distribution.
 ### B6 — Complete non-Rust and legacy reduction
 
 Port the encoding checker into `ast_auditor`, classify WIT/WGSL/deployment interfaces, and perform
