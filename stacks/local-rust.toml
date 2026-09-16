@@ -1,0 +1,14 @@
+version = 1
+name = "local-rust"
+
+[[commands]]
+name = "format"
+program = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+read_only = true
+
+[[commands]]
+name = "foundation-tests"
+program = "cargo"
+args = ["test", "--manifest-path", "foundation/Cargo.toml"]
+read_only = true

@@ -19,6 +19,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Validate declared paths and write a versioned input report.
+    ValidateStack {
+        /// Absolute path to a stack manifest.
+        #[arg(long)]
+        manifest: PathBuf,
+    },
     ValidateInputs {
         /// Absolute path to an Aaroneous checkout.
         #[arg(long)]
@@ -57,6 +62,7 @@ struct InputReport {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
+        Command::ValidateStack { manifest } => validate_stack(&manifest),
         Command::ValidateInputs {
             checkout,
             output,
@@ -68,6 +74,56 @@ fn main() -> Result<()> {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct StackManifest {
+    version: u32,
+    name: String,
+    commands: Vec<StackCommand>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StackCommand {
+    name: String,
+    program: String,
+    #[serde(default)]
+    args: Vec<String>,
+    read_only: bool,
+}
+
+fn validate_stack(manifest_path: &Path) -> Result<()> {
+    if !manifest_path.is_absolute() {
+        bail!(
+            "manifest must be an absolute path: {}",
+            manifest_path.display()
+        );
+    }
+    let content = fs::read_to_string(manifest_path)
+        .with_context(|| format!("failed to read {}", manifest_path.display()))?;
+    let manifest: StackManifest = toml::from_str(&content).context("invalid stack manifest")?;
+    if manifest.version != 1 || manifest.name.trim().is_empty() || manifest.commands.is_empty() {
+        bail!("stack manifest requires version 1, a name, and at least one command");
+    }
+    for command in &manifest.commands {
+        if command.name.trim().is_empty() || command.program.trim().is_empty() || !command.read_only
+        {
+            bail!("each command requires a name, a program, and read_only = true");
+        }
+        if contains_absolute_or_parent_path(&command.program)
+            || command
+                .args
+                .iter()
+                .any(|argument| contains_absolute_or_parent_path(argument))
+        {
+            bail!("stack manifests may not embed absolute or parent-directory paths");
+        }
+    }
+    println!("validated stack manifest: {}", manifest.name);
+    Ok(())
+}
+
+fn contains_absolute_or_parent_path(value: &str) -> bool {
+    Path::new(value).is_absolute() || value.split(['/', '\\']).any(|segment| segment == "..")
+}
 fn validate_inputs(checkout: &Path, output: &Path, support_dirs: &[PathBuf]) -> Result<()> {
     require_absolute_directory("checkout", checkout)?;
     if !checkout.join(".git").exists() {
