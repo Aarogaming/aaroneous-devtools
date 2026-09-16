@@ -17,6 +17,9 @@ These files are historical input for a later, separate cleanup. They must not be
 - [Maintenance system](governance/MAINTENANCE_SYSTEM.md)
 - [Operational worklist](governance/WORKLIST.md)
 - [Coordination queue](governance/COORDINATION_QUEUE.md)
+- [Incoming agent guide](governance/INCOMING_AGENT_GUIDE.md)
+- [Scheduler and maintainer](governance/SCHEDULER_MAINTAINER.md)
+- [Local agent control plane](governance/LOCAL_AGENT_CONTROL_PLANE.md)
 - [Maintenance schedule](governance/SCHEDULE.md)
 ## Foundation buildout
 
