@@ -1,6 +1,6 @@
 # Aaroneous Foundation Maintenance System
 
-This repository owns operational planning, parallel-work coordination, maintenance records, and
+This repository owns operational planning, multithread coordination, maintenance records, and
 private foundation tooling for Aaroneous. The Aaroneous repository owns product code, product
 contracts, verification commands, and product documentation.
 

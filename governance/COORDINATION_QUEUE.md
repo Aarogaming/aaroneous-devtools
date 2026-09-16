@@ -1,6 +1,6 @@
 # Parallel Coordination Queue
 
-Claim items from `WORKLIST.md` before editing Aaroneous. Claims expire after 24 hours without an
+Start with `MAINTENANCE_SYSTEM.md`, then claim an unowned row in this queue before editing Aaroneous. Claims expire after 24 hours without an
 update. A takeover requires a handoff note and must not overwrite uncommitted work.
 
 | ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
