@@ -11,7 +11,7 @@ update. A takeover requires a handoff note and must not overwrite uncommitted wo
 | C4 | WIT, registry, config, and terminology inventory | Ready | — | — | — | Antigravity continuity lane; diff against Wave 11 first. |
 
 | F1 | Standalone Rust foundation workspace and explicit-input CLI | Done | Codex | main | 2026-09-16 | `foundation_cli` tests and strict clippy pass. |
-| F2 | Versioned evidence contracts and fixtures | Ready | — | — | — | Contract-only lane. |
+| F2 | Versioned evidence contracts and fixtures | Claimed | Codex | main | 2026-09-16T07:30:54Z | Contract-only lane. |
 | F3 | Rust stack-manifest validator | Ready | — | — | — | Depends on F1 and F2 design. |
 ## Recent completed context
 
