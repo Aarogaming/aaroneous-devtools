@@ -38,3 +38,7 @@ These files are historical input for a later, separate cleanup. They must not be
 - [Decision log](governance/DECISIONS.md)
 - [Release practice](governance/RELEASES.md)
 - [Multithread program](governance/MULTITHREAD_PROGRAM.md)
+
+## Unattended local support work
+
+Use the native [local worker service](governance/LOCAL_WORKER_SERVICE.md) to offload bounded evidence analysis and Rust fixture/code drafts to Qwen. Approved TOML manifests live in `worker-jobs/`; the PC polls them every two minutes, avoids hourly review slots, and retains results outside Aaroneous. Add useful jobs instead of adding competing model schedules. Unchanged inputs are skipped and pending review debt is bounded. Generated code remains unverified until an owner reviews it and runs the native product gates.

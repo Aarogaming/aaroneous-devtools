@@ -64,3 +64,7 @@ queue or apply a patch.
 3. Add deterministic proposal validation and audit trail reporting.
 4. Add an optional Rig adapter behind the same contract.
 5. Evaluate Candle separately against a named experiment and measurement plan.
+
+## Native polling worker
+
+The approved support inbox is `worker-jobs/`. The deterministic Rust dispatcher polls every two minutes, reserves the shared model lane, reads only declared evidence, and emits unverified artifacts. Qwen still has no queue, command or repository-write authority. Incoming owners should follow [LOCAL_WORKER_SERVICE.md](LOCAL_WORKER_SERVICE.md) to submit bounded jobs and review pending outputs. This service uses the existing direct Ollama boundary; Rig/Candle experiments remain separate optional lanes.
