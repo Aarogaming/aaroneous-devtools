@@ -18,3 +18,9 @@ These files are historical input for a later, separate cleanup. They must not be
 - [Operational worklist](governance/WORKLIST.md)
 - [Coordination queue](governance/COORDINATION_QUEUE.md)
 - [Maintenance schedule](governance/SCHEDULE.md)
+## Foundation buildout
+
+- [Foundation architecture](architecture/FOUNDATION_ARCHITECTURE.md)
+- [Rust-first hybrid stacks](governance/TECH_STACKS.md)
+- [Dogfooding protocol](governance/DOGFOOD_PROTOCOL.md)
+- [Foundation contracts](contracts/README.md)

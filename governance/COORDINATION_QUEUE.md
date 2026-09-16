@@ -10,6 +10,9 @@ update. A takeover requires a handoff note and must not overwrite uncommitted wo
 | C3 | Dependency review configuration and report format | Ready | — | — | — | Claude continuity lane after compliance-auditor work. |
 | C4 | WIT, registry, config, and terminology inventory | Ready | — | — | — | Antigravity continuity lane; diff against Wave 11 first. |
 
+| F1 | Standalone Rust foundation workspace and explicit-input CLI | Ready | — | — | — | Do not reference Aaroneous crates. |
+| F2 | Versioned evidence contracts and fixtures | Ready | — | — | — | Contract-only lane. |
+| F3 | Rust stack-manifest validator | Ready | — | — | — | Depends on F1 and F2 design. |
 ## Recent completed context
 
 - **Claude / Sonnet continuity:** completed the native compliance auditor and CI sweep, then

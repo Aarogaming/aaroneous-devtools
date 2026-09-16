@@ -60,3 +60,28 @@ machine, profile, inputs, warmup, allocation observation, and latency distributi
 Port the encoding checker into `ast_auditor`, classify WIT/WGSL/deployment interfaces, and perform
 compatibility-led terminology reduction. See Aaroneous
 `docs/architecture/LEGACY_REDUCTION_PLAN.md`.
+## Foundation buildout
+
+### F1 — Bootstrap the standalone Rust foundation workspace
+
+Create the `foundation/` Cargo workspace and its first explicit-input CLI. It must have no
+Aaroneous path, crate, build, or runtime dependency.
+
+### F2 — Define versioned evidence contracts
+
+Create schemas and fixtures for command results, audit inventories, and revision metadata under
+`contracts/`.
+
+### F3 — Implement stack-manifest validation
+
+Parse and validate `stacks/*.toml` in Rust before any command runs. Reject undeclared commands,
+ambient paths, and unspecified outputs.
+
+### F4 — Add read-only dogfood harness
+
+Run a declared Aaroneous verification command against a caller-supplied checkout and write a
+versioned report without mutating the checkout.
+
+### F5 — Build platform adapters last
+
+Add thin Windows/Linux adapters only after F1–F4 have stable Rust commands to invoke.
