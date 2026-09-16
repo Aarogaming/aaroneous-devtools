@@ -37,6 +37,7 @@ evidence, not just an issue title.
 | P3 | M14 | Add thin platform adapters around stable foundation commands | M9 | Windows/Linux integration |
 | P3 | M15 | Evaluate Candle, Rig, Burn, and ONNX Runtime in isolated foundation crates | M9 | Experimental Rust stacks |
 | P2 | M16 | Add a bounded local-agent proposal path and prompt/evaluation contracts | F7 | Rust foundation / Ollama |
+| P1 | M17 | Build explicit-input component inventory and invariant profile reports | F7, C4 | Rust foundation / component architecture |
 
 ## Intake rules
 

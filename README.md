@@ -19,6 +19,7 @@ These files are historical input for a later, separate cleanup. They must not be
 - [Coordination queue](governance/COORDINATION_QUEUE.md)
 - [Agent instructions](AGENTS.md)
 - [Aaroneous component-framework primer](governance/AARONEOUS_COMPONENT_FRAMEWORK_PRIMER.md)
+- [Component development playbook](governance/COMPONENT_DEVELOPMENT_PLAYBOOK.md)
 - [Scheduler and maintainer](governance/SCHEDULER_MAINTAINER.md)
 - [Local agent control plane](governance/LOCAL_AGENT_CONTROL_PLANE.md)
 - [Maintenance schedule](governance/SCHEDULE.md)
