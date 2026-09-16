@@ -85,3 +85,8 @@ versioned report without mutating the checkout.
 ### F5 — Build platform adapters last
 
 Add thin Windows/Linux adapters only after F1–F4 have stable Rust commands to invoke.
+## Multithread portfolio
+
+The complete prioritized portfolio and capacity rules are in
+[MULTITHREAD_PROGRAM.md](MULTITHREAD_PROGRAM.md). Ready work enters the coordination queue only
+when its dependencies and exact file scope are known.

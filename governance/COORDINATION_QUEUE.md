@@ -15,8 +15,14 @@ update. A takeover requires a handoff note and must not overwrite uncommitted wo
 | F3 | Rust stack-manifest validator | Done | Codex | main | 2026-09-16 | Local Rust manifest validates; tests and strict clippy pass. |
 | F6 | Foundation repository baseline: CI, dependency updates, Git workflow, release and decision records | Done | Codex | main | 2026-09-16 | Cross-platform Foundation CI, Dependabot, and governance docs added; 8 tests and strict clippy pass. |
 
-| F7 | Multithread program: priorities, capacity, dependencies, and maintenance cadence | Claimed | Codex | main | 2026-09-16T07:43:19Z | Governance-only scope. |
+| F7 | Multithread program: priorities, capacity, dependencies, and maintenance cadence | Done | Codex | main | 2026-09-16 | Prioritized portfolio, capacity model, review gates, and weekly lifecycle published. |
 
+## Available portfolio lanes
+
+Use the priority portfolio in `MULTITHREAD_PROGRAM.md` to select the next claim. The current
+recommended sequence is C1/M2, M3 after its dependency report review, and M5 after a packaging
+check. Do not open M5, M6, and M7 together because they share the C4 inventory and require the
+same compatibility review.
 ## Recent completed context
 
 - **Claude / Sonnet continuity:** completed the native compliance auditor and CI sweep, then

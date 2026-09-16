@@ -32,3 +32,4 @@ These files are historical input for a later, separate cleanup. They must not be
 - [Git workflow](governance/GIT_WORKFLOW.md)
 - [Decision log](governance/DECISIONS.md)
 - [Release practice](governance/RELEASES.md)
+- [Multithread program](governance/MULTITHREAD_PROGRAM.md)
