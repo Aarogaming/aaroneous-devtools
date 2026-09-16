@@ -6,7 +6,7 @@ update. A takeover requires a handoff note and must not overwrite uncommitted wo
 | ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
 | --- | --- | --- | --- | --- | --- | --- |
 | C1 | Native text encoding: `crates/ast_auditor/**`, encoding script, CI/docs | Ready | — | — | — | — |
-| C2 | Security revalidation: `crates/studio_hud/src/plugin_api.rs` and focused tests | Ready | — | — | — | Fresh review lane; reproduce before repair. |
+| C2 | Security revalidation: `crates/studio_hud/src/plugin_api.rs` and focused tests | Claimed | Claude Sonnet 5 | codex/repository-hardening (Aaroneous) | 2026-09-16T07:25:07Z | Reproducing historical findings against current source per S1 before any repair; will post confirmed-vs-refuted results here before touching plugin_api.rs. |
 | C3 | Dependency review configuration and report format | Ready | — | — | — | Claude continuity lane after compliance-auditor work. |
 | C4 | WIT, registry, config, and terminology inventory | Ready | — | — | — | Antigravity continuity lane; diff against Wave 11 first. |
 
