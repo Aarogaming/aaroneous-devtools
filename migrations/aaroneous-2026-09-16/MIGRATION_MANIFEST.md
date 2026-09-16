@@ -10,6 +10,9 @@ Source repository: Aarogaming/aaroneous
 - `opencode.json`: personal OpenCode/local-model configuration.
 - `scripts/generate_modelfiles.ps1`, `scripts/local_agent_delegate.ps1`, `scripts/register_ollama_models.ps1`, and `scripts/update_qwen_templates.ps1`: local Ollama and LM Studio model operations.
 - `scripts/rosetta_stone_oracle.py`: experimental model-data generator.
+- `sdk/python/`: standalone Python SDK and client interfaces.
+- `data/extensions/`: Python bridge extensions and Win32 intercept tooling.
+- `deploy/`: legacy PowerShell installation and packaging scripts (now replaced in Aaroneous by `cargo xtask`).
 
 ## Remains in Aaroneous
 

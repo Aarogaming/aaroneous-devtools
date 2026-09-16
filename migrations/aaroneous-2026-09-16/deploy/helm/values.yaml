@@ -1,0 +1,325 @@
+# Aaroneous Federation - Helm Chart Values
+# Production-ready multi-hive deployment configuration
+
+# Global settings
+global:
+  environment: production
+  projectName: aaroneous-federation
+  domain: aaroneous.example.com
+
+# Replica configuration
+replicaCount: 3
+
+# Image configuration
+image:
+  repository: your-registry/aaroneous-federation
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8001"
+  prometheus.io/path: "/metrics"
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 2000
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Resource requests and limits
+resources:
+  requests:
+    cpu: 2
+    memory: 4Gi
+  limits:
+    cpu: 4
+    memory: 8Gi
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Node selection
+nodeSelector:
+  workload: specialist
+
+# Node affinity
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - aaroneous-federation
+          topologyKey: kubernetes.io/hostname
+
+# Tolerations
+tolerations:
+  - key: specialist
+    operator: Equal
+    value: "true"
+    effect: NoSchedule
+
+# GPU support
+gpu:
+  enabled: true
+  type: nvidia  # nvidia, amd, intel
+  count: 1
+  memory: 24Gi
+
+# Service configuration
+service:
+  type: LoadBalancer
+  port: 8001
+  targetPort: 8001
+  annotations: {}
+  sessionAffinity: ClientIP
+  sessionAffinityTimeout: 10800
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: aaroneous.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: aaroneous-tls
+      hosts:
+        - aaroneous.example.com
+
+# Persistent volume
+persistence:
+  enabled: true
+  storageClass: gp2
+  accessMode: ReadWriteOnce
+  size: 100Gi
+  annotations: {}
+  selector: {}
+
+# Database configuration
+database:
+  host: postgresql.default.svc.cluster.local
+  port: 5432
+  name: aaroneous_federation
+  ssl: true
+  maxConnections: 20
+  credentials:
+    secretName: aaroneous-db-secret
+    userKey: username
+    passwordKey: password
+
+# Redis cache configuration
+cache:
+  enabled: true
+  host: redis.default.svc.cluster.local
+  port: 6379
+  db: 0
+  maxConnections: 50
+  ttl: 3600
+
+# Environment variables
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: RUST_LOG
+    value: "aaroneous=info"
+  - name: METRICS_ENABLED
+    value: "true"
+  - name: AUDIT_LOG_ENABLED
+    value: "true"
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Network Policy
+networkPolicy:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8001
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 5432  # PostgreSQL
+        - protocol: TCP
+          port: 6379  # Redis
+
+# RBAC configuration
+rbac:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["services"]
+      verbs: ["get", "list"]
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+  dashboards:
+    enabled: true
+  alerting:
+    enabled: true
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # 2 AM daily
+  retention: 30  # days
+  destination: "s3://aaroneous-backups"
+
+# Cluster configuration
+cluster:
+  name: aaroneous-federation
+  region: us-east-1
+  nodeCount: 3
+  clusterIP: ""
+
+# Federation configuration
+federation:
+  enabled: true
+  mode: multi-hive  # single-hive or multi-hive
+  consensusThreshold: 66  # percentage
+  peerDiscovery: true
+  peerHives:
+    - name: hive-1
+      address: hive-1.example.com:8001
+    - name: hive-2
+      address: hive-2.example.com:8001
+
+# Specialist configuration
+specialists:
+  sentinel:
+    enabled: true
+    instances: 3
+  visionary:
+    enabled: true
+    instances: 2
+  omnipresent:
+    enabled: true
+    instances: 2
+  symbiotic:
+    enabled: true
+    instances: 1
+  phygital:
+    enabled: true
+    instances: 1
+  archivist:
+    enabled: true
+    instances: 1
+
+# Performance tuning
+performance:
+  caching:
+    enabled: true
+    strategy: lru
+    maxSize: 1000
+  quantization:
+    enabled: true
+    precision: fp16  # int4, int8, fp16, fp32
+  batchProcessing:
+    enabled: true
+    batchSize: 32
+  kernelFusion:
+    enabled: true
+  memoryPooling:
+    enabled: true
+
+# Security configuration
+security:
+  tls:
+    enabled: true
+    certSecretName: aaroneous-tls
+    minVersion: "1.2"
+  authentication:
+    enabled: true
+    type: oauth2  # oauth2, token, mtls
+  encryption:
+    enabled: true
+    algorithm: aes-256-gcm
+  rateLimiting:
+    enabled: true
+    requestsPerSecond: 1000
+    burstSize: 2000
+
+# Audit logging
+audit:
+  enabled: true
+  logLevel: info
+  retention: 90  # days
+  export:
+    enabled: true
+    destination: cloudwatch  # cloudwatch, s3, elasticsearch
+    format: json
+
+# High availability
+ha:
+  enabled: true
+  minAvailable: 2
+  maxUnavailable: 1
+  updateStrategy: RollingUpdate
+
+# Compliance
+compliance:
+  enabled: true
+  frameworks:
+    - gdpr
+    - hipaa
+    - soc2
+  auditEnabled: true
+  encryptionRequired: true

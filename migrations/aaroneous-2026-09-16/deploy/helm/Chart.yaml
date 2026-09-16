@@ -1,0 +1,28 @@
+apiVersion: v2
+name: aaroneous-federation
+description: >
+  Aaroneous Federation - Intelligent federated specialist hive system
+  Deploy multi-hive AI coordination with automatic failover and scaling
+
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - federated-ai
+  - specialists
+  - orchestration
+  - multi-hive
+  - kubernetes
+
+home: https://github.com/anomalyco/aaroneous
+sources:
+  - https://github.com/anomalyco/aaroneous
+maintainers:
+  - name: Aaroneous Community
+    email: community@aaroneous.ai
+
+dependencies: []
+
+# Chart metadata
+icon: https://aaroneous.ai/icon.png

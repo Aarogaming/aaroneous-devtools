@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "hypervisor": {
+      "url": "http://127.0.0.1:8766/sse",
+      "headers": {
+        "Authorization": "Bearer local-dev-token"
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+[Unit]
+Description=Aaroneous Sovereign AI Federation Engine
+Documentation=https://github.com/Aarogaming/aaroneous
+After=network.target postgresql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aaroneous
+Group=aaroneous
+WorkingDirectory=/opt/aaroneous
+
+# Set environments (or load from file)
+Environment="RUST_LOG=info,aaroneous=debug"
+Environment="AARONEOUS_WORKSPACE=/opt/aaroneous"
+EnvironmentFile=-/etc/aaroneous/aaroneous.conf
+
+# Execute the core binary
+ExecStart=/opt/aaroneous/bin/aaroneous start
+
+# Service Lifecycle
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# Security Hardening (Optional but recommended)
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Resource limits (Tune as necessary for GGUF loading)
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target

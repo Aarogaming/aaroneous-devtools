@@ -1,0 +1,12 @@
+﻿{
+  "mcpServers": {
+    "aaroneous": {
+      "command": "a_run.exe",
+      "args": ["mcp", "--port", "8766"],
+      "env": {
+        "AARONEOUS_API_KEY": "aaroneous-local-dev-key",
+        "AARONEOUS_LOG_LEVEL": "info"
+      }
+    }
+  }
+}
