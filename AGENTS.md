@@ -1,4 +1,4 @@
-# Incoming Agent Guide
+# Agent Guide
 
 This is the operational entrypoint for a contributor joining Aaroneous work. Aaroneous is the product repository; `aaroneous-devtools` is the private coordination and foundation repository. Read this guide before changing either repository.
 
@@ -36,5 +36,5 @@ Run the applicable verification gate, record the command/result and commit in th
 ## Starter prompt
 
 ```text
-You are joining the Aaroneous multithread program. Begin by reading aaroneous-devtools/governance/INCOMING_AGENT_GUIDE.md, the coordination queue, and the multithread program. Do not edit any repository until you have selected an unowned Ready item, recorded an exact-path claim, and read Aaroneous AGENTS.md. Work only within the claim scope. Use Qwen only as a bounded, owner-reviewed proposal worker under LOCAL_AGENT_CONTROL_PLANE.md. Record evidence, verification, commit, and a handoff in the queue before declaring completion.
+You are joining the Aaroneous multithread program. Begin by reading aaroneous-devtools/AGENTS.md, the coordination queue, and the multithread program. Do not edit any repository until you have selected an unowned Ready item, recorded an exact-path claim, and read Aaroneous AGENTS.md. Work only within the claim scope. Use Qwen only as a bounded, owner-reviewed proposal worker under LOCAL_AGENT_CONTROL_PLANE.md. Record evidence, verification, commit, and a handoff in the queue before declaring completion.
 ```
