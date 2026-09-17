@@ -43,6 +43,9 @@ pub struct RegistrarConfig {
     pub endpoint: String,
     pub model: String,
     pub max_pending: usize,
+    /// Required only by Serve. Never discover credentials from the environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_token_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -918,66 +921,10 @@ Register-ScheduledTask -TaskName '{name}' -Action $action -Trigger $trigger -Set
     Ok(())
 }
 
-pub fn auto_register_ide_mcp_config(port: u16) -> Result<Vec<PathBuf>> {
-    let mut updated_paths = Vec::new();
-
-    let appdata = std::env::var("APPDATA").ok();
-    let userprofile = std::env::var("USERPROFILE").ok();
-
-    let mut target_paths = Vec::new();
-    if let Some(ref app) = appdata {
-        target_paths.push(
-            PathBuf::from(app)
-                .join("Cursor")
-                .join("User")
-                .join("globalStorage")
-                .join("mcp.json"),
-        );
-        target_paths.push(
-            PathBuf::from(app)
-                .join("Code")
-                .join("User")
-                .join("globalStorage")
-                .join("mcp.json"),
-        );
-    }
-    if let Some(ref user) = userprofile {
-        target_paths.push(PathBuf::from(user).join(".cursor").join("mcp.json"));
-    }
-
-    let mcp_entry = serde_json::json!({
-        "url": format!("http://127.0.0.1:{port}/mcp"),
-        "transport": "http"
-    });
-
-    for path in target_paths {
-        if let Some(parent) = path.parent() {
-            if parent.exists() {
-                let mut doc: serde_json::Value = if path.exists() {
-                    let content = fs::read_to_string(&path).unwrap_or_else(|_| "{}".to_string());
-                    serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
-                } else {
-                    serde_json::json!({})
-                };
-
-                if !doc.is_object() {
-                    doc = serde_json::json!({});
-                }
-
-                if doc.get("mcpServers").is_none() {
-                    doc["mcpServers"] = serde_json::json!({});
-                }
-
-                doc["mcpServers"]["aaroneous-mcp"] = mcp_entry.clone();
-
-                let formatted = serde_json::to_string_pretty(&doc)?;
-                fs::write(&path, formatted)?;
-                updated_paths.push(path);
-            }
-        }
-    }
-
-    Ok(updated_paths)
+pub fn auto_register_ide_mcp_config(_port: u16) -> Result<Vec<PathBuf>> {
+    bail!(
+        "Implicit IDE configuration is retired. Configure the explicit registrar URL and X-Devtools-Token header in your chosen client; no settings were changed."
+    )
 }
 
 fn handle_mcp_json_rpc(config_path: &Path, body: &str) -> (String, String) {
@@ -1216,92 +1163,256 @@ fn execute_mcp_tool(
     }
 }
 
-/// Serve REST + MCP over 127.0.0.1. Each connection is handled on its own
-/// thread with read/write timeouts, so one stalled client can no longer
-/// block every other caller indefinitely (the pre-hardening version
-/// accepted connections on a single thread with no timeout at all).
-///
-/// Known remaining gap, not fixed here: there is still no request
-/// authentication, and CORS is wildcard, so any local process (including a
-/// browser tab, since the OPTIONS preflight is answered permissively) can
-/// call every tool while `serve` is running. The blast radius is now much
-/// smaller — nothing it can trigger writes to the checkout or commits
-/// without a separate, explicit `promote` call — but a shared-secret
-/// header check would still be a worthwhile follow-up before this runs
-/// unattended on a shared machine.
-pub fn serve(config_path: &Path, port: u16) -> Result<()> {
-    use std::net::TcpListener;
+const MAX_HTTP_HEADER: usize = 8192;
+const MAX_HTTP_BODY: usize = 65536;
+const MAX_HTTP_CONNECTIONS: usize = 8;
 
-    if let Ok(paths) = auto_register_ide_mcp_config(port) {
-        for p in paths {
-            println!(
-                "Agentic Registrar: Auto-registered MCP endpoint in {}",
-                p.display()
-            );
+struct HttpAuth {
+    host: String,
+    origin: String,
+    token: String,
+}
+impl HttpAuth {
+    fn load(config: &RegistrarConfig, port: u16) -> Result<Self> {
+        if port == 0 {
+            bail!("A nonzero loopback port is required");
+        }
+        let path = config
+            .http_token_file
+            .as_ref()
+            .context("Serve requires an explicit http_token_file")?;
+        if !path.is_absolute()
+            || path.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir | std::path::Component::CurDir
+                )
+            })
+            || within(path, &config.checkout)
+        {
+            bail!("HTTP token file must be an absolute path outside the product without traversal");
+        }
+        let mut ancestor = PathBuf::new();
+        for component in path.components() {
+            ancestor.push(component.as_os_str());
+            if fs::symlink_metadata(&ancestor)?.file_type().is_symlink() {
+                bail!("Token path must not contain symbolic links");
+            }
+        }
+        let token = read_bounded(path, 128)?.trim().to_owned();
+        if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            bail!("HTTP token must contain exactly 64 hexadecimal characters from 32 random bytes");
+        }
+        let host = format!("127.0.0.1:{port}");
+        Ok(Self {
+            origin: format!("http://{host}"),
+            host,
+            token,
+        })
+    }
+    fn permits(&self, request: &HttpRequest) -> bool {
+        request.headers.get("host") == Some(&self.host)
+            && request.headers.get("x-devtools-token") == Some(&self.token)
+            && request
+                .headers
+                .get("origin")
+                .is_none_or(|value| value == &self.origin)
+    }
+}
+struct HttpRequest {
+    method: String,
+    path: String,
+    headers: std::collections::BTreeMap<String, String>,
+    body: String,
+}
+fn read_http(reader: &mut impl std::io::Read) -> Result<HttpRequest> {
+    let mut raw = Vec::new();
+    while !raw.ends_with(b"\r\n\r\n") {
+        if raw.len() >= MAX_HTTP_HEADER {
+            bail!("HTTP header exceeds limit");
+        }
+        let mut byte = [0u8; 1];
+        reader
+            .read_exact(&mut byte)
+            .context("Incomplete HTTP header")?;
+        raw.push(byte[0]);
+    }
+    let text = std::str::from_utf8(&raw).context("Invalid HTTP header encoding")?;
+    let mut lines = text[..text.len() - 4].split("\r\n");
+    let parts: Vec<_> = lines
+        .next()
+        .context("Request line missing")?
+        .split(' ')
+        .collect();
+    if parts.len() != 3
+        || parts[2] != "HTTP/1.1"
+        || !matches!(parts[0], "GET" | "POST" | "OPTIONS")
+        || !parts[1].starts_with('/')
+    {
+        bail!("Unsupported HTTP request line");
+    }
+    let mut headers = std::collections::BTreeMap::new();
+    for line in lines {
+        let (name, value) = line.split_once(':').context("Malformed HTTP header")?;
+        if name.is_empty()
+            || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            || !value.bytes().all(|b| b == b'\t' || (32..=126).contains(&b))
+        {
+            bail!("Invalid HTTP header");
+        }
+        if headers
+            .insert(name.to_ascii_lowercase(), value.trim().to_owned())
+            .is_some()
+        {
+            bail!("Duplicate HTTP header");
         }
     }
-
-    let listener = TcpListener::bind(("127.0.0.1", port))
-        .with_context(|| format!("Failed to bind server to 127.0.0.1:{port}"))?;
-    println!("Agentic Registrar Dual REST + MCP Server listening on http://127.0.0.1:{port}");
-
-    for stream in listener.incoming() {
-        let stream = match stream {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        let config_path = config_path.to_path_buf();
-        std::thread::spawn(move || {
-            let _ = handle_connection(&config_path, stream);
-        });
+    if headers.contains_key("transfer-encoding") || headers.contains_key("expect") {
+        bail!("Transfer encoding and Expect are unsupported");
     }
-
+    let length = match headers.get("content-length") {
+        Some(value) if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) => {
+            value.parse::<usize>()?
+        }
+        Some(_) => bail!("Invalid Content-Length"),
+        None if parts[0] == "POST" => bail!("POST requires Content-Length"),
+        None => 0,
+    };
+    if length > MAX_HTTP_BODY || (parts[0] != "POST" && length != 0) {
+        bail!("HTTP body exceeds allowed bound");
+    }
+    if parts[0] == "POST"
+        && headers.get("content-type").map(String::as_str) != Some("application/json")
+    {
+        bail!("POST requires application/json");
+    }
+    let mut body = vec![0u8; length];
+    reader
+        .read_exact(&mut body)
+        .context("Incomplete HTTP body")?;
+    Ok(HttpRequest {
+        method: parts[0].into(),
+        path: parts[1].into(),
+        headers,
+        body: String::from_utf8(body)?,
+    })
+}
+struct DeadlineReader<'a> {
+    stream: &'a mut std::net::TcpStream,
+    deadline: std::time::Instant,
+}
+impl std::io::Read for DeadlineReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let remaining = self
+            .deadline
+            .checked_duration_since(std::time::Instant::now())
+            .filter(|time| !time.is_zero())
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "HTTP deadline exceeded")
+            })?;
+        self.stream.set_read_timeout(Some(remaining))?;
+        std::io::Read::read(self.stream, buffer)
+    }
+}
+fn http_response(stream: &mut std::net::TcpStream, status: &str, body: &str) -> Result<()> {
+    use std::io::Write;
+    write!(
+        stream,
+        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )?;
     Ok(())
 }
-
-fn handle_connection(config_path: &Path, mut stream: std::net::TcpStream) -> Result<()> {
-    use std::io::{Read, Write};
-
-    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
-
-    let mut buffer = [0u8; 8192];
-    let bytes_read = match stream.read(&mut buffer) {
-        Ok(n) if n > 0 => n,
-        _ => return Ok(()),
-    };
-
-    let req_str = String::from_utf8_lossy(&buffer[..bytes_read]);
-    let mut lines = req_str.lines();
-    let request_line = lines.next().unwrap_or("");
-    let parts: Vec<&str> = request_line.split_whitespace().collect();
-
-    if parts.len() < 2 {
-        return Ok(());
+struct ConnectionSlot(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+impl ConnectionSlot {
+    fn acquire(active: &std::sync::Arc<std::sync::atomic::AtomicUsize>) -> Option<Self> {
+        use std::sync::atomic::Ordering;
+        let mut count = active.load(Ordering::Acquire);
+        loop {
+            if count >= MAX_HTTP_CONNECTIONS {
+                return None;
+            }
+            match active.compare_exchange_weak(
+                count,
+                count + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return Some(Self(std::sync::Arc::clone(active))),
+                Err(current) => count = current,
+            }
+        }
     }
-
-    let method = parts[0];
-    let path = parts[1];
-
-    let body_str = if let Some(pos) = req_str.find("\r\n\r\n") {
-        &req_str[pos + 4..]
-    } else {
-        ""
+}
+impl Drop for ConnectionSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+}
+/// Authenticated loopback REST/MCP. No IDE settings are discovered or written.
+pub fn serve(config_path: &Path, port: u16) -> Result<()> {
+    use std::{
+        net::TcpListener,
+        sync::{Arc, atomic::AtomicUsize},
     };
-
-    if method == "GET" && path == "/sse" {
-        let sse_body = "event: endpoint\r\ndata: http://127.0.0.1:8080/mcp\r\n\r\n";
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: keep-alive\r\nContent-Length: {}\r\n\r\n{}",
-            sse_body.len(),
-            sse_body
+    let auth = Arc::new(HttpAuth::load(&load_config(config_path)?, port)?);
+    let listener = TcpListener::bind(("127.0.0.1", port))
+        .with_context(|| format!("Failed to bind server to 127.0.0.1:{port}"))?;
+    println!(
+        "Authenticated registrar listening on http://127.0.0.1:{port}; configure the X-Devtools-Token header explicitly."
+    );
+    let active = Arc::new(AtomicUsize::new(0));
+    for stream in listener.incoming() {
+        let stream = match stream {
+            Ok(stream) => stream,
+            Err(_) => continue,
+        };
+        let Some(slot) = ConnectionSlot::acquire(&active) else {
+            // Close immediately rather than allowing an overloaded client to stall acceptance.
+            drop(stream);
+            continue;
+        };
+        let config_path = config_path.to_path_buf();
+        let auth = Arc::clone(&auth);
+        std::thread::spawn(move || {
+            let _slot = slot;
+            let _ = handle_connection(&config_path, stream, &auth);
+        });
+    }
+    Ok(())
+}
+fn handle_connection(
+    config_path: &Path,
+    mut stream: std::net::TcpStream,
+    auth: &HttpAuth,
+) -> Result<()> {
+    stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+    let request = match read_http(&mut std::io::BufReader::new(DeadlineReader {
+        stream: &mut stream,
+        deadline: std::time::Instant::now() + Duration::from_secs(5),
+    })) {
+        Ok(request) => request,
+        Err(_) => {
+            return http_response(
+                &mut stream,
+                "400 Bad Request",
+                r#"{"error":"Invalid, incomplete or oversized HTTP request"}"#,
+            );
+        }
+    };
+    if !auth.permits(&request) {
+        return http_response(
+            &mut stream,
+            "403 Forbidden",
+            r#"{"error":"Explicit token, exact loopback Host and matching Origin required"}"#,
         );
-        let _ = stream.write_all(response.as_bytes());
-        return Ok(());
     }
+    let method = request.method.as_str();
+    let path = request.path.as_str();
+    let body_str = request.body.as_str();
 
     let (status_code, body) = match (method, path) {
-        ("OPTIONS", _) => ("200 OK".to_string(), "{}".to_string()),
+        ("OPTIONS", _) => ("405 Method Not Allowed".to_string(), "{}".to_string()),
         ("POST", "/mcp") | ("POST", "/") => handle_mcp_json_rpc(config_path, body_str),
         ("GET", "/mcp") | ("GET", "/health") => (
             "200 OK".to_string(),
@@ -1387,13 +1498,7 @@ fn handle_connection(config_path: &Path, mut stream: std::net::TcpStream) -> Res
         ),
     };
 
-    let response = format!(
-        "HTTP/1.1 {status_code}\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    );
-
-    let _ = stream.write_all(response.as_bytes());
-    Ok(())
+    http_response(&mut stream, &status_code, &body)
 }
 
 /// Explicit loopback-only Ollama chat call: rejects anything but a bare
@@ -1612,6 +1717,200 @@ fn append_progress_log(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn http_framing_requires_complete_bounded_unambiguous_requests() {
+        fn parse(raw: &str) -> Result<HttpRequest> {
+            read_http(&mut std::io::Cursor::new(raw.as_bytes()))
+        }
+        let request = parse("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}").expect("complete");
+        assert_eq!(request.body, "{}");
+        for raw in [
+            "GET /health HTTP/1.1\r\nHost: a\r\nHost: b\r\n\r\n",
+            "GET /health HTTP/1.1\r\nHost: a\r\nhOsT: b\r\n\r\n",
+            "POST /mcp HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{}",
+            "POST /mcp HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}",
+            "POST /mcp HTTP/1.1\r\nContent-Length: 3\r\nContent-Type: application/json\r\n\r\n{}",
+            "POST /mcp HTTP/1.1\r\nContent-Length: 65537\r\nContent-Type: application/json\r\n\r\n",
+            "POST /mcp HTTP/1.1\r\nContent-Length: +2\r\nContent-Type: application/json\r\n\r\n{}",
+            "POST /mcp HTTP/1.1\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\nContent-Type: application/json\r\n\r\n{}",
+            "GET /health HTTP/1.1\r\nContent-Length: 1\r\n\r\nx",
+            "GET /health HTTP/1.0\r\n\r\n",
+            "GET /health HTTP/1.1\r\nX: folded\r\n continuation\r\n\r\n",
+        ] {
+            assert!(parse(raw).is_err(), "{raw}");
+        }
+        assert!(
+            parse(&format!(
+                "GET /health HTTP/1.1\r\nX: {}\r\n\r\n",
+                "x".repeat(MAX_HTTP_HEADER)
+            ))
+            .is_err()
+        );
+    }
+    #[test]
+    fn serve_requires_explicit_valid_token_and_legacy_setup_never_writes() {
+        let (temp, mut config, _) = fixture();
+        assert!(HttpAuth::load(&config, 8080).is_err());
+        config.http_token_file = Some(PathBuf::from("relative-token"));
+        assert!(HttpAuth::load(&config, 8080).is_err());
+        let path = temp.path().join("token");
+        config.http_token_file = Some(path.clone());
+        fs::write(&path, "weak").expect("token");
+        assert!(HttpAuth::load(&config, 8080).is_err());
+        fs::write(&path, "a".repeat(64)).expect("token");
+        assert!(HttpAuth::load(&config, 0).is_err());
+        assert!(HttpAuth::load(&config, 8080).is_ok());
+        config.http_token_file = Some(config.checkout.join("token"));
+        assert!(HttpAuth::load(&config, 8080).is_err());
+        assert!(auto_register_ide_mcp_config(8080).is_err());
+    }
+    #[test]
+    fn connection_slots_are_bounded_and_released() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let active = Arc::new(AtomicUsize::new(0));
+        let mut slots: Vec<_> = (0..MAX_HTTP_CONNECTIONS)
+            .map(|_| ConnectionSlot::acquire(&active).expect("slot"))
+            .collect();
+        assert!(ConnectionSlot::acquire(&active).is_none());
+        slots.pop();
+        assert!(ConnectionSlot::acquire(&active).is_some());
+        drop(slots);
+        assert_eq!(active.load(Ordering::Acquire), 0);
+    }
+    #[test]
+    fn auth_requires_exact_host_token_and_optional_same_origin() {
+        let auth = HttpAuth {
+            host: "127.0.0.1:8080".into(),
+            origin: "http://127.0.0.1:8080".into(),
+            token: "a".repeat(64),
+        };
+        for (host, token, origin, expected) in [
+            ("127.0.0.1:8080", "a".repeat(64), "", true),
+            (
+                "127.0.0.1:8080",
+                "a".repeat(64),
+                "Origin: http://127.0.0.1:8080\r\n",
+                true,
+            ),
+            ("localhost:8080", "a".repeat(64), "", false),
+            ("attacker.example:8080", "a".repeat(64), "", false),
+            ("127.0.0.1:8080", "wrong".into(), "", false),
+            ("127.0.0.1:8080", "a".repeat(64), "Origin: null\r\n", false),
+            (
+                "127.0.0.1:8080",
+                "a".repeat(64),
+                "Origin: http://127.0.0.1:5173\r\n",
+                false,
+            ),
+        ] {
+            let raw = format!(
+                "GET /health HTTP/1.1\r\nHost: {host}\r\nX-Devtools-Token: {token}\r\n{origin}\r\n"
+            );
+            let request = read_http(&mut std::io::Cursor::new(raw)).expect("request");
+            assert_eq!(auth.permits(&request), expected, "{host} {origin}");
+        }
+    }
+    #[test]
+    fn expired_read_deadline_fails_without_waiting_for_client() {
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("listener");
+        let _client =
+            std::net::TcpStream::connect(listener.local_addr().expect("address")).expect("client");
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut reader = DeadlineReader {
+            stream: &mut stream,
+            deadline: std::time::Instant::now(),
+        };
+        assert_eq!(
+            reader.read(&mut [0]).expect_err("expired").kind(),
+            std::io::ErrorKind::TimedOut
+        );
+    }
+    #[test]
+    fn loopback_http_authentication_precedes_rpc_and_has_no_cors_bypass() {
+        use std::{
+            io::{Read, Write},
+            net::{Shutdown, TcpListener, TcpStream},
+        };
+        let (_temp, config, config_path) = fixture();
+        fn exchange(
+            config_path: &Path,
+            headers: &str,
+            method: &str,
+            path: &str,
+            body: &str,
+        ) -> String {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+            let address = listener.local_addr().expect("address");
+            let auth = HttpAuth {
+                host: address.to_string(),
+                origin: format!("http://{address}"),
+                token: "a".repeat(64),
+            };
+            let config_path = config_path.to_owned();
+            let server = std::thread::spawn(move || {
+                let (stream, _) = listener.accept().expect("accept");
+                handle_connection(&config_path, stream, &auth).expect("connection");
+            });
+            let request = format!(
+                "{method} {path} HTTP/1.1\r\nHost: {address}\r\n{headers}Content-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            let mut client = TcpStream::connect(address).expect("connect");
+            client
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .expect("timeout");
+            // Feed separate fragments: the server must not assume one read is one request.
+            for fragment in request.as_bytes().chunks(7) {
+                client.write_all(fragment).expect("write");
+            }
+            client.shutdown(Shutdown::Write).expect("shutdown");
+            let mut response = String::new();
+            client.read_to_string(&mut response).expect("response");
+            server.join().expect("server");
+            response
+        }
+        let token = format!("X-Devtools-Token: {}\r\n", "a".repeat(64));
+        let positive = exchange(&config_path, &token, "GET", "/health", "");
+        assert!(positive.starts_with("HTTP/1.1 200 OK"));
+        assert!(!positive.contains("Access-Control-Allow"));
+        assert!(positive.contains("Cache-Control: no-store"));
+        let rpc = exchange(
+            &config_path,
+            &format!("{token}Content-Type: application/json\r\n"),
+            "POST",
+            "/mcp",
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+        );
+        assert!(rpc.starts_with("HTTP/1.1 200 OK"));
+        assert!(rpc.contains("serverInfo"));
+        for headers in [
+            String::new(),
+            "X-Devtools-Token: wrong\r\n".into(),
+            format!("{token}Origin: https://attacker.example\r\n"),
+        ] {
+            let response = exchange(
+                &config_path,
+                &format!("{headers}Content-Type: application/json\r\n"),
+                "POST",
+                "/mcp",
+                r#"{"method":"tools/call","params":{"name":"register_task"}}"#,
+            );
+            assert!(response.starts_with("HTTP/1.1 403 Forbidden"));
+        }
+        assert!(
+            !config.queue.exists(),
+            "Unauthenticated RPC must not create queue state"
+        );
+        let options = exchange(&config_path, &token, "OPTIONS", "/mcp", "");
+        assert!(options.starts_with("HTTP/1.1 405 Method Not Allowed"));
+        assert!(!options.contains("Access-Control-Allow"));
+        let sse = exchange(&config_path, &token, "GET", "/sse", "");
+        assert!(sse.starts_with("HTTP/1.1 404 Not Found"));
+    }
 
     fn fixture() -> (tempfile::TempDir, RegistrarConfig, PathBuf) {
         let d = tempfile::tempdir().expect("fixture");
@@ -1641,6 +1940,7 @@ mod tests {
             endpoint: "http://127.0.0.1:1".into(),
             model: "test-model".into(),
             max_pending: 4,
+            http_token_file: None,
         };
         fs::create_dir_all(&config.results_directory).expect("results dir");
         fs::create_dir_all(&config.archive_directory).expect("archive dir");
