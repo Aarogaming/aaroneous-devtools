@@ -61,6 +61,13 @@ embed credentials or certify every host/service from one observation.
 
 ## Review and operational debt
 
+Owner-directed closeout update: the seven old review lanes now have explicit
+Blocked acceptance/correction handoffs and release their broad source scopes.
+This is not independent acceptance or Done. The
+[closeout plan](LANE_CLOSEOUT_PLAN.md) defines C23 documentation correction,
+C24 server lifecycle hardening and M34's per-lane acceptance decisions.
+The following historical evidence remains applicable; queue statuses are current.
+
 1. Owner sign-off remains for C10-C13, C15, C16 and C19. Technical pre-review of
    C16/C19 is useful evidence, not a substitute for the reserved owner decision.
 2. Preserve unrelated `foundation_cli/src/dogfood.rs` changes and untracked

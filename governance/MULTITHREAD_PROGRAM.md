@@ -55,6 +55,21 @@ evidence, not just an issue title.
 | P2 | M26 | Add property-oriented boundary tests for IPC and wire parsers selected by component profiles | M17 component inventory | Protocol correctness |
 | P2 | M27 | Add a bounded benchmark-result contract and baseline capture for one hot-path component | M8, M13 | Performance assurance |
 
+## Devtools closeout increments
+
+The [lane closeout plan](LANE_CLOSEOUT_PLAN.md) breaks down owner-directed review
+debt without declaring old implementations independently accepted. Consult the
+queue before claiming; portfolio entries are not Ready source reservations.
+
+| Priority | ID | Bounded work / source | Dependency | Acceptance |
+| --- | --- | --- | --- | --- |
+| P1 | M34 | Independent per-lane acceptance: old C10-C13/C15/C16/C19 evidence | Independent reviewer / reserved owner verdict | Revision/gate-based decisions; no self-certification; queue closure only for accepted slices |
+| P1 | M35 | Current docs/cadence/adoption correction: C23 | Old source scopes released by handoff | Accurate current claims, dated history, valid links and UTF-8/LF |
+| P1 | M39 | Packet server lifecycle hardening: C24, main.rs body/respond | Old C13 scope released; isolated reproduction | Bounded stalled/disconnected socket behavior, responsive status/shutdown, native gates |
+| P2 | M36 | Authenticated dashboard integration: REGISTRAR.md gap | C15/C19 acceptance | Explicit same-origin credential setup and negative lifecycle tests; no product writes |
+| P2 | M37 | Worker liveness and persistence failure policy: local_worker.rs/multithreader.rs | Ownership and deployment inputs | Observable quiet/reserved/error states, bounded permanent failure policy, crash-marker tests |
+| P2 | M38 | Utility client CI: standalone client.test.mjs gate | Reviewer capacity / exact workflow claim | Existing client tests automated on Windows/Linux, read-only bounded CI |
+
 ## Intake rules
 
 A new lane needs a source, priority, exact scope, dependency, expected evidence, and rollback or
