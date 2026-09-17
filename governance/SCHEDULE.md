@@ -29,3 +29,26 @@ Windows task `Aaroneous-Devtools-Multithreader` reviews the declared evidence ho
 ## Local support processing
 
 `Aaroneous-Devtools-LocalWorker` polls approved `worker-jobs/` every two minutes, dispatching only in minutes 06–20 and 41–50 and yielding to the shared review reservation. It generates scratch Rust drafts and bounded analysis, suppresses unchanged inputs and pauses at eight pending results. See [LOCAL_WORKER_SERVICE.md](LOCAL_WORKER_SERVICE.md). Windows supports the installed task while logged in; S4U logged-out registration was denied. Only native candidate review remains hourly at :00. Existing worker quiet windows remain unchanged, including the former :30 slot; scheduling consolidation belongs to the native maintenance program.
+
+## Cloud primary-lane routine (installed 2026-09-17)
+
+A Claude Code cloud Routine wakes a persistent session daily at 12:00 UTC and, on Mondays and the
+1st of the month, runs additional weekly/monthly scope in the same wake. Unlike the native
+candidate reviewer and local worker above (suggestion-only, no CI check, no promotion), this
+routine can actually claim a `COORDINATION_QUEUE.md` lane, implement it, run Aaroneous's full
+native gate, and push/open a pull request — it is the primary-lane capacity this schedule assumed
+before a maintained local or GUI equivalent existed (see `README.md`'s "What works today").
+
+- **Daily:** review Aaroneous CI and the coordination queue; if capacity allows (fewer than three
+  primary lanes claimed system-wide) and a Ready/P0/P1 item has clear scope, claim exactly one lane,
+  make one small mergeable increment, and update the queue. Otherwise do nothing and report nothing
+  — an idle day is a valid outcome, per this schedule's own no-status-noise rule.
+- **Weekly (Monday):** additionally reconcile expired (>24h) or stale queue claims, and work through
+  the oldest unattended Dependabot pull request on `Aarogaming/aaroneous`.
+- **Monthly (1st):** additionally check for roadmap/documentation drift against actual code and CI
+  evidence (the `M28`/`M30`–`M33` reconciliation lane) and flag anything in devtools that
+  `FOUNDATION_BOUNDARY.md` says should be retired.
+
+Owned by the user's Claude Code session; see that session for run history. Capacity, claim, and gate
+rules are unchanged — this routine is one more thread under `MULTITHREAD_PROGRAM.md`'s existing
+limits, not an exception to them.
