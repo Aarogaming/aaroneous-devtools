@@ -62,6 +62,39 @@ fn now() -> Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
 }
 impl App {
+    fn owns_job(&self, id: &str) -> Result<bool> {
+        for path in maintenance_ui::list_files(&self.config.jobs_directory, "toml")? {
+            let manifest: toml::Value = toml::from_str(&maintenance_ui::read_text(&path, 16384)?)?;
+            if manifest.get("id").and_then(toml::Value::as_str) == Some(id) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+    fn inspect_result(&self, filename: &str) -> Result<serde_json::Value> {
+        let record = maintenance_ui::result(&self.config, filename)?;
+        let id = record["job_id"].as_str().context("Result job ID missing")?;
+        if !self.owns_job(id)? {
+            bail!("Only results belonging to this utility's published jobs may be reviewed here");
+        }
+        Ok(record)
+    }
+    fn restore_research(&mut self) -> Result<()> {
+        if let Some(blueprint) = packets::load(&self.runtime)? {
+            let id = packets::published_id(&blueprint);
+            if self.owns_job(&id)? {
+                self.research_job = Some(id);
+                return Ok(());
+            }
+        }
+        for path in maintenance_ui::list_files(&self.config.jobs_directory, "toml")? {
+            let manifest: toml::Value = toml::from_str(&maintenance_ui::read_text(&path, 16384)?)?;
+            if let Some(id) = manifest.get("id").and_then(toml::Value::as_str) {
+                self.research_job = Some(id.to_owned());
+            }
+        }
+        Ok(())
+    }
     fn finish(&mut self) -> Result<()> {
         let status = match self.active.as_mut() {
             Some(active) => active.child.try_wait()?,
@@ -172,8 +205,20 @@ impl App {
                 serde_json::from_str(&maintenance_ui::read_text(&path, 1048576)?)?;
             if record["job_id"] == *id {
                 self.research_requested = false;
+                let decision = if path.parent() == Some(self.config.archive_directory.as_path()) {
+                    let note = path.with_extension("review");
+                    if note.exists() {
+                        Some(serde_json::from_str::<serde_json::Value>(
+                            &maintenance_ui::read_text(&note, 8192)?,
+                        )?)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
                 return Ok(
-                    json!({"title":"Wire boundary brainstorming","summary":if record["outcome"] == "failed" {"Research failed. A maintainer must inspect the retained evidence; no automatic retry."} else {"Unverified ideas for the blueprint. These cannot authorize commands or change Build criteria."},"observations":record["proposal"]["observations"],"questions":record["proposal"]["risks"],"suggested_tests":record["proposal"]["test_plan"],"error":record["error"],"verified":false}),
+                    json!({"title":"Wire boundary brainstorming","summary":if decision.is_some() {"Reviewed research retained for history. Read the disposition before using any suggestion; no product verification is implied."} else if record["outcome"] == "failed" {"Research failed. A maintainer must inspect the retained evidence; no automatic retry."} else {"Unverified ideas for the blueprint. These cannot authorize commands or change Build criteria."},"observations":record["proposal"]["observations"],"questions":record["proposal"]["risks"],"suggested_tests":record["proposal"]["test_plan"],"error":record["error"],"review":decision,"verified":false}),
                 );
             }
         }
@@ -194,8 +239,15 @@ impl App {
             self.mode = Mode::Plan;
             plan.mode = Mode::Plan;
         }
+        let status = maintenance_ui::status(&self.config, now()?)?;
+        let mut review_results = Vec::new();
+        for result in &status.results {
+            if self.owns_job(&result.job_id)? {
+                review_results.push(result);
+            }
+        }
         Ok(
-            json!({"plan":plan,"research":self.research_packet()?,"status":maintenance_ui::status(&self.config,now()?)?,"active":self.active.as_ref().map(|a| json!({"kind":a.kind,"started_at_secs":a.started_at_secs})),"last_run":self.last_run}),
+            json!({"plan":plan,"research":self.research_packet()?,"status":status,"review_results":review_results,"active":self.active.as_ref().map(|a| json!({"kind":a.kind,"started_at_secs":a.started_at_secs})),"last_run":self.last_run}),
         )
     }
 }
@@ -253,6 +305,26 @@ fn respond(request: Request, status: u16, content_type: &str, body: String) -> R
 fn route(app: &mut App, request: &mut Request) -> Result<String> {
     match (request.method(), request.url()) {
         (&Method::Get, "/api/status") => Ok(serde_json::to_string(&app.snapshot()?)?),
+        (&Method::Post, "/api/result") => {
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Selection {
+                filename: String,
+            }
+            let selection: Selection = serde_json::from_str(&body(request)?)?;
+            Ok(serde_json::to_string(
+                &app.inspect_result(&selection.filename)?,
+            )?)
+        }
+        (&Method::Post, "/api/review") => {
+            if app.active.is_some() {
+                bail!("Wait for the active operation before reviewing a result");
+            }
+            let review: maintenance_ui::Review = serde_json::from_str(&body(request)?)?;
+            app.inspect_result(&review.filename)?;
+            maintenance_ui::review(&app.config, review, now()?)?;
+            Ok(json!({"message":"Decision archived with complete evidence. Acceptance means follow-up only; no product code was changed or verified."}).to_string())
+        }
         (&Method::Post, "/api/packet") => {
             #[derive(serde::Deserialize)]
             #[serde(deny_unknown_fields)]
@@ -324,7 +396,7 @@ fn route(app: &mut App, request: &mut Request) -> Result<String> {
             Ok(json!({"message":"Utility closed. Native OS schedules are unchanged."}).to_string())
         }
         _ => bail!(
-            "Unsupported action; direct job, review, command and cloud dispatch endpoints are not exposed"
+            "Unsupported action; direct job, command and cloud dispatch endpoints are not exposed"
         ),
     }
 }
@@ -356,6 +428,7 @@ fn main() -> Result<()> {
     if let Ok(text) = maintenance_ui::read_text(&app.runtime.join("last-run.json"), 65536) {
         app.last_run = serde_json::from_str(&text).ok();
     }
+    app.restore_research()?;
     let token = unique_token()?;
     let host = format!("127.0.0.1:{}", args.port);
     let origin = format!("http://{host}");
@@ -437,6 +510,186 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn fixture() -> (tempfile::TempDir, App) {
+        let temp = tempfile::tempdir().expect("temp");
+        let root = temp.path();
+        for name in [
+            "checkout/.git",
+            "jobs",
+            "results",
+            "archive",
+            "reservation",
+            "runtime",
+        ] {
+            fs::create_dir_all(root.join(name)).expect("directory");
+        }
+        fs::write(root.join("queue.md"), "| ID | Scope | Status |\n").expect("queue");
+        let app = App {
+            config: WorkerConfig {
+                schema_version: 1,
+                checkout: root.join("checkout"),
+                queue: root.join("queue.md"),
+                jobs_directory: root.join("jobs"),
+                results_directory: root.join("results"),
+                archive_directory: root.join("archive"),
+                reservation_directory: root.join("reservation"),
+                endpoint: "http://127.0.0.1:11434".into(),
+                max_pending: 8,
+            },
+            config_path: root.join("worker.toml"),
+            foundation: root.join("foundation"),
+            runtime: root.join("runtime"),
+            allow_job_build: false,
+            active: None,
+            last_run: None,
+            mode: Mode::Plan,
+            running: true,
+            research_job: None,
+            research_requested: false,
+            next_poll: Instant::now(),
+        };
+        (temp, app)
+    }
+    fn selection(path: &str, body: &'static str) -> Request {
+        tiny_http::TestRequest::new()
+            .with_method(Method::Post)
+            .with_path(path)
+            .with_header(Header::from_bytes("Content-Type", "application/json").expect("header"))
+            .with_body(body)
+            .into()
+    }
+    #[test]
+    fn review_routes_preserve_history_and_restore_archived_research() {
+        let (_temp, mut app) = fixture();
+        fs::write(app.config.jobs_directory.join("OWN.toml"), "id = 'OWN'\n").expect("job");
+        let record = r#"{"schema_version":1,"job_id":"OWN","outcome":"pending-owner-review","input":"retained source","proposal":{"observations":["unverified idea"],"risks":[],"test_plan":[]}}"#;
+        fs::write(app.config.results_directory.join("OWN-0000.json"), record).expect("result");
+        let inspected = route(
+            &mut app,
+            &mut selection("/api/result", r#"{"filename":"OWN-0000.json"}"#),
+        )
+        .expect("inspect");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&inspected).expect("json")["input"],
+            "retained source"
+        );
+        route(&mut app, &mut selection("/api/review", r#"{"filename":"OWN-0000.json","disposition":"accepted-for-follow-up","note":"Useful idea; native verification required before implementation"}"#)).expect("review");
+        assert!(!app.config.results_directory.join("OWN-0000.json").exists());
+        assert_eq!(
+            fs::read_to_string(app.config.archive_directory.join("OWN-0000.json"))
+                .expect("archive"),
+            record
+        );
+        let decision: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(app.config.archive_directory.join("OWN-0000.review"))
+                .expect("decision"),
+        )
+        .expect("json");
+        assert_eq!(decision["product_verified"], false);
+        app.restore_research().expect("restart recovery");
+        assert_eq!(app.research_job.as_deref(), Some("OWN"));
+        assert_eq!(
+            app.research_packet().expect("packet")["observations"][0],
+            "unverified idea"
+        );
+        assert!(app.active.is_none());
+        assert_eq!(
+            fs::read_dir(&app.config.checkout)
+                .expect("checkout")
+                .count(),
+            1
+        );
+        assert!(
+            route(
+                &mut app,
+                &mut selection(
+                    "/api/review",
+                    r#"{"filename":"OWN-0000.json","disposition":"rejected","note":"duplicate"}"#
+                )
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn review_rejects_other_jobs_traversal_invalid_decisions_and_reservations() {
+        let (_temp, mut app) = fixture();
+        fs::write(
+            app.config.results_directory.join("OTHER-0000.json"),
+            r#"{"job_id":"OTHER"}"#,
+        )
+        .expect("result");
+        assert!(
+            route(
+                &mut app,
+                &mut selection("/api/result", r#"{"filename":"OTHER-0000.json"}"#)
+            )
+            .is_err()
+        );
+        assert!(
+            route(
+                &mut app,
+                &mut selection("/api/result", r#"{"filename":"../OTHER-0000.json"}"#)
+            )
+            .is_err()
+        );
+        assert!(
+            route(
+                &mut app,
+                &mut selection(
+                    "/api/result",
+                    r#"{"filename":"OTHER-0000.json","command":"execute"}"#
+                )
+            )
+            .is_err()
+        );
+        fs::write(
+            app.config.jobs_directory.join("OTHER.toml"),
+            "id = 'OTHER'\n",
+        )
+        .expect("job");
+        assert!(
+            route(
+                &mut app,
+                &mut selection(
+                    "/api/review",
+                    r#"{"filename":"OTHER-0000.json","disposition":"verified","note":"unsafe"}"#
+                )
+            )
+            .is_err()
+        );
+        assert!(
+            route(
+                &mut app,
+                &mut selection(
+                    "/api/review",
+                    r#"{"filename":"OTHER-0000.json","disposition":"rejected","note":" "}"#
+                )
+            )
+            .is_err()
+        );
+        let _lock = maintenance_ui::Lock::acquire(&app.config.reservation_directory).expect("lock");
+        assert!(
+            route(
+                &mut app,
+                &mut selection(
+                    "/api/review",
+                    r#"{"filename":"OTHER-0000.json","disposition":"rejected","note":"review"}"#
+                )
+            )
+            .is_err()
+        );
+        assert!(
+            app.config
+                .results_directory
+                .join("OTHER-0000.json")
+                .exists()
+        );
+        assert!(
+            maintenance_ui::list_files(&app.config.archive_directory, "json")
+                .expect("archive")
+                .is_empty()
+        );
+    }
     #[test]
     fn requires_token_origin_and_exact_host() {
         use tiny_http::TestRequest;
@@ -506,7 +759,6 @@ mod tests {
         };
         for path in [
             "/api/jobs",
-            "/api/review",
             "/api/tick",
             "/api/verify",
             "/api/cloud/send",

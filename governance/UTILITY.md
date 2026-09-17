@@ -31,6 +31,9 @@ Windows also has a thin `platform/windows/start-utility.ps1` launcher with expli
 3. Prepare the supported job blueprint. Inspect its scope, dependencies, acceptance criteria and retirement strategy. Use Refine blueprint to deepen the fixed research profile with alternatives, dependency assessment and falsifiable tests.
 4. Switch authoring to Build only after every publication criterion passes, then publish the prepared job. Refining a published definition requires returning to Plan and creates a new version; previous definitions remain intact.
 5. Leave the utility process running for its local pipeline to poll published packet jobs. Authoring may return to Plan while existing jobs continue.
+6. Open a pending utility result in Review research results, inspect its complete input/proposal/failure evidence, enter a note, and accept for follow-up or reject. Both choices preserve the record and decision in the archive; neither implements suggestions or verifies product code. Other workers' results cannot be disposed through this interface.
+
+Restarting with the same explicit runtime restores research display from published jobs and retained results, including archived decisions' result evidence. Authoring starts in Plan. Worker input history continues to suppress unchanged inference; no fresh model call is requested simply by viewing or reviewing a result.
 
 The current template reads the wire component to develop hardening ideas. It does not author arbitrary product changes, consolidate all Windows services, or implement cloud provider routing. Those require separate reviewed profiles/adapters rather than more low-level user controls.
 

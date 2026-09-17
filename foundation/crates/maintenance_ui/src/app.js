@@ -6,6 +6,7 @@ const token = sessionStorage.getItem('devtools-token') || '';
 let snapshot = null;
 let busy = false;
 let actionQueue = Promise.resolve();
+let selectedResult = null;
 function notice(message, error = false) { el('notice').textContent = message; el('notice').classList.toggle('error', error); }
 async function api(path, data) {
   const options = {headers: {'X-Devtools-Token': token}};
@@ -30,6 +31,8 @@ function controls() {
   el('refine-button').disabled = busy || build || !snapshot?.plan.blueprint;
   el('mode-button').disabled = busy || (!build && !snapshot?.plan.build_ready);
   el('build-button').disabled = busy || !build;
+  for (const button of document.querySelectorAll('[data-result], [data-disposition]')) button.disabled = busy || !!snapshot?.active;
+  for (const button of document.querySelectorAll('[data-disposition]')) button.disabled ||= !selectedResult;
 }
 async function refresh() {
   snapshot = await api('/api/status');
@@ -57,7 +60,28 @@ async function refresh() {
     list(el('blueprint'), 'Open questions', b.unresolved_questions);
   }
   el('research-summary').textContent = research.summary;
+  const pending = snapshot.review_results || [];
+  if (selectedResult && !pending.some(result => result.filename === selectedResult)) {
+    selectedResult = null;
+    el('result-detail').textContent = 'Select a pending result to inspect its complete evidence.';
+    el('review-note').value = '';
+  }
+  el('pending-results').replaceChildren();
+  for (const result of pending) {
+    const button = document.createElement('button');
+    button.dataset.result = result.filename;
+    button.textContent = `${result.job_id} — ${result.outcome}`;
+    button.onclick = () => action(async () => {
+      const record = await api('/api/result', {filename: result.filename});
+      selectedResult = result.filename;
+      el('result-detail').textContent = JSON.stringify(record, null, 2);
+      return 'Evidence opened. Model output remains unverified; record your own review decision.';
+    });
+    el('pending-results').append(button);
+  }
+  el('review-summary').textContent = pending.length ? `${pending.length} utility results need review.` : 'No utility results awaiting review. Other worker results remain outside this interface.';
   el('research').replaceChildren();
+  if (research.review) list(el('research'), 'Retained review decision', [`${research.review.disposition}: ${research.review.note}`]);
   list(el('research'), 'Unverified observations', research.observations);
   list(el('research'), 'Risks and questions', research.questions);
   list(el('research'), 'Suggested acceptance tests', research.suggested_tests);
@@ -77,6 +101,10 @@ function action(work) {
 }
 for (const button of document.querySelectorAll('[data-packet]')) button.onclick = () => action(async () => (await api('/api/packet', {packet:button.dataset.packet})).message);
 el('mode-button').onclick = () => action(async () => (await api('/api/mode', {mode:snapshot.plan.mode === 'build' ? 'plan' : 'build'})).message);
+for (const button of document.querySelectorAll('[data-disposition]')) button.onclick = () => action(async () => {
+  if (!selectedResult || !el('review-note').value.trim()) throw new Error('Inspect a result and enter a review note first.');
+  return (await api('/api/review', {filename: selectedResult, disposition: button.dataset.disposition, note: el('review-note').value})).message;
+});
 if (!token) notice('Open the complete link printed by the utility to connect this local session.', true);
 else action(async () => { await refresh(); return 'Connected. Job authoring starts in Plan; published jobs run independently.'; });
 setInterval(() => { if (!busy && token) action(async () => { await refresh(); }); }, 10000);
