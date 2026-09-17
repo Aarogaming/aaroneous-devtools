@@ -61,6 +61,15 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Run multithreader review cycles on an interval until stopped (Ctrl+C).
+    /// Persistence lives in this process, not an installed OS scheduled task:
+    /// start it when you want reviews running, stop it when you don't.
+    MultithreaderServe {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long, default_value_t = 30)]
+        interval_minutes: u32,
+    },
     /// Validate declared paths and write a versioned input report.
     ValidateStack {
         /// Absolute path to a stack manifest.
@@ -270,6 +279,10 @@ fn main() -> Result<()> {
             local_worker::tick(&config, ((now / 60) % 60) as u32, now)
         }
         Command::MultithreaderReview { config } => multithreader::run(&config),
+        Command::MultithreaderServe {
+            config,
+            interval_minutes,
+        } => multithreader::serve(&config, interval_minutes),
         Command::ValidateStack { manifest } => validate_stack(&manifest),
         Command::ValidateInputs {
             checkout,

@@ -5,6 +5,7 @@ use std::{
     collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 #[derive(Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
@@ -195,6 +196,51 @@ pub(crate) fn run(config_path: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+fn checked_interval(interval_minutes: u32) -> Result<Duration> {
+    if interval_minutes == 0 || interval_minutes > 1440 {
+        bail!("interval must be 1-1440 minutes, got {interval_minutes}");
+    }
+    Ok(Duration::from_secs(u64::from(interval_minutes) * 60))
+}
+
+/// Run one review cycle, logging (not propagating) failure. A persistent
+/// service should not die from a single bad cycle the way the one-shot
+/// `multithreader-review` command intentionally does (it exits nonzero on
+/// a `failed` outcome so a caller — a person or a script — notices). Here
+/// the next cycle is the notice: the failure is still recorded as an
+/// inbox report by `run()` itself before this ever sees the `Err`.
+fn cycle(config_path: &Path) {
+    if let Err(e) = run(config_path) {
+        eprintln!("multithreader-serve: cycle failed: {e:#}");
+    }
+}
+
+/// Run review cycles on a fixed interval until the process is stopped.
+///
+/// This replaces relying on an external scheduler (the OS's Task
+/// Scheduler, an installed service, etc.) to invoke `multithreader-review`
+/// repeatedly: the loop lives in this process instead, so "on" is running
+/// this command and "off" is not running it or stopping it (Ctrl+C) —
+/// there is nothing to separately install, enable, or forget to disable.
+/// Each `run()` call still owns and releases its own `review.lock`, so an
+/// interrupt between cycles (during the sleep) leaves nothing locked; an
+/// interrupt is only ever a concern if it lands mid-cycle, in which case
+/// `run()`'s existing "review.lock exists: inspect active/stale run
+/// before removal" recovery path applies exactly as it already does for
+/// the one-shot command.
+pub(crate) fn serve(config_path: &Path, interval_minutes: u32) -> Result<()> {
+    let interval = checked_interval(interval_minutes)?;
+    println!(
+        "multithreader-serve: starting, interval {interval_minutes}m, config {}",
+        config_path.display()
+    );
+    loop {
+        cycle(config_path);
+        std::thread::sleep(interval);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,6 +280,29 @@ mod tests {
         p.source = "README.md".into();
         p.dependencies.push("UNKNOWN".into());
         assert!(check_candidate(&p, &c, &BTreeSet::new(), "").is_err());
+    }
+    #[test]
+    fn interval_bounds_are_enforced() {
+        assert!(checked_interval(0).is_err());
+        assert!(checked_interval(1441).is_err());
+        assert_eq!(
+            checked_interval(30).expect("valid"),
+            Duration::from_secs(1800)
+        );
+        assert_eq!(checked_interval(1).expect("valid"), Duration::from_secs(60));
+        assert_eq!(
+            checked_interval(1440).expect("valid"),
+            Duration::from_secs(86400)
+        );
+    }
+    #[test]
+    fn a_failing_cycle_does_not_panic() {
+        // An absolute path that cannot exist: run() fails validating it,
+        // cycle() must log and return rather than propagate or panic —
+        // that is the whole point of using cycle() instead of run() in
+        // the serve loop.
+        let d = tempfile::tempdir().expect("fixture");
+        cycle(&d.path().join("does-not-exist.toml"));
     }
 }
 

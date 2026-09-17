@@ -30,25 +30,30 @@ Records are `review-NNNNNN.json`; they retain the exact evidence bundle and queu
 
 `generate-intake` writes a standalone proposal, or JSON null when no work is found. `validate-intake` validates only the standalone proposal structure, reporting `structurally_valid` and `requires_owner_review`; contextual validation belongs to `multithreader-review`. A parseable response is never an approved task.
 
-## Installed Windows service (2026-09-16)
+## Persistent mode: `multithreader-serve` (2026-09-17)
+
+`foundation multithreader-serve --config ABSOLUTE_FILE [--interval-minutes N]` (default 30) runs review cycles on an interval **inside the process** — no OS Task Scheduler entry, no installed service, nothing to separately enable or forget to disable. Starting the command is "on"; stopping it (Ctrl+C, or just not running it) is "off". Each cycle is the same `multithreader-review` logic, including its own `review.lock` acquisition and release, so a bad or interrupted cycle can't wedge the next one; a cycle that fails is logged to stderr and the loop continues rather than exiting, matching what a long-running service should do (a transient failure shouldn't require restarting it).
+
+```powershell
+& '<path>\foundation.exe' multithreader-serve --config '<path>\review.toml' --interval-minutes 30
+```
+
+Owner decision (2026-09-17): the previously-installed `Aaroneous-Devtools-Multithreader` Windows Task Scheduler task (below, historical) was removed — the repository "wasn't ready for the schedule yet, there were still too many bugs for it to run all day every day" unattended. Persistence now defaults to off (this is an explicit subcommand you choose to run, not something installed to auto-start) precisely so the decision to run it — and for how long — stays in the owner's hands each time, rather than living in OS-level configuration that's easy to forget is still active.
+
+## Historical: installed Windows service (2026-09-16, removed 2026-09-17)
 
 Task: `Aaroneous-Devtools-Multithreader`, every 30 minutes while the user is logged in, limited privileges, overlapping launches ignored, five-minute execution limit. This is Windows Task Scheduler software, separate from the paused Codex heartbeat. Ollama must already be running; the service does not launch it or install models.
 
 Executable and config live under the private checkout's ignored `artifacts/multithreader-service/`. The initial evidence selection is README and ARCHITECTURE only. Extend the declared files deliberately within the bounded budget; this is not a whole-repository audit.
 
-For a manual run:
+Manual invocation of the underlying one-shot command (still available, unchanged, and still what `multithreader-serve` calls each cycle):
 
 ```powershell
 & 'C:\Users\aarog\.codex\worktrees\aaroneous-devtools\artifacts\multithreader-service\foundation.exe' multithreader-review --config 'C:\Users\aarog\.codex\worktrees\aaroneous-devtools\artifacts\multithreader-service\review.toml'
-Start-ScheduledTask -TaskName 'Aaroneous-Devtools-Multithreader'
-Get-ScheduledTaskInfo -TaskName 'Aaroneous-Devtools-Multithreader'
-Disable-ScheduledTask -TaskName 'Aaroneous-Devtools-Multithreader'
 ```
-
-Build updates with `cargo build --manifest-path foundation/Cargo.toml --bin foundation`, pause the task, replace its copied executable from Cargo's reported build destination, and resume it. Moving the private checkout requires updating the config and task action. Never point artifacts into Aaroneous.
 
 ## Verification evidence
 
-Local foundation tests: 20 passed; formatting and all-target clippy with warnings denied passed. The full mocked pipeline proves pending candidate creation, duplicate suppression and preservation of the original queue. Protocol tests prove no-work handling, truncation rejection and loopback-only transport.
+Local foundation tests: 53 passed (includes 2 new tests for `multithreader-serve`'s interval bounds and its non-panicking failure handling); formatting and all-target clippy with warnings denied passed. The full mocked pipeline proves pending candidate creation, duplicate suppression and preservation of the original queue. Protocol tests prove no-work handling, truncation rejection and loopback-only transport.
 
-A direct local-Qwen run created `review-000000.json` with `no-new-work`. A Windows Task Scheduler launch created `review-000001.json` with the same outcome. LastTaskResult was 0 at 2026-09-16 16:33:14 EDT; next launch was scheduled for 17:03:14 EDT. Both runs reported the existing duplicate M21 queue records without modifying them. Product code was not changed by this task.
+Historical (2026-09-16): a direct local-Qwen run created `review-000000.json` with `no-new-work`. A Windows Task Scheduler launch created `review-000001.json` with the same outcome. LastTaskResult was 0 at 2026-09-16 16:33:14 EDT; next launch was scheduled for 17:03:14 EDT. Both runs reported the existing duplicate M21 queue records without modifying them. Product code was not changed by this task.
