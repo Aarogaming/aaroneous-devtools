@@ -35,14 +35,24 @@ Windows also has a thin `platform/windows/start-utility.ps1` launcher with expli
 
 Restarting with the same explicit runtime restores research display from published jobs and retained results, including archived decisions' result evidence. Authoring starts in Plan. Worker input history continues to suppress unchanged inference; no fresh model call is requested simply by viewing or reviewing a result.
 
+The connection indicator shows the last successful observation. Failed, invalid or timed-out refreshes retain the display but mark it stale and disable actions. Reconnect/refresh reads current state; it does not repeat a mutation. Requests have a six-second deadline and a 2 MiB response limit. If a mutation loses its response, inspect retained evidence before repeating it: a timeout does not prove the server did nothing.
+
 The current template reads the wire component to develop hardening ideas. It does not author arbitrary product changes, consolidate all Windows services, or implement cloud provider routing. Those require separate reviewed profiles/adapters rather than more low-level user controls.
 
 ## Operations
 
 The utility's runtime must be outside the product and must not overlap existing worker/config storage. It has its own job inbox but shares the configured result/archive and reservation contracts. Existing OS workers do not automatically ingest its inbox. Scheduling stays in native software; no Codex automation is created.
 
+A launch holds an exclusive `utility.lock` in its declared runtime and binds its loopback port before rewriting session configuration. Duplicate launches fail without replacing the running instance's configuration. Controlled shutdown releases the lock. A crash can leave a marker: inspect its PID and confirm no process owns that runtime before manually removing that exact file. There is no automatic stale-lock takeover.
+
 Status distinguishes real observations from stale/missing data. The existing worker does not record every quiet/reserved early return, so a last-poll timestamp can be stale while the task still exists. Do not label the service healthy solely from that timestamp.
 
 Retention is bounded: at most 256 artifacts per worker directory, pending-result backpressure from its configuration, and a utility launch limit of 512 operation logs or 64 MiB of retained logs. A maintainer reviews/archives logs; no automatic recursive deletion occurs. Preserve result/attempt history, which suppresses duplicate inference. Model errors are retained and are not retried unchanged.
 
 Run Foundation formatting, tests and strict Clippy for changes. Verify the live packet flow and negative entry criteria before shipping; a successful compile alone is insufficient.
+
+Browser-client regression tests need Node only for development, not deployment:
+
+```text
+node --test foundation/crates/maintenance_ui/tests/client.test.mjs
+```

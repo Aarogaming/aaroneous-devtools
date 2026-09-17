@@ -1,4 +1,5 @@
 'use strict';
+import {createApiClient, validateSnapshot} from './client.mjs';
 const el = id => document.getElementById(id);
 const fragment = location.hash.slice(1);
 if (fragment) { sessionStorage.setItem('devtools-token', fragment); history.replaceState(null, '', '/'); }
@@ -7,14 +8,13 @@ let snapshot = null;
 let busy = false;
 let actionQueue = Promise.resolve();
 let selectedResult = null;
+let connected = false;
+let lastObserved = null;
+const client = createApiClient(token);
 function notice(message, error = false) { el('notice').textContent = message; el('notice').classList.toggle('error', error); }
 async function api(path, data) {
-  const options = {headers: {'X-Devtools-Token': token}};
-  if (data !== undefined) { options.method = 'POST'; options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify(data); }
-  const response = await fetch(path, options);
-  const value = await response.json();
-  if (!response.ok) throw new Error(value.error || 'The operation failed');
-  return value;
+  try { return await client.request(path, data); }
+  catch (error) { if (error.unknownOutcome) connected = false; throw error; }
 }
 function list(container, title, values) {
   if (!Array.isArray(values) || !values.length) return;
@@ -25,7 +25,7 @@ function list(container, title, values) {
 }
 function controls() {
   const build = snapshot?.plan.mode === 'build';
-
+  for (const button of document.querySelectorAll('[data-packet]')) button.disabled = busy;
   el('research-button').disabled = busy || !!snapshot?.active;
   el('blueprint-button').disabled = busy || build;
   el('refine-button').disabled = busy || build || !snapshot?.plan.blueprint;
@@ -33,9 +33,15 @@ function controls() {
   el('build-button').disabled = busy || !build;
   for (const button of document.querySelectorAll('[data-result], [data-disposition]')) button.disabled = busy || !!snapshot?.active;
   for (const button of document.querySelectorAll('[data-disposition]')) button.disabled ||= !selectedResult;
+  if (!connected) for (const button of document.querySelectorAll('[data-packet], [data-result], [data-disposition], #mode-button')) button.disabled = true;
+  el('refresh-button').disabled = busy || !token;
+  el('connection').textContent = connected ? `Connected · last observed ${lastObserved}` : `Unavailable · ${lastObserved ? `retained information is STALE (last observed ${lastObserved})` : 'no state observed'} · actions disabled`;
 }
 async function refresh() {
-  snapshot = await api('/api/status');
+  try { snapshot = validateSnapshot(await api('/api/status')); }
+  catch (error) { connected = false; controls(); throw error; }
+  connected = true;
+  lastObserved = new Date().toLocaleTimeString();
   const {plan, status, research, active, last_run} = snapshot;
   el('mode-badge').textContent = plan.mode === 'build' ? 'Job: Build' : 'Job: Plan';
   el('workspace').textContent = `${status.checkout} · ${status.local_model} · ${status.results.length} support results awaiting maintainer review`;
@@ -89,22 +95,26 @@ async function refresh() {
   el('operation').textContent = active ? `${active.kind === 'verification' ? 'Prepared checks' : 'Read-only research'} is running.` : last_run?.meaning || 'No operation recorded.';
   el('evidence').textContent = JSON.stringify({repository_status: status.repository_status, worker_observation: status.worker_observation, worker_status_stale: status.worker_status_stale, reservation_present: status.reservation_present, last_run}, null, 2);
   controls();
+  notice('Connected. Results remain unverified; review decisions never authorize product edits.');
 }
-function action(work) {
+function action(work, refreshAfter = true) {
   actionQueue = actionQueue.then(async () => {
     busy = true; controls();
-    try { const message = await work(); await refresh(); if (message) notice(message); }
+    try { const message = await work(); if (refreshAfter) await refresh(); if (message) notice(message); }
     catch (error) { notice(error.message, true); }
     finally { busy = false; controls(); }
   });
   return actionQueue;
 }
 for (const button of document.querySelectorAll('[data-packet]')) button.onclick = () => action(async () => (await api('/api/packet', {packet:button.dataset.packet})).message);
+el('refresh-button').onclick = () => action(refresh, false);
 el('mode-button').onclick = () => action(async () => (await api('/api/mode', {mode:snapshot.plan.mode === 'build' ? 'plan' : 'build'})).message);
 for (const button of document.querySelectorAll('[data-disposition]')) button.onclick = () => action(async () => {
   if (!selectedResult || !el('review-note').value.trim()) throw new Error('Inspect a result and enter a review note first.');
   return (await api('/api/review', {filename: selectedResult, disposition: button.dataset.disposition, note: el('review-note').value})).message;
 });
 if (!token) notice('Open the complete link printed by the utility to connect this local session.', true);
-else action(async () => { await refresh(); return 'Connected. Job authoring starts in Plan; published jobs run independently.'; });
-setInterval(() => { if (!busy && token) action(async () => { await refresh(); }); }, 10000);
+else action(refresh, false);
+setInterval(() => { if (!busy && token) action(refresh, false); }, 10000);
+window.addEventListener('pagehide', () => client.stop());
+controls();

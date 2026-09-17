@@ -449,6 +449,23 @@ pub fn review(config: &WorkerConfig, review: Review, now: u64) -> Result<()> {
 /// Explicit runtime copy: new interactive jobs stay out of the shared Git job directory.
 pub fn session_config(original: &Path, runtime: &Path) -> Result<PathBuf> {
     let mut config = load_config(original)?;
+    validate_runtime(&config, original, runtime)?;
+    fs::create_dir_all(runtime)?;
+    let jobs = runtime.join("jobs");
+    fs::create_dir_all(&jobs)?;
+    check_path(&jobs)?;
+    config.jobs_directory = jobs;
+    let path = runtime.join("worker.toml");
+    if path.exists() {
+        check_path(&path)?;
+    }
+    let contents = toml::to_string(&config)?;
+    fs::write(&path, contents)?;
+    load_config(&path)?;
+    Ok(path)
+}
+
+fn validate_runtime(config: &WorkerConfig, original: &Path, runtime: &Path) -> Result<()> {
     check_path(runtime)?;
     if within(runtime, &config.checkout) {
         bail!("Runtime must be outside Aaroneous");
@@ -466,24 +483,52 @@ pub fn session_config(original: &Path, runtime: &Path) -> Result<PathBuf> {
     if within(original, runtime) {
         bail!("Utility runtime must not contain its source configuration");
     }
-    fs::create_dir_all(runtime)?;
-    let jobs = runtime.join("jobs");
-    fs::create_dir_all(&jobs)?;
-    check_path(&jobs)?;
-    config.jobs_directory = jobs;
-    let path = runtime.join("worker.toml");
-    if path.exists() {
+    Ok(())
+}
+
+/// Held for the utility lifetime, before any session configuration is rewritten.
+/// A crash leaves evidence for explicit inspection, never an automatic takeover.
+pub struct RuntimeLease(PathBuf);
+impl RuntimeLease {
+    pub fn acquire(original: &Path, runtime: &Path) -> Result<Self> {
+        let config = load_config(original)?;
+        validate_runtime(&config, original, runtime)?;
+        fs::create_dir_all(runtime)?;
+        let path = runtime.join("utility.lock");
         check_path(&path)?;
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&path)
+            .context("Utility runtime is reserved; inspect the existing instance or stale utility.lock before restarting")?;
+        let lease = Self(path);
+        file.write_all(format!("owner=devtools.utility\npid={}\n", std::process::id()).as_bytes())?;
+        file.sync_all()?;
+        Ok(lease)
     }
-    let contents = toml::to_string(&config)?;
-    fs::write(&path, contents)?;
-    load_config(&path)?;
-    Ok(path)
+}
+impl Drop for RuntimeLease {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn runtime_lease_blocks_duplicate_launch_without_rewriting_and_releases() {
+        let (temp, config) = fixture();
+        let original = temp.path().join("original.toml");
+        fs::write(&original, toml::to_string(&config).expect("config")).expect("write");
+        let runtime = temp.path().join("runtime");
+        let lease = RuntimeLease::acquire(&original, &runtime).expect("lease");
+        let sentinel = runtime.join("worker.toml");
+        fs::write(&sentinel, "preserved").expect("sentinel");
+        assert!(RuntimeLease::acquire(&original, &runtime).is_err());
+        assert_eq!(fs::read_to_string(&sentinel).expect("read"), "preserved");
+        assert!(RuntimeLease::acquire(&original, &config.checkout.join("runtime")).is_err());
+        drop(lease);
+        assert!(!runtime.join("utility.lock").exists());
+        let _next = RuntimeLease::acquire(&original, &runtime).expect("restart");
+    }
     fn fixture() -> (tempfile::TempDir, WorkerConfig) {
         let temp = tempfile::tempdir().expect("tempdir");
         let root = temp.path();

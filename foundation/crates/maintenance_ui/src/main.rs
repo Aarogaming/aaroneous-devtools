@@ -405,6 +405,10 @@ fn main() -> Result<()> {
     if args.port == 0 || !args.foundation.is_absolute() || !args.foundation.is_file() {
         bail!("An explicit existing Foundation binary and nonzero loopback port are required");
     }
+    let _runtime_lease = maintenance_ui::RuntimeLease::acquire(&args.worker_config, &args.runtime)?;
+    // Bind before rewriting runtime files; an occupied port must have no session side effects.
+    let server = Server::http((Ipv4Addr::LOCALHOST, args.port))
+        .map_err(|error| anyhow::anyhow!("Cannot start utility: {error}"))?;
     let config_path = maintenance_ui::session_config(&args.worker_config, &args.runtime)?;
     let mut config = maintenance_ui::load_config(&config_path)?;
     config.jobs_directory = args.runtime.join("packet-jobs");
@@ -432,8 +436,6 @@ fn main() -> Result<()> {
     let token = unique_token()?;
     let host = format!("127.0.0.1:{}", args.port);
     let origin = format!("http://{host}");
-    let server = Server::http((Ipv4Addr::LOCALHOST, args.port))
-        .map_err(|error| anyhow::anyhow!("Cannot start utility: {error}"))?;
     println!(
         "Open {origin}/#{token}\nJob authoring starts in Plan. Build publishes validated jobs; orchestration is independent.\nResearch stays read-only. No direct edits, rollback, commits, pushes or paid dispatch are exposed."
     );
@@ -480,6 +482,7 @@ fn main() -> Result<()> {
             let public = match request.url() {
                 "/" => Some(("text/html; charset=utf-8", include_str!("index.html"))),
                 "/app.js" => Some(("application/javascript", include_str!("app.js"))),
+                "/client.mjs" => Some(("application/javascript", include_str!("client.mjs"))),
                 "/style.css" => Some(("text/css", include_str!("style.css"))),
                 _ => None,
             };

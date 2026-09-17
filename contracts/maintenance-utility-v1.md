@@ -16,6 +16,8 @@ Inputs: explicit Foundation worker TOML, explicit Foundation binary, separate ab
 
 Private API requests require the startup session token, exact loopback Host and matching Origin when present. JSON selections deny unknown fields and have a 1 KiB body limit. Raw jobs, arbitrary commands, target files and cloud dispatch are not user API routes. Result filenames are validated; other workers' jobs cannot be reviewed through this utility.
 
+The browser validates status before enabling controls, bounds requests to six seconds and response bodies to 2 MiB, and cancels outstanding requests when leaving the page. Failed observations mark retained information stale and disable action controls. Mutations with a lost/invalid response have an unknown outcome and are never automatically retried; reconnect is read-only.
+
 ## Artifacts
 
 `blueprint.json` is a version-1 authored job definition with purpose, checkout revision, evidence digest, exact inputs, scope, steps/dependencies, acceptance evidence, rollback/retirement, open questions research depth and creation time. Refinement revises the draft in Plan. Build publishes a schema-version-1 analysis manifest into `packet-jobs/`. The published manifest is immutable; duplicate publication is idempotent. The job identifier hashes the source digest and trusted instruction; refinement publishes a new version while retaining prior definitions and run history.
@@ -23,6 +25,8 @@ Private API requests require the startup session token, exact loopback Host and 
 `last-run.json` and `run-*.log` retain actual command outcomes. A completed worker tick can mean idle, quiet or deferred work, and never means generated code passed verification. The worker retains complete results in its configured external result/archive directories. Source evidence and generated outputs are private runtime artifacts, not Git-tracked state.
 
 On restart, authoring remains Plan, but the published blueprint's job (or a retained inbox job) is restored for research display. Archived results remain available to that display. Review preserves the full JSON record and a separate `.review` decision containing `product_verified: false`; it does not delete the published manifest or its input history.
+
+`utility.lock` is an exclusive process-lifetime runtime marker containing the owner and PID. Startup validates boundaries and acquires it, then binds the port before rewriting session configuration. Normal exit releases it; crashes require explicit maintainer inspection rather than automatic takeover.
 
 ## Authority
 
