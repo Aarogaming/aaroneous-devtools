@@ -6,3 +6,12 @@
 .env
 .env.*
 !.env.example
+
+# agentic_registrar runtime state: machine-specific absolute paths and
+# generated task/result data, not source. See foundation/crates/foundation_cli/src/agentic_registrar.rs.
+/config/
+/queue/
+
+# GUI dashboard build artifacts (regenerate via `npm install`/`npm run build`).
+/gui/node_modules/
+/gui/dist/

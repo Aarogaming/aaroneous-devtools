@@ -1,3 +1,4 @@
+mod agentic_registrar;
 mod component_inventory;
 mod dependency_review;
 mod dogfood;
@@ -26,6 +27,30 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Agentic Queue Registrar & Dispatch Control Plane
+    AgenticRegistrar {
+        #[command(subcommand)]
+        action: RegistrarAction,
+    },
+    /// Perform Rust Git discovery on a repository checkout
+    DiscoverGit {
+        #[arg(long)]
+        checkout: PathBuf,
+    },
+    /// Closed-loop end-to-end autonomous development pipeline
+    Pipeline {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Register Windows Scheduled Task for foundation passive engine
+    RegisterScheduledTask {
+        #[arg(long)]
+        binary_path: PathBuf,
+        #[arg(long, default_value = "Aaroneous-Devtools-Passive-Engine")]
+        task_name: String,
+        #[arg(long, default_value_t = 15)]
+        interval_minutes: u32,
+    },
     /// Poll approved scratch jobs once; the operating system schedules subsequent ticks.
     LocalWorkerTick {
         #[arg(long)]
@@ -122,6 +147,63 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum RegistrarAction {
+    Status {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    Dashboard {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    Register {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        crate_name: String,
+        #[arg(long)]
+        task: String,
+        #[arg(long)]
+        target_file: String,
+        #[arg(long)]
+        instruction: String,
+    },
+    Dispatch {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        task_id: Option<String>,
+    },
+    Daemon {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Explicitly accept a pending-owner-review draft: writes it into the
+    /// checkout, re-verifies (cargo check + clippy), and only then commits.
+    /// The only action that ever touches the real checkout or git.
+    Promote {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        task_id: String,
+    },
+    Serve {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long, default_value_t = 8080)]
+        port: u16,
+    },
+    SetupMcp {
+        #[arg(long, default_value_t = 8080)]
+        port: u16,
+    },
+}
+
 const INPUT_REPORT_KIND: &str = "foundation.input-report";
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -135,6 +217,52 @@ struct InputReport {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
+        Command::AgenticRegistrar { action } => match action {
+            RegistrarAction::Status { config } => agentic_registrar::print_status(&config),
+            RegistrarAction::Dashboard { config, output } => {
+                agentic_registrar::generate_dashboard_html(&config, &output)
+            }
+            RegistrarAction::Register {
+                config,
+                id,
+                crate_name,
+                task,
+                target_file,
+                instruction,
+            } => agentic_registrar::register_task(
+                &config,
+                &id,
+                &crate_name,
+                &task,
+                &target_file,
+                &instruction,
+            ),
+            RegistrarAction::Dispatch { config, task_id } => {
+                agentic_registrar::dispatch(&config, task_id.as_deref())
+            }
+            RegistrarAction::Daemon { config } => agentic_registrar::daemon(&config),
+            RegistrarAction::Promote { config, task_id } => {
+                agentic_registrar::promote(&config, &task_id)
+            }
+            RegistrarAction::Serve { config, port } => agentic_registrar::serve(&config, port),
+            RegistrarAction::SetupMcp { port } => {
+                let paths = agentic_registrar::auto_register_ide_mcp_config(port)?;
+                for p in paths {
+                    println!("Auto-configured IDE MCP setting: {}", p.display());
+                }
+                println!("MCP server auto-configuration complete for port {port}.");
+                Ok(())
+            }
+        },
+        Command::DiscoverGit { checkout } => {
+            agentic_registrar::git_discover_repository(&checkout).map(|_| ())
+        }
+        Command::Pipeline { config } => agentic_registrar::run_pipeline(&config),
+        Command::RegisterScheduledTask {
+            binary_path,
+            task_name,
+            interval_minutes,
+        } => agentic_registrar::register_task_scheduler(&binary_path, &task_name, interval_minutes),
         Command::LocalWorkerTick { config } => {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
