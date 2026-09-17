@@ -2,6 +2,10 @@
 
 See `MAINTENANCE_SYSTEM.md` for operating rules and `COORDINATION_QUEUE.md` for live ownership.
 
+## Status of this document
+
+These are historical task briefs, retained to preserve acceptance context. Their original Ready/Active labels are not current certification. Consult [the priority portfolio](MULTITHREAD_PROGRAM.md) and [the coordination queue](COORDINATION_QUEUE.md) for current selection and ownership. Application work follows [the maintenance program delivery map](../architecture/MAINTENANCE_PROGRAM.md). Do not duplicate new tasks here.
+
 ## Active
 
 ### A1 — Merge the text-encoding and boundary-audit branch

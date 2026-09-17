@@ -1,48 +1,30 @@
 # Aaroneous Devtools
 
-Private companion tooling for the Aaroneous framework. This repository is not a workspace member, build dependency, or runtime dependency of Aaroneous.
+Aaroneous's private development companion: reusable Rust maintenance tools, a guided user interface, and local automation for tasks Git does not perform. Devtools uses practical, lighter implementation standards while preserving Aaroneous's independent build and runtime.
 
-## User-facing maintenance program
+## Start here
 
-The [maintenance program delivery map](architecture/MAINTENANCE_PROGRAM.md) builds on the existing Rust Foundation and reviews the uncommitted TypeScript dashboard prototype. The target is guided maintenance, deterministic checks, local-first jobs and budgeted cloud escalation. The current dashboard prototype is not an operational verification system.
+- [Companion operating model](governance/OPERATING_MODEL.md): organization, standards and everyday use.
+- [Foundation boundary](FOUNDATION_BOUNDARY.md): what belongs here and what stays in Aaroneous.
+- [Agent guide](AGENTS.md) and [contributing](CONTRIBUTING.md): ownership, verification and handoffs.
+- [Framework primer](governance/AARONEOUS_COMPONENT_FRAMEWORK_PRIMER.md) and [component playbook](governance/COMPONENT_DEVELOPMENT_PLAYBOOK.md): context for helping Aaroneous.
 
-## Foundation boundary
+## What works today
 
-Read [FOUNDATION_BOUNDARY.md](FOUNDATION_BOUNDARY.md) before adding or transferring material.
+`foundation/` is a standalone Rust workspace. Its CLI validates inputs and stacks, inventories components, records dependency/dogfood evidence, reviews scheduling capacity and processes bounded local-model jobs. [Contracts](contracts/README.md) describe its versioned artifacts.
 
-## Imported legacy tooling
+The native [candidate reviewer](governance/MULTITHREADER_SERVICE.md) and [local worker](governance/LOCAL_WORKER_SERVICE.md) provide local support automation. Approved jobs are in `worker-jobs/`; generated drafts remain unverified until reviewed. No active Codex maintenance schedule remains. See [the schedule](governance/SCHEDULE.md) for installed cadence and limitations.
 
-`migrations/aaroneous-2026-09-16/` preserves the initial transfer from Aaroneous without changing content or paths within each copied concern. It contains local-model configuration, agent workflows, workstation diagnostics, experimental project analysis, and legacy development automation.
+The React/TypeScript GUI and registrar prototype currently exist as unfinished, uncommitted work in a separate local checkout. Their simulated success states are not verification. [The application delivery map](architecture/MAINTENANCE_PROGRAM.md) records integration blockers and the path to a user-facing program.
 
-These files are historical input for a later, separate cleanup. They must not be treated as framework requirements. Any tool retained for ongoing use should be documented here with its inputs, outputs, host assumptions, and safety limits.
-## Maintenance
+## Work and architecture
 
-- [Foundation boundary](FOUNDATION_BOUNDARY.md)
-- [Maintenance system](governance/MAINTENANCE_SYSTEM.md)
-- [Operational worklist](governance/WORKLIST.md)
-- [Coordination queue](governance/COORDINATION_QUEUE.md)
-- [Agent instructions](AGENTS.md)
-- [Aaroneous component-framework primer](governance/AARONEOUS_COMPONENT_FRAMEWORK_PRIMER.md)
-- [Component development playbook](governance/COMPONENT_DEVELOPMENT_PLAYBOOK.md)
-- [Scheduler and maintainer](governance/SCHEDULER_MAINTAINER.md)
-- [Local agent control plane](governance/LOCAL_AGENT_CONTROL_PLANE.md)
-- [Maintenance schedule](governance/SCHEDULE.md)
-## Foundation buildout
+- [Priority portfolio](governance/MULTITHREAD_PROGRAM.md): what to work on next.
+- [Coordination queue](governance/COORDINATION_QUEUE.md): who owns exact files now.
+- [Maintenance system](governance/MAINTENANCE_SYSTEM.md): evidence and planning lifecycle.
+- [Foundation architecture](architecture/FOUNDATION_ARCHITECTURE.md), [technology policy](governance/TECH_STACKS.md), [ecosystem catalogue](stacks/RUST_ECOSYSTEMS.md) and [dogfooding](governance/DOGFOOD_PROTOCOL.md).
+- [Git workflow](governance/GIT_WORKFLOW.md), [decisions](governance/DECISIONS.md), [releases](governance/RELEASES.md) and [security](SECURITY.md).
 
-- [Foundation architecture](architecture/FOUNDATION_ARCHITECTURE.md)
-- [Rust-first hybrid stacks](governance/TECH_STACKS.md)
-- [Dogfooding protocol](governance/DOGFOOD_PROTOCOL.md)
-- [Foundation contracts](contracts/README.md)
-- [Rust ecosystem catalogue](stacks/RUST_ECOSYSTEMS.md)
-## Repository practices
+## Historical material
 
-- [Contributing](CONTRIBUTING.md)
-- [Security reporting](SECURITY.md)
-- [Git workflow](governance/GIT_WORKFLOW.md)
-- [Decision log](governance/DECISIONS.md)
-- [Release practice](governance/RELEASES.md)
-- [Multithread program](governance/MULTITHREAD_PROGRAM.md)
-
-## Unattended local support work
-
-Use the native [local worker service](governance/LOCAL_WORKER_SERVICE.md) to offload bounded evidence analysis and Rust fixture/code drafts to Qwen. Approved TOML manifests live in `worker-jobs/`; the PC polls them every two minutes, avoids hourly review slots, and retains results outside Aaroneous. Add useful jobs instead of adding competing model schedules. Unchanged inputs are skipped and pending review debt is bounded. Generated code remains unverified until an owner reviews it and runs the native product gates.
+`migrations/` preserves transferred tooling for classification and selective adoption. It is not active automation or a product dependency. Generated `artifacts/` and `reports/` are ignored runtime storage. The operating model defines the maintained directory map and safe adoption rules.

@@ -8,14 +8,17 @@ contracts, verification commands, and product documentation.
 
 | Artifact | Purpose |
 | --- | --- |
-| `governance/WORKLIST.md` | Priorities, acceptance criteria, and evidence-backed status. |
+| `governance/MULTITHREAD_PROGRAM.md` | Current cross-repository priorities and capacity. |
+| `architecture/MAINTENANCE_PROGRAM.md` | User-facing application milestones and acceptance evidence. |
+| `governance/WORKLIST.md` | Historical task briefs; reconcile against current portfolio/queue before use. |
+| `governance/OPERATING_MODEL.md` | Companion standards, directory ownership and daily operation. |
 | `governance/COORDINATION_QUEUE.md` | Live ownership and file scopes for concurrent work. |
 | `governance/SCHEDULE.md` | Recurring maintenance cadence and evidence required per run. |
 | Aaroneous `docs/HARDENING_AUDIT_MATRIX.md` | Technical audit lenses and acceptance criteria. |
 
 ## Operating rules
 
-- A work item may enter the worklist only with a source path, concrete risk or failure mode, and
+- A work item may enter the current portfolio only with a source path, concrete risk or failure mode, and
   a bounded acceptance criterion.
 - A thread claims a queue item before editing its scoped paths. One owner holds a file scope at a
   time.

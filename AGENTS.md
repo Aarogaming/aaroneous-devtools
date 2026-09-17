@@ -2,6 +2,10 @@
 
 This is the operational entrypoint for a contributor joining Aaroneous work. Aaroneous is the product repository; `aaroneous-devtools` is the private coordination and foundation repository. Read this guide before changing either repository.
 
+## Repository standards
+
+Read [the companion operating model](governance/OPERATING_MODEL.md). Devtools permits ordinary heap allocation, async I/O and synchronization; Aaroneous hot-path restrictions do not apply to companion implementation. Rust owns durable maintenance policy, TypeScript may own presentation, and experiments stay isolated. Changes to Aaroneous still obey its own constitution. Local and paid models share the same evidence and authority boundaries; paid escalation does not bypass ownership or verification.
+
 ## Before selecting work
 
 1. Read `FOUNDATION_BOUNDARY.md`, `governance/AARONEOUS_COMPONENT_FRAMEWORK_PRIMER.md`, `governance/MAINTENANCE_SYSTEM.md`, and `governance/MULTITHREAD_PROGRAM.md`.

@@ -5,6 +5,7 @@ only where they express an external contract or platform boundary.
 
 | Stack | Use | Boundary |
 | --- | --- | --- |
+| TypeScript / React | User-facing dashboard | Presentation and typed API client only; durable scheduling, budgets and maintenance policy stay in Rust. |
 | Rust stable | Foundation CLI, validators, report generation, fixtures, adapters | Default implementation language. |
 | Rust nightly, isolated | Miri or experimental analysis | Separate CI lane; no product requirement. |
 | TOML / JSON | Stack manifests and versioned report schemas | Data only, schema-validated. |
