@@ -48,6 +48,8 @@ update. A takeover requires a handoff note and must not overwrite uncommitted wo
 
 ## Available portfolio lanes
 
+| C16 | Persistent operations setup: `.github/workflows/gui-ci.yml`, `governance/PERSISTENT_OPERATIONS.md`, coordination ledger | Review | Codex | main (devtools) | 2026-09-17T04:44:19Z | User-requested independent operational expansion; reviewer: repository owner. Existing app heartbeat repurposed as active hourly :30 follow-up to this task; saved configuration read back. Added Git-triggered Linux/Windows GUI build and documented pause/resume, deferred agent review, allowance/host limits and absent native task inventory. GUI production build, Foundation check, strict all-target Clippy, format and diff checks pass. Full local Foundation test run: 46 pass, 1 fails in the preserved unrelated dogfood cache-binary test; excluding only that known test, 46/46 pass. No existing service configuration or product source changed. GitHub execution evidence follows the scoped commit/push; independent review required. |
+
 Use the priority portfolio in `MULTITHREAD_PROGRAM.md` to select the next claim. The current
 recommended sequence is C1/M2, M3 after its dependency report review, and M5 after a packaging
 check. Do not open M5, M6, and M7 together because they share the C4 inventory and require the
