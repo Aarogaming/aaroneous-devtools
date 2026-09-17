@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RegistrarStatus, TaskItem } from './types';
+import { createRefreshController, loadSnapshot } from './api';
 
 const API_ORIGIN = 'http://127.0.0.1:8080';
 type DashboardState = 'loading' | 'available' | 'unavailable';
@@ -14,37 +15,31 @@ export const App: React.FC = () => {
   const [status, setStatus] = useState<RegistrarStatus | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [updated, setUpdated] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 4_000);
-    try {
-      const [statusResponse, tasksResponse, logsResponse] = await Promise.all([
-        fetch(`${API_ORIGIN}/api/status`, { signal: controller.signal }),
-        fetch(`${API_ORIGIN}/api/tasks`, { signal: controller.signal }),
-        fetch(`${API_ORIGIN}/api/logs`, { signal: controller.signal }),
-      ]);
-      if (!statusResponse.ok || !tasksResponse.ok || !logsResponse.ok) throw new Error('registrar API error');
-      const nextStatus = await statusResponse.json() as RegistrarStatus;
-      const nextTasks = await tasksResponse.json() as TaskItem[];
-      const nextLogs = await logsResponse.json() as { log: string };
-      setStatus(nextStatus);
-      setTasks(nextTasks);
-      setLogs(nextLogs.log.split('\n').map(line => line.trim()).filter(Boolean).slice(-30).reverse());
-      setUpdated(new Date().toLocaleTimeString());
-      setState('available');
-    } catch {
-      setState('unavailable');
-    } finally {
-      window.clearTimeout(timeout);
-    }
-  }, []);
+  const [refreshing, setRefreshing] = useState(false);
+  const controllerRef = useRef<ReturnType<typeof createRefreshController> | null>(null);
 
   useEffect(() => {
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 30_000);
-    return () => window.clearInterval(interval);
-  }, [refresh]);
+    const controller = createRefreshController(
+      signal => loadSnapshot(API_ORIGIN, signal),
+      snapshot => {
+        setStatus(snapshot.status);
+        setTasks(snapshot.tasks);
+        setLogs(snapshot.logs);
+        setUpdated(new Date().toLocaleTimeString());
+        setState('available');
+      },
+      () => setState('unavailable'),
+      setRefreshing,
+    );
+    controllerRef.current = controller;
+    void controller.refresh();
+    const interval = window.setInterval(() => void controller.refresh(), 30_000);
+    return () => {
+      window.clearInterval(interval);
+      controller.stop();
+      if (controllerRef.current === controller) controllerRef.current = null;
+    };
+  }, []);
 
   return (
     <main className="min-h-screen bg-slate-950 p-6 font-sans text-slate-100">
@@ -55,12 +50,13 @@ export const App: React.FC = () => {
               <h1 className="text-2xl font-black text-white">🛠️ Aaroneous DevTools</h1>
               <p className="mt-2 text-sm text-slate-400">A read-only view of local draft generation and the owner-review queue. This dashboard cannot apply or commit product work.</p>
             </div>
-            <button onClick={() => void refresh()} className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-bold text-slate-200 hover:border-emerald-500">Refresh</button>
+            <button disabled={refreshing} onClick={() => void controllerRef.current?.refresh()} className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-bold text-slate-200 hover:border-emerald-500 disabled:opacity-50">{refreshing ? 'Refreshing…' : 'Refresh'}</button>
           </div>
-          {state === 'unavailable' && <p className="mt-5 rounded-xl border border-amber-500/30 bg-amber-950/30 p-4 text-sm text-amber-100">The loopback registrar API at <code>{API_ORIGIN}</code> did not respond. No state is inferred and no work was started.</p>}
+          {state === 'loading' && <p role="status" className="mt-5 text-sm text-slate-400">Checking registrar status…</p>}
+          {state === 'unavailable' && <p role="alert" className="mt-5 rounded-xl border border-amber-500/30 bg-amber-950/30 p-4 text-sm text-amber-100">Status could not be refreshed: the registrar is unavailable or returned invalid data. {updated ? `The information below is stale; last observed at ${updated}.` : 'No registrar information is available.'} No work was started.</p>}
         </header>
 
-        {state === 'available' && status && <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        {status && <section aria-label={state === 'unavailable' ? 'Stale task counts' : 'Observed task counts'} className="grid grid-cols-2 gap-3 md:grid-cols-5">
           {[['Tasks', status.total_tasks], ['Awaiting dispatch', status.pending], ['Owner review', status.review], ['Verified', status.verified], ['Failed', status.failed]].map(([name, value]) =>
             <div key={String(name)} className="rounded-2xl border border-slate-800 bg-slate-900 p-4"><div className="text-2xl font-black">{value}</div><div className="text-xs font-bold text-slate-400">{name}</div></div>
           )}
@@ -68,9 +64,9 @@ export const App: React.FC = () => {
 
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-6 lg:col-span-2">
-            <div className="border-b border-slate-800 pb-3"><h2 className="text-lg font-bold">Registered work</h2><p className="text-xs text-slate-400">Registrar queue state{updated ? ` · updated ${updated}` : ''}</p></div>
+            <div className="border-b border-slate-800 pb-3"><h2 className="text-lg font-bold">Registered work</h2><p className="text-xs text-slate-400">{state === 'unavailable' && updated ? 'Stale registrar queue' : 'Registrar queue state'}{updated ? ` · observed ${updated}` : ''}</p></div>
             {state === 'available' && tasks.length === 0 && <p className="rounded-xl bg-slate-950 p-4 text-sm text-slate-400">No registered tasks are available.</p>}
-            {tasks.map(task => <article key={task.id} className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-950 p-4">
+            {tasks.map(task => <article key={task.id} className="flex flex-col items-start justify-between gap-4 rounded-xl border border-slate-800 bg-slate-950 p-4 sm:flex-row sm:items-center">
               <div className="min-w-0"><div className="font-bold text-white">{task.task}</div><p className="mt-1 text-xs text-emerald-300">{task.crate_name} · {task.target_file}</p><p className="mt-1 text-xs text-slate-500">{task.instruction}</p></div>
               <span className="whitespace-nowrap rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-300">{label(task.status)}</span>
             </article>)}
