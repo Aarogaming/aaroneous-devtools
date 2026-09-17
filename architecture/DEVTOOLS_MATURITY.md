@@ -53,6 +53,9 @@ one narrowly useful slice only after checking dependency and reviewer capacity.
 - Centralize observable scheduling policy in reusable Rust, with thin platform
   adapters. Distinguish the daily contributor task from the native support
   worker and from utility polling; avoid duplicate inference loops.
+- C21's opt-in `multithreader-serve` is an implemented starting point, not a new
+  task to repeat. Evaluate its deployment, stop/restart and liveness evidence
+  before enabling it; the removed OS candidate task must not be recreated here.
 - Preserve idempotency/disposition history while introducing bounded retention
   or compaction. Provide a preview and explicit approval for destructive cleanup.
 - Use versioned contracts and regression fixtures across the packet utility,

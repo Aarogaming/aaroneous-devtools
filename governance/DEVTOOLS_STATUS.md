@@ -1,6 +1,7 @@
 # Devtools status
 
 Evidence snapshot: 2026-09-17. Integrated source baseline: `5c2eb53`.
+Persistence follow-up: `7b1dcfe` / C21, integrated during this documentation pass.
 This is a dated status report, not a release certification. The
 [coordination queue](COORDINATION_QUEUE.md) owns live claims and sign-off;
 the [maturity plan](../architecture/DEVTOOLS_MATURITY.md) defines proposed next increments.
@@ -23,6 +24,7 @@ depend on Devtools for build, CI, release, crates or runtime.
 | Rust Foundation | Standalone workspace: stack/input validation, component inventory, dependency reports, dogfood evidence, intake and schedule review | Individual tools are not a unified onboarding or development workflow |
 | Local support worker | Explicit-input proposals, shared reservation, quiet windows, backpressure and unchanged-input suppression; C10 evidence | Generated drafts remain pending owner review; early quiet/reserved returns do not always refresh liveness evidence |
 | Candidate intake | Bounded proposals and semantic validation; C9 independently reviewed and Done | Portfolio/queue reconciliation and review capacity still govern primary work; candidates cannot claim work |
+| Opt-in candidate persistence | C21 adds `foundation multithreader-serve` with bounded interval and failure-isolated cycles; no installation, default off | Source integrated; not enabled or deployed by this documentation pass; process presence is the toggle, not boot recovery |
 | Packet utility | Readiness, bounded wire research, blueprint/refinement, gated publication, result inspection/disposition; C13 and `eb90623` | One shipped research profile, not arbitrary framework component authoring; independent owner acceptance pending |
 | Utility lifecycle | Six-second/2 MiB client bounds, stale disabled actions, exclusive runtime marker, controlled shutdown, Plan restart and retained dispositions | Crash markers need explicit inspection; no boot/login recovery or installed service guarantee |
 | React dashboard | Tracked `gui/`, real read-only payloads, validation, stale/error state, serialized refresh and local styling; C15, `0718216` | No reviewed registrar credential setup or same-origin hosting; implemented client is not a connected deployed dashboard |
@@ -67,9 +69,11 @@ embed credentials or certify every host/service from one observation.
    original uncommitted GUI/registrar and historical schedules. Read them as
    dated context, not current deployment evidence. Their correction needs
    ownership-safe claims; this report does not silently rewrite reserved paths.
-4. Historical native-task installation statements are not current service
-   inventory. A prior host inspection found no matching Aaroneous/Devtools native
-   tasks. Reconcile actual installed state before promising durable operation.
+4. C21 records owner-directed removal of the Windows candidate-review scheduler
+   task and replaces it with default-off in-process persistence. Historical
+   installation statements are not current service inventory. The new command
+   is separate from the daily Codex task and utility polling; do not enable
+   overlapping processing or promise boot recovery without deployment evidence.
 5. The portfolio still lists some items completed in the queue (for example
    M20/C20 and M29/C18). Never rerun work solely because its portfolio label is stale.
 
