@@ -1212,12 +1212,32 @@ impl HttpAuth {
     }
     fn permits(&self, request: &HttpRequest) -> bool {
         request.headers.get("host") == Some(&self.host)
-            && request.headers.get("x-devtools-token") == Some(&self.token)
+            && request
+                .headers
+                .get("x-devtools-token")
+                .is_some_and(|value| constant_time_eq(value.as_bytes(), self.token.as_bytes()))
             && request
                 .headers
                 .get("origin")
                 .is_none_or(|value| value == &self.origin)
     }
+}
+
+/// Constant-time byte comparison for the credential check above. `==` on
+/// `&str`/`String` short-circuits on the first mismatch, leaking a timing
+/// signal proportional to how many leading bytes of `X-Devtools-Token` an
+/// attacker already guessed correctly — the same class of bug fixed via
+/// `subtle::ConstantTimeEq` for `core/hypervisor`'s own API key check
+/// (CHANGELOG SEC-04). Lengths differ openly (tokens are a fixed 64 hex
+/// characters; length alone isn't secret), but every byte is compared.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }
 struct HttpRequest {
     method: String,
