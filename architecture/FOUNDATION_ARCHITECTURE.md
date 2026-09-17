@@ -39,3 +39,7 @@ datasets, caches, toolchains, or generated reports. They validate that each dire
 record it in the output report. They do not search home directories, environment variables,
 current directories, or machine-specific defaults. This is intentionally permissive about location
 and strict about declaration.
+
+## Downstream job utility
+
+The [job pipeline](JOB_PIPELINE.md) distinguishes Plan/Build job authoring from independent orchestration. Devtools may call Aaroneous tools and consume its public component contracts through explicit adapters; Aaroneous must never depend on devtools configuration, services or providers. The current packet utility remains standalone and uses the existing Foundation worker. Direct framework crate reuse is optional future adapter work, not a present product prerequisite.
