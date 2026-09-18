@@ -5,6 +5,7 @@ mod consensus_engine;
 mod cross_verifier;
 mod dependency_review;
 mod dogfood;
+mod frontier_discovery;
 mod hypervisor_mcp;
 mod intake;
 mod intake_generator;
@@ -41,6 +42,29 @@ enum Command {
     DiscoverGit {
         #[arg(long)]
         checkout: PathBuf,
+    },
+    /// Native in-process Git repository discovery using gix
+    DiscoverGitNative {
+        #[arg(long)]
+        checkout: PathBuf,
+    },
+    /// Query crates.io and GitHub for open-source candidate crates and generate frontier audit jobs
+    FrontierDiscover {
+        #[arg(long)]
+        query: String,
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+        #[arg(long, default_value = "d:\\aaroneous-devtools\\worker-jobs")]
+        output_dir: PathBuf,
+    },
+    /// Scrape and convert an external architecture document or whitepaper using Firecrawl
+    FirecrawlScrape {
+        #[arg(long)]
+        url: String,
+        #[arg(long)]
+        endpoint: Option<String>,
+        #[arg(long)]
+        api_key: Option<String>,
     },
     /// Launch the native Aaroneous Hypervisor MCP Server daemon process out-of-tree.
     HypervisorMcp {
@@ -330,6 +354,55 @@ fn main() -> Result<()> {
         },
         Command::DiscoverGit { checkout } => {
             agentic_registrar::git_discover_repository(&checkout).map(|_| ())
+        }
+        Command::DiscoverGitNative { checkout } => {
+            let summary = frontier_discovery::discover_native(&checkout)?;
+            println!("=== NATIVE GIX GIT DISCOVERY ===");
+            println!("Checkout:         {}", summary.checkout);
+            println!("Branch:           {}", summary.branch);
+            println!("Tracked Entries:  {}", summary.tracked_files_count);
+            println!("Submodules:       {}", summary.submodules_count);
+            println!("Remotes:          {}", summary.remotes.len());
+            for r in &summary.remotes {
+                println!("  - {r}");
+            }
+            println!("================================");
+            Ok(())
+        }
+        Command::FrontierDiscover {
+            query,
+            limit,
+            output_dir,
+        } => {
+            println!("Searching crates.io for open-source frontier candidates: '{query}' (limit: {limit})...");
+            let candidates = frontier_discovery::search_crates_io(&query, limit)?;
+            println!("Found {} candidates:", candidates.len());
+            for (idx, c) in candidates.iter().enumerate() {
+                println!("  [{}] {} (v{}) - {}", idx + 1, c.name, c.version, c.description);
+                let job_path = frontier_discovery::create_frontier_job(
+                    c,
+                    &output_dir,
+                    "docs/ARCHITECTURE.md",
+                )?;
+                println!("      -> Created frontier audit job: {}", job_path.display());
+            }
+            Ok(())
+        }
+        Command::FirecrawlScrape {
+            url,
+            endpoint,
+            api_key,
+        } => {
+            println!("Scraping architectural docs via Firecrawl for: {url}...");
+            let markdown = frontier_discovery::firecrawl_scrape(
+                &url,
+                endpoint.as_deref(),
+                api_key.as_deref(),
+            )?;
+            println!("=== SCRAPED MARKDOWN ({} bytes) ===", markdown.len());
+            println!("{}", markdown.chars().take(500).collect::<String>());
+            println!("... [truncated]");
+            Ok(())
         }
         Command::HypervisorMcp {
             checkout,

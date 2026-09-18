@@ -791,6 +791,19 @@ pub(crate) fn serve(config: &Path, poll_interval_secs: u64) -> Result<()> {
 
         if let Ok(text) = read_bounded(config, 16384) {
             if let Ok(c) = toml::from_str::<Config>(&text) {
+                if let Ok(pending_files) = files(&c.results_directory, "json") {
+                    let mut result_files: Vec<_> = pending_files.into_iter().filter(|p| is_result_file(p)).collect();
+                    if result_files.len() >= c.max_pending {
+                        result_files.sort();
+                        let to_archive = result_files.len().saturating_sub(c.max_pending / 2);
+                        for p in result_files.iter().take(to_archive) {
+                            if let Some(fname) = p.file_name() {
+                                let dest = c.archive_directory.join(fname);
+                                let _ = fs::rename(p, dest);
+                            }
+                        }
+                    }
+                }
                 let _ = crate::job_converter::sync_and_refill_jobs(
                     &c.checkout,
                     &c.queue,
