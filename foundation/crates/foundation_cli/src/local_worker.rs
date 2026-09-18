@@ -21,7 +21,7 @@ struct Config {
     endpoint: String,
     max_pending: usize,
 }
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Job {
     schema_version: u32,
@@ -30,7 +30,7 @@ struct Job {
     evidence: Vec<String>,
     instruction: String,
 }
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum Mode {
     Analysis,
@@ -270,6 +270,28 @@ where
         )?)?);
     }
     let queue = read_bounded(&c.queue, 262144)?;
+
+    // Last-attempt time per job id, derived from records already on disk
+    // (no separate state file needed) — the newest submitted_at_secs across
+    // every pending/archived record for that id, or 0 if it has never been
+    // attempted. Selecting by this instead of `files()`'s alphabetical
+    // order below is what stops one job from permanently occupying the
+    // front of the queue: a job whose input keeps changing between ticks
+    // (so it never matches the unchanged-input dedup) sorts to the back
+    // the moment it's actually attempted once, giving every other eligible
+    // job a turn before it can be picked again.
+    let mut last_attempt: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for record in &records {
+        let entry = last_attempt.entry(record.job_id.clone()).or_insert(0);
+        *entry = (*entry).max(record.submitted_at_secs);
+    }
+
+    struct Candidate {
+        job: Job,
+        input: String,
+        last_attempt_secs: u64,
+    }
+    let mut candidates: Vec<Candidate> = Vec::new();
     for path in files(&c.jobs_directory, "toml")? {
         let job: Job = toml::from_str(&read_bounded(&path, 16384)?)?;
         if job.schema_version != 1
@@ -308,6 +330,24 @@ where
         {
             continue;
         }
+        let last_attempt_secs = last_attempt.get(&job.id).copied().unwrap_or(0);
+        candidates.push(Candidate {
+            job,
+            input,
+            last_attempt_secs,
+        });
+    }
+
+    // Oldest-last-attempted first (never-attempted counts as oldest of
+    // all); alphabetical id as a deterministic tie-break only, never as
+    // the primary order.
+    candidates.sort_by(|a, b| {
+        a.last_attempt_secs
+            .cmp(&b.last_attempt_secs)
+            .then_with(|| a.job.id.cmp(&b.job.id))
+    });
+
+    if let Some(Candidate { job, input, .. }) = candidates.into_iter().next() {
         let mut record = Record {
             schema_version: 1,
             artifact_kind: "foundation.local-worker-result".into(),
@@ -546,6 +586,112 @@ mod tests {
             2
         );
         tick_with(&config, 10, 4, |_, _| panic!("backpressure ignored")).expect("throttled");
+    }
+    #[test]
+    fn alphabetically_first_job_does_not_starve_other_jobs_when_its_input_keeps_changing() {
+        // Reproduces the starvation shape reported from real-world usage:
+        // one recurring job (alphabetically first, e.g. an audit that
+        // regenerates with new content each cycle) never matches the
+        // unchanged-input dedup, so a purely alphabetical `files()` order
+        // would hand it every single tick forever, and a second, otherwise
+        // perfectly eligible job would never run.
+        let d = tempfile::tempdir().expect("fixture");
+        let c = Config {
+            schema_version: 1,
+            checkout: d.path().join("product"),
+            queue: d.path().join("queue.md"),
+            jobs_directory: d.path().join("jobs"),
+            results_directory: d.path().join("results"),
+            archive_directory: d.path().join("archive"),
+            reservation_directory: d.path().join("reservation"),
+            endpoint: "http://127.0.0.1:1".into(),
+            max_pending: 4,
+        };
+        for path in [
+            &c.checkout,
+            &c.jobs_directory,
+            &c.results_directory,
+            &c.archive_directory,
+            &c.reservation_directory,
+        ] {
+            fs::create_dir(path).expect("directory");
+        }
+        fs::write(&c.queue, "").expect("queue");
+        fs::write(c.checkout.join("a.rs"), "fn a_v0() {}").expect("a.rs");
+        fs::write(c.checkout.join("b.rs"), "fn b() {}").expect("b.rs");
+        let job_a = Job {
+            schema_version: 1,
+            id: "AUDIT-A".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["a.rs".into()],
+            instruction: "recurring audit, content changes every cycle".into(),
+        };
+        let job_b = Job {
+            schema_version: 1,
+            id: "AUDIT-B".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["b.rs".into()],
+            instruction: "ordinary job, never gets a turn under pure alphabetical order".into(),
+        };
+        fs::write(
+            c.jobs_directory.join("a.toml"),
+            toml::to_string(&job_a).expect("job a"),
+        )
+        .expect("write job a");
+        fs::write(
+            c.jobs_directory.join("b.toml"),
+            toml::to_string(&job_b).expect("job b"),
+        )
+        .expect("write job b");
+        let config = d.path().join("worker.toml");
+        fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
+
+        let last_dispatched = |c: &Config| -> String {
+            let path = files(&c.results_directory, "json")
+                .expect("results")
+                .pop()
+                .expect("a record was written");
+            let record: Record =
+                serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
+            fs::rename(
+                &path,
+                c.archive_directory
+                    .join(path.file_name().expect("filename")),
+            )
+            .expect("archive so the next tick isn't blocked by backpressure");
+            record.job_id
+        };
+
+        // Tick 1: both jobs equally never-attempted (last_attempt_secs = 0
+        // for both) — alphabetical tie-break picks AUDIT-A first.
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick 1");
+        assert_eq!(last_dispatched(&c), "AUDIT-A");
+
+        // Simulate AUDIT-A being a recurring job whose content changes
+        // every cycle, so it never matches the unchanged-input dedup and
+        // remains eligible on every subsequent tick too.
+        fs::write(c.checkout.join("a.rs"), "fn a_v1() {}").expect("change a.rs");
+
+        // Tick 2: AUDIT-A is eligible again and still sorts first
+        // alphabetically, but it was just attempted at now=1 while
+        // AUDIT-B has never been attempted (last_attempt_secs = 0) — this
+        // is exactly the case pure alphabetical order gets wrong.
+        // AUDIT-B must get this turn.
+        tick_with(&config, 10, 2, |_, _| Ok(draft())).expect("tick 2");
+        assert_eq!(
+            last_dispatched(&c),
+            "AUDIT-B",
+            "a job that never gets attempted must not be starved by an alphabetically-earlier \
+             job whose input keeps changing"
+        );
+
+        fs::write(c.checkout.join("a.rs"), "fn a_v2() {}").expect("change a.rs again");
+
+        // Tick 3: AUDIT-A (last attempted at 1) is now older than AUDIT-B
+        // (last attempted at 2), so it's A's turn again — proving this is
+        // real rotation, not just "B always wins now".
+        tick_with(&config, 10, 3, |_, _| Ok(draft())).expect("tick 3");
+        assert_eq!(last_dispatched(&c), "AUDIT-A");
     }
     #[test]
     fn shared_lock_and_quiet_window_prevent_dispatch() {
