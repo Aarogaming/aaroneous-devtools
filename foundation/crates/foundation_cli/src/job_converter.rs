@@ -266,11 +266,36 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
         bail!("checkout and output_dir must be absolute paths");
     }
     let mut created = Vec::new();
-    for item in recurring_catalog() {
-        let destination = output_dir.join(format!("{}.toml", item.id.to_lowercase()));
-        if destination.exists() {
-            continue;
+    let mut candidate_dirs = vec![
+        output_dir.join("results"),
+        output_dir.join("archive"),
+    ];
+    if let Some(parent) = output_dir.parent() {
+        candidate_dirs.push(parent.join("results"));
+        candidate_dirs.push(parent.join("archive"));
+        candidate_dirs.push(parent.join("artifacts").join("local-worker-service").join("results"));
+        candidate_dirs.push(parent.join("artifacts").join("local-worker-service").join("archive"));
+    }
+
+    let mut completed_ids = std::collections::HashSet::new();
+    for dir in candidate_dirs {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Ok(text) = fs::read_to_string(&path) {
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if let Some(id) = value["job_id"].as_str() {
+                                completed_ids.insert(id.to_uppercase());
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    for item in recurring_catalog() {
         let devtools_root = output_dir
             .parent()
             .and_then(|p| p.parent())
@@ -281,9 +306,77 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
         if !all_evidence_present {
             continue;
         }
+
+        let prefix = item.id.to_lowercase();
+        let existing_jobs: Vec<_> = fs::read_dir(output_dir)
+            .ok()
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter_map(|e| {
+                        let fname = e.file_name().to_string_lossy().to_lowercase();
+                        if fname.starts_with(&prefix) && fname.ends_with(".toml") {
+                            Some(e.path())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        for job_path in &existing_jobs {
+            if let Ok(text) = fs::read_to_string(job_path) {
+                if let Ok(val) = toml::from_str::<toml::Value>(&text) {
+                    if let Some(id) = val.get("id").and_then(|v| v.as_str()) {
+                        if completed_ids.contains(&id.to_uppercase()) {
+                            let _ = fs::remove_file(job_path);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Re-read existing jobs after removing completed ones
+        let remaining_jobs: Vec<_> = fs::read_dir(output_dir)
+            .ok()
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter_map(|e| {
+                        let fname = e.file_name().to_string_lossy().to_lowercase();
+                        if fname.starts_with(&prefix) && fname.ends_with(".toml") {
+                            Some(e.path())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if !remaining_jobs.is_empty() {
+            continue;
+        }
+
+        let mut pass = 0;
+        let mut target_id = item.id.to_string();
+        let mut target_filename = format!("{}.toml", item.id.to_lowercase());
+
+        while completed_ids.contains(&target_id) {
+            pass += 1;
+            target_id = format!("{}-P{:04}", item.id, pass);
+            target_filename = format!("{}-p{:04}.toml", item.id.to_lowercase(), pass);
+        }
+
+        let destination = output_dir.join(&target_filename);
+        if destination.exists() {
+            continue;
+        }
+
         let manifest = JobManifest {
             schema_version: 1,
-            id: item.id.to_owned(),
+            id: target_id,
             mode: item.mode.to_owned(),
             evidence: item.evidence.iter().map(|s| (*s).to_owned()).collect(),
             instruction: item.instruction.to_owned(),
