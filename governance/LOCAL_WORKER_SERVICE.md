@@ -36,7 +36,7 @@ instruction = 'Propose one bounded regression fixture using the actual API; outp
 
 Declare 1–8 exact existing relative files. Each file is bounded to 32 KiB, total input to 64 KiB, instruction to 8 KiB, and response to 64 KiB. Do not submit entire crates or ask the model to execute commands. Keep jobs narrowly useful: fixture drafting, boundary reviews, protocol test design, report classification, or component-contract analysis. Prefer deterministic tooling over model analysis where tooling already answers the question.
 
-The three initial jobs cover emulator reducer fixtures, path edge cases and gate behavior. Polling discovers added jobs; edited instructions or evidence trigger a new attempt. Exact recorded inputs suppress repeated unchanged work, including unchanged failures. The worker intentionally becomes idle when no eligible new work exists rather than manufacturing work to keep the GPU busy.
+The initial three jobs cover emulator reducer fixtures, path edge cases and gate behavior; a second batch added 2026-09-18 covers `ast_auditor`'s safety-comment checker, `compliance_auditor`'s review pipeline, and `governance`'s rollback journal — added once the job-selection fairness fix (oldest-last-attempted-first, not alphabetical) landed, so a growing backlog rotates fairly instead of risking one job starving the rest. Polling discovers added jobs; edited instructions or evidence trigger a new attempt. Exact recorded inputs suppress repeated unchanged work, including unchanged failures. The worker intentionally becomes idle when no eligible new work exists rather than manufacturing work to keep the GPU busy.
 
 ## Reviewing results and recovery
 

@@ -1,0 +1,5 @@
+schema_version = 1
+id = 'ROLLBACK-JOURNAL-FIXTURES'
+mode = 'test-fixture'
+evidence = ['crates/governance/src/rollback_journal.rs']
+instruction = 'The existing tests cover recording two checkpoints then rolling back to the prior stable one, and a guardrail-triggered rollback on a free-energy violation. Propose at most three additional Rust #[test] fixtures for GenerationalJournal covering cases not already tested: (1) rollback_to_last_stable called on a brand-new, empty journal, confirming it returns None rather than panicking; (2) rollback_to_generation called with a generation_id that was never recorded, confirming it returns None and leaves current_generation unchanged; (3) capacity eviction -- construct a journal with a small max_history_capacity (for example 3) via new, record more checkpoints than that capacity, and confirm snapshot_count stays bounded and the oldest snapshot was actually evicted, not the newest. Use the existing MockNeuralState pattern already defined in the file test module. Output unverified test source in rust_draft; no repository changes or claims that tests passed.'
