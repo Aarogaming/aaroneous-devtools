@@ -432,33 +432,65 @@ struct CircuitBreakerOverride {
     reason: String,
 }
 
-/// Best-effort fast-forward pull of the devtools repo's own `main`, so a
-/// remote trip is seen promptly. Failure here fails the whole check
-/// **closed** (bails, refusing promotion) rather than silently promoting
-/// against possibly-stale state: the entire point of this channel is that
-/// a cloud agent can stop promotion remotely by committing to a tracked
-/// file, and a network hiccup or dirty local checkout must never silently
-/// defeat that.
+/// Fetches the devtools repo's own `origin/main` and reads the override
+/// **directly from that fetched ref** — `git show origin/main:path`, never
+/// the working-tree file. This is deliberate, not a style choice: if the
+/// local branch is already at the same commit as `origin/main` (no new
+/// commits to bring in), `git pull --ff-only` reports "Already up to date"
+/// and leaves an uncommitted working-tree edit completely untouched, so a
+/// stale or manually-edited local copy of this file could silently shadow
+/// the real, pushed, tripped state — defeating the entire point of a
+/// remote trip switch a cloud agent controls by committing and pushing.
+/// Reading the committed blob at `origin/main` instead makes that
+/// impossible: only what's actually on the remote branch counts.
+///
+/// Failure anywhere in this check fails **closed** (bails, refusing
+/// promotion) rather than silently promoting against possibly-stale or
+/// unreadable state — a network hiccup must never silently defeat this
+/// channel either.
 fn check_remote_circuit_breaker_override(devtools_repo_root: &Path) -> Result<()> {
-    let status = Command::new("git")
-        .args(["pull", "--ff-only", "origin", "main"])
+    let fetch_status = Command::new("git")
+        .args(["fetch", "origin", "main"])
         .current_dir(devtools_repo_root)
         .status()
-        .context("failed to run git pull for the remote circuit-breaker override check")?;
-    if !status.success() {
+        .context("failed to run git fetch for the remote circuit-breaker override check")?;
+    if !fetch_status.success() {
         bail!(
-            "could not fast-forward {} from origin/main to check the remote circuit-breaker \
-             override; refusing to promote rather than act on possibly-stale state",
+            "could not fetch origin/main in {} to check the remote circuit-breaker override; \
+             refusing to promote rather than act on possibly-stale state",
             devtools_repo_root.display()
         );
     }
 
-    let override_path = devtools_repo_root.join(CIRCUIT_BREAKER_OVERRIDE_RELATIVE);
-    if !override_path.exists() {
+    let override_ref = format!("origin/main:{CIRCUIT_BREAKER_OVERRIDE_RELATIVE}");
+    let exists = Command::new("git")
+        .args(["cat-file", "-e", &override_ref])
+        .current_dir(devtools_repo_root)
+        .status()
+        .context("failed to check whether the circuit-breaker override exists on origin/main")?
+        .success();
+    if !exists {
         return Ok(());
     }
-    let state: CircuitBreakerOverride = toml::from_str(&read_bounded(&override_path, 4096)?)
-        .context("invalid governance/circuit_breaker_override.toml")?;
+
+    let show = Command::new("git")
+        .args(["show", &override_ref])
+        .current_dir(devtools_repo_root)
+        .output()
+        .context("failed to read the circuit-breaker override from origin/main")?;
+    if !show.status.success() {
+        bail!(
+            "could not read {CIRCUIT_BREAKER_OVERRIDE_RELATIVE} from origin/main; refusing to \
+             promote rather than act on possibly-stale state"
+        );
+    }
+    if show.stdout.len() > 4096 {
+        bail!("{CIRCUIT_BREAKER_OVERRIDE_RELATIVE} on origin/main exceeds 4 KiB");
+    }
+    let content = String::from_utf8(show.stdout)
+        .context("circuit_breaker_override.toml on origin/main is not valid UTF-8")?;
+    let state: CircuitBreakerOverride = toml::from_str(&content)
+        .context("invalid governance/circuit_breaker_override.toml on origin/main")?;
     if state.tripped {
         bail!(
             "remote circuit-breaker override is tripped ({}): {}",
@@ -541,6 +573,9 @@ fn load_config(config_path: &Path) -> Result<RegistrarConfig> {
         ("reservation", &config.reservation_directory),
     ] {
         crate::require_absolute_directory(label, dir)?;
+    }
+    if let Some(devtools_repo_root) = &config.devtools_repo_root {
+        crate::require_absolute_directory("devtools_repo_root", devtools_repo_root)?;
     }
     for output in [
         &config.results_directory,
@@ -3071,6 +3106,48 @@ mod tests {
             err.to_string().contains("refusing to promote"),
             "must fail closed with a clear reason: {err}"
         );
+    }
+
+    /// Regression test for a real Codex review finding on this feature: if
+    /// the check read the *working-tree* file after `git pull --ff-only`,
+    /// an uncommitted local edit would silently shadow the actual pushed
+    /// state whenever the local branch was already at the same commit as
+    /// `origin/main` (pull then reports "Already up to date" and never
+    /// touches the working tree at all). Proves the fix — reading via
+    /// `git show origin/main:path` — is immune to exactly that.
+    #[test]
+    fn remote_override_ignores_uncommitted_local_edit_and_reads_the_pushed_ref() {
+        let (_d, repo) = devtools_fixture();
+        write_override(&repo, true, "pushed trip, must not be shadowed");
+
+        // Dirty the working tree with an uncommitted edit claiming
+        // untripped. A real attacker or a stale local copy could do this;
+        // the check must never trust it.
+        fs::write(
+            repo.join(CIRCUIT_BREAKER_OVERRIDE_RELATIVE),
+            "schema_version = 1\ntripped = false\nreason = \"\"\n",
+        )
+        .expect("dirty working tree with a shadowing local edit");
+
+        let err = check_remote_circuit_breaker_override(&repo).expect_err(
+            "must read the pushed ref, not the shadowing uncommitted working-tree edit",
+        );
+        assert!(
+            err.to_string()
+                .contains("pushed trip, must not be shadowed"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn load_config_rejects_relative_devtools_repo_root() {
+        let (_d, mut config, cfg_path) = fixture();
+        config.devtools_repo_root = Some(PathBuf::from("relative/devtools/checkout"));
+        fs::write(&cfg_path, toml::to_string(&config).expect("config")).expect("rewrite config");
+
+        let err = load_config(&cfg_path)
+            .expect_err("a relative devtools_repo_root must be rejected, not silently accepted");
+        assert!(err.to_string().contains("devtools_repo_root"), "{err}");
     }
 
     #[test]
