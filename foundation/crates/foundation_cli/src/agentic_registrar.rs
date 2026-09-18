@@ -9,9 +9,23 @@
 //! applied, merged or pushed automatically. A successful generation means
 //! pending-owner-review, not a successful product fix." The only path that
 //! writes into the checkout and commits is [`promote`], an explicit,
-//! separately-invoked action that re-verifies (compile + clippy) before
-//! committing, and rolls back correctly on failure whether the target file
-//! pre-existed or was newly created.
+//! separately-invoked action.
+//!
+//! `promote` never commits onto whatever branch happens to be checked out.
+//! It requires a clean working tree, creates an isolated `local-agent/{task_id}`
+//! branch, writes the draft, re-verifies (compile + clippy) there, commits,
+//! and pushes that branch to `origin` — then always restores the original
+//! branch, success or failure. It does **not** open a pull request itself
+//! (see `governance/LOCAL_MODEL_AUTONOMY_POLICY.md`: opening the PR and
+//! reviewing it is a cloud agent's job, not a new GitHub credential inside
+//! this binary). Two further gates sit in front of the push: a high-risk
+//! allowlist (`is_high_risk`) that refuses to promote a change touching a
+//! safety/security-critical crate or containing generated `unsafe` code —
+//! that class of change is blocked outright, not just flagged, and needs a
+//! cloud agent to implement it directly — and a circuit breaker
+//! (`check_circuit_breaker`/`record_circuit_breaker_outcome`) that disables
+//! further promotion after repeated verification failures until explicitly
+//! reset.
 //!
 //! `task_queue.json` is protected by the same exclusive `review.lock`
 //! idiom `local_worker.rs`/`multithreader.rs` use (a `create_new(true)`
@@ -46,6 +60,13 @@ pub struct RegistrarConfig {
     /// Required only by Serve. Never discover credentials from the environment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_token_file: Option<PathBuf>,
+    /// Where the promotion circuit-breaker's state is persisted. Defaults to
+    /// `reservation_directory/circuit_breaker.json` when unset, so existing
+    /// configs need no change. Deliberately not archive_directory, which
+    /// callers scan for `*.json` and treat every match as an archived task
+    /// record. Never inside the product checkout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub circuit_breaker_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -240,6 +261,199 @@ fn validate_target(checkout: &Path, crate_name: &str, target_file: &str) -> Resu
     Ok(())
 }
 
+/// Crates where local-model-authored changes are never eligible for local
+/// promotion, regardless of how the draft looks: safety/security-critical,
+/// unsafe-heavy, or the audit tooling that other promotions are trusted
+/// against. See `governance/LOCAL_MODEL_AUTONOMY_POLICY.md`'s high-risk
+/// allowlist — this list is deliberately conservative and crate-name based
+/// (not a content heuristic), so it stays correct even as file layouts move.
+const HIGH_RISK_CRATES: &[&str] = &[
+    "ipc_bus",
+    "wire",
+    "hypervisor",
+    "governance",
+    "ast_auditor",
+    "compliance_auditor",
+    "platform_bridge",
+    "core_contracts",
+    "sdk",
+];
+
+/// `true` if this change must never be locally promoted: either the target
+/// crate is on the high-risk allowlist, or the generated source itself
+/// contains the `unsafe` keyword (a cheap, deliberately-over-inclusive
+/// heuristic — a false positive just means one more change routed to a
+/// cloud agent instead of pushed unattended, which is the safe direction
+/// to be wrong in).
+fn is_high_risk(crate_name: &str, draft_source: &str) -> bool {
+    HIGH_RISK_CRATES.contains(&crate_name) || draft_source.contains("unsafe")
+}
+
+fn rs_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        if fs::symlink_metadata(&path)?.file_type().is_symlink() {
+            continue;
+        }
+        if path.is_dir() {
+            rs_files_recursive(&path, out)?;
+        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            out.push(path);
+            if out.len() > 2048 {
+                bail!("crate src/ tree exceeds 2048 .rs files; too large to scan for mod wiring");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Cargo does not auto-discover arbitrary new files under `src/` the way it
+/// auto-discovers every top-level `tests/*.rs` file as its own integration
+/// test binary. A brand-new `src/`-rooted file that isn't referenced by a
+/// `mod <name>;` declaration anywhere in the crate is simply never part of
+/// what `cargo check`/`clippy` compiles — so a "verification passed" result
+/// for it would mean nothing, silently. Refuse to promote that case rather
+/// than trust a check that never actually ran against the new code.
+/// Exempt: files under `tests/` (auto-discovered) and any file that already
+/// existed (already reachable by construction, or this would have already
+/// been failing every promotion of an edit to an existing file).
+fn ensure_new_file_is_reachable(crate_root: &Path, full_target_path: &Path) -> Result<()> {
+    let relative = full_target_path
+        .strip_prefix(crate_root)
+        .context("target file is not inside its crate root")?;
+    if relative.starts_with("tests") {
+        return Ok(());
+    }
+    let stem = full_target_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .context("target file has no valid file stem")?;
+
+    let mut candidates = Vec::new();
+    rs_files_recursive(&crate_root.join("src"), &mut candidates)?;
+
+    let wired = candidates.iter().any(|path| {
+        if path == full_target_path {
+            return false;
+        }
+        let Ok(content) = fs::read_to_string(path) else {
+            return false;
+        };
+        content.lines().any(|line| {
+            let line = line
+                .trim()
+                .trim_start_matches("pub(crate)")
+                .trim_start_matches("pub")
+                .trim();
+            line.strip_prefix("mod ")
+                .map(|rest| rest.trim_end_matches(';').trim() == stem)
+                .unwrap_or(false)
+        })
+    });
+
+    if !wired {
+        bail!(
+            "new file '{}' is not referenced by a `mod {stem};` declaration anywhere in the \
+             crate's src/ tree, so Cargo would never actually compile or check it — \
+             verification would be meaningless. Either place new files under tests/ \
+             (auto-discovered) or have the draft's instruction also wire in the mod \
+             declaration.",
+            full_target_path.display()
+        );
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct CircuitBreakerState {
+    consecutive_failures: u32,
+    tripped: bool,
+}
+
+/// Consecutive local-verification failures before the breaker trips and
+/// further promotion is refused until an operator explicitly clears it via
+/// `reset_circuit_breaker`. Two, not one: a single failure is expected and
+/// already retried with the error fed back at the dispatch layer
+/// (`local_worker.rs`/`dispatch_locked`); it's a second *promotion-time*
+/// failure in a row that indicates something systematic, not a one-off.
+const CIRCUIT_BREAKER_THRESHOLD: u32 = 2;
+
+fn circuit_breaker_path(config: &RegistrarConfig) -> PathBuf {
+    // Deliberately not archive_directory: callers scan that directory for
+    // `*.json` and treat every match as an archived task record (see
+    // `archived.len()` style assertions/dashboards) — a breaker state file
+    // living there would silently inflate that count.
+    config
+        .circuit_breaker_path
+        .clone()
+        .unwrap_or_else(|| config.reservation_directory.join("circuit_breaker.json"))
+}
+
+fn load_circuit_breaker(config: &RegistrarConfig) -> Result<CircuitBreakerState> {
+    let path = circuit_breaker_path(config);
+    if !path.exists() {
+        return Ok(CircuitBreakerState::default());
+    }
+    serde_json::from_str(&read_bounded(&path, 4096)?).context("invalid circuit_breaker.json")
+}
+
+fn save_circuit_breaker(config: &RegistrarConfig, state: &CircuitBreakerState) -> Result<()> {
+    let path = circuit_breaker_path(config);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let staging = path.with_extension("json.tmp");
+    fs::write(&staging, serde_json::to_vec_pretty(state)?)?;
+    fs::rename(&staging, &path)?;
+    Ok(())
+}
+
+/// Refuses to proceed if the breaker is tripped. This only tracks local
+/// verification (compile/clippy) failures at promotion time today — a PR
+/// that merges clean here and is later reverted on GitHub is a real trip
+/// condition too, but requires a channel from the reviewing cloud agent
+/// back to this local state that doesn't exist yet (tracked as follow-up
+/// in `governance/LOCAL_MODEL_AUTONOMY_POLICY.md`).
+fn check_circuit_breaker(config: &RegistrarConfig) -> Result<()> {
+    let state = load_circuit_breaker(config)?;
+    if state.tripped {
+        bail!(
+            "promotion circuit breaker is tripped ({} consecutive verification failures) — \
+             investigate before clearing it with `agentic-registrar reset-circuit-breaker`",
+            state.consecutive_failures
+        );
+    }
+    Ok(())
+}
+
+fn record_circuit_breaker_outcome(config: &RegistrarConfig, succeeded: bool) -> Result<()> {
+    let mut state = load_circuit_breaker(config)?;
+    if succeeded {
+        state.consecutive_failures = 0;
+    } else {
+        state.consecutive_failures += 1;
+        if state.consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD {
+            state.tripped = true;
+        }
+    }
+    save_circuit_breaker(config, &state)
+}
+
+/// Explicitly clears a tripped breaker. `reason` is recorded only in the
+/// printed confirmation today (the state file itself stays minimal); callers
+/// driving this from a cloud-agent review should still leave their own
+/// record of why in the PR/queue they were investigating.
+pub fn reset_circuit_breaker(config_path: &Path, reason: &str) -> Result<()> {
+    let config = load_config(config_path)?;
+    save_circuit_breaker(&config, &CircuitBreakerState::default())?;
+    println!("agentic registrar: circuit breaker reset ({reason})");
+    Ok(())
+}
+
 fn load_config(config_path: &Path) -> Result<RegistrarConfig> {
     if !config_path.is_absolute() {
         bail!("Config path must be absolute: {}", config_path.display());
@@ -412,6 +626,7 @@ pub fn generate_dashboard_html(config_path: &Path, output_path: &Path) -> Result
             "Verified" => "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
             "Review" => "bg-blue-500/10 text-blue-400 border-blue-500/20",
             "Failed" => "bg-rose-500/10 text-rose-400 border-rose-500/20",
+            "Blocked" => "bg-orange-500/10 text-orange-400 border-orange-500/20",
             _ => "bg-amber-500/10 text-amber-400 border-amber-500/20",
         };
         task_rows.push_str(&format!(
@@ -507,10 +722,31 @@ pub fn print_status(config_path: &Path) -> Result<()> {
         .iter()
         .filter(|t| t.status == "Failed")
         .count();
+    let blocked = manifest
+        .tasks
+        .iter()
+        .filter(|t| t.status == "Blocked")
+        .count();
 
     println!(
-        "Status breakdown: {pending} Pending | {review} Awaiting Review | {verified} Verified | {failed} Failed"
+        "Status breakdown: {pending} Pending | {review} Awaiting Review | {verified} Verified | {failed} Failed | {blocked} Blocked"
     );
+
+    let breaker = load_circuit_breaker(&config)?;
+    if breaker.tripped {
+        println!(
+            "Circuit breaker: TRIPPED ({} consecutive verification failures) — \
+             no further promotion will run until `reset-circuit-breaker`",
+            breaker.consecutive_failures
+        );
+    } else if breaker.consecutive_failures > 0 {
+        println!(
+            "Circuit breaker: OK ({} consecutive verification failure(s) so far, trips at {})",
+            breaker.consecutive_failures, CIRCUIT_BREAKER_THRESHOLD
+        );
+    } else {
+        println!("Circuit breaker: OK");
+    }
 
     for task in &manifest.tasks {
         println!(
@@ -732,13 +968,12 @@ pub fn daemon(config_path: &Path) -> Result<()> {
 
 /// The only function in this module that writes into the real checkout or
 /// touches git — an explicit, separately-invoked acceptance step. Re-reads
-/// the pending record, re-validates target/crate correlation, writes the
-/// draft, and requires `cargo check` **and** `cargo clippy -D warnings` to
-/// pass (a real bar, not the bare compile check the pre-hardening version
-/// used) before committing. On failure, rolls back correctly whether the
-/// file pre-existed (`git checkout --`) or was newly created (`remove_file`
-/// — `git checkout --` is a no-op for a file git has never seen, which
-/// used to leave broken new files sitting in the tree indefinitely).
+/// the pending record, re-validates target/crate correlation, refuses a
+/// high-risk change outright, checks the circuit breaker, then writes the
+/// draft on an isolated branch and requires `cargo check` **and**
+/// `cargo clippy -D warnings` to pass there before committing and pushing.
+/// See the module doc comment for the full flow and why it stops at
+/// pushing a branch rather than opening a pull request itself.
 pub fn promote(config_path: &Path, task_id: &str) -> Result<()> {
     let config = load_config(config_path)?;
     let now = now_secs()?;
@@ -751,6 +986,8 @@ pub fn promote(config_path: &Path, task_id: &str) -> Result<()> {
 }
 
 fn promote_locked(config: &RegistrarConfig, task_id: &str) -> Result<()> {
+    check_circuit_breaker(config)?;
+
     let record_path = files(&config.results_directory, "json")?
         .into_iter()
         .find(|p| {
@@ -772,44 +1009,120 @@ fn promote_locked(config: &RegistrarConfig, task_id: &str) -> Result<()> {
         .as_ref()
         .context("record has no generated proposal to promote")?;
 
+    if is_high_risk(&record.crate_name, &draft.rust_source) {
+        archive_record(config, &record_path, "blocked-high-risk")?;
+        update_task_status(config, task_id, "Blocked")?;
+        bail!(
+            "task {task_id} blocked by the high-risk allowlist (crate '{}' or generated \
+             `unsafe` code) — local promotion is disabled for this class of change; escalate \
+             to a cloud agent to implement it directly instead",
+            record.crate_name
+        );
+    }
+
     validate_target(&config.checkout, &record.crate_name, &record.target_file)?;
     let full_target_path = config.checkout.join(&record.target_file);
     let pre_existing = full_target_path.exists();
 
-    if let Some(parent) = full_target_path.parent() {
-        fs::create_dir_all(parent)?;
+    if !pre_existing {
+        let crate_root = crate_root_for(&config.checkout, &record.target_file)
+            .context("could not resolve crate root for target_file")?;
+        ensure_new_file_is_reachable(&crate_root, &full_target_path)?;
     }
-    fs::write(&full_target_path, &draft.rust_source)?;
 
-    println!(
-        "agentic registrar: promoting {task_id} — running cargo check + clippy for '{}'...",
-        record.crate_name
-    );
-    let verification = check_crate_compilation(&config.checkout, &record.crate_name)
-        .and_then(|()| check_crate_clippy(&config.checkout, &record.crate_name));
+    let original_branch = git_current_branch(&config.checkout)?;
+    if !git_working_tree_clean(&config.checkout)? {
+        bail!(
+            "checkout has uncommitted changes on branch '{original_branch}'; refusing to \
+             promote onto a dirty working tree"
+        );
+    }
 
-    match verification {
-        Ok(()) => {
-            let hash = git_stage_and_commit(
-                &config.checkout,
-                &record.task_id,
-                &record.crate_name,
-                &record.target_file,
-                &record.instruction,
-            )?;
-            archive_record(config, &record_path, "promoted")?;
-            update_task_status(config, task_id, "Verified")?;
-            println!("agentic registrar: promoted and committed {task_id} ({hash})");
+    let branch_name = format!("local-agent/{task_id}");
+    git_checkout_new_branch(&config.checkout, &branch_name)
+        .with_context(|| format!("failed to create isolated branch '{branch_name}'"))?;
+
+    let outcome: Result<PromoteOutcome> = (|| {
+        if let Some(parent) = full_target_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&full_target_path, &draft.rust_source)?;
+
+        println!(
+            "agentic registrar: promoting {task_id} on branch '{branch_name}' — running \
+             cargo check + clippy for '{}'...",
+            record.crate_name
+        );
+        let verification = check_crate_compilation(&config.checkout, &record.crate_name)
+            .and_then(|()| check_crate_clippy(&config.checkout, &record.crate_name));
+
+        match verification {
+            Ok(()) => {
+                let hash = git_stage_and_commit(
+                    &config.checkout,
+                    &record.task_id,
+                    &record.crate_name,
+                    &record.target_file,
+                    &record.instruction,
+                )?;
+                match git_push_branch(&config.checkout, &branch_name) {
+                    Ok(()) => Ok(PromoteOutcome::Pushed(hash)),
+                    Err(push_err) => Ok(PromoteOutcome::CommittedNotPushed(
+                        hash,
+                        push_err.to_string(),
+                    )),
+                }
+            }
+            Err(err_msg) => {
+                if pre_existing {
+                    git_rollback_existing_target(&config.checkout, &record.target_file)?;
+                } else {
+                    let _ = fs::remove_file(&full_target_path);
+                }
+                Ok(PromoteOutcome::VerificationFailed(err_msg))
+            }
+        }
+    })();
+
+    // Always attempt to restore the original branch before deciding what to
+    // report, whatever happened above — a promotion attempt must never
+    // leave the checkout sitting on a throwaway branch.
+    let restore = git_checkout_branch(&config.checkout, &original_branch);
+    let outcome = outcome?;
+    restore.with_context(|| {
+        format!(
+            "promotion result computed but failed to restore original branch '{original_branch}'"
+        )
+    })?;
+
+    match outcome {
+        PromoteOutcome::Pushed(hash) => {
+            archive_record(config, &record_path, "pushed-for-review")?;
+            update_task_status(config, task_id, "Review")?;
+            record_circuit_breaker_outcome(config, true)?;
+            println!(
+                "agentic registrar: pushed {task_id} to branch '{branch_name}' ({hash}) — \
+                 open a PR for full CI + cloud-agent review"
+            );
             Ok(())
         }
-        Err(err_msg) => {
-            if pre_existing {
-                git_rollback_existing_target(&config.checkout, &record.target_file)?;
-            } else {
-                let _ = fs::remove_file(&full_target_path);
-            }
+        PromoteOutcome::CommittedNotPushed(hash, push_err) => {
+            // A push/network failure is not evidence the model or its
+            // output is bad, so this does not count against the circuit
+            // breaker. The commit and branch are left in place locally for
+            // a manual `git push` retry rather than discarded.
+            archive_record(config, &record_path, "committed-push-failed")?;
+            update_task_status(config, task_id, "Blocked")?;
+            bail!(
+                "task {task_id} committed ({hash}) to local branch '{branch_name}' but push \
+                 to origin failed, branch left in place for retry: {push_err}"
+            );
+        }
+        PromoteOutcome::VerificationFailed(err_msg) => {
+            git_delete_local_branch(&config.checkout, &branch_name);
             archive_record(config, &record_path, "promotion-failed")?;
             update_task_status(config, task_id, "Failed")?;
+            record_circuit_breaker_outcome(config, false)?;
             bail!("promotion verification failed for {task_id}, rolled back:\n{err_msg}");
         }
     }
@@ -1096,8 +1409,14 @@ fn execute_mcp_tool(
                 .iter()
                 .filter(|t| t.status == "Failed")
                 .count();
+            let blocked = manifest
+                .tasks
+                .iter()
+                .filter(|t| t.status == "Blocked")
+                .count();
+            let breaker = load_circuit_breaker(&config)?;
             Ok(format!(
-                "Checkout: {}\nModel: {}\nEndpoint: {}\nTotal Tasks: {}\nPending: {}\nAwaiting Review: {}\nVerified: {}\nFailed: {}",
+                "Checkout: {}\nModel: {}\nEndpoint: {}\nTotal Tasks: {}\nPending: {}\nAwaiting Review: {}\nVerified: {}\nFailed: {}\nBlocked: {}\nCircuit breaker tripped: {}",
                 config.checkout.display(),
                 config.model,
                 config.endpoint,
@@ -1105,7 +1424,9 @@ fn execute_mcp_tool(
                 pending,
                 review,
                 verified,
-                failed
+                failed,
+                blocked,
+                breaker.tripped
             ))
         }
         "register_vibe_task" => {
@@ -1466,6 +1787,12 @@ fn handle_connection(
                     .iter()
                     .filter(|t| t.status == "Failed")
                     .count();
+                let blocked = manifest
+                    .tasks
+                    .iter()
+                    .filter(|t| t.status == "Blocked")
+                    .count();
+                let breaker = load_circuit_breaker(&cfg)?;
                 Ok(serde_json::json!({
                     "checkout": cfg.checkout.display().to_string(),
                     "model": cfg.model,
@@ -1474,7 +1801,9 @@ fn handle_connection(
                     "pending": pending,
                     "review": review,
                     "verified": verified,
-                    "failed": failed
+                    "failed": failed,
+                    "blocked": blocked,
+                    "circuit_breaker_tripped": breaker.tripped
                 }))
             }) {
                 Ok(val) => ("200 OK".to_string(), val.to_string()),
@@ -1668,6 +1997,105 @@ fn git_rollback_existing_target(checkout: &Path, target_file: &str) -> Result<()
     } else {
         bail!("git rollback failed for {target_file}");
     }
+}
+
+/// Outcome of the verify-and-push closure inside `promote_locked`, kept
+/// distinct from a hard `Err` (an I/O failure in the closure itself) so the
+/// caller can still always attempt to restore the original branch before
+/// deciding what to report.
+enum PromoteOutcome {
+    Pushed(String),
+    CommittedNotPushed(String, String),
+    VerificationFailed(String),
+}
+
+fn git_current_branch(checkout: &Path) -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(checkout)
+        .output()
+        .context("Failed to run git rev-parse")?;
+    if !output.status.success() {
+        bail!(
+            "git rev-parse --abbrev-ref HEAD failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() || branch == "HEAD" {
+        bail!("checkout is in a detached HEAD state; check out a real branch before promoting");
+    }
+    Ok(branch)
+}
+
+fn git_working_tree_clean(checkout: &Path) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(checkout)
+        .output()
+        .context("Failed to run git status")?;
+    if !output.status.success() {
+        bail!(
+            "git status failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    Ok(output.stdout.is_empty())
+}
+
+fn git_checkout_new_branch(checkout: &Path, branch: &str) -> Result<()> {
+    let status = Command::new("git")
+        .args(["checkout", "-b", branch])
+        .current_dir(checkout)
+        .status()
+        .context("Failed to run git checkout -b")?;
+    if !status.success() {
+        bail!("git checkout -b {branch} failed");
+    }
+    Ok(())
+}
+
+/// Restore the branch that was checked out before `promote_locked` started.
+/// Called on every path out of `promote_locked` — success, verification
+/// failure, or push failure — so a promotion attempt never leaves the
+/// user's checkout sitting on a throwaway `local-agent/*` branch.
+fn git_checkout_branch(checkout: &Path, branch: &str) -> Result<()> {
+    let status = Command::new("git")
+        .args(["checkout", branch])
+        .current_dir(checkout)
+        .status()
+        .context("Failed to run git checkout (restore)")?;
+    if !status.success() {
+        bail!("failed to restore original branch '{branch}' after promotion attempt");
+    }
+    Ok(())
+}
+
+/// Best-effort cleanup of a throwaway local branch after a failed
+/// promotion. Never called while `branch` is still checked out. Failure
+/// here is logged, not propagated — a leftover local branch is untidy, not
+/// unsafe, and must never mask the real verification failure that's already
+/// being reported.
+fn git_delete_local_branch(checkout: &Path, branch: &str) {
+    let status = Command::new("git")
+        .args(["branch", "-D", branch])
+        .current_dir(checkout)
+        .status();
+    if !matches!(status, Ok(s) if s.success()) {
+        eprintln!("agentic registrar: warning: failed to delete leftover local branch '{branch}'");
+    }
+}
+
+fn git_push_branch(checkout: &Path, branch: &str) -> Result<()> {
+    let status = Command::new("git")
+        .args(["push", "-u", "origin", branch])
+        .current_dir(checkout)
+        .status()
+        .context("Failed to run git push")?;
+    if !status.success() {
+        bail!("git push -u origin {branch} failed");
+    }
+    Ok(())
 }
 
 fn check_crate_compilation(checkout: &Path, crate_name: &str) -> Result<(), String> {
@@ -1932,11 +2360,52 @@ mod tests {
         assert!(sse.starts_with("HTTP/1.1 404 Not Found"));
     }
 
+    /// Initializes a real git repository at `checkout` (not just a `.git`
+    /// marker directory) with an initial commit on `main`, and adds a bare
+    /// repository under `scratch_root` as its `origin` remote, so
+    /// `promote`'s branch/commit/push path is exercised for real against a
+    /// local remote rather than needing network access in tests.
+    fn init_git_fixture(checkout: &Path, scratch_root: &Path) {
+        let run = |args: &[&str], cwd: &Path| {
+            let status = Command::new("git")
+                .args(args)
+                .current_dir(cwd)
+                .status()
+                .unwrap_or_else(|e| panic!("failed to run git {args:?}: {e}"));
+            assert!(status.success(), "git {args:?} failed in {}", cwd.display());
+        };
+
+        run(&["init", "-q", "-b", "main"], checkout);
+        run(&["config", "user.email", "test@example.com"], checkout);
+        run(&["config", "user.name", "Test"], checkout);
+        run(&["add", "-A"], checkout);
+        run(&["commit", "-q", "-m", "initial"], checkout);
+
+        let origin = scratch_root.join("origin.git");
+        fs::create_dir_all(&origin).expect("origin dir");
+        run(&["init", "-q", "--bare", "-b", "main"], &origin);
+        run(
+            &[
+                "remote",
+                "add",
+                "origin",
+                origin.to_str().expect("utf8 path"),
+            ],
+            checkout,
+        );
+        run(&["push", "-q", "-u", "origin", "main"], checkout);
+    }
+
     fn fixture() -> (tempfile::TempDir, RegistrarConfig, PathBuf) {
         let d = tempfile::tempdir().expect("fixture");
         let checkout = d.path().join("checkout");
         let crate_dir = checkout.join("crates").join("demo");
         fs::create_dir_all(crate_dir.join("src")).expect("crate dir");
+        fs::write(
+            checkout.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/demo\"]\nresolver = \"2\"\n",
+        )
+        .expect("workspace cargo toml");
         fs::write(
             crate_dir.join("Cargo.toml"),
             "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
@@ -1947,7 +2416,12 @@ mod tests {
             "pub fn existing() {}\n",
         )
         .expect("lib.rs");
-        fs::create_dir_all(checkout.join(".git")).expect("git marker");
+        // Real Aaroneous checkouts already gitignore this; without it here,
+        // the very first `cargo check`/`clippy` promote runs would create
+        // an untracked target/ dir and make every later
+        // `git_working_tree_clean` check see a permanently dirty tree.
+        fs::write(checkout.join(".gitignore"), "/target\n/Cargo.lock\n").expect(".gitignore");
+        init_git_fixture(&checkout, d.path());
 
         let config = RegistrarConfig {
             schema_version: 1,
@@ -1961,6 +2435,7 @@ mod tests {
             model: "test-model".into(),
             max_pending: 4,
             http_token_file: None,
+            circuit_breaker_path: None,
         };
         fs::create_dir_all(&config.results_directory).expect("results dir");
         fs::create_dir_all(&config.archive_directory).expect("archive dir");
@@ -2151,7 +2626,7 @@ mod tests {
             "NEWFILE",
             "demo",
             "task",
-            "crates/demo/src/new_module.rs",
+            "crates/demo/tests/new_module_test.rs",
             "add broken code",
         )
         .expect("register");
@@ -2164,7 +2639,7 @@ mod tests {
             artifact_kind: "foundation.agentic-registrar-result".into(),
             task_id: "NEWFILE".into(),
             crate_name: "demo".into(),
-            target_file: "crates/demo/src/new_module.rs".into(),
+            target_file: "crates/demo/tests/new_module_test.rs".into(),
             submitted_at_secs: now,
             outcome: "pending-owner-review".into(),
             instruction: "add broken code".into(),
@@ -2176,7 +2651,7 @@ mod tests {
         };
         persist(&config.results_directory, &record).expect("persist");
 
-        let target = config.checkout.join("crates/demo/src/new_module.rs");
+        let target = config.checkout.join("crates/demo/tests/new_module_test.rs");
         assert!(!target.exists(), "file must not exist before promotion");
 
         let err = promote(&cfg_path, "NEWFILE").expect_err("clippy must fail on unused variable");
@@ -2193,6 +2668,264 @@ mod tests {
             .find(|t| t.id == "NEWFILE")
             .expect("task");
         assert_eq!(task.status, "Failed");
+        assert_eq!(
+            git_current_branch(&config.checkout).expect("branch"),
+            "main",
+            "a failed promotion must leave the checkout back on its original branch"
+        );
+    }
+
+    fn record_for(task_id: &str, crate_name: &str, target_file: &str, source: &str) -> Record {
+        Record {
+            schema_version: 1,
+            artifact_kind: "foundation.agentic-registrar-result".into(),
+            task_id: task_id.into(),
+            crate_name: crate_name.into(),
+            target_file: target_file.into(),
+            submitted_at_secs: now_secs().unwrap(),
+            outcome: "pending-owner-review".into(),
+            instruction: "test instruction".into(),
+            existing_code_excerpt: String::new(),
+            proposal: Some(GeneratedDraft {
+                rust_source: source.into(),
+            }),
+            error: None,
+        }
+    }
+
+    #[test]
+    fn is_high_risk_flags_denylisted_crates_and_unsafe_source() {
+        assert!(is_high_risk("ipc_bus", "pub fn f() {}"));
+        assert!(is_high_risk("hypervisor", "pub fn f() {}"));
+        assert!(is_high_risk(
+            "demo",
+            "pub fn f() { unsafe { core::ptr::null::<u8>(); } }"
+        ));
+        assert!(!is_high_risk("demo", "pub fn f() {}"));
+    }
+
+    #[test]
+    fn promote_blocks_high_risk_crate_without_touching_git() {
+        let (_d, config, cfg_path) = fixture();
+        register_task(
+            &cfg_path,
+            "RISKY",
+            "demo",
+            "task",
+            "crates/demo/tests/new_module_test.rs",
+            "touch something risky",
+        )
+        .expect("register");
+        persist(
+            &config.results_directory,
+            &record_for(
+                "RISKY",
+                "demo",
+                "crates/demo/tests/new_module_test.rs",
+                "pub fn f() { unsafe { core::ptr::null::<u8>(); } }\n",
+            ),
+        )
+        .expect("persist");
+
+        let err = promote(&cfg_path, "RISKY").expect_err("high-risk must be blocked");
+        assert!(err.to_string().contains("high-risk allowlist"), "{err}");
+        assert!(
+            !config
+                .checkout
+                .join("crates/demo/tests/new_module_test.rs")
+                .exists(),
+            "a blocked task must never write into the checkout"
+        );
+
+        let manifest = load_manifest(&config.queue).expect("manifest");
+        let task = manifest
+            .tasks
+            .iter()
+            .find(|t| t.id == "RISKY")
+            .expect("task");
+        assert_eq!(task.status, "Blocked");
+    }
+
+    #[test]
+    fn promote_refuses_a_dirty_working_tree() {
+        let (_d, config, cfg_path) = fixture();
+        register_task(
+            &cfg_path,
+            "DIRTY",
+            "demo",
+            "task",
+            "crates/demo/tests/new_module_test.rs",
+            "add code",
+        )
+        .expect("register");
+        persist(
+            &config.results_directory,
+            &record_for(
+                "DIRTY",
+                "demo",
+                "crates/demo/tests/new_module_test.rs",
+                "pub fn f() {}\n",
+            ),
+        )
+        .expect("persist");
+
+        // Dirty the working tree directly, bypassing promote entirely.
+        fs::write(
+            config.checkout.join("crates/demo/src/lib.rs"),
+            "pub fn existing() {} // uncommitted local edit\n",
+        )
+        .expect("dirty tree");
+
+        let err = promote(&cfg_path, "DIRTY").expect_err("dirty tree must be refused");
+        assert!(err.to_string().contains("uncommitted changes"), "{err}");
+        assert_eq!(
+            git_current_branch(&config.checkout).expect("branch"),
+            "main"
+        );
+    }
+
+    #[test]
+    fn promote_pushes_isolated_branch_and_restores_original_branch_on_success() {
+        let (_d, config, cfg_path) = fixture();
+        register_task(
+            &cfg_path,
+            "GOODFILE",
+            "demo",
+            "task",
+            "crates/demo/tests/new_module_test.rs",
+            "add a trivial function",
+        )
+        .expect("register");
+        persist(
+            &config.results_directory,
+            &record_for(
+                "GOODFILE",
+                "demo",
+                "crates/demo/tests/new_module_test.rs",
+                "pub fn added() -> u32 { 42 }\n",
+            ),
+        )
+        .expect("persist");
+
+        promote(&cfg_path, "GOODFILE").expect("clean code must promote");
+
+        assert_eq!(
+            git_current_branch(&config.checkout).expect("branch"),
+            "main",
+            "a successful promotion must still restore the original branch"
+        );
+        assert!(
+            !config
+                .checkout
+                .join("crates/demo/tests/new_module_test.rs")
+                .exists(),
+            "restoring 'main' must not leave the new file behind — it only exists on the \
+             pushed local-agent branch, never on main"
+        );
+        let show = Command::new("git")
+            .args([
+                "show",
+                "local-agent/GOODFILE:crates/demo/tests/new_module_test.rs",
+            ])
+            .current_dir(&config.checkout)
+            .output()
+            .expect("git show on the local branch");
+        assert!(
+            show.status.success(),
+            "the committed file must be present on the local-agent branch itself"
+        );
+        assert!(String::from_utf8_lossy(&show.stdout).contains("pub fn added"));
+
+        let manifest = load_manifest(&config.queue).expect("manifest");
+        let task = manifest
+            .tasks
+            .iter()
+            .find(|t| t.id == "GOODFILE")
+            .expect("task");
+        assert_eq!(task.status, "Review");
+
+        let archived = files(&config.archive_directory, "json").expect("archive");
+        assert_eq!(archived.len(), 1);
+        let archived_content: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&archived[0]).expect("read archive"))
+                .expect("parse archive");
+        assert_eq!(archived_content["archived_outcome"], "pushed-for-review");
+
+        // The pushed branch must actually exist on the bare "origin" remote.
+        let branches = Command::new("git")
+            .args(["branch", "-r"])
+            .current_dir(&config.checkout)
+            .output()
+            .expect("git branch -r");
+        let branches = String::from_utf8_lossy(&branches.stdout);
+        assert!(
+            branches.contains("origin/local-agent/GOODFILE"),
+            "expected pushed branch on origin, got: {branches}"
+        );
+    }
+
+    #[test]
+    fn circuit_breaker_trips_after_threshold_and_reset_clears_it() {
+        let (_d, config, cfg_path) = fixture();
+        for i in 0..CIRCUIT_BREAKER_THRESHOLD {
+            let id = format!("FAIL{i}");
+            register_task(
+                &cfg_path,
+                &id,
+                "demo",
+                "task",
+                "crates/demo/tests/new_module_test.rs",
+                "add broken code",
+            )
+            .expect("register");
+            persist(
+                &config.results_directory,
+                &record_for(
+                    &id,
+                    "demo",
+                    "crates/demo/tests/new_module_test.rs",
+                    "pub fn broken() { let unused = 1; }\n",
+                ),
+            )
+            .expect("persist");
+            let _ = promote(&cfg_path, &id);
+        }
+
+        let breaker = load_circuit_breaker(&config).expect("breaker");
+        assert!(
+            breaker.tripped,
+            "breaker must trip after {CIRCUIT_BREAKER_THRESHOLD} consecutive failures"
+        );
+
+        register_task(
+            &cfg_path,
+            "AFTER-TRIP",
+            "demo",
+            "task",
+            "crates/demo/tests/another_test.rs",
+            "add code after trip",
+        )
+        .expect("register");
+        persist(
+            &config.results_directory,
+            &record_for(
+                "AFTER-TRIP",
+                "demo",
+                "crates/demo/tests/another_test.rs",
+                "pub fn added() -> u32 { 1 }\n",
+            ),
+        )
+        .expect("persist");
+        let err = promote(&cfg_path, "AFTER-TRIP")
+            .expect_err("tripped breaker must refuse further promotion, even for good code");
+        assert!(err.to_string().contains("circuit breaker"), "{err}");
+
+        reset_circuit_breaker(&cfg_path, "test reset").expect("reset");
+        let breaker = load_circuit_breaker(&config).expect("breaker after reset");
+        assert!(!breaker.tripped);
+        assert_eq!(breaker.consecutive_failures, 0);
+
+        promote(&cfg_path, "AFTER-TRIP").expect("promotion must work again after reset");
     }
 
     #[test]

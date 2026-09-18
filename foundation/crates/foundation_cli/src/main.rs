@@ -192,14 +192,25 @@ enum RegistrarAction {
         #[arg(long)]
         config: PathBuf,
     },
-    /// Explicitly accept a pending-owner-review draft: writes it into the
-    /// checkout, re-verifies (cargo check + clippy), and only then commits.
-    /// The only action that ever touches the real checkout or git.
+    /// Explicitly accept a pending-owner-review draft: refuses a high-risk
+    /// change outright, checks the circuit breaker, writes it on an
+    /// isolated `local-agent/{task_id}` branch, re-verifies (cargo check +
+    /// clippy), commits, and pushes that branch to origin. The only action
+    /// that ever touches the real checkout or git. Never opens a pull
+    /// request itself — see governance/LOCAL_MODEL_AUTONOMY_POLICY.md.
     Promote {
         #[arg(long)]
         config: PathBuf,
         #[arg(long)]
         task_id: String,
+    },
+    /// Clear a tripped promotion circuit breaker after investigating why it
+    /// tripped. `reason` is recorded only in the printed confirmation.
+    ResetCircuitBreaker {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        reason: String,
     },
     Serve {
         #[arg(long)]
@@ -252,6 +263,9 @@ fn main() -> Result<()> {
             RegistrarAction::Daemon { config } => agentic_registrar::daemon(&config),
             RegistrarAction::Promote { config, task_id } => {
                 agentic_registrar::promote(&config, &task_id)
+            }
+            RegistrarAction::ResetCircuitBreaker { config, reason } => {
+                agentic_registrar::reset_circuit_breaker(&config, &reason)
             }
             RegistrarAction::Serve { config, port } => agentic_registrar::serve(&config, port),
             RegistrarAction::SetupMcp { port } => {
