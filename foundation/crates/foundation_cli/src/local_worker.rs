@@ -440,6 +440,84 @@ pub(crate) fn tick(config: &Path, minute: u32, now: u64) -> Result<()> {
     tick_with(config, minute, now, delegate)
 }
 
+/// Base and ceiling for `serve`'s adaptive delay: never tighter than the
+/// documented LocalWorker cadence (2 minutes), never looser than 30
+/// minutes even after a long idle streak, so a real backlog that shows up
+/// later is never starved for more than half an hour by an over-eager
+/// backoff.
+const SERVE_MIN_DELAY: Duration = Duration::from_secs(120);
+const SERVE_MAX_DELAY: Duration = Duration::from_secs(30 * 60);
+
+fn read_status_outcome(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    text.lines()
+        .find_map(|line| line.strip_prefix("outcome="))
+        .map(str::to_string)
+}
+
+/// `true` if this tick had nothing to show for itself: either it never
+/// reached `save_status` at all (out of the dispatch window, or
+/// `review.lock` already held by another run — `before != after` on
+/// `status.txt`'s mtime catches both), or it did reach `save_status` but
+/// only to record `backpressure` or `idle-unchanged-or-reserved-scopes`.
+/// Any other recorded outcome (a job was actually attempted, whether it
+/// then succeeded or failed) counts as real activity.
+fn tick_was_quiet(status_path: &Path, mtime_before: Option<std::time::SystemTime>) -> bool {
+    let mtime_after = fs::metadata(status_path).and_then(|m| m.modified()).ok();
+    if mtime_before == mtime_after {
+        return true;
+    }
+    read_status_outcome(status_path)
+        .map(|outcome| {
+            matches!(
+                outcome.as_str(),
+                "backpressure" | "idle-unchanged-or-reserved-scopes"
+            )
+        })
+        .unwrap_or(true)
+}
+
+/// Adaptive persistent local-worker loop, run in-process rather than
+/// relying on an external scheduler to invoke `local-worker-tick`
+/// repeatedly on a blind fixed interval regardless of outcome: trigger a
+/// tick, look at what it actually did (via `status.txt`, not just whether
+/// the call returned `Ok` — a quiet out-of-window tick and a busy tick
+/// both do), and use that to decide the next delay. A quiet tick doubles
+/// the delay (capped at `SERVE_MAX_DELAY`); a tick that actually attempted
+/// a job — success or failure — resets it to `SERVE_MIN_DELAY`, since
+/// that's exactly when more real work is likely queued up right behind
+/// it. "On" is running this command; "off" is not running it or stopping
+/// it (Ctrl+C) — matching `multithreader-serve`'s C21 precedent, nothing
+/// is installed, so there's nothing to separately disable.
+pub(crate) fn serve(config_path: &Path) -> Result<()> {
+    let config: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
+    let status_path = config.results_directory.join("status.txt");
+    println!(
+        "local-worker-serve: starting, delay {}s-{}s adaptive, config {}",
+        SERVE_MIN_DELAY.as_secs(),
+        SERVE_MAX_DELAY.as_secs(),
+        config_path.display()
+    );
+    let mut delay = SERVE_MIN_DELAY;
+    loop {
+        let mtime_before = fs::metadata(&status_path).and_then(|m| m.modified()).ok();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        if let Err(e) = tick(config_path, ((now / 60) % 60) as u32, now) {
+            eprintln!("local-worker-serve: tick failed: {e:#}");
+        }
+        delay = if tick_was_quiet(&status_path, mtime_before) {
+            (delay * 2).min(SERVE_MAX_DELAY)
+        } else {
+            SERVE_MIN_DELAY
+        };
+        println!("local-worker-serve: next tick in {}s", delay.as_secs());
+        std::thread::sleep(delay);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -586,6 +664,53 @@ mod tests {
             2
         );
         tick_with(&config, 10, 4, |_, _| panic!("backpressure ignored")).expect("throttled");
+    }
+    #[test]
+    fn read_status_outcome_parses_present_and_missing_files() {
+        let d = tempfile::tempdir().expect("dir");
+        let path = d.path().join("status.txt");
+        assert_eq!(read_status_outcome(&path), None, "missing file");
+        fs::write(&path, "last_poll_secs=1\noutcome=backpressure\n").expect("write");
+        assert_eq!(read_status_outcome(&path), Some("backpressure".into()));
+    }
+    #[test]
+    fn tick_was_quiet_distinguishes_untouched_idle_and_real_activity() {
+        let d = tempfile::tempdir().expect("dir");
+        let path = d.path().join("status.txt");
+
+        // Never written at all (out-of-window / reservation-busy tick).
+        assert!(tick_was_quiet(&path, None));
+
+        // Written, but mtime unchanged from what the caller observed
+        // before the tick (simulates an out-of-window tick when a prior
+        // real tick had already written the file once).
+        fs::write(&path, "last_poll_secs=1\noutcome=pending-owner-review\n").expect("write");
+        let mtime = fs::metadata(&path)
+            .expect("meta")
+            .modified()
+            .expect("mtime");
+        assert!(
+            tick_was_quiet(&path, Some(mtime)),
+            "unchanged mtime must read as quiet regardless of the stale outcome text"
+        );
+
+        for outcome in ["backpressure", "idle-unchanged-or-reserved-scopes"] {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            fs::write(&path, format!("last_poll_secs=2\noutcome={outcome}\n")).expect("write");
+            assert!(
+                tick_was_quiet(&path, Some(mtime)),
+                "'{outcome}' must read as quiet"
+            );
+        }
+
+        for outcome in ["pending-owner-review", "failed"] {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            fs::write(&path, format!("last_poll_secs=3\noutcome={outcome}\n")).expect("write");
+            assert!(
+                !tick_was_quiet(&path, Some(mtime)),
+                "'{outcome}' must read as real activity, not quiet"
+            );
+        }
     }
     #[test]
     fn alphabetically_first_job_does_not_starve_other_jobs_when_its_input_keeps_changing() {

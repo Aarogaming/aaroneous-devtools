@@ -56,6 +56,15 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Adaptive persistent local-worker loop: tick, look at what actually
+    /// happened, and decide the next tick's delay from that -- backing off
+    /// when there's nothing to do rather than re-firing on a blind fixed
+    /// interval. Opt-in like multithreader-serve: "on" is running this
+    /// command, "off" is not running it or stopping it.
+    LocalWorkerServe {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Review declared evidence and populate an owner-reviewed inbox.
     MultithreaderReview {
         #[arg(long)]
@@ -292,6 +301,7 @@ fn main() -> Result<()> {
                 .as_secs();
             local_worker::tick(&config, ((now / 60) % 60) as u32, now)
         }
+        Command::LocalWorkerServe { config } => local_worker::serve(&config),
         Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::MultithreaderServe {
             config,
