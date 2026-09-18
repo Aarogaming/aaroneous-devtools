@@ -56,6 +56,15 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Adaptive persistent local-worker loop: tick, look at what actually
+    /// happened, and decide the next tick's delay from that -- backing off
+    /// when there's nothing to do rather than re-firing on a blind fixed
+    /// interval. Opt-in like multithreader-serve: "on" is running this
+    /// command, "off" is not running it or stopping it.
+    LocalWorkerServe {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Review declared evidence and populate an owner-reviewed inbox.
     MultithreaderReview {
         #[arg(long)]
@@ -192,14 +201,25 @@ enum RegistrarAction {
         #[arg(long)]
         config: PathBuf,
     },
-    /// Explicitly accept a pending-owner-review draft: writes it into the
-    /// checkout, re-verifies (cargo check + clippy), and only then commits.
-    /// The only action that ever touches the real checkout or git.
+    /// Explicitly accept a pending-owner-review draft: refuses a high-risk
+    /// change outright, checks the circuit breaker, writes it on an
+    /// isolated `local-agent/{task_id}` branch, re-verifies (cargo check +
+    /// clippy), commits, and pushes that branch to origin. The only action
+    /// that ever touches the real checkout or git. Never opens a pull
+    /// request itself — see governance/LOCAL_MODEL_AUTONOMY_POLICY.md.
     Promote {
         #[arg(long)]
         config: PathBuf,
         #[arg(long)]
         task_id: String,
+    },
+    /// Clear a tripped promotion circuit breaker after investigating why it
+    /// tripped. `reason` is recorded only in the printed confirmation.
+    ResetCircuitBreaker {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        reason: String,
     },
     Serve {
         #[arg(long)]
@@ -253,6 +273,9 @@ fn main() -> Result<()> {
             RegistrarAction::Promote { config, task_id } => {
                 agentic_registrar::promote(&config, &task_id)
             }
+            RegistrarAction::ResetCircuitBreaker { config, reason } => {
+                agentic_registrar::reset_circuit_breaker(&config, &reason)
+            }
             RegistrarAction::Serve { config, port } => agentic_registrar::serve(&config, port),
             RegistrarAction::SetupMcp { port } => {
                 let paths = agentic_registrar::auto_register_ide_mcp_config(port)?;
@@ -278,6 +301,7 @@ fn main() -> Result<()> {
                 .as_secs();
             local_worker::tick(&config, ((now / 60) % 60) as u32, now)
         }
+        Command::LocalWorkerServe { config } => local_worker::serve(&config),
         Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::MultithreaderServe {
             config,

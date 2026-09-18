@@ -4,6 +4,11 @@ The scheduler is deterministic. A local model may analyze bounded evidence and r
 but it cannot claim work, edit either repository, invoke a shell, alter a schedule, or decide that
 verification passed. The integration owner makes each claim after reviewing the proposal.
 
+[`LOCAL_MODEL_AUTONOMY_POLICY.md`](LOCAL_MODEL_AUTONOMY_POLICY.md) builds on this: the tiered
+escalation ladder (high-risk allowlist, circuit breaker, when a cloud agent takes over from the
+local model, why auto-merge isn't authorized yet) and the adaptive-pacing principle behind
+`local-worker-serve`.
+
 ## Layers
 
 | Layer | Responsibility | Authority |
