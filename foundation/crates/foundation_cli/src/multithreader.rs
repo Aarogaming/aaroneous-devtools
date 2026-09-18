@@ -91,11 +91,15 @@ pub(crate) fn run(config_path: &Path) -> Result<()> {
         bail!("artifacts must be outside product checkout");
     }
     let lock = c.output_directory.join("review.lock");
-    let _file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&lock)
-        .context("review.lock exists: inspect active/stale run before removal")?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let acquired = acquire_or_recover_lock(&lock, &c.output_directory, now)?;
+    if !acquired {
+        println!("multithreader: active review.lock present; skipping cycle");
+        return Ok(());
+    }
     let _lock = RunLock(lock);
     let queue = read_bounded(&c.queue, 262144)?;
     let (mut ids, diagnostics) = queue_ids(&queue);
@@ -197,6 +201,73 @@ pub(crate) fn run(config_path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn acquire_or_recover_lock(lock: &Path, output_dir: &Path, now: u64) -> Result<bool> {
+    use std::io::Write;
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(lock)
+    {
+        Ok(mut f) => {
+            let _ = writeln!(
+                f,
+                "owner=foundation.multithreader\nstarted_at_secs={now}\npid={}",
+                std::process::id()
+            );
+            Ok(true)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            let is_stale = if let Ok(meta) = fs::metadata(lock) {
+                if let Ok(modified) = meta.modified() {
+                    if let Ok(elapsed) = modified.elapsed() {
+                        elapsed > Duration::from_secs(3600)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if is_stale {
+                println!(
+                    "multithreader: stale review.lock detected (>3600s); recording crash marker"
+                );
+                let crash_marker = output_dir.join("crash_marker_retained.json");
+                let marker_data = serde_json::json!({
+                    "schema_version": 1,
+                    "event": "stale_lock_recovered",
+                    "lock_path": lock.display().to_string(),
+                    "recovered_at_secs": now,
+                });
+                let _ = fs::write(&crash_marker, serde_json::to_vec_pretty(&marker_data)?);
+                let _ = fs::remove_file(lock);
+
+                match fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(lock)
+                {
+                    Ok(mut f) => {
+                        let _ = writeln!(
+                            f,
+                            "owner=foundation.multithreader\nstarted_at_secs={now}\npid={}",
+                            std::process::id()
+                        );
+                        Ok(true)
+                    }
+                    Err(_) => Ok(false),
+                }
+            } else {
+                Ok(false)
+            }
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
 fn checked_interval(interval_minutes: u32) -> Result<Duration> {
     if interval_minutes == 0 || interval_minutes > 1440 {
         bail!("interval must be 1-1440 minutes, got {interval_minutes}");
@@ -204,39 +275,32 @@ fn checked_interval(interval_minutes: u32) -> Result<Duration> {
     Ok(Duration::from_secs(u64::from(interval_minutes) * 60))
 }
 
-/// Run one review cycle, logging (not propagating) failure. A persistent
-/// service should not die from a single bad cycle the way the one-shot
-/// `multithreader-review` command intentionally does (it exits nonzero on
-/// a `failed` outcome so a caller — a person or a script — notices). Here
-/// the next cycle is the notice: the failure is still recorded as an
-/// inbox report by `run()` itself before this ever sees the `Err`.
-fn cycle(config_path: &Path) {
+fn cycle(config_path: &Path) -> bool {
     if let Err(e) = run(config_path) {
         eprintln!("multithreader-serve: cycle failed: {e:#}");
+        false
+    } else {
+        true
     }
 }
 
-/// Run review cycles on a fixed interval until the process is stopped.
-///
-/// This replaces relying on an external scheduler (the OS's Task
-/// Scheduler, an installed service, etc.) to invoke `multithreader-review`
-/// repeatedly: the loop lives in this process instead, so "on" is running
-/// this command and "off" is not running it or stopping it (Ctrl+C) —
-/// there is nothing to separately install, enable, or forget to disable.
-/// Each `run()` call still owns and releases its own `review.lock`, so an
-/// interrupt between cycles (during the sleep) leaves nothing locked; an
-/// interrupt is only ever a concern if it lands mid-cycle, in which case
-/// `run()`'s existing "review.lock exists: inspect active/stale run
-/// before removal" recovery path applies exactly as it already does for
-/// the one-shot command.
 pub(crate) fn serve(config_path: &Path, interval_minutes: u32) -> Result<()> {
     let interval = checked_interval(interval_minutes)?;
     println!(
         "multithreader-serve: starting, interval {interval_minutes}m, config {}",
         config_path.display()
     );
+    let mut consecutive_failures = 0u32;
     loop {
-        cycle(config_path);
+        if cycle(config_path) {
+            consecutive_failures = 0;
+        } else {
+            consecutive_failures += 1;
+            eprintln!("multithreader-serve: cycle failure count: {consecutive_failures}/5");
+            if consecutive_failures >= 5 {
+                bail!("multithreader-serve stopped after 5 consecutive permanent failures");
+            }
+        }
         std::thread::sleep(interval);
     }
 }
@@ -303,6 +367,28 @@ mod tests {
         // the serve loop.
         let d = tempfile::tempdir().expect("fixture");
         cycle(&d.path().join("does-not-exist.toml"));
+    }
+    #[test]
+    fn stale_lock_is_recovered_and_crash_marker_retained() {
+        let d = tempfile::tempdir().expect("fixture");
+        let lock = d.path().join("review.lock");
+        fs::write(&lock, "stale").expect("lock");
+        let past = std::time::SystemTime::now() - Duration::from_secs(7200);
+        let f = fs::OpenOptions::new()
+            .write(true)
+            .open(&lock)
+            .expect("open");
+        f.set_times(std::fs::FileTimes::new().set_modified(past))
+            .expect("set_times");
+        drop(f);
+        let acquired = acquire_or_recover_lock(&lock, d.path(), 1000).expect("acquire");
+        assert!(acquired);
+        assert!(d.path().join("crash_marker_retained.json").exists());
+        let marker: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(d.path().join("crash_marker_retained.json")).expect("marker"),
+        )
+        .expect("json");
+        assert_eq!(marker["event"], "stale_lock_recovered");
     }
 }
 

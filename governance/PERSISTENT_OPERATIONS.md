@@ -4,7 +4,7 @@ DevTools automates development of the Aaroneous Rust Component Framework. The ma
 
 ## Maintainer schedule
 
-The app automation `aaroneous-rolling-worklist` was repurposed, rather than duplicated, as **DevTools persistent maintainer** on 2026-09-17. It is active hourly at minute 30 and targets task `01a0ace6-af23-7860-a77e-8447f40ed428`. The saved app configuration was read back and confirms the schedule and target.
+The app automation `aaroneous-rolling-worklist` was repurposed, rather than duplicated, as **DevTools persistent maintainer** on 2026-09-17. It is active hourly at minute 30 and targets task `01a0ace6-af23-7860-a77e-8447f40ed428`. In addition, a daily 09:00 local maintainer review cadence is recorded for manual/scheduled maintainer inspection. This cadence is distinct from passive utility polling and the default-off C21 in-process persistence (`foundation multithreader-serve`).
 
 Each run inspects Git changes, CI, ownership, review debt and available useful work. It gives priority to reproduced failures, registrar API authentication and the C15 dashboard corrections. Full capacity calls for review and evidence collection. Claims, verification, scoped commits and handoffs follow the repository agent guide. Reports are quiet when nothing actionable changes; progress, failures and required owner decisions may notify the owner.
 

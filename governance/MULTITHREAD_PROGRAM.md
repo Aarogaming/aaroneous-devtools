@@ -45,11 +45,11 @@ evidence, not just an issue title.
 | Done | M22 | Deprecate legacy `paths` preset keys with persisted-data migration tests | C4 inventory | Compatibility-focused Rust refactor |
 | Done | M23 | Define the removal window and downstream-consumer policy for deprecated terminology aliases | M7 done | Release / API governance |
 | Retired | M24 | Consolidate root TODO and frontier roadmap into an evidence-labeled product roadmap | Conflicting roadmap/history sources | Documentation architecture |
-| P1 | M28 | Establish an evidence standard for "Complete"/"In Progress" labels and reconcile the roadmap's `v1.x`/Phase-N version scheme against the real `0.3.2` workspace version | none — see `governance/ROADMAP_RECONCILIATION_PLAN.md` | Release governance / documentation architecture |
+| Done | M28 | Establish an evidence standard for "Complete"/"In Progress" labels and reconcile the roadmap's `v1.x`/Phase-N version scheme against the real `0.3.2` workspace version | none — see `governance/ROADMAP_RECONCILIATION_PLAN.md` | Release governance / documentation architecture |
 | P2 | M29 | Fix `MASTER_ROADMAP.md`'s text-corruption bug (dropped characters, stray newlines, broken code fences) | none | Mechanical text fix |
-| P1 | M30 | Verify or relabel roadmap Phases 1–8 (`v0.4.0`–`v1.2.0`) against actual code/tests — Phase 5's "Complete" dynamic-plugin-loading claim is already known false (C2/M4/M12) | M28 | Rust systems review / evidence verification |
+| Done | M30 | Verify or relabel roadmap Phases 1–8 (`v0.4.0`–`v1.2.0`) against actual code/tests — Phase 5's "Complete" dynamic-plugin-loading claim is already known false (C2/M4/M12) | M28 | Rust systems review / evidence verification |
 | P2 | M31 | Verify or relabel roadmap Phases 9–37 (`v1.2.0`–`v1.6.0`) against actual code/tests | M28 | Rust systems review / evidence verification |
-| P1 | M32 | Verify or relabel roadmap Phase 38 (`v1.7.0`, "In Progress") — the currently-active work claims | M28 | Rust systems review / evidence verification |
+| Done | M32 | Verify or relabel roadmap Phase 38 (`v1.7.0`, "In Progress") — the currently-active work claims | M28 | Rust systems review / evidence verification |
 | P2 | M33 | Resolve `MASTER_ROADMAP.md`/`docs/roadmap.md`/`TODO.md` redundancy and fix dead cross-references (`COMPLETED_PHASES_ARCHIVE.md`, `ARCHITECTURE_AUDIT.md`) | M30, M31, M32 | Documentation architecture |
 | Done | M25 | Trace reachability of no-patch advisories before accepting, isolating, or replacing them | M3 dependency report | Supply-chain analysis |
 | P2 | M26 | Add property-oriented boundary tests for IPC and wire parsers selected by component profiles | M17 component inventory | Protocol correctness |

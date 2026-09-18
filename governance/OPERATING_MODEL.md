@@ -22,7 +22,7 @@ The lighter standard relaxes implementation constraints, not evidence, ownership
 | --- | --- | --- |
 | Root README, AGENTS, CONTRIBUTING, FOUNDATION_BOUNDARY | Entrypoints and binding boundary | Keep short; link to details |
 | `foundation/` | Rust maintenance core and CLI | Maintained, tested implementation |
-| `gui/` | User interface | Currently uncommitted in the D: checkout; reconcile before adoption |
+| `gui/` | User interface | Tracked presentation layer (`gui/`); build/type-checked via Dashboard CI, read-only integration |
 | `contracts/` | Versioned reports, schemas and fixtures | Shared interface authority |
 | `architecture/` | System boundaries and delivery designs | Target behavior clearly distinguished from implemented behavior |
 | `governance/` | Contributor process, portfolio, ownership and service procedures | One authoritative document for each decision |
@@ -34,7 +34,7 @@ The lighter standard relaxes implementation constraints, not evidence, ownership
 | `migrations/` | Preserved transferred material | Historical input; not active services |
 | `artifacts/`, `reports/` | Runtime state, generated reports, drafts and logs | Ignored scratch; bounded retention, no secrets in Git |
 
-Do not create empty scaffolding for every possible tool. Add a directory when a maintained concern needs it. Do not move the uncommitted D: registrar/GUI/scripts until their owner hands them over and all runtime paths are reconciled. Existing installed service paths stay stable during organization work.
+Do not create empty scaffolding for every possible tool. Add a directory when a maintained concern needs it. Tracked registrar (`agentic_registrar.rs`) and GUI source are hardened under C15 and C19; write/promotion actions remain gated on explicit owner sign-off. Existing installed service paths stay stable during organization work.
 
 ## One home for each planning fact
 

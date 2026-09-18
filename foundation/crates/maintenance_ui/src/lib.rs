@@ -1,5 +1,6 @@
 #![deny(unsafe_code)]
 
+pub mod http;
 pub mod packets;
 
 use anyhow::{Context, Result, bail};
@@ -24,6 +25,8 @@ pub struct WorkerConfig {
     pub reservation_directory: PathBuf,
     pub endpoint: String,
     pub max_pending: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_token_file: Option<PathBuf>,
 }
 
 pub fn read_text(path: &Path, limit: u64) -> Result<String> {
@@ -74,7 +77,7 @@ fn check_path(path: &Path) -> Result<()> {
 pub fn load_config(path: &Path) -> Result<WorkerConfig> {
     check_path(path)?;
     let config: WorkerConfig = toml::from_str(&read_text(path, 16384)?)?;
-    if config.schema_version != 1 || !(1..=16).contains(&config.max_pending) {
+    if config.schema_version != 1 || !(1..=64).contains(&config.max_pending) {
         bail!("Unsupported worker config");
     }
     for directory in [
@@ -92,6 +95,12 @@ pub fn load_config(path: &Path) -> Result<WorkerConfig> {
     check_path(&config.queue)?;
     if !config.queue.is_file() || !config.checkout.join(".git").exists() {
         bail!("Repository and coordination queue are required");
+    }
+    if let Some(ref token_file) = config.http_token_file {
+        check_path(token_file)?;
+        if !token_file.is_file() {
+            bail!("Missing HTTP token file: {}", token_file.display());
+        }
     }
     let outputs = [
         &config.results_directory,
@@ -120,6 +129,16 @@ pub fn load_config(path: &Path) -> Result<WorkerConfig> {
         bail!("Local endpoint must be plain loopback HTTP without credentials or paths");
     }
     Ok(config)
+}
+
+pub fn load_http_token(path: &Path) -> Result<String> {
+    check_path(path)?;
+    let content = read_text(path, 128)?;
+    let token = content.trim();
+    if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+        bail!("HTTP token must contain exactly 64 hexadecimal characters from 32 random bytes");
+    }
+    Ok(token.to_owned())
 }
 
 pub struct Lock(PathBuf);
@@ -547,6 +566,7 @@ mod tests {
             reservation_directory: root.join("reservation"),
             endpoint: "http://127.0.0.1:11434".into(),
             max_pending: 8,
+            http_token_file: None,
         };
         (temp, config)
     }
@@ -645,6 +665,30 @@ mod tests {
         assert!(load_config(&path).is_err());
         config.endpoint = "http://127.0.0.1:11434".into();
         config.results_directory = config.checkout.clone();
+        fs::write(&path, toml::to_string(&config).expect("config")).expect("write");
+        assert!(load_config(&path).is_err());
+    }
+    #[test]
+    fn test_token_file_validation_and_constant_time_loading() {
+        let (temp, mut config) = fixture();
+        let token_path = temp.path().join("token.txt");
+        let valid_token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        fs::write(&token_path, valid_token).expect("write token");
+        assert_eq!(
+            load_http_token(&token_path).expect("load token"),
+            valid_token
+        );
+
+        let invalid_token_path = temp.path().join("invalid_token.txt");
+        fs::write(&invalid_token_path, "short-token").expect("write invalid token");
+        assert!(load_http_token(&invalid_token_path).is_err());
+
+        config.http_token_file = Some(token_path);
+        let path = temp.path().join("config.toml");
+        fs::write(&path, toml::to_string(&config).expect("config")).expect("write");
+        assert!(load_config(&path).is_ok());
+
+        config.http_token_file = Some(temp.path().join("non_existent_token.txt"));
         fs::write(&path, toml::to_string(&config).expect("config")).expect("write");
         assert!(load_config(&path).is_err());
     }

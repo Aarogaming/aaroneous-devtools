@@ -4,17 +4,17 @@
 
 Devtools becomes a guided maintenance application backed by the existing Rust Foundation. It explains repository practices, runs deterministic checks, schedules bounded local work, and offers budgeted cloud escalation for difficult or urgent jobs. Aaroneous remains independently buildable and runnable. This document is the delivery map; the coordination queue records active ownership.
 
-## Brief repository review, 2026-09-16
+## Historical Brief Repository Review (2026-09-16 Baseline)
 
 - Aaroneous is the Rust component framework, version 0.3.2. Its canonical verification is `cargo xtask gate`. Existing dirty product files belong to concurrent contributors and were not changed by this review.
 - Foundation is already implemented, not a new replacement: `foundation/` contains a Rust workspace and explicit-input maintenance CLI, evidence contracts, inventory, intake, proposal review and local polling worker.
-- Two devtools checkouts exist. The Codex checkout is `C:/Users/aarog/.codex/worktrees/aaroneous-devtools`; `D:/aaroneous-devtools` also has uncommitted `gui/`, registrar, queue and scripts work. Preserve that work and reconcile it through ownership before integrating. The tracked branches do not contain that complete prototype.
-- `D:/aaroneous-devtools/gui/` uses React, TypeScript, Vite and Tailwind. Its App attempts to read local tasks, but initializes example Verified rows and success logs. Launching a feature changes it to Verified after timers without tests or a Git operation. Health and daemon banners are hardcoded. These are demonstration states, not operational evidence.
-- The uncommitted Rust registrar writes generated code directly into the supplied product checkout, runs commands, commits and rolls back a target. Its Git commit can include already staged files. The dispatch path needs isolation, ownership, containment, concurrency and gate review before unattended adoption. Do not enable it as the production worker merely because its dashboard runs.
+- Historical note (reconciled 2026-09-17): `gui/` (React/TypeScript dashboard) and `agentic_registrar.rs` in `foundation_cli` have since been committed and hardened under tracked repository source (C15, C19). Delivery of these bounded technical slices is distinct from owner acceptance (M34).
+- `gui/` uses React, TypeScript, Vite and Tailwind. Read-only dashboard visualization and type-check CI are verified (C15); write integration remains gated.
+- The Rust registrar (`agentic_registrar.rs`) has been hardened under C19 with explicit token authentication, Host/Origin checks, request/concurrency limits, and loopback isolation. Unattended auto-promotion/write commands remain strictly gated on owner authorization.
 - The existing bounded Rust local worker generates unverified scratch artifacts. Preserve that authority boundary while introducing the application.
 - The active Codex audit heartbeat was deleted at the user's request. The older rolling-worklist heartbeat remains paused. Native local review and worker schedules remain installed; this review did not reconfigure them.
 
-This was a source and working-tree review, not a new runtime certification of either prototype.
+This section records the historical 2026-09-16 baseline review for evidence context.
 
 ## Guided workflow
 

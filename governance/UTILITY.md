@@ -49,10 +49,28 @@ Status distinguishes real observations from stale/missing data. The existing wor
 
 Retention is bounded: at most 256 artifacts per worker directory, pending-result backpressure from its configuration, and a utility launch limit of 512 operation logs or 64 MiB of retained logs. A maintainer reviews/archives logs; no automatic recursive deletion occurs. Preserve result/attempt history, which suppresses duplicate inference. Model errors are retained and are not retried unchanged.
 
-Run Foundation formatting, tests and strict Clippy for changes. Verify the live packet flow and negative entry criteria before shipping; a successful compile alone is insufficient.
+## Security & Authentication
+
+The maintenance utility enforces same-origin token authentication on all HTTP endpoints:
+- **Token Protection**: Web requests must supply a matching `X-Devtools-Token` header. Header values are validated using constant-time byte comparisons (`constant_time_eq`) to eliminate side-channel timing leaks.
+- **Header & Origin Binding**: Requests must present an exact `Host` matching the server loopback address and a matching `Origin` header (no wildcard CORS permitted).
+- **Token-File Config**: `WorkerConfig` supports an optional `http_token_file` path. When present, `load_http_token` validates that the token file contains exactly 64 hexadecimal characters derived from 32 random bytes.
+- **Fail-Closed Admission**: Unsupported framing (`Transfer-Encoding`), non-standard HTTP methods, and `Expect: 100-continue` header stalls are rejected immediately with 400/417 error codes before reading body bytes.
 
 Browser-client regression tests need Node only for development, not deployment:
 
 ```text
 node --test foundation/crates/maintenance_ui/tests/client.test.mjs
 ```
+
+## Native Aaroneous Hypervisor MCP Integration
+
+Devtools can launch and manage Aaroneous's native `hypervisor mcp` server out-of-tree without adding Cargo path dependencies:
+
+```text
+foundation hypervisor-mcp --checkout d:\Aaroneous --host 127.0.0.1 --port 8766
+```
+
+- **Out-of-Tree Resolution**: `foundation` resolves `hypervisor.exe` from Cargo build caches via `find_prebuilt_binary` or builds it out-of-tree on target checkout if absent.
+- **MCP Capabilities Exposing**: Launches loopback MCP server (`127.0.0.1:8766`) exposing native `ast_auditor`, `adaptation_engine`, and `capabilities` tools to external agents and software.
+

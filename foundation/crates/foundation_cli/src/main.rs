@@ -1,9 +1,14 @@
 mod agentic_registrar;
+mod cloud_providers;
 mod component_inventory;
+mod consensus_engine;
+mod cross_verifier;
 mod dependency_review;
 mod dogfood;
+mod hypervisor_mcp;
 mod intake;
 mod intake_generator;
+mod job_converter;
 mod local_proposal;
 mod local_worker;
 mod multithreader;
@@ -37,6 +42,15 @@ enum Command {
         #[arg(long)]
         checkout: PathBuf,
     },
+    /// Launch the native Aaroneous Hypervisor MCP Server daemon process out-of-tree.
+    HypervisorMcp {
+        #[arg(long, default_value = "d:\\Aaroneous")]
+        checkout: PathBuf,
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        #[arg(long, default_value_t = 8766)]
+        port: u16,
+    },
     /// Closed-loop end-to-end autonomous development pipeline
     Pipeline {
         #[arg(long)]
@@ -53,6 +67,35 @@ enum Command {
     },
     /// Poll approved scratch jobs once; the operating system schedules subsequent ticks.
     LocalWorkerTick {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Run local worker continuous event monitor loop until stopped (Ctrl+C).
+    /// Immediately dispatches the next job/prep item as soon as the prior one completes.
+    LocalWorkerServe {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long, default_value_t = 3)]
+        poll_interval_secs: u64,
+    },
+    /// View local agent probation ledger status and quality pass rate.
+    LocalWorkerProbation {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Perform adversarial Red-Team cross-verification of an AI proposal.
+    CrossVerify {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        proposal: PathBuf,
+        #[arg(long, default_value = "anthropic-claude")]
+        auditor_provider: String,
+        #[arg(long, default_value = "claude-3-5-sonnet")]
+        auditor_model: String,
+    },
+    /// View multi-agent cross-verification consensus ledger and defect metrics.
+    ConsensusStatus {
         #[arg(long)]
         config: PathBuf,
     },
@@ -153,6 +196,28 @@ enum Command {
         evidence: PathBuf,
         #[arg(long)]
         output: PathBuf,
+    },
+    /// Convert a coordination queue or roadmap row into an approved worker job manifest TOML.
+    QueueToJob {
+        #[arg(long)]
+        queue: PathBuf,
+        #[arg(long)]
+        task_id: String,
+        #[arg(long, default_value = "analysis")]
+        mode: String,
+        #[arg(long = "evidence")]
+        evidence: Vec<String>,
+        #[arg(long)]
+        output_dir: PathBuf,
+    },
+    /// Automatically sync all Ready or In Progress queue rows into approved worker job manifests.
+    SyncWorkerJobs {
+        #[arg(long)]
+        queue: PathBuf,
+        #[arg(long, default_value = "analysis")]
+        mode: String,
+        #[arg(long)]
+        output_dir: PathBuf,
     },
 }
 
@@ -266,6 +331,11 @@ fn main() -> Result<()> {
         Command::DiscoverGit { checkout } => {
             agentic_registrar::git_discover_repository(&checkout).map(|_| ())
         }
+        Command::HypervisorMcp {
+            checkout,
+            host,
+            port,
+        } => hypervisor_mcp::launch(&checkout, &host, port),
         Command::Pipeline { config } => agentic_registrar::run_pipeline(&config),
         Command::RegisterScheduledTask {
             binary_path,
@@ -278,6 +348,18 @@ fn main() -> Result<()> {
                 .as_secs();
             local_worker::tick(&config, ((now / 60) % 60) as u32, now)
         }
+        Command::LocalWorkerServe {
+            config,
+            poll_interval_secs,
+        } => local_worker::serve(&config, poll_interval_secs),
+        Command::LocalWorkerProbation { config } => local_worker::print_probation_status(&config),
+        Command::CrossVerify {
+            config,
+            proposal,
+            auditor_provider,
+            auditor_model,
+        } => run_cross_verification(&config, &proposal, &auditor_provider, &auditor_model),
+        Command::ConsensusStatus { config } => run_consensus_status(&config),
         Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::MultithreaderServe {
             config,
@@ -317,6 +399,18 @@ fn main() -> Result<()> {
             evidence,
             output,
         } => intake_generator::run(&endpoint, &evidence, &output),
+        Command::QueueToJob {
+            queue,
+            task_id,
+            mode,
+            evidence,
+            output_dir,
+        } => job_converter::convert(&queue, &task_id, &mode, &evidence, &output_dir).map(|_| ()),
+        Command::SyncWorkerJobs {
+            queue,
+            mode,
+            output_dir,
+        } => job_converter::sync_worker_jobs(&queue, &mode, &output_dir).map(|_| ()),
     }
 }
 
@@ -415,6 +509,108 @@ pub(crate) fn require_absolute_directory(label: &str, path: &Path) -> Result<()>
         bail!("{label} must be a directory: {}", path.display());
     }
     Ok(())
+}
+
+fn run_cross_verification(
+    _config_path: &Path,
+    proposal_path: &Path,
+    auditor_provider: &str,
+    auditor_model: &str,
+) -> Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+
+    let content = fs::read_to_string(proposal_path)
+        .with_context(|| format!("failed to read proposal file: {}", proposal_path.display()))?;
+    let record: serde_json::Value = serde_json::from_str(&content)?;
+
+    let author_provider = record["artifact_kind"]
+        .as_str()
+        .unwrap_or("foundation.local-worker");
+    let author_model = "qwen3.5:9b-q6";
+    let task_id = record["job_id"].as_str().unwrap_or("UNKNOWN_TASK");
+    let input = record["input"].as_str().unwrap_or("");
+    let proposal_val = &record["proposal"];
+
+    if proposal_val.is_null() {
+        bail!("proposal file has no valid proposal object");
+    }
+
+    let draft: local_worker::Draft = serde_json::from_value(proposal_val.clone())?;
+
+    let provider: Box<dyn cloud_providers::AgentProvider> = match auditor_provider {
+        "anthropic-claude" | "claude" => Box::new(
+            cloud_providers::AnthropicClaudeProvider::from_env(auditor_model)?,
+        ),
+        "google-gemini" | "gemini" => Box::new(cloud_providers::GoogleGeminiProvider::from_env(
+            auditor_model,
+        )?),
+        "openai-codex" | "codex" => Box::new(cloud_providers::OpenAiCodexProvider::from_env(
+            auditor_model,
+        )?),
+        "local-ollama" | "ollama" => Box::new(cloud_providers::LocalOllamaProvider::new(
+            "http://localhost:11434".into(),
+            auditor_model.into(),
+        )),
+        other => bail!("unsupported auditor provider: {other}"),
+    };
+
+    println!("Executing Red-Team cross-audit via {auditor_provider} ({auditor_model})...");
+    let verdict = cross_verifier::cross_verify_proposal(
+        author_provider,
+        author_model,
+        &draft,
+        input,
+        provider.as_ref(),
+        now,
+    )?;
+
+    println!("=== CROSS-AUDIT VERDICT ===");
+    println!("Task:                {}", verdict.proposal_task);
+    println!(
+        "Author:              {} ({})",
+        verdict.author_provider, verdict.author_model
+    );
+    println!(
+        "Auditor:             {} ({})",
+        verdict.auditor_provider, verdict.auditor_model
+    );
+    println!("Decision:            {:?}", verdict.decision);
+    println!(
+        "Flaws Detected:      {}",
+        verdict.security_flaws_found.len()
+    );
+    for flaw in &verdict.security_flaws_found {
+        println!("  - Flaw: {flaw}");
+    }
+    println!("Recommended Action:  {}", verdict.recommended_action);
+
+    let results_dir = proposal_path
+        .parent()
+        .context("proposal file parent directory missing")?;
+    let consensus_rec = consensus_engine::evaluate_consensus(
+        task_id,
+        author_provider,
+        author_model,
+        &[verdict],
+        true,
+        1,
+        now,
+    );
+    consensus_engine::update_consensus_ledger(results_dir, &consensus_rec)?;
+    Ok(())
+}
+
+fn run_consensus_status(config_path: &Path) -> Result<()> {
+    let content = fs::read_to_string(config_path)?;
+    let val: serde_json::Value = toml::from_str(&content)?;
+    let results_dir = PathBuf::from(
+        val["results_directory"]
+            .as_str()
+            .context("missing results_directory")?,
+    );
+    consensus_engine::print_consensus_status(&results_dir)
 }
 
 #[cfg(test)]

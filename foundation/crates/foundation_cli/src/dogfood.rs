@@ -47,3 +47,40 @@ pub(crate) fn metadata(checkout: &Path, output: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+#[allow(dead_code)]
+pub(crate) fn find_prebuilt_binary(
+    binary_name: &str,
+    checkout: &Path,
+) -> Option<std::path::PathBuf> {
+    let cache_path =
+        std::path::PathBuf::from(r"C:\CargoTargetCache\release").join(format!("{binary_name}.exe"));
+    if cache_path.exists() {
+        return Some(cache_path);
+    }
+    let local_path = checkout
+        .join("target")
+        .join("release")
+        .join(format!("{binary_name}.exe"));
+    if local_path.exists() {
+        return Some(local_path);
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_prebuilt_binary_locates_local_binary() {
+        let temp = tempfile::tempdir().unwrap();
+        let target_dir = temp.path().join("target").join("release");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let bin_path = target_dir.join("dummy_tool.exe");
+        std::fs::write(&bin_path, b"dummy").unwrap();
+
+        let found = find_prebuilt_binary("dummy_tool", temp.path());
+        assert_eq!(found, Some(bin_path));
+    }
+}

@@ -1,0 +1,1 @@
+Write an integration test `crates/ipc_bus/tests/ring_buffer_property_fuzz.rs` performing 20,000 randomized SWMR ring buffer push/pop iterations asserting zero dynamic heap allocations and zero memory leaks.

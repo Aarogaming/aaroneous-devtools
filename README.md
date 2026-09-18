@@ -13,11 +13,11 @@ Aaroneous's private development companion: reusable Rust maintenance tools, a gu
 
 `foundation/` is a standalone Rust workspace. Its CLI validates inputs and stacks, inventories components, records dependency/dogfood evidence, reviews scheduling capacity and processes bounded local-model jobs. [Contracts](contracts/README.md) describe its versioned artifacts.
 
-The native [candidate reviewer](governance/MULTITHREADER_SERVICE.md) and [local worker](governance/LOCAL_WORKER_SERVICE.md) provide local support automation. Approved jobs are in `worker-jobs/`; generated drafts remain unverified until reviewed. No active Codex maintenance schedule remains. See [the schedule](governance/SCHEDULE.md) for installed cadence and limitations.
+The native [candidate reviewer](governance/MULTITHREADER_SERVICE.md) and [local worker](governance/LOCAL_WORKER_SERVICE.md) provide local support automation. Approved jobs are in `worker-jobs/`; generated drafts remain unverified until reviewed. Optional in-process persistence (`foundation multithreader-serve`, default off) and a daily 09:00 local maintainer review govern current execution. See [the schedule](governance/SCHEDULE.md) and [persistent operations](governance/PERSISTENT_OPERATIONS.md) for details.
 
 The [packet utility](governance/UTILITY.md) offers readiness, read-only research and gated job authoring. Plan and Build create or revise definitions; the [job pipeline](architecture/JOB_PIPELINE.md) independently executes published jobs. Devtools can use Aaroneous contracts without becoming a framework dependency.
 
-The React/TypeScript GUI and registrar prototype currently exist as unfinished, uncommitted work in a separate local checkout. Their simulated success states are not verification. [The application delivery map](architecture/MAINTENANCE_PROGRAM.md) records integration blockers and the path to a user-facing program.
+The React/TypeScript GUI (`gui/`) and registrar (`agentic_registrar.rs`) exist in tracked repository source. Read-only dashboard visualization and authenticated HTTP/MCP admission are verified, while full write/promotion integration remains gated on owner sign-off. [The application delivery map](architecture/MAINTENANCE_PROGRAM.md) records integration blockers and the path to a user-facing program.
 
 ## Work and architecture
 

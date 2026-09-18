@@ -1,9 +1,9 @@
 # Maintenance Schedule
 
-## Daily automated check
+## Daily maintainer cadence (09:00 local)
 
-Review Aaroneous CI and `governance/WORKLIST.md`. Update only when evidence changes: CI result,
-blocked item, completed item, or newly reproduced defect. Do not issue routine status noise.
+Review Aaroneous CI and `governance/WORKLIST.md` at 09:00 local maintainer cadence. Update only when evidence changes: CI result,
+blocked item, completed item, or newly reproduced defect. Do not issue routine status noise. This maintainer cadence is distinct from passive packet utility polling and default-off C21 in-process persistence (`foundation multithreader-serve`).
 
 ## Weekly manual review
 
@@ -22,13 +22,13 @@ At claim time, record priority, dependency, exact paths, and expected evidence. 
 verify the required gate and release paths. At weekly review, keep no more than three primary
 implementation claims open unless an additional scope has independent files and a named reviewer.
 
-## Native candidate review (installed 2026-09-16)
+## Native candidate review (installed 2026-09-16; updated 2026-09-17)
 
-Windows task `Aaroneous-Devtools-Multithreader` reviews the declared evidence hourly at :00 through the Rust foundation executable. Suggestions and failures go to an external devtools inbox for owner review. See [MULTITHREADER_SERVICE.md](MULTITHREADER_SERVICE.md) for inputs, limits, verification and operating commands. This service does not check CI or automatically promote/implement suggestions. The retired rolling-worklist heartbeat remains paused. The Codex audit and Rust reuse heartbeat was deleted at the user's request. No active Codex maintenance schedule remains.
+The historical Windows task `Aaroneous-Devtools-Multithreader` reviewed declared evidence hourly at :00 through the Rust foundation executable. On 2026-09-17, this OS task was deliberately removed because the repository was not ready for unattended all-day execution. It was replaced by `foundation multithreader-serve` (an in-process persistent review loop that defaults to off). Suggestions and failures go to an external devtools inbox for owner review. See [MULTITHREADER_SERVICE.md](MULTITHREADER_SERVICE.md) for inputs, limits, verification and operating commands. This service does not check CI or automatically promote/implement suggestions. The retired rolling-worklist heartbeat remains paused. The Codex audit and Rust reuse heartbeat was deleted at the user's request.
 
 ## Local support processing
 
-`Aaroneous-Devtools-LocalWorker` polls approved `worker-jobs/` every two minutes, dispatching only in minutes 06–20 and 41–50 and yielding to the shared review reservation. It generates scratch Rust drafts and bounded analysis, suppresses unchanged inputs and pauses at eight pending results. See [LOCAL_WORKER_SERVICE.md](LOCAL_WORKER_SERVICE.md). Windows supports the installed task while logged in; S4U logged-out registration was denied. Only native candidate review remains hourly at :00. Existing worker quiet windows remain unchanged, including the former :30 slot; scheduling consolidation belongs to the native maintenance program.
+`Aaroneous-Devtools-LocalWorker` polls approved `worker-jobs/` every two minutes, dispatching only in minutes 06–20 and 41–50 and yielding to the shared review reservation. It generates scratch Rust drafts and bounded analysis, suppresses unchanged inputs and pauses at eight pending results. See [LOCAL_WORKER_SERVICE.md](LOCAL_WORKER_SERVICE.md). Windows supports the installed task while logged in; S4U logged-out registration was denied. Existing worker quiet windows remain unchanged, including the former :30 slot; scheduling consolidation belongs to the native maintenance program.
 
 ## Cloud primary-lane routine (installed 2026-09-17)
 

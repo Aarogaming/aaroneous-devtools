@@ -1,0 +1,40 @@
+name: Utility Client CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'foundation/crates/maintenance_ui/src/client.mjs'
+      - 'foundation/crates/maintenance_ui/tests/client.test.mjs'
+      - '.github/workflows/utility-client-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'foundation/crates/maintenance_ui/src/client.mjs'
+      - 'foundation/crates/maintenance_ui/tests/client.test.mjs'
+      - '.github/workflows/utility-client-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: utility-client-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client-test:
+    name: Client Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run Node utility client tests
+        run: node --test foundation/crates/maintenance_ui/tests/client.test.mjs

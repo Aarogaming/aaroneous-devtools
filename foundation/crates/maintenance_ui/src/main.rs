@@ -15,7 +15,10 @@ use std::{
     process::{Child, Command, Stdio},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use tiny_http::{Header, Method, Request, Response, Server};
+use tiny_http::{Method, Request, Server};
+
+#[cfg(test)]
+use tiny_http::Header;
 
 #[derive(Parser)]
 #[command(
@@ -258,49 +261,16 @@ fn unique_token() -> Result<String> {
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 fn header<'a>(request: &'a Request, name: &'static str) -> Option<&'a str> {
-    request
-        .headers()
-        .iter()
-        .find(|h| h.field.equiv(name))
-        .map(|h| h.value.as_str())
+    maintenance_ui::http::get_header(request, name)
 }
 fn authorize(request: &Request, host: &str, origin: &str, token: &str) -> bool {
-    header(request, "Host") == Some(host)
-        && header(request, "X-Devtools-Token") == Some(token)
-        && header(request, "Origin").is_none_or(|value| value == origin)
+    maintenance_ui::http::authorize(request, host, origin, token)
 }
 fn body(request: &mut Request) -> Result<String> {
-    if header(request, "Content-Type") != Some("application/json")
-        || request.body_length().is_none_or(|size| size > 1024)
-    {
-        bail!("A small JSON packet selection is required");
-    }
-    let mut body = String::new();
-    request.as_reader().take(1025).read_to_string(&mut body)?;
-    if body.len() > 1024 {
-        bail!("Packet selection too large");
-    }
-    Ok(body)
+    maintenance_ui::http::read_bounded_json_body(request, 1024)
 }
 fn respond(request: Request, status: u16, content_type: &str, body: String) -> Result<()> {
-    let headers = [
-        ("Content-Type", content_type),
-        ("Cache-Control", "no-store"),
-        ("X-Content-Type-Options", "nosniff"),
-        ("Referrer-Policy", "no-referrer"),
-        (
-            "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
-        ),
-    ];
-    let mut response = Response::from_string(body).with_status_code(status);
-    for (name, value) in headers {
-        response.add_header(
-            Header::from_bytes(name, value).map_err(|_| anyhow::anyhow!("Invalid header"))?,
-        );
-    }
-    request.respond(response)?;
-    Ok(())
+    maintenance_ui::http::respond(request, status, content_type, body)
 }
 fn route(app: &mut App, request: &mut Request) -> Result<String> {
     match (request.method(), request.url()) {
@@ -469,6 +439,14 @@ fn main() -> Result<()> {
         let Some(mut request) = server.recv_timeout(Duration::from_millis(250))? else {
             continue;
         };
+        if maintenance_ui::http::has_expect_header(&request) {
+            maintenance_ui::http::reject_expect_header(request)?;
+            continue;
+        }
+        if maintenance_ui::http::has_unsupported_transfer_encoding(&request) {
+            maintenance_ui::http::reject_unsupported_framing(request)?;
+            continue;
+        }
         if header(&request, "Host") != Some(host.as_str()) {
             respond(
                 request,
@@ -538,6 +516,7 @@ mod tests {
                 reservation_directory: root.join("reservation"),
                 endpoint: "http://127.0.0.1:11434".into(),
                 max_pending: 8,
+                http_token_file: None,
             },
             config_path: root.join("worker.toml"),
             foundation: root.join("foundation"),
@@ -745,6 +724,7 @@ mod tests {
             reservation_directory: root.join("reservation"),
             endpoint: "http://127.0.0.1:11434".into(),
             max_pending: 8,
+            http_token_file: None,
         };
         let mut app = App {
             config,

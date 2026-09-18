@@ -332,6 +332,7 @@ mod tests {
             reservation_directory: root.join("reservation"),
             endpoint: "http://127.0.0.1:11434".into(),
             max_pending: 8,
+            http_token_file: None,
         };
         let runtime = root.join("runtime");
         (temp, config, runtime)

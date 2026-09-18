@@ -32,7 +32,7 @@ Records are `review-NNNNNN.json`; they retain the exact evidence bundle and queu
 
 ## Persistent mode: `multithreader-serve` (2026-09-17)
 
-`foundation multithreader-serve --config ABSOLUTE_FILE [--interval-minutes N]` (default 30) runs review cycles on an interval **inside the process** — no OS Task Scheduler entry, no installed service, nothing to separately enable or forget to disable. Starting the command is "on"; stopping it (Ctrl+C, or just not running it) is "off". Each cycle is the same `multithreader-review` logic, including its own `review.lock` acquisition and release, so a bad or interrupted cycle can't wedge the next one; a cycle that fails is logged to stderr and the loop continues rather than exiting, matching what a long-running service should do (a transient failure shouldn't require restarting it).
+`foundation multithreader-serve --config ABSOLUTE_FILE [--interval-minutes N]` (default 30) runs review cycles on an interval **inside the process** — no OS Task Scheduler entry, no installed service, nothing to separately enable or forget to disable. Starting the command is "on"; stopping it (Ctrl+C, or just not running it) is "off". Each cycle is the same `multithreader-review` logic, including its own `review.lock` acquisition and release. Stale locks (>3600s) are automatically recovered while retaining crash evidence in `crash_marker_retained.json`. Service cycles log failures and bound retries to 5 consecutive permanent failures before stopping.
 
 ```powershell
 & '<path>\foundation.exe' multithreader-serve --config '<path>\review.toml' --interval-minutes 30
