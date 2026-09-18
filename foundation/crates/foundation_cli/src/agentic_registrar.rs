@@ -867,11 +867,43 @@ pub fn git_discover_repository(checkout: &Path) -> Result<Vec<String>> {
         .filter(|s| !s.is_empty())
         .collect();
 
-    println!(
-        "Git Discovery: Found {} tracked files in {}",
-        files.len(),
-        checkout.display()
-    );
+    let branch_output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(checkout)
+        .output()
+        .ok();
+    let current_branch = branch_output
+        .as_ref()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".into());
+
+    let remote_output = Command::new("git")
+        .args(["remote", "-v"])
+        .current_dir(checkout)
+        .output()
+        .ok();
+    let remotes: Vec<String> = remote_output
+        .as_ref()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    println!("=== GIT FRONTIER DISCOVERY REPORT ===");
+    println!("Checkout:       {}", checkout.display());
+    println!("Current Branch: {current_branch}");
+    println!("Tracked Files:  {}", files.len());
+    println!("Remotes:        {}", remotes.len());
+    for r in remotes.iter().take(4) {
+        println!("  - {r}");
+    }
+    println!("=====================================");
     Ok(files)
 }
 

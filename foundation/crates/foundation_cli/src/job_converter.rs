@@ -132,6 +132,21 @@ pub(crate) fn recurring_catalog() -> &'static [CatalogItem] {
             ],
             instruction: "Research and investigate studio_hud FFI boundary panic containment, catch_unwind wrappers, and TickResult fault handling.",
         },
+        CatalogItem {
+            id: "AUDIT-11-GIT-DISCOVERY",
+            mode: "analysis",
+            evidence: &["Cargo.toml", "docs/ARCHITECTURE.md"],
+            instruction: "Perform Git discovery and architectural frontier audit: analyze workspace structure, discover open-source Rust patterns and candidate crates for dogfooding, and evaluate architectural influences without circular dependencies or ambient authority violations.",
+        },
+        CatalogItem {
+            id: "FRONTIER-01-REPO-OUTSOURCING",
+            mode: "analysis",
+            evidence: &[
+                "docs/ARCHITECTURE.md",
+                "governance/COORDINATION_QUEUE.md",
+            ],
+            instruction: "Audit open-source repository opportunities and external crate outsourcing: identify mature ecosystem components (e.g. tracing, bytemuck, lock-free queues, SMT provers) that Aaroneous devtools or crates can leverage to accelerate development while adhering to zero-heap and zero-ambient authority rules.",
+        },
     ]
 }
 
