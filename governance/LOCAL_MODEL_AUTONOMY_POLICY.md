@@ -57,7 +57,10 @@ enforces these without asking anyone:
   `reset-circuit-breaker --reason "..."`. A push/network failure after a
   successful local commit does not count — that's not evidence the model's
   output is bad, and the branch/commit is left in place for a manual retry
-  instead of being discarded.
+  instead of being discarded. A cloud agent can also trip it **remotely**
+  after the fact (a later-discovered revert, a real problem found in
+  review) via the tracked `circuit_breaker_override.toml` — see "What
+  still needs a human" below for how that channel works.
 - **Mod-reachability gate** (`ensure_new_file_is_reachable`): a new
   `src/`-rooted file Cargo would never actually compile (no `mod`
   declaration anywhere) is refused, not silently "verified" against nothing.
@@ -131,15 +134,22 @@ when the previous outcome tells you something about the next one.
   until the C10-C19 review backlog gets an actual independent verdict — see
   `LANE_CLOSEOUT_PLAN.md`. This policy governs how the pipeline behaves; it
   doesn't retroactively accept its own prior lanes.
-- **Revert-triggered circuit breaker trips.** The breaker today only tracks
-  local Tier-0 verification failures at promotion time — it has no channel
-  for "this merged PR got reverted three days later." A cloud agent
-  reviewing and finding a revert can't reach into the local machine's
-  breaker state file directly. The intended fix is a small **tracked** file
-  in this repo (not the untracked local artifacts directory) that a cloud
-  agent can trip by committing to it, which `promote` checks after pulling
-  this repo's own latest state — not yet built; track as a follow-up queue
-  item rather than working around it ad hoc.
+- ~~**Revert-triggered circuit breaker trips.**~~ **Closed (C27).** The
+  breaker still only tracks local Tier-0 verification failures at
+  promotion time automatically, but a cloud agent that finds a real
+  problem after the fact — a merged local-agent PR reverted, a pattern of
+  failures — can now stop the pipeline remotely: set `tripped = true` and
+  a `reason` in the tracked
+  [`circuit_breaker_override.toml`](circuit_breaker_override.toml) and
+  push. `promote` fast-forward-pulls this repo's `main` before every
+  promotion when the registrar config sets `devtools_repo_root`, and
+  fails **closed** — refuses to promote — if that pull itself fails,
+  rather than silently acting on stale state. Clearing a trip is the same
+  action in reverse (`tripped = false`, push); there's deliberately no CLI
+  command for it, it's a plain reviewable file. A human is still the one
+  who decides whether the underlying problem is actually fixed before
+  clearing it — this only closes the *reporting* gap, not the judgment
+  call.
 - **Raising the auto-merge bar** described above.
 - **Anything a cloud agent's own review explicitly flags as needing owner
   judgment** — that escalation path already exists in the PR-babysitting

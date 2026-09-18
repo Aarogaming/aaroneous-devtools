@@ -67,6 +67,15 @@ pub struct RegistrarConfig {
     /// record. Never inside the product checkout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub circuit_breaker_path: Option<PathBuf>,
+    /// Absolute path to this devtools repo's own working copy. When set,
+    /// `check_circuit_breaker` also fast-forward-pulls this repo's `main`
+    /// and checks `governance/circuit_breaker_override.toml` — the channel
+    /// a cloud agent uses to trip the breaker remotely after finding a
+    /// problem the local-only breaker state has no way to see (e.g. a
+    /// merged local-agent PR later reverted). Optional: omitted, this
+    /// check is skipped entirely and no network access is required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub devtools_repo_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -412,12 +421,64 @@ fn save_circuit_breaker(config: &RegistrarConfig, state: &CircuitBreakerState) -
     Ok(())
 }
 
-/// Refuses to proceed if the breaker is tripped. This only tracks local
-/// verification (compile/clippy) failures at promotion time today — a PR
-/// that merges clean here and is later reverted on GitHub is a real trip
-/// condition too, but requires a channel from the reviewing cloud agent
-/// back to this local state that doesn't exist yet (tracked as follow-up
-/// in `governance/LOCAL_MODEL_AUTONOMY_POLICY.md`).
+const CIRCUIT_BREAKER_OVERRIDE_RELATIVE: &str = "governance/circuit_breaker_override.toml";
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct CircuitBreakerOverride {
+    schema_version: u32,
+    tripped: bool,
+    #[serde(default)]
+    reason: String,
+}
+
+/// Best-effort fast-forward pull of the devtools repo's own `main`, so a
+/// remote trip is seen promptly. Failure here fails the whole check
+/// **closed** (bails, refusing promotion) rather than silently promoting
+/// against possibly-stale state: the entire point of this channel is that
+/// a cloud agent can stop promotion remotely by committing to a tracked
+/// file, and a network hiccup or dirty local checkout must never silently
+/// defeat that.
+fn check_remote_circuit_breaker_override(devtools_repo_root: &Path) -> Result<()> {
+    let status = Command::new("git")
+        .args(["pull", "--ff-only", "origin", "main"])
+        .current_dir(devtools_repo_root)
+        .status()
+        .context("failed to run git pull for the remote circuit-breaker override check")?;
+    if !status.success() {
+        bail!(
+            "could not fast-forward {} from origin/main to check the remote circuit-breaker \
+             override; refusing to promote rather than act on possibly-stale state",
+            devtools_repo_root.display()
+        );
+    }
+
+    let override_path = devtools_repo_root.join(CIRCUIT_BREAKER_OVERRIDE_RELATIVE);
+    if !override_path.exists() {
+        return Ok(());
+    }
+    let state: CircuitBreakerOverride = toml::from_str(&read_bounded(&override_path, 4096)?)
+        .context("invalid governance/circuit_breaker_override.toml")?;
+    if state.tripped {
+        bail!(
+            "remote circuit-breaker override is tripped ({}): {}",
+            CIRCUIT_BREAKER_OVERRIDE_RELATIVE,
+            if state.reason.trim().is_empty() {
+                "no reason given"
+            } else {
+                state.reason.trim()
+            }
+        );
+    }
+    Ok(())
+}
+
+/// Refuses to proceed if either breaker is tripped: the local one (tracks
+/// verification failures at promotion time) or, when `devtools_repo_root`
+/// is configured, the remote override in this repo's own tracked
+/// `governance/circuit_breaker_override.toml` — the channel a cloud agent
+/// uses to stop promotion after finding a problem the local-only state has
+/// no way to see, such as a merged local-agent PR reverted days later.
 fn check_circuit_breaker(config: &RegistrarConfig) -> Result<()> {
     let state = load_circuit_breaker(config)?;
     if state.tripped {
@@ -426,6 +487,9 @@ fn check_circuit_breaker(config: &RegistrarConfig) -> Result<()> {
              investigate before clearing it with `agentic-registrar reset-circuit-breaker`",
             state.consecutive_failures
         );
+    }
+    if let Some(devtools_repo_root) = &config.devtools_repo_root {
+        check_remote_circuit_breaker_override(devtools_repo_root)?;
     }
     Ok(())
 }
@@ -2436,6 +2500,7 @@ mod tests {
             max_pending: 4,
             http_token_file: None,
             circuit_breaker_path: None,
+            devtools_repo_root: None,
         };
         fs::create_dir_all(&config.results_directory).expect("results dir");
         fs::create_dir_all(&config.archive_directory).expect("archive dir");
@@ -2926,6 +2991,122 @@ mod tests {
         assert_eq!(breaker.consecutive_failures, 0);
 
         promote(&cfg_path, "AFTER-TRIP").expect("promotion must work again after reset");
+    }
+
+    /// A minimal real git repo standing in for the devtools repo's own
+    /// working copy, with a bare `origin` remote so `git pull --ff-only`
+    /// has something real to talk to.
+    fn devtools_fixture() -> (tempfile::TempDir, PathBuf) {
+        let d = tempfile::tempdir().expect("devtools fixture");
+        let repo = d.path().join("devtools-repo");
+        fs::create_dir_all(repo.join("governance")).expect("governance dir");
+        fs::write(repo.join("README.md"), "placeholder\n").expect("readme");
+        init_git_fixture(&repo, d.path());
+        (d, repo)
+    }
+
+    fn write_override(repo: &Path, tripped: bool, reason: &str) {
+        let content = format!("schema_version = 1\ntripped = {tripped}\nreason = {reason:?}\n");
+        fs::write(repo.join(CIRCUIT_BREAKER_OVERRIDE_RELATIVE), content).expect("write override");
+        let run = |args: &[&str]| {
+            let status = Command::new("git")
+                .args(args)
+                .current_dir(repo)
+                .status()
+                .unwrap_or_else(|e| panic!("failed to run git {args:?}: {e}"));
+            assert!(status.success(), "git {args:?} failed");
+        };
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "update override"]);
+        run(&["push", "-q", "origin", "main"]);
+    }
+
+    #[test]
+    fn remote_override_absent_is_not_tripped() {
+        let (_d, repo) = devtools_fixture();
+        check_remote_circuit_breaker_override(&repo).expect("no override file -> ok");
+    }
+
+    #[test]
+    fn remote_override_false_is_not_tripped() {
+        let (_d, repo) = devtools_fixture();
+        write_override(&repo, false, "");
+        check_remote_circuit_breaker_override(&repo).expect("explicitly untripped -> ok");
+    }
+
+    #[test]
+    fn remote_override_true_trips_with_reason() {
+        let (_d, repo) = devtools_fixture();
+        write_override(&repo, true, "reverted PR #7, investigate before resuming");
+        let err = check_remote_circuit_breaker_override(&repo).expect_err("must refuse");
+        assert!(
+            err.to_string().contains("reverted PR #7"),
+            "error should surface the recorded reason: {err}"
+        );
+    }
+
+    #[test]
+    fn remote_override_check_fails_closed_when_pull_is_impossible() {
+        let d = tempfile::tempdir().expect("dir");
+        let repo = d.path().join("no-origin-repo");
+        fs::create_dir_all(&repo).expect("dir");
+        let run = |args: &[&str]| {
+            Command::new("git")
+                .args(args)
+                .current_dir(&repo)
+                .status()
+                .unwrap_or_else(|e| panic!("failed to run git {args:?}: {e}"))
+        };
+        run(&["init", "-q", "-b", "main"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        fs::write(repo.join("f.txt"), "x").expect("file");
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "initial"]);
+        // Deliberately no `origin` remote configured.
+
+        let err = check_remote_circuit_breaker_override(&repo)
+            .expect_err("an impossible pull must fail closed, not silently pass");
+        assert!(
+            err.to_string().contains("refusing to promote"),
+            "must fail closed with a clear reason: {err}"
+        );
+    }
+
+    #[test]
+    fn promote_refuses_when_remote_circuit_breaker_override_is_tripped() {
+        let (_d, mut config, cfg_path) = fixture();
+        let (_devtools_d, devtools_repo) = devtools_fixture();
+        write_override(&devtools_repo, true, "owner paused the pipeline");
+        config.devtools_repo_root = Some(devtools_repo);
+        fs::write(&cfg_path, toml::to_string(&config).expect("config")).expect("rewrite config");
+
+        register_task(
+            &cfg_path,
+            "GOOD",
+            "demo",
+            "task",
+            "crates/demo/tests/good_test.rs",
+            "add trivial code",
+        )
+        .expect("register");
+        persist(
+            &config.results_directory,
+            &record_for(
+                "GOOD",
+                "demo",
+                "crates/demo/tests/good_test.rs",
+                "pub fn f() {}\n",
+            ),
+        )
+        .expect("persist");
+
+        let err = promote(&cfg_path, "GOOD")
+            .expect_err("remote override must block promotion even for clean code");
+        assert!(
+            err.to_string().contains("remote circuit-breaker override"),
+            "{err}"
+        );
     }
 
     #[test]
