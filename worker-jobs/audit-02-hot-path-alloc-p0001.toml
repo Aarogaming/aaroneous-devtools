@@ -1,0 +1,5 @@
+schema_version = 1
+id = "AUDIT-02-HOT-PATH-ALLOC-P0001"
+mode = "analysis"
+evidence = ["core/hypervisor/src/lib.rs"]
+instruction = "Audit hypervisor core module for forbidden dynamic heap allocations (String, Vec, Box, HashMap), unwraps/panics, and missing zero-copy/#[repr(C)] memory alignment invariants."

@@ -66,6 +66,33 @@ enum Command {
         #[arg(long)]
         api_key: Option<String>,
     },
+    /// Evaluate a candidate crate or repository against the Filtration Standard and Quadratic Review Criteria
+    EvaluateFrontier {
+        #[arg(long)]
+        target_crate: String,
+        #[arg(long, default_value = "0.1.0")]
+        version: String,
+        #[arg(long)]
+        repository_url: Option<String>,
+        #[arg(long)]
+        license: Option<String>,
+        #[arg(long)]
+        description: String,
+        #[arg(long)]
+        active_need: String,
+        #[arg(long)]
+        q1_needle: Option<f64>,
+        #[arg(long)]
+        q2_feasibility: Option<f64>,
+        #[arg(long)]
+        q3_tests: Option<f64>,
+        #[arg(long)]
+        q4_leverage: Option<f64>,
+        #[arg(long)]
+        rationale: Option<String>,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Launch the native Aaroneous Hypervisor MCP Server daemon process out-of-tree.
     HypervisorMcp {
         #[arg(long, default_value = "d:\\Aaroneous")]
@@ -402,6 +429,83 @@ fn main() -> Result<()> {
             println!("=== SCRAPED MARKDOWN ({} bytes) ===", markdown.len());
             println!("{}", markdown.chars().take(500).collect::<String>());
             println!("... [truncated]");
+            Ok(())
+        }
+        Command::EvaluateFrontier {
+            target_crate,
+            version,
+            repository_url,
+            license,
+            description,
+            active_need,
+            q1_needle,
+            q2_feasibility,
+            q3_tests,
+            q4_leverage,
+            rationale,
+            output,
+        } => {
+            println!("Evaluating candidate '{target_crate}' against Filtration Standard...");
+            let gates = frontier_discovery::validate_standard_filtration_gates(
+                license.as_deref(),
+                &description,
+            );
+
+            let raw_scores = match (q1_needle, q2_feasibility, q3_tests, q4_leverage) {
+                (Some(q1), Some(q2), Some(q3), Some(q4)) => Some((q1, q2, q3, q4)),
+                _ => None,
+            };
+
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs();
+
+            let rat = rationale.unwrap_or_else(|| {
+                format!("Evaluated against active workspace need: '{active_need}'")
+            });
+
+            let report = frontier_discovery::compute_quadratic_review(frontier_discovery::ReviewInput {
+                target_crate: &target_crate,
+                version: &version,
+                repository_url,
+                active_need: &active_need,
+                now,
+                gates,
+                raw_scores,
+                rationale: &rat,
+            });
+
+            println!("=== FRONTIER EVALUATION REPORT ===");
+            println!("Target Crate:    {} (v{})", report.target_crate, report.version);
+            println!("Active Need:     {}", report.active_need);
+            println!("Filtration:      {}", if report.filtration_passed { "PASSED" } else { "FAILED" });
+            for g in &report.gates {
+                let status_str = if g.passed { "PASS" } else { "FAIL" };
+                println!("  [{status_str}] {}: {}", g.gate_id, g.name);
+                if let Some(ref r) = g.violation_reason {
+                    println!("         Violation: {r}");
+                }
+            }
+            if let Some(ref s) = report.scores {
+                println!("---------------------------------");
+                println!("Q1 (Needle 30%):        {:.1} / 10.0", s.q1_algorithmic_needle);
+                println!("Q2 (Feasibility 30%):   {:.1} / 10.0", s.q2_refactoring_feasibility);
+                println!("Q3 (Tests 20%):         {:.1} / 10.0", s.q3_test_portability);
+                println!("Q4 (Leverage 20%):      {:.1} / 10.0", s.q4_milestone_leverage);
+                println!("Linear Weighted Score:  {:.2}", s.linear_weighted_score);
+                println!("Quadratic Penalty:      -{:.2}", s.quadratic_defect_penalty);
+                println!("Composite Score:        {:.2} / 100.0", s.composite_score);
+            }
+            println!("Recommendation:  {}", report.recommendation);
+            println!("Rationale:       {}", report.rationale);
+            println!("=================================");
+
+            if let Some(out_path) = output {
+                let json_text = serde_json::to_string_pretty(&report)?;
+                std::fs::write(&out_path, json_text)?;
+                println!("Report written to: {}", out_path.display());
+            }
+
             Ok(())
         }
         Command::HypervisorMcp {

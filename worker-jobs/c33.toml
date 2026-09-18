@@ -1,0 +1,8 @@
+schema_version = 1
+id = "C33"
+mode = "analysis"
+evidence = [
+    "foundation/crates/maintenance_ui/src/lib.rs",
+    "governance/UTILITY.md",
+]
+instruction = "| C33 | M36 same-origin authenticated registrar/dashboard integration: `foundation/crates/maintenance_ui/src/lib.rs`, `governance/UTILITY.md` | Ready | Unassigned | main (devtools) | | Source: LANE_CLOSEOUT_PLAN.md portfolio brief M36. |"

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Frontier Evaluation Report v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_kind",
+    "target_crate",
+    "evaluated_at_secs",
+    "active_need",
+    "filtration_passed",
+    "gates",
+    "scores",
+    "composite_score",
+    "recommendation",
+    "rationale"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "artifact_kind": { "const": "foundation.frontier-evaluation" },
+    "target_crate": { "type": "string", "minLength": 1 },
+    "version": { "type": "string" },
+    "repository_url": { "type": ["string", "null"] },
+    "evaluated_at_secs": { "type": "integer" },
+    "active_need": { "type": "string", "minLength": 1 },
+    "filtration_passed": { "type": "boolean" },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gate_id", "name", "passed"],
+        "properties": {
+          "gate_id": { "type": "string" },
+          "name": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "violation_reason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "scores": {
+      "type": ["object", "null"],
+      "properties": {
+        "q1_algorithmic_needle": { "type": "number", "minimum": 0.0, "maximum": 10.0 },
+        "q2_refactoring_feasibility": { "type": "number", "minimum": 0.0, "maximum": 10.0 },
+        "q3_test_portability": { "type": "number", "minimum": 0.0, "maximum": 10.0 },
+        "q4_milestone_leverage": { "type": "number", "minimum": 0.0, "maximum": 10.0 },
+        "linear_weighted_score": { "type": "number", "minimum": 0.0, "maximum": 100.0 },
+        "quadratic_defect_penalty": { "type": "number", "minimum": 0.0 },
+        "composite_score": { "type": "number", "minimum": 0.0, "maximum": 100.0 }
+      }
+    },
+    "composite_score": { "type": "number", "minimum": 0.0, "maximum": 100.0 },
+    "recommendation": {
+      "type": "string",
+      "enum": [
+        "DIRECT_ADOPT_WITH_WRAPPER",
+        "CRATIFY_KERNEL_EXTRACTION",
+        "BORROW_SPEC_AND_SYNTHESIZE",
+        "REFACTOR_COST_PROHIBITIVE",
+        "REJECTED_AT_FILTRATION"
+      ]
+    },
+    "rationale": { "type": "string", "minLength": 1 }
+  }
+}

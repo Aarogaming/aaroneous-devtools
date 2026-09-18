@@ -1,0 +1,9 @@
+evidence = ["docs/ARCHITECTURE.md"]
+id = "FRONTIER-RING_BUFFER"
+instruction = """
+Audit external open-source crate 'ring_buffer' (v2.0.2) for potential dogfooding or architectural influence in Aaroneous.
+Description: RingBuffer is a queue with added random access.
+Repository: https://git.h3n.eu/Kulasko/ring_buffer
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+schema_version = 1

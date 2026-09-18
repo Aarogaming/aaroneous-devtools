@@ -172,6 +172,233 @@ pub fn create_frontier_job(
     Ok(destination)
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FiltrationGateRecord {
+    pub gate_id: String,
+    pub name: String,
+    pub passed: bool,
+    pub violation_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct QuadraticReviewScores {
+    pub q1_algorithmic_needle: f64,
+    pub q2_refactoring_feasibility: f64,
+    pub q3_test_portability: f64,
+    pub q4_milestone_leverage: f64,
+    pub linear_weighted_score: f64,
+    pub quadratic_defect_penalty: f64,
+    pub composite_score: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum Recommendation {
+    DirectAdoptWithWrapper,
+    CratifyKernelExtraction,
+    BorrowSpecAndSynthesize,
+    RefactorCostProhibitive,
+    RejectedAtFiltration,
+}
+
+impl Recommendation {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Recommendation::DirectAdoptWithWrapper => "DIRECT_ADOPT_WITH_WRAPPER",
+            Recommendation::CratifyKernelExtraction => "CRATIFY_KERNEL_EXTRACTION",
+            Recommendation::BorrowSpecAndSynthesize => "BORROW_SPEC_AND_SYNTHESIZE",
+            Recommendation::RefactorCostProhibitive => "REFACTOR_COST_PROHIBITIVE",
+            Recommendation::RejectedAtFiltration => "REJECTED_AT_FILTRATION",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FrontierEvaluationReport {
+    pub schema_version: u32,
+    pub artifact_kind: String,
+    pub target_crate: String,
+    pub version: String,
+    pub repository_url: Option<String>,
+    pub evaluated_at_secs: u64,
+    pub active_need: String,
+    pub filtration_passed: bool,
+    pub gates: Vec<FiltrationGateRecord>,
+    pub scores: Option<QuadraticReviewScores>,
+    pub composite_score: f64,
+    pub recommendation: String,
+    pub rationale: String,
+}
+
+pub fn validate_standard_filtration_gates(
+    license: Option<&str>,
+    description: &str,
+) -> Vec<FiltrationGateRecord> {
+    let mut gates = Vec::new();
+
+    // G1: License Sovereignty
+    let license_valid = license.is_some_and(|l| {
+        let upper = l.to_uppercase();
+        upper.contains("MIT")
+            || upper.contains("APACHE")
+            || upper.contains("BSD")
+            || upper.contains("UNLICENSE")
+            || upper.contains("ISC")
+    });
+    gates.push(FiltrationGateRecord {
+        gate_id: "G1".into(),
+        name: "LicenseSovereignty".into(),
+        passed: license_valid,
+        violation_reason: if license_valid {
+            None
+        } else {
+            Some(format!(
+                "License '{}' is non-permissive, copyleft, or missing",
+                license.unwrap_or("UNKNOWN")
+            ))
+        },
+    });
+
+    let desc_lower = description.to_lowercase();
+
+    // G2: Kernel Extractability
+    let monolithic = desc_lower.contains("monolithic") || desc_lower.contains("full-stack framework") || desc_lower.contains("desktop app");
+    gates.push(FiltrationGateRecord {
+        gate_id: "G2".into(),
+        name: "KernelExtractability".into(),
+        passed: !monolithic,
+        violation_reason: if monolithic {
+            Some("Candidate is a monolithic framework or application with inseparable business logic".into())
+        } else {
+            None
+        },
+    });
+
+    // G3: Deterministic Tractability
+    let non_deterministic = desc_lower.contains("unmanaged driver") || desc_lower.contains("hardware non-deterministic");
+    gates.push(FiltrationGateRecord {
+        gate_id: "G3".into(),
+        name: "DeterministicTractability".into(),
+        passed: !non_deterministic,
+        violation_reason: if non_deterministic {
+            Some("Candidate relies on non-deterministic hardware interactions or unmanaged drivers".into())
+        } else {
+            None
+        },
+    });
+
+    // G4: Ecosystem Independence
+    let foreign_toolchain = desc_lower.contains("requires cmake") || desc_lower.contains("requires msvc toolchain");
+    gates.push(FiltrationGateRecord {
+        gate_id: "G4".into(),
+        name: "EcosystemIndependence".into(),
+        passed: !foreign_toolchain,
+        violation_reason: if foreign_toolchain {
+            Some("Candidate requires foreign C/C++ build system or toolchain dependencies".into())
+        } else {
+            None
+        },
+    });
+
+    // G5: Refactoring Surface Limit
+    let surface_excessive = desc_lower.contains("multi-million loc") || desc_lower.contains("mammoth codebase");
+    gates.push(FiltrationGateRecord {
+        gate_id: "G5".into(),
+        name: "RefactoringSurfaceLimit".into(),
+        passed: !surface_excessive,
+        violation_reason: if surface_excessive {
+            Some("Candidate extraction surface exceeds tractability thresholds (>5000 LOC)".into())
+        } else {
+            None
+        },
+    });
+
+    gates
+}
+
+#[derive(Debug, Clone)]
+pub struct ReviewInput<'a> {
+    pub target_crate: &'a str,
+    pub version: &'a str,
+    pub repository_url: Option<String>,
+    pub active_need: &'a str,
+    pub now: u64,
+    pub gates: Vec<FiltrationGateRecord>,
+    pub raw_scores: Option<(f64, f64, f64, f64)>,
+    pub rationale: &'a str,
+}
+
+pub fn compute_quadratic_review(input: ReviewInput<'_>) -> FrontierEvaluationReport {
+    let filtration_passed = input.gates.iter().all(|g| g.passed);
+    if !filtration_passed {
+        return FrontierEvaluationReport {
+            schema_version: 1,
+            artifact_kind: "foundation.frontier-evaluation".into(),
+            target_crate: input.target_crate.to_string(),
+            version: input.version.to_string(),
+            repository_url: input.repository_url,
+            evaluated_at_secs: input.now,
+            active_need: input.active_need.to_string(),
+            filtration_passed: false,
+            gates: input.gates,
+            scores: None,
+            composite_score: 0.0,
+            recommendation: Recommendation::RejectedAtFiltration.as_str().to_string(),
+            rationale: input.rationale.to_string(),
+        };
+    }
+
+    let (q1, q2, q3, q4) = input.raw_scores.unwrap_or((5.0, 5.0, 5.0, 5.0));
+    let q1 = q1.clamp(0.0, 10.0);
+    let q2 = q2.clamp(0.0, 10.0);
+    let q3 = q3.clamp(0.0, 10.0);
+    let q4 = q4.clamp(0.0, 10.0);
+
+    // Weights per Tier 2 Standard: Q1 Needle = 0.30, Q2 Feasibility = 0.30, Q3 Tests = 0.20, Q4 Leverage = 0.20
+    let linear_weighted_score = (0.30 * q1 + 0.30 * q2 + 0.20 * q3 + 0.20 * q4) * 10.0;
+    let penalty_lambda = 0.05;
+    let defect_sum = (10.0 - q1).powi(2)
+        + (10.0 - q2).powi(2)
+        + (10.0 - q3).powi(2)
+        + (10.0 - q4).powi(2);
+    let quadratic_defect_penalty = penalty_lambda * defect_sum;
+
+    let composite_score = (linear_weighted_score - quadratic_defect_penalty).clamp(0.0, 100.0);
+
+    let recommendation = if composite_score >= 80.0 {
+        Recommendation::DirectAdoptWithWrapper
+    } else if composite_score >= 60.0 {
+        Recommendation::CratifyKernelExtraction
+    } else if composite_score >= 40.0 {
+        Recommendation::BorrowSpecAndSynthesize
+    } else {
+        Recommendation::RefactorCostProhibitive
+    };
+
+    FrontierEvaluationReport {
+        schema_version: 1,
+        artifact_kind: "foundation.frontier-evaluation".into(),
+        target_crate: input.target_crate.to_string(),
+        version: input.version.to_string(),
+        repository_url: input.repository_url,
+        evaluated_at_secs: input.now,
+        active_need: input.active_need.to_string(),
+        filtration_passed: true,
+        gates: input.gates,
+        scores: Some(QuadraticReviewScores {
+            q1_algorithmic_needle: q1,
+            q2_refactoring_feasibility: q2,
+            q3_test_portability: q3,
+            q4_milestone_leverage: q4,
+            linear_weighted_score: (linear_weighted_score * 100.0).round() / 100.0,
+            quadratic_defect_penalty: (quadratic_defect_penalty * 100.0).round() / 100.0,
+            composite_score: (composite_score * 100.0).round() / 100.0,
+        }),
+        composite_score: (composite_score * 100.0).round() / 100.0,
+        recommendation: recommendation.as_str().to_string(),
+        rationale: input.rationale.to_string(),
+    }
+}
+
 fn urlencoding(input: &str) -> String {
     let mut out = String::new();
     for b in input.bytes() {
@@ -222,5 +449,89 @@ mod tests {
     fn test_urlencoding() {
         assert_eq!(urlencoding("hello world"), "hello+world");
         assert_eq!(urlencoding("ring-buffer"), "ring-buffer");
+    }
+
+    #[test]
+    fn test_filtration_rejects_copyleft_license() {
+        let gates = validate_standard_filtration_gates(Some("GPL-3.0"), "A useful library");
+        assert!(!gates.iter().all(|g| g.passed));
+        let g1 = gates.iter().find(|g| g.gate_id == "G1").unwrap();
+        assert!(!g1.passed);
+        assert!(g1.violation_reason.as_ref().unwrap().contains("copyleft"));
+    }
+
+    #[test]
+    fn test_filtration_passes_permissive_license() {
+        let gates = validate_standard_filtration_gates(Some("MIT OR Apache-2.0"), "Lock-free queue without global state");
+        assert!(gates.iter().all(|g| g.passed));
+    }
+
+    #[test]
+    fn test_quadratic_scoring_penalizes_lopsided_candidates() {
+        // High leverage (10) but terrible footprint (1.0) and reliability (3.0)
+        let gates = validate_standard_filtration_gates(Some("MIT"), "Lock-free structures");
+        let lopsided = compute_quadratic_review(ReviewInput {
+            target_crate: "lopsided-crate",
+            version: "1.0.0",
+            repository_url: None,
+            active_need: "lock-free queue",
+            now: 1000,
+            gates: gates.clone(),
+            raw_scores: Some((6.0, 3.0, 1.0, 10.0)),
+            rationale: "Lopsided candidate with dangerous footprint",
+        });
+
+        // Balanced candidate with 6.5 across the board
+        let balanced = compute_quadratic_review(ReviewInput {
+            target_crate: "balanced-crate",
+            version: "1.0.0",
+            repository_url: None,
+            active_need: "lock-free queue",
+            now: 1000,
+            gates,
+            raw_scores: Some((6.5, 6.5, 6.5, 6.5)),
+            rationale: "Balanced solid candidate",
+        });
+
+        // Quadratic defect penalty must be significantly higher on the lopsided candidate
+        assert!(lopsided.scores.unwrap().quadratic_defect_penalty > balanced.scores.unwrap().quadratic_defect_penalty);
+    }
+
+    #[test]
+    fn test_quadratic_scoring_rewards_balanced_high_synergy_crates() {
+        let gates = validate_standard_filtration_gates(Some("Apache-2.0"), "Zero-copy SWMR buffer");
+        let top_tier = compute_quadratic_review(ReviewInput {
+            target_crate: "top-tier-crate",
+            version: "2.0.0",
+            repository_url: Some("https://github.com/example/top-tier".into()),
+            active_need: "SWMR ring buffer",
+            now: 1000,
+            gates,
+            raw_scores: Some((9.0, 9.5, 9.0, 8.5)),
+            rationale: "Exemplary architecture matching all Aaroneous invariants",
+        });
+
+        assert_eq!(top_tier.recommendation, "DIRECT_ADOPT_WITH_WRAPPER");
+        assert!(top_tier.composite_score >= 80.0);
+    }
+
+    #[test]
+    fn test_evaluation_report_schema_round_trip() {
+        let gates = validate_standard_filtration_gates(Some("MIT"), "Zero-alloc parser");
+        let report = compute_quadratic_review(ReviewInput {
+            target_crate: "parser-crate",
+            version: "0.5.0",
+            repository_url: None,
+            active_need: "wire parser",
+            now: 1789700000,
+            gates,
+            raw_scores: Some((7.0, 6.5, 7.5, 7.0)),
+            rationale: "Clean parser candidate",
+        });
+
+        let serialized = serde_json::to_string_pretty(&report).unwrap();
+        let deserialized: FrontierEvaluationReport = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.target_crate, "parser-crate");
+        assert_eq!(deserialized.recommendation, "CRATIFY_KERNEL_EXTRACTION");
     }
 }

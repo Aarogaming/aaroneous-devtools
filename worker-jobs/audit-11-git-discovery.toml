@@ -1,0 +1,8 @@
+schema_version = 1
+id = "AUDIT-11-GIT-DISCOVERY"
+mode = "analysis"
+evidence = [
+    "Cargo.toml",
+    "docs/ARCHITECTURE.md",
+]
+instruction = "Perform Git discovery and architectural frontier audit: analyze workspace structure, discover open-source Rust patterns and candidate crates for dogfooding, and evaluate architectural influences without circular dependencies or ambient authority violations."

@@ -1,0 +1,5 @@
+schema_version = 1
+id = "AUDIT-10-ORCHESTRATOR-BOUNDS-P0001"
+mode = "analysis"
+evidence = ["crates/orchestrator/src/lib.rs"]
+instruction = "Audit orchestrator crate for ambient authority violations, task routing bounds, and supervisor budget enforcement."

@@ -1,0 +1,9 @@
+evidence = ["docs/ARCHITECTURE.md"]
+id = "FRONTIER-INDEXED_RING_BUFFER"
+instruction = """
+Audit external open-source crate 'indexed-ring-buffer' (v0.1.3) for potential dogfooding or architectural influence in Aaroneous.
+Description: An indexed multiple readable spsc ring buffer.
+Repository: https://github.com/fxborg/indexed-ring-buffer.git
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+schema_version = 1

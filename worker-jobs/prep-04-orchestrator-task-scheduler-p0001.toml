@@ -1,0 +1,5 @@
+schema_version = 1
+id = "PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0001"
+mode = "analysis"
+evidence = ["crates/orchestrator/src/lib.rs"]
+instruction = "Research and investigate task scheduler core affinity, execution budgets, and supervisor tick boundaries."
