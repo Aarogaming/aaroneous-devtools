@@ -53,17 +53,18 @@ pub(crate) fn find_prebuilt_binary(
     binary_name: &str,
     checkout: &Path,
 ) -> Option<std::path::PathBuf> {
-    let cache_path =
-        std::path::PathBuf::from(r"C:\CargoTargetCache\release").join(format!("{binary_name}.exe"));
-    if cache_path.exists() {
-        return Some(cache_path);
-    }
-    let local_path = checkout
-        .join("target")
-        .join("release")
-        .join(format!("{binary_name}.exe"));
-    if local_path.exists() {
-        return Some(local_path);
+    let candidate_dirs = [
+        std::path::PathBuf::from(r"C:\CargoTargetCache\release"),
+        std::path::PathBuf::from(r"C:\CargoTargetCache\debug"),
+        checkout.join("target").join("release"),
+        checkout.join("target").join("debug"),
+    ];
+    let exe_name = format!("{binary_name}.exe");
+    for dir in candidate_dirs {
+        let p = dir.join(&exe_name);
+        if p.exists() {
+            return Some(p);
+        }
     }
     None
 }
