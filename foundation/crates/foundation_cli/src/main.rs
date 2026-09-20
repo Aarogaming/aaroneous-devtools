@@ -1,5 +1,6 @@
 mod agentic_registrar;
 mod batch_overlap;
+mod capability_composition;
 mod cloud_providers;
 mod component_inventory;
 mod consensus_engine;
@@ -75,6 +76,17 @@ enum Command {
         limit: usize,
         #[arg(long, default_value_t = 30)]
         interval_minutes: u32,
+    },
+    /// Generate bounded cross-category capability composition candidate pairs from an
+    /// Aaroneous capability registry JSON export and emit worker-jobs analysis packets
+    /// asking a reviewer to score each pair against BUILD_WORTHINESS_STANDARD.md
+    CapabilityCompose {
+        #[arg(long)]
+        capabilities: PathBuf,
+        #[arg(long)]
+        output_dir: PathBuf,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
     },
     /// Scrape and convert an external architecture document or whitepaper using Firecrawl
     FirecrawlScrape {
@@ -533,6 +545,22 @@ fn main() -> Result<()> {
                     "      -> Created frontier audit job: {}",
                     job_path.display()
                 );
+            }
+            Ok(())
+        }
+        Command::CapabilityCompose {
+            capabilities,
+            output_dir,
+            limit,
+        } => {
+            println!(
+                "Generating bounded cross-category capability composition pairs from {} (limit: {limit})...",
+                capabilities.display()
+            );
+            let written = capability_composition::run(&capabilities, &output_dir, limit)?;
+            println!("Emitted {} composition analysis packet(s):", written.len());
+            for path in &written {
+                println!("  -> {}", path.display());
             }
             Ok(())
         }
