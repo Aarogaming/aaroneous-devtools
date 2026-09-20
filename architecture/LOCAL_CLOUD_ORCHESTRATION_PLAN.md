@@ -230,33 +230,43 @@ candidates at once.
   harness itself needs committed source and a passing `cargo xtask gate` run before
   its own status can read `Complete`.
 
-### M45 — Unify draft output through Aaroneous's own cratification pipeline
+### M45 — Unify draft output through Aaroneous's own cratification pipeline (corrected scope, 2026-09-20)
 
-Aaroneous already has a working "code in, compliant Aaroneous component out"
-pipeline: `crates/cratify` re-exports `adaptation_engine::{harvest, harvest_path}`
-(ingest external/candidate source), `adaptation_engine::AutoWrapperEngine` /
-`NativeComponentRunner` (adapt into a runnable component), `transpiler::scaffold_crate`
-(produce a compliant crate scaffold), and `ast_auditor::run_workspace_audit`
-(compliance audit). This is the same machinery `contracts/FRONTIER_FILTRATION_STANDARD_V1.md`
-already targets for external-crate ingestion outcomes (`DIRECT_ADOPT_WITH_WRAPPER`,
-`CRATIFY_KERNEL_EXTRACTION`, `BORROW_SPEC_AND_SYNTHESIZE`).
+**Corrected after reading the actual source**: `crates/cratify` is not just a set
+of library re-exports needing new wiring — it already has a complete, working
+standalone CLI (`crates/cratify/src/main.rs`, 142 lines): `cratify audit
+[targets...]` (delegates to `ast_auditor::run_workspace_audit`), `cratify scaffold
+<name>` / `cratify generate <name>` (delegates to
+`transpiler::create_crate_scaffold_at`), `cratify harvest <src>` (delegates to
+`adaptation_engine::harvest`). All four are real, invocable today via `cargo run
+-p cratify -- <subcommand>`.
 
-Route M44's local-worker `code-draft` output through this same pipeline instead of
-treating it as a one-off JSON artifact: a proofed draft becomes a `harvest` input,
-gets wrapped/scaffolded by the existing cratify tooling, and is audited by
-`ast_auditor` using the same acceptance bar as an externally-adopted crate. The
-payoff stated as the goal for this milestone: if every accepted draft — whether
-local-worker-generated, frontier-discovered, or cloud-authored — is forced through
-one compliance-producing pipeline, then every acceptance *by construction* extends
-Aaroneous's own component surface, and the framework's own tooling is what scales
-its expansion capacity, not ad hoc integration per source.
+**This means M45 may need little to no new devtools code, once M44 lands.** M44's
+`dogfood::verify_draft(checkout, target_file, draft, output, verify_command)`
+already accepts an arbitrary caller-specified `verify_command` — M45's entire
+scope may reduce to: after a draft passes its ordinary pre-proof check (`cargo
+check`/`test`), run a *second* `verify_draft` pass against the same checkout with
+`verify_command = ["run", "-p", "cratify", "--", "audit", "<the target_file's
+containing directory>"]`, reusing M44's exact machinery rather than building new
+integration code. If that reuse proves too narrow once M44's real shape is known
+(e.g. `harvest`/`scaffold` need different invocation shapes than a single
+"run a command, capture pass/fail" check), the fallback is a thin convenience
+wrapper in `dogfood.rs` presetting the cratify command — still built on the same
+pattern, not new infrastructure.
 
-- **Dependency:** M44 (needs proofed drafts to feed in) and M41 (frontier-discovered
-  candidates are the other input source this unifies with)
+**This milestone should not be dispatched to a background agent until M44 has
+actually landed and its exact `verify_draft` signature is known** — dispatching
+it concurrently risks the M45 work guessing at or duplicating a function M44 is
+simultaneously defining in the same file. Hold until M44 reports back.
+
+- **Dependency:** M44 (needs `verify_draft` to exist and its exact signature known
+  before reuse can be confirmed, not just "proofed drafts to feed in") and M41
+  (frontier-discovered candidates are the other input source this unifies with)
 - **Preferred capability:** Component architecture / compiler-adjacent tooling
 - **Evidence:** at least one local-worker draft and one frontier-discovered crate
-  both accepted through the same `cratify` → `ast_auditor` path with no
-  source-specific special-casing in the acceptance criteria.
+  both run through `cratify audit` (or the fuller harvest/scaffold path if reuse
+  alone proves insufficient) with no source-specific special-casing in the
+  acceptance criteria.
 
 ## What this plan delegates to the local worker today
 
@@ -283,6 +293,14 @@ packets, polled every two minutes inside dispatch windows (minutes 06–20 and
 
 ### M46 — Work-packet meta-tagging and multi-variant exploration
 
+**Verified constraint, 2026-09-20:** `foundation/crates/foundation_cli/src/
+local_worker.rs`'s `Job` struct (~line 27-34) already carries
+`#[serde(deny_unknown_fields)]`. This means the three new fields below cannot be
+added silently — every field must be `#[serde(default)]` (so existing packets
+without them keep parsing unchanged) and the struct itself must be edited in this
+exact file, not inferred from the `.toml` schema alone. This is real, necessary
+code, not just a schema-doc update.
+
 `worker-jobs/*.toml`'s schema today is flat (`schema_version, id, mode, evidence,
 instruction`) with no way to link several attempts at one goal or distinguish the
 angle each attempt takes. Add three optional fields to the packet schema:
@@ -305,8 +323,17 @@ a group are archived with the reason they lost — per the same evidence discipl
 `EVIDENCE_STANDARD.md` already requires elsewhere — so a later session doesn't
 blind-retry an angle already tried and rejected.
 
-- **Dependency:** M41 (needs a steady packet supply worth branching into variants)
-  and M45 (needs one acceptance funnel for the winning variant to enter)
+**Also hold this milestone until M44 lands**, for the same reason as M45: the
+"comparison step before full local pre-proofing" only has something concrete to
+run before, once M44's pre-proof mechanism exists and its trigger point
+(`local_worker.rs`'s dispatch loop, the same file this milestone edits) is
+settled. Dispatching M46 concurrently with M44 risks two agents editing
+`local_worker.rs`'s `Job` struct and dispatch loop at the same time.
+
+- **Dependency:** M41 (needs a steady packet supply worth branching into variants),
+  M44 (the dispatch-loop hook this milestone's comparison step runs before must
+  exist first, and both edit the same `Job` struct/file), and M45 (needs one
+  acceptance funnel for the winning variant to enter)
 - **Preferred capability:** Data/schema design, workflow tooling
 - **Evidence:** updated `contracts/` schema and fixtures for the new fields; at
   least one real `exploration_group` with multiple drafts, a documented selection,
