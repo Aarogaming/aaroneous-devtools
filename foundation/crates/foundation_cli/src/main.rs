@@ -256,6 +256,30 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Write a code draft to an already-existing Aaroneous checkout and run
+    /// that checkout's own `cratify audit` compliance pipeline against it
+    /// (`cargo run -p cratify -- audit <cratify_target>`), capturing
+    /// pass/fail as a versioned report. Thin convenience over `VerifyDraft`
+    /// that saves callers from hand-constructing the cratify verify-command;
+    /// never creates or initializes the checkout itself.
+    CratifyAuditDraft {
+        /// Absolute path to an already-existing Aaroneous Git checkout.
+        #[arg(long)]
+        checkout: PathBuf,
+        /// Relative path (from checkout root) the draft is written to.
+        #[arg(long)]
+        target_file: PathBuf,
+        /// Absolute path to a file containing the draft source to audit.
+        #[arg(long)]
+        draft_file: PathBuf,
+        /// Relative path (from checkout root) passed to `cratify audit`,
+        /// e.g. the crate/directory containing `target_file`.
+        #[arg(long)]
+        cratify_target: PathBuf,
+        /// Absolute path for the versioned verification report file.
+        #[arg(long)]
+        output: PathBuf,
+    },
     ValidateIntake {
         #[arg(long)]
         proposal: PathBuf,
@@ -608,6 +632,23 @@ fn main() -> Result<()> {
             let draft = intake::read_bounded(&draft_file, 65536)
                 .with_context(|| format!("failed to read {}", draft_file.display()))?;
             dogfood::verify_draft(&checkout, &target_file, &draft, &verify_command, &output)
+        }
+        Command::CratifyAuditDraft {
+            checkout,
+            target_file,
+            draft_file,
+            cratify_target,
+            output,
+        } => {
+            if !draft_file.is_absolute() {
+                bail!(
+                    "draft_file must be an absolute path: {}",
+                    draft_file.display()
+                );
+            }
+            let draft = intake::read_bounded(&draft_file, 65536)
+                .with_context(|| format!("failed to read {}", draft_file.display()))?;
+            dogfood::cratify_audit(&checkout, &target_file, &draft, &cratify_target, &output)
         }
         Command::ValidateIntake { proposal, output } => intake::validate(&proposal, &output),
         Command::GenerateIntake {

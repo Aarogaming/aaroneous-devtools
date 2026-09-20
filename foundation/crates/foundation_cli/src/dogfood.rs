@@ -126,6 +126,55 @@ pub(crate) fn verify_draft(
     Ok(())
 }
 
+/// Constructs the `cargo` verify-command args that run Aaroneous's own
+/// `cratify audit` compliance check against `cratify_target` (a path
+/// relative to the checkout `verify_draft` writes the draft into, e.g.
+/// `crates/some_crate` or a single file). Pulled out as a pure function so
+/// the exact argv `cratify_audit` builds is unit-testable without actually
+/// invoking `cargo`.
+fn cratify_audit_command(cratify_target: &Path) -> Vec<String> {
+    vec![
+        "run".to_owned(),
+        "-p".to_owned(),
+        "cratify".to_owned(),
+        "--".to_owned(),
+        "audit".to_owned(),
+        cratify_target.to_string_lossy().replace('\\', "/"),
+    ]
+}
+
+/// Convenience wrapper around `verify_draft` that runs the drafted file
+/// through Aaroneous's own `cratify audit` compliance pipeline instead of
+/// requiring every caller to hand-construct the
+/// `cargo run -p cratify -- audit <target>` `verify_command` themselves.
+///
+/// This is deliberately thin: `verify_draft`'s `verify_command` is already
+/// generic (`Command::new("cargo").args(verify_command)`), so nothing about
+/// the underlying mechanism needed to change for `cratify audit` to work as
+/// a verification command — this function only saves callers from repeating
+/// the fixed argv. `cratify_target` must be a safe relative path (validated
+/// the same way as `target_file`) inside `checkout`; it is typically the
+/// same crate/directory `target_file` lives in.
+///
+/// Note on report fidelity: `cratify audit` (via `ast_auditor`) prints
+/// human-readable diagnostics only — it has no machine-parseable/JSON output
+/// mode as of this writing. `verify_draft`'s `DraftVerificationReport`
+/// (exit_code/stdout/stderr) is therefore not parsed into structured
+/// findings here; the exit code is still a real pass/fail compliance
+/// signal, and a human/reviewer reads the captured stdout in the report for
+/// audit detail.
+pub(crate) fn cratify_audit(
+    checkout: &Path,
+    target_file: &Path,
+    draft: &str,
+    cratify_target: &Path,
+    output: &Path,
+) -> Result<()> {
+    require_safe_relative_path("cratify target", cratify_target)?;
+    let verify_command = cratify_audit_command(cratify_target);
+    verify_draft(checkout, target_file, draft, &verify_command, output)
+}
+
 fn require_safe_relative_path(label: &str, path: &Path) -> Result<()> {
     if path.is_absolute() || path.as_os_str().is_empty() {
         bail!(
@@ -225,6 +274,62 @@ mod tests {
         let report: DraftVerificationReport =
             serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
         assert_ne!(report.exit_code, Some(0));
+    }
+
+    #[test]
+    fn cratify_audit_command_builds_expected_argv() {
+        assert_eq!(
+            cratify_audit_command(Path::new("crates/some_crate")),
+            vec![
+                "run".to_owned(),
+                "-p".to_owned(),
+                "cratify".to_owned(),
+                "--".to_owned(),
+                "audit".to_owned(),
+                "crates/some_crate".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn cratify_audit_writes_draft_and_runs_verify_draft_with_cratify_command() {
+        let temp = checkout_fixture();
+        let output = temp.path().join("report.json");
+        // `cargo run -p cratify -- audit ...` is not buildable inside this
+        // synthetic checkout fixture, so this only exercises that
+        // `cratify_audit` delegates to `verify_draft` (writes the draft,
+        // captures a failing-but-not-erroring report) rather than actually
+        // proving a real cratify audit passes/fails — that is exercised
+        // separately against a real Aaroneous checkout (see task report).
+        cratify_audit(
+            temp.path(),
+            Path::new("src/draft.rs"),
+            "fn reduce() {}",
+            Path::new("src"),
+            &output,
+        )
+        .expect("cratify_audit should not error just because cratify isn't buildable here");
+        assert_eq!(
+            fs::read_to_string(temp.path().join("src/draft.rs")).unwrap(),
+            "fn reduce() {}"
+        );
+        let report: DraftVerificationReport =
+            serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
+        assert_eq!(report.command, "cargo run -p cratify -- audit src");
+    }
+
+    #[test]
+    fn cratify_audit_rejects_unsafe_cratify_target() {
+        let temp = checkout_fixture();
+        let output = temp.path().join("report.json");
+        let result = cratify_audit(
+            temp.path(),
+            Path::new("src/draft.rs"),
+            "fn reduce() {}",
+            Path::new("../escape"),
+            &output,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
