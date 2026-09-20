@@ -203,6 +203,9 @@ enum Command {
         output: PathBuf,
         #[arg(long, default_value_t = 3)]
         primary_capacity: usize,
+        /// Optional advisory concurrence report from an Aaroneous hypervisor run.
+        #[arg(long)]
+        concurrence_report: Option<PathBuf>,
     },
     /// Inventory one declared Cargo component without modifying its checkout.
     ComponentInventory {
@@ -556,7 +559,14 @@ fn main() -> Result<()> {
             program,
             output,
             primary_capacity,
-        } => scheduler::run(&queue, &program, &output, primary_capacity),
+            concurrence_report,
+        } => scheduler::run(
+            &queue,
+            &program,
+            &output,
+            primary_capacity,
+            concurrence_report.as_deref(),
+        ),
         Command::ComponentInventory {
             checkout,
             crate_path,
