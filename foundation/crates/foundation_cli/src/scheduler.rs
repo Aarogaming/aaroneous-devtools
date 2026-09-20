@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
@@ -16,6 +16,27 @@ struct ScheduleReview {
     ready_candidates: Vec<String>,
     recommended_claims: Vec<String>,
     findings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    concurrence: Option<ConcurrenceAdvisory>,
+}
+
+/// Advisory-only summary of an Aaroneous hypervisor concurrence report. This is
+/// never load-bearing: it must not affect `ready_candidates` or
+/// `recommended_claims`. See M40 in
+/// `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct ConcurrenceAdvisory {
+    rolling_concurrence: f32,
+    graduated: bool,
+}
+
+/// Best-effort read of an optional concurrence report. A missing, unreadable,
+/// or unparseable file is never an error here — it simply yields `None`, since
+/// the report is advisory-only and the Aaroneous hypervisor that produces it
+/// may not be running.
+fn read_concurrence_report(path: &Path) -> Option<ConcurrenceAdvisory> {
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
 }
 
 pub(crate) fn run(
@@ -23,6 +44,7 @@ pub(crate) fn run(
     program: &Path,
     output: &Path,
     primary_capacity: usize,
+    concurrence_report: Option<&Path>,
 ) -> Result<()> {
     if primary_capacity == 0 {
         bail!("primary capacity must be at least one");
@@ -70,6 +92,7 @@ pub(crate) fn run(
         );
     }
     validate_output(output)?;
+    let concurrence = concurrence_report.and_then(read_concurrence_report);
     let report = ScheduleReview {
         schema_version: 1,
         artifact_kind: REPORT_KIND.to_owned(),
@@ -80,6 +103,7 @@ pub(crate) fn run(
         ready_candidates,
         recommended_claims,
         findings,
+        concurrence,
     };
     fs::write(
         output,
@@ -137,6 +161,7 @@ fn validate_output(output: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn reads_only_real_queue_rows() {
         let rows = queue_rows(
@@ -149,5 +174,86 @@ mod tests {
                 ("F7".to_owned(), "Done".to_owned())
             ]
         );
+    }
+
+    fn write_fixture_inputs(dir: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
+        let queue = dir.join("queue.md");
+        let program = dir.join("program.md");
+        fs::write(
+            &queue,
+            "| ID | Scope | Status |\n| --- | --- | --- |\n| C1 | x | Ready |\n",
+        )
+        .expect("write queue fixture");
+        fs::write(&program, "## Capacity model\n\n## Priority portfolio\n")
+            .expect("write program fixture");
+        (queue, program)
+    }
+
+    #[test]
+    fn run_without_concurrence_report_is_unaffected() {
+        let temp = tempfile::tempdir().expect("test directory");
+        let (queue, program) = write_fixture_inputs(temp.path());
+        let output = temp.path().join("report.json");
+
+        run(&queue, &program, &output, 3, None).expect("scheduler run");
+
+        let written = fs::read_to_string(&output).expect("read report");
+        let value: serde_json::Value = serde_json::from_str(&written).expect("valid json");
+        assert!(value.get("concurrence").is_none());
+        assert_eq!(value["ready_candidates"], serde_json::json!(["C1"]));
+    }
+
+    #[test]
+    fn run_attaches_valid_concurrence_report() {
+        let temp = tempfile::tempdir().expect("test directory");
+        let (queue, program) = write_fixture_inputs(temp.path());
+        let output = temp.path().join("report.json");
+        let concurrence_path = temp.path().join("concurrence_report.json");
+        fs::write(
+            &concurrence_path,
+            r#"{
+                "rolling_concurrence": 0.97,
+                "total_ticks": 1234,
+                "total_agreements": 1198,
+                "avg_confidence": 0.91,
+                "avg_reward": 0.5,
+                "divergence_mse": 0.02,
+                "graduated": true,
+                "ticks_since_graduation": 40
+            }"#,
+        )
+        .expect("write concurrence fixture");
+
+        run(&queue, &program, &output, 3, Some(&concurrence_path)).expect("scheduler run");
+
+        let written = fs::read_to_string(&output).expect("read report");
+        let value: serde_json::Value = serde_json::from_str(&written).expect("valid json");
+        assert_eq!(value["concurrence"]["rolling_concurrence"], 0.97);
+        assert_eq!(value["concurrence"]["graduated"], true);
+    }
+
+    #[test]
+    fn run_ignores_missing_or_malformed_concurrence_report() {
+        let temp = tempfile::tempdir().expect("test directory");
+        let (queue, program) = write_fixture_inputs(temp.path());
+
+        // Missing file: never an error, and no field in the output.
+        let output = temp.path().join("report_missing.json");
+        let missing_path = temp.path().join("does_not_exist.json");
+        run(&queue, &program, &output, 3, Some(&missing_path)).expect("scheduler run");
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&output).expect("read report"))
+                .expect("valid json");
+        assert!(value.get("concurrence").is_none());
+
+        // Malformed file: also never an error.
+        let output = temp.path().join("report_malformed.json");
+        let malformed_path = temp.path().join("malformed.json");
+        fs::write(&malformed_path, "not json").expect("write malformed fixture");
+        run(&queue, &program, &output, 3, Some(&malformed_path)).expect("scheduler run");
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&output).expect("read report"))
+                .expect("valid json");
+        assert!(value.get("concurrence").is_none());
     }
 }
