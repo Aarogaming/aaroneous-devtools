@@ -16,7 +16,7 @@ The worker skips evidence referenced by Claimed or Review queue rows, including 
 
 ## Installed runtime
 
-Windows task: `Aaroneous-Devtools-LocalWorker`, limited privileges, logged-in session, overlapping launches ignored, three-minute OS execution limit. Windows denied S4U logged-out registration, so genuinely logged-out execution is not installed. Locked-screen execution still uses the logged-in session. The PC must be awake and Ollama available. No power settings or credentials were changed.
+The worker runs as an in-process service via `foundation multithreader-serve` (default off) or as a manual tick. There is no Windows scheduled task; execution is governed by a daily 09:00 local maintainer review. The PC must be awake and Ollama available.
 
 Runtime root: `C:\Users\aarog\.codex\worktrees\aaroneous-devtools\artifacts\local-worker-service`. It contains a copied native executable, explicit `worker.toml`, `results/`, and `archive/`. The reservation directory is the existing native review inbox. Runtime files are ignored by Git and never placed in Aaroneous.
 
@@ -53,13 +53,14 @@ Model failures are retained and exit nonzero. They are not retried indefinitely:
 ## Operations
 
 ```powershell
-Start-ScheduledTask -TaskName 'Aaroneous-Devtools-LocalWorker'
-Get-ScheduledTaskInfo -TaskName 'Aaroneous-Devtools-LocalWorker'
-Disable-ScheduledTask -TaskName 'Aaroneous-Devtools-LocalWorker'
-Enable-ScheduledTask -TaskName 'Aaroneous-Devtools-LocalWorker'
+# Start in-process worker (default off)
+cargo run -p foundation -- multithreader-serve --config ABSOLUTE_WORKER_TOML
+
+# Manual single tick
+cargo run -p foundation -- local-worker-tick --config ABSOLUTE_WORKER_TOML
 ```
 
-For a manual tick, run the installed foundation.exe with `local-worker-tick --config ABSOLUTE_WORKER_TOML`. Quiet windows and reservations still apply. To update the binary, pause the task, verify it is not running, build foundation, replace the copied executable, then resume. Adding multiple polling services for the same GPU is unnecessary; extend approved job manifests instead.
+Quiet windows and reservations still apply. To update the binary, stop the worker, build foundation, replace the copied executable, then restart. Adding multiple polling services for the same GPU is unnecessary; extend approved job manifests instead.
 
 ## Verification
 

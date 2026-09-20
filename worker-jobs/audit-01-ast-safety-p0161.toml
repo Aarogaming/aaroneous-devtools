@@ -1,5 +1,5 @@
 schema_version = 1
-id = "AUDIT-01-AST-SAFETY-P0111"
+id = "AUDIT-01-AST-SAFETY-P0161"
 mode = "analysis"
 evidence = [
     "crates/ast_auditor/src/rules/text_encoding.rs",
