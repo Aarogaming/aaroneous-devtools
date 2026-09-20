@@ -22,6 +22,17 @@ struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hypervisor_mcp_endpoint: Option<String>,
     max_pending: usize,
+    /// Optional local pre-proofing settings (M44). All three must be present
+    /// for pre-proofing to run; when any is absent, behavior is unchanged from
+    /// before pre-proofing existed. `pre_proof_checkout` must be an already-
+    /// existing, caller-prepared Git checkout — this module never creates or
+    /// initializes one itself (see `FOUNDATION_BOUNDARY.md`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pre_proof_checkout: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pre_proof_target_file: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pre_proof_command: Option<Vec<String>>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -59,6 +70,13 @@ struct Record {
     input: String,
     proposal: Option<Draft>,
     error: Option<String>,
+    /// Absolute path to the local pre-proofing verification report (M44),
+    /// when pre-proofing config is set, the job is a code-draft, and the
+    /// proposal carries a non-empty `rust_draft`. `None` otherwise, including
+    /// for every job dispatched before this field existed or without
+    /// pre-proofing configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pre_proof_report: Option<String>,
 }
 struct Reservation(PathBuf);
 impl Drop for Reservation {
@@ -420,9 +438,9 @@ where
             input,
             proposal: None,
             error: None,
+            pre_proof_report: None,
         };
         let is_code_draft = matches!(job.mode, Mode::CodeDraft);
-        let _ = is_code_draft;
         match delegate(&c.endpoint, &record.input) {
             Ok(proposal) => {
                 let violations = verify_proposal_quality(&proposal);
@@ -500,6 +518,38 @@ where
                     false,
                     vec![format!("{e:#}")],
                 );
+            }
+        }
+        if is_code_draft {
+            if let (Some(pp_checkout), Some(pp_target_file), Some(pp_command)) = (
+                c.pre_proof_checkout.as_ref(),
+                c.pre_proof_target_file.as_ref(),
+                c.pre_proof_command.as_ref(),
+            ) {
+                if let Some(code) = record
+                    .proposal
+                    .as_ref()
+                    .and_then(|proposal| proposal.rust_draft.as_ref())
+                    .filter(|code| !code.trim().is_empty())
+                {
+                    let report_path = c
+                        .results_directory
+                        .join(format!("{}-pre-proof.json", record.job_id));
+                    match crate::dogfood::verify_draft(
+                        pp_checkout,
+                        pp_target_file,
+                        code,
+                        pp_command,
+                        &report_path,
+                    ) {
+                        Ok(()) => {
+                            record.pre_proof_report = Some(report_path.display().to_string());
+                        }
+                        Err(e) => {
+                            println!("local worker: pre-proofing skipped ({e:#})");
+                        }
+                    }
+                }
             }
         }
         persist(&c, &record)?;
@@ -877,6 +927,9 @@ mod tests {
             endpoint: "http://127.0.0.1:1".into(),
             hypervisor_mcp_endpoint: None,
             max_pending: 2,
+            pre_proof_checkout: None,
+            pre_proof_target_file: None,
+            pre_proof_command: None,
         };
         for path in [
             &c.checkout,
@@ -971,6 +1024,57 @@ mod tests {
             recommended_next_step: "owner review".into(),
             rust_draft: None,
         }
+    }
+    #[test]
+    fn code_draft_without_pre_proof_config_behaves_exactly_like_before_m44() {
+        // Omitting pre_proof_checkout/pre_proof_target_file/pre_proof_command
+        // (the common case today, since nothing sets them yet) must produce
+        // identical behavior to before local pre-proofing existed: no
+        // dogfood::verify_draft call, no report file, pre_proof_report stays
+        // None, and dispatch proceeds exactly as any other job would.
+        let (_d, c, config) = fixture();
+        let job = Job {
+            schema_version: 1,
+            id: "JOB-CODE-1".into(),
+            mode: Mode::CodeDraft,
+            evidence: vec!["lib.rs".into()],
+            instruction: "draft a reducer".into(),
+        };
+        fs::write(
+            c.jobs_directory.join("job.toml"),
+            toml::to_string(&job).expect("job"),
+        )
+        .expect("write job");
+        tick_with(&config, 10, 1, |_, _| {
+            let mut code_draft = draft();
+            code_draft.task = "JOB-CODE-1".into();
+            code_draft.rust_draft = Some("fn reduce(value: u32) -> u32 { value }".into());
+            Ok(code_draft)
+        })
+        .expect("dispatch");
+        let result_path = files(&c.results_directory, "json")
+            .expect("results")
+            .into_iter()
+            .find(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("JOB-CODE-1"))
+            })
+            .expect("record for code-draft job");
+        let record: Record =
+            serde_json::from_str(&read_bounded(&result_path, 1048576).expect("read"))
+                .expect("record");
+        assert_eq!(record.outcome, "pending-owner-review");
+        assert!(record.pre_proof_report.is_none());
+        assert!(
+            files(&c.results_directory, "json")
+                .expect("results")
+                .into_iter()
+                .all(|p| !p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains("pre-proof")))
+        );
     }
     #[test]
     fn unchanged_inputs_are_not_regenerated_and_changes_are() {
