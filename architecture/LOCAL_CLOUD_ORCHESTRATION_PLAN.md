@@ -2,7 +2,7 @@
 
 **Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
 been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M45 in `governance/MULTITHREAD_PROGRAM.md`.
+governance boundaries for milestones M40–M46 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -33,19 +33,35 @@ all scheduler/queue work stays in `aaroneous-devtools/foundation`.
 
 ### M40 — Surface the concurrence score in the deterministic scheduler
 
-Read `crates/compute/src/concurrence_engine.rs` and
-`foundation/crates/foundation_cli/src/scheduler.rs`. Draft (as a reviewed proposal,
-not a committed change) a way for the scheduler to read the current
-`ConcurrenceSnapshot` for a component and attach it as an advisory confidence field
-on eligible-work recommendations, so the integration owner sees "local/cloud
-agreement: 97%" next to a claim candidate instead of having to check the Shadow
-Model HUD separately. No change to claim authority.
+**Contract decided 2026-09-20** (per `FOUNDATION_BOUNDARY.md`: devtools takes no
+product dependency on Aaroneous, so this cannot be a Cargo dependency on
+`crates/compute` — it is a file contract, explicit input/output only):
+
+- **Aaroneous side:** add a safe JSON export using the existing safe accessor
+  `SupervisoryLoop::read_concurrence_snapshot()` (`core/hypervisor/src/
+  supervisory_loop.rs:476`) — not the existing unsafe `mem::transmute` shared-memory
+  read at `core/hypervisor/bin/hypervisor.rs:1383`, which stays untouched and out of
+  this milestone's scope. Add `#[derive(serde::Serialize)]` to `ConcurrenceSnapshot`
+  (`crates/compute/src/concurrence_engine.rs:36-55`) and a new `hypervisor sic
+  concurrence --export <path>` flag (or subcommand) that writes the real struct
+  fields (`rolling_concurrence`, `total_ticks`, `total_agreements`, `avg_confidence`,
+  `avg_reward`, `divergence_mse`, `graduated`, `ticks_since_graduation`) as JSON to
+  an explicit output path. No new `unsafe`.
+- **Devtools side:** `foundation/crates/foundation_cli/src/scheduler.rs` accepts an
+  optional explicit `--concurrence-report <path>` input (matching the existing
+  explicit-input-path convention in `foundation_cli`). When present and parseable,
+  attach `rolling_concurrence`/`graduated` as an advisory field on eligible-work
+  recommendations. Missing or stale file: recommendations proceed without the
+  field — never block on it.
+- This is Tier 1 on both sides per `governance/REVIEW_CONDITIONS.md` (no `unsafe`,
+  no FFI, no named `SECURITY.md` surface); full `cargo xtask gate` required on the
+  Aaroneous side, `cargo fmt`/`cargo test`/strict Clippy for `foundation/` on the
+  devtools side.
 
 - **Dependency:** none
 - **Preferred capability:** Rust systems review, read-only cross-repo analysis
-- **Evidence:** a proposal artifact plus a short design note in this file's
-  changelog once reviewed; `Complete` requires committed source, passing tests, and
-  `cargo xtask gate` per `EVIDENCE_STANDARD.md`.
+- **Evidence:** committed source in both repos, passing `cargo xtask gate`
+  (Aaroneous) and the devtools Rust checks, per `EVIDENCE_STANDARD.md`.
 
 ### M41 — Make frontier discovery self-scheduling
 
@@ -179,6 +195,37 @@ packets, polled every two minutes inside dispatch windows (minutes 06–20 and
   single document directly; delegation pays off for repeated, bounded, structurally
   similar subtasks (drafts, fixtures, inventories), not single narrative writing.
 
+### M46 — Work-packet meta-tagging and multi-variant exploration
+
+`worker-jobs/*.toml`'s schema today is flat (`schema_version, id, mode, evidence,
+instruction`) with no way to link several attempts at one goal or distinguish the
+angle each attempt takes. Add three optional fields to the packet schema:
+
+- `perspective` — the angle a given attempt takes (e.g. `correctness-first`,
+  `performance-first`, `minimal-diff`). Free text, not an enum yet — constrain it
+  once real usage shows a stable vocabulary, per this repo's own preference for
+  evidence-driven rather than speculative structure.
+- `goal` — a short id naming the problem being solved, independent of how any
+  given attempt solves it.
+- `exploration_group` — an id shared by every packet attempting the same `goal`
+  from a different `perspective`, so they are structurally linked rather than
+  coincidentally similar.
+
+Add a comparison step that runs **before** full local pre-proofing (M44): when an
+`exploration_group` has multiple completed drafts, rank or shortlist candidates
+first, so the expensive full-gate proofing pass (`cargo xtask gate`, `ast_auditor`,
+etc.) is spent on the strongest candidates, not every attempt. Rejected siblings in
+a group are archived with the reason they lost — per the same evidence discipline
+`EVIDENCE_STANDARD.md` already requires elsewhere — so a later session doesn't
+blind-retry an angle already tried and rejected.
+
+- **Dependency:** M41 (needs a steady packet supply worth branching into variants)
+  and M45 (needs one acceptance funnel for the winning variant to enter)
+- **Preferred capability:** Data/schema design, workflow tooling
+- **Evidence:** updated `contracts/` schema and fixtures for the new fields; at
+  least one real `exploration_group` with multiple drafts, a documented selection,
+  and archived rejected siblings with recorded reasons.
+
 ## Decisions log
 
 Dated decisions from planning discussion, kept so later sessions don't re-litigate
@@ -224,6 +271,9 @@ M40 and M41 are independent and can both enter `Ready` immediately. M43 depends 
 M41's packet supply. M42 is the gating design work for M44; neither should be
 claimed until M42's contract is accepted. M45 depends on M44 (and benefits from
 M41's packet supply as a second input source) and should not be claimed before a
-proofed local draft actually exists to route through it. No milestone in this plan
-authorizes paid cloud dispatch or local write/claim authority — those remain
-explicit future decisions, not defaults unlocked by completing M40–M45.
+proofed local draft actually exists to route through it. M46 depends on both M41
+and M45 and is deliberately last — meta-tagging and multi-variant exploration add
+real complexity and are only worth it once there is enough packet volume and one
+stable acceptance funnel to organize. No milestone in this plan authorizes paid
+cloud dispatch or local write/claim authority — those remain explicit future
+decisions, not defaults unlocked by completing M40–M46.
