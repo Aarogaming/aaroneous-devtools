@@ -84,23 +84,51 @@ continuously instead of by manual authoring.
 - **Evidence:** committed scheduling hook, a sample of auto-generated packets
   reviewed and accepted through the normal `worker-jobs/` flow.
 
-### M42 — Define the cloud dispatch adapter contract (`cloud_providers.rs`)
+### M42 — Consensus-to-queue readiness report (corrected scope, 2026-09-20)
 
-`foundation/crates/foundation_cli/src/cloud_providers.rs` is currently a stub;
-`architecture/JOB_PIPELINE.md` states this release "exposes no paid dispatch."
-Scope a contract (not an implementation) for how a cloud routine session reads
-`published`/`eligible` queue state and writes results back through the same
-`Ready → Claimed → Review → Done` state machine already governing local work,
-instead of coordinating with the cloud routine purely through
-`governance/SCHEDULE.md` convention. This is the highest-authority milestone in
-this plan (it touches claim/dispatch machinery) and should stay a primary-lane,
-human-reviewed design, not a local-worker deliverable — the local worker may only
-be asked to analyze the existing stub and produce a read-only comparison report
-against `contracts/local-proposal-v1.schema.json` for design input.
+**This milestone's original framing was wrong, corrected after reading the actual
+source instead of trusting `architecture/JOB_PIPELINE.md`'s "exposes no paid
+dispatch" claim.** `foundation/crates/foundation_cli/src/cloud_providers.rs` is
+**not** a stub — it has real, working `AnthropicClaudeProvider`,
+`GoogleGeminiProvider`, `OpenAiCodexProvider`, and `LocalOllamaProvider`
+implementations of a shared `AgentProvider` trait, wired into the `cross-verify`
+CLI command (`main.rs` ~line 719). `cross_verifier.rs`'s `cross_verify_proposal`
+already enforces the exact invariant `governance/CHANGE_VERIFICATION_TIERS.md`
+Tier 2 calls for — it hard-`bail!`s if the auditor provider/model matches the
+author's, i.e. an agent cannot cross-audit its own proposal. `consensus_engine.rs`
+already combines cross-verdicts plus mechanical check results into a
+`ConsensusStatus` persisted in a `ConsensusLedger`. **The adversarial
+second-independent-pass requirement this plan called for is already implemented,
+not aspirational.**
 
-- **Dependency:** M40, M41 informative but not blocking
-- **Preferred capability:** Release governance / distributed coordination design
-- **Evidence:** an accepted RFC-style contract doc before any implementation PR.
+The real remaining gap, verified against `governance/COORDINATION_QUEUE.md`'s
+actual history: nothing links a `ConsensusStatus::Approved` record back to a
+queue row's status. That link is manual today — a reviewer reads the consensus
+result and edits the markdown table by hand (see queue row C9's entry: an
+independent reviewer explicitly re-ran the claimed tests themselves before
+marking it `Done`, rather than trusting the row). **This is deliberate, not a
+missing feature.** `CONTRIBUTING.md`'s Definition of Done states outright: "An
+independent reviewer marks it Done after checking scope and verification. Do not
+self-certify generated artifacts." Automating "consensus approved → row marked
+Done" would let one pipeline both produce and certify its own work — exactly the
+self-certification this repo already explicitly forbids.
+
+**Revised scope:** a read-only consensus-readiness report, structurally identical
+to `scheduler.rs`'s existing `ScheduleReview` pattern (same explicit-input-path
+convention, same read-only guarantee). It reads a `ConsensusLedger` and
+`COORDINATION_QUEUE.md`, and surfaces which `Ready`/`Claimed` rows have an
+`Approved` consensus record — but it never writes queue status itself. A human or
+independent reviewer still performs the actual `Done` edit, informed by this
+report instead of having to manually cross-reference the ledger. This keeps the
+milestone Tier 1 (read-only, additive, no claim/dispatch authority change) instead
+of the Tier-2-adjacent authority question the original framing implied.
+
+- **Dependency:** M40 (file-contract pattern precedent), existing
+  `consensus_engine.rs`/`cross_verifier.rs` (already built, this milestone only
+  adds a read-only report over their output)
+- **Preferred capability:** Rust systems review, read-only report generation
+- **Evidence:** committed report-generation code with passing devtools checks; a
+  real run against an actual `ConsensusLedger` showing correct row matching.
 
 ### M43 — Auto-partition non-crossing work packets
 
@@ -143,8 +171,11 @@ Review of proofed candidates is batched, not one-off, against a fixed rubric:
 replaces one-draft-at-a-time review with a checklist pass over several proofed
 candidates at once.
 
-- **Dependency:** M42 (needs the adapter contract settled so draft volume doesn't
-  outstrip review capacity from both local and cloud sources at once)
+- **Dependency:** none — corrected 2026-09-20. This previously depended on M42
+  under the old (incorrect) framing that M42 was a cloud dispatch/claim-authority
+  build-out; M42 is now a read-only report over already-existing
+  `cross_verifier.rs`/`consensus_engine.rs`, which M44 can use directly without
+  waiting on that report's existence.
 - **Preferred capability:** Release governance / verification design
 - **Evidence:** cross-verifier acceptance criteria documented and exercised on at
   least one real draft before the template is marked enabled; the local pre-proof
@@ -192,10 +223,10 @@ packets, polled every two minutes inside dispatch windows (minutes 06–20 and
   are exactly the "analysis / bounded code-draft in scratch space" shape the
   worker is built for, and routing them through `worker-jobs/` instead of a cloud
   session is real token savings with no authority change.
-- **Keep on a primary (human-reviewed) lane:** M42's contract design — it decides
-  claim/dispatch authority, which is out of scope for a proposal-only worker by
-  `LOCAL_AGENT_CONTROL_PLANE.md`'s own terms. M44's verification-gate design for
-  the same reason.
+- **Keep on a primary (human-reviewed) lane:** M44's verification-gate design —
+  it decides what evidence is sufficient, which is a judgment call, not analysis.
+  (M42 no longer needs this caveat since its corrected scope is a read-only report,
+  not a claim/dispatch authority decision — see M42's own corrected-scope note.)
 - **Not worth delegating:** one-off planning documents like this one. The
   worker-jobs dispatch cadence (2-minute poll, narrow dispatch windows, 8-record
   pending cap) adds latency that exceeds the cost of a cloud session writing a
@@ -337,8 +368,10 @@ settled scope:
 ## Sequencing
 
 M40 and M41 are independent and can both enter `Ready` immediately. M43 depends on
-M41's packet supply. M42 is the gating design work for M44; neither should be
-claimed until M42's contract is accepted. M45 depends on M44 (and benefits from
+M41's packet supply. M42 no longer gates M44 (corrected 2026-09-20 — M42 is a
+read-only report over existing `cross_verifier.rs`/`consensus_engine.rs`, not a
+prerequisite contract); M42 and M44 can proceed independently and in parallel.
+M45 depends on M44 (and benefits from
 M41's packet supply as a second input source) and should not be claimed before a
 proofed local draft actually exists to route through it. M46 depends on both M41
 and M45 and is deliberately last — meta-tagging and multi-variant exploration add
