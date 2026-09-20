@@ -2,6 +2,7 @@ mod agentic_registrar;
 mod cloud_providers;
 mod component_inventory;
 mod consensus_engine;
+mod consensus_readiness;
 mod cross_verifier;
 mod dependency_review;
 mod dogfood;
@@ -204,6 +205,17 @@ enum Command {
         #[arg(long, default_value_t = 3)]
         primary_capacity: usize,
     },
+    /// Cross-reference a coordination queue against a consensus ledger and
+    /// write a read-only readiness report. Never modifies the queue or the
+    /// ledger; a human reviewer still performs the actual Done edit.
+    ConsensusReadiness {
+        #[arg(long)]
+        queue: PathBuf,
+        #[arg(long)]
+        ledger: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Inventory one declared Cargo component without modifying its checkout.
     ComponentInventory {
         /// Absolute path to a Cargo checkout.
@@ -401,17 +413,28 @@ fn main() -> Result<()> {
             limit,
             output_dir,
         } => {
-            println!("Searching crates.io for open-source frontier candidates: '{query}' (limit: {limit})...");
+            println!(
+                "Searching crates.io for open-source frontier candidates: '{query}' (limit: {limit})..."
+            );
             let candidates = frontier_discovery::search_crates_io(&query, limit)?;
             println!("Found {} candidates:", candidates.len());
             for (idx, c) in candidates.iter().enumerate() {
-                println!("  [{}] {} (v{}) - {}", idx + 1, c.name, c.version, c.description);
+                println!(
+                    "  [{}] {} (v{}) - {}",
+                    idx + 1,
+                    c.name,
+                    c.version,
+                    c.description
+                );
                 let job_path = frontier_discovery::create_frontier_job(
                     c,
                     &output_dir,
                     "docs/ARCHITECTURE.md",
                 )?;
-                println!("      -> Created frontier audit job: {}", job_path.display());
+                println!(
+                    "      -> Created frontier audit job: {}",
+                    job_path.display()
+                );
             }
             Ok(())
         }
@@ -464,21 +487,32 @@ fn main() -> Result<()> {
                 format!("Evaluated against active workspace need: '{active_need}'")
             });
 
-            let report = frontier_discovery::compute_quadratic_review(frontier_discovery::ReviewInput {
-                target_crate: &target_crate,
-                version: &version,
-                repository_url,
-                active_need: &active_need,
-                now,
-                gates,
-                raw_scores,
-                rationale: &rat,
-            });
+            let report =
+                frontier_discovery::compute_quadratic_review(frontier_discovery::ReviewInput {
+                    target_crate: &target_crate,
+                    version: &version,
+                    repository_url,
+                    active_need: &active_need,
+                    now,
+                    gates,
+                    raw_scores,
+                    rationale: &rat,
+                });
 
             println!("=== FRONTIER EVALUATION REPORT ===");
-            println!("Target Crate:    {} (v{})", report.target_crate, report.version);
+            println!(
+                "Target Crate:    {} (v{})",
+                report.target_crate, report.version
+            );
             println!("Active Need:     {}", report.active_need);
-            println!("Filtration:      {}", if report.filtration_passed { "PASSED" } else { "FAILED" });
+            println!(
+                "Filtration:      {}",
+                if report.filtration_passed {
+                    "PASSED"
+                } else {
+                    "FAILED"
+                }
+            );
             for g in &report.gates {
                 let status_str = if g.passed { "PASS" } else { "FAIL" };
                 println!("  [{status_str}] {}: {}", g.gate_id, g.name);
@@ -488,10 +522,22 @@ fn main() -> Result<()> {
             }
             if let Some(ref s) = report.scores {
                 println!("---------------------------------");
-                println!("Q1 (Needle 30%):        {:.1} / 10.0", s.q1_algorithmic_needle);
-                println!("Q2 (Feasibility 30%):   {:.1} / 10.0", s.q2_refactoring_feasibility);
-                println!("Q3 (Tests 20%):         {:.1} / 10.0", s.q3_test_portability);
-                println!("Q4 (Leverage 20%):      {:.1} / 10.0", s.q4_milestone_leverage);
+                println!(
+                    "Q1 (Needle 30%):        {:.1} / 10.0",
+                    s.q1_algorithmic_needle
+                );
+                println!(
+                    "Q2 (Feasibility 30%):   {:.1} / 10.0",
+                    s.q2_refactoring_feasibility
+                );
+                println!(
+                    "Q3 (Tests 20%):         {:.1} / 10.0",
+                    s.q3_test_portability
+                );
+                println!(
+                    "Q4 (Leverage 20%):      {:.1} / 10.0",
+                    s.q4_milestone_leverage
+                );
                 println!("Linear Weighted Score:  {:.2}", s.linear_weighted_score);
                 println!("Quadratic Penalty:      -{:.2}", s.quadratic_defect_penalty);
                 println!("Composite Score:        {:.2} / 100.0", s.composite_score);
@@ -557,6 +603,11 @@ fn main() -> Result<()> {
             output,
             primary_capacity,
         } => scheduler::run(&queue, &program, &output, primary_capacity),
+        Command::ConsensusReadiness {
+            queue,
+            ledger,
+            output,
+        } => consensus_readiness::run(&queue, &ledger, &output),
         Command::ComponentInventory {
             checkout,
             crate_path,
