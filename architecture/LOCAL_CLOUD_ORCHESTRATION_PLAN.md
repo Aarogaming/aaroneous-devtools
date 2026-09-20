@@ -35,18 +35,25 @@ all scheduler/queue work stays in `aaroneous-devtools/foundation`.
 
 **Contract decided 2026-09-20** (per `FOUNDATION_BOUNDARY.md`: devtools takes no
 product dependency on Aaroneous, so this cannot be a Cargo dependency on
-`crates/compute` — it is a file contract, explicit input/output only):
+`crates/compute` — it is a file contract, explicit input/output only). Verified by
+reading the actual source (not assumed): `core/hypervisor/bin/hypervisor.rs:1365`'s
+`concurrence.shm` read path has **no writer anywhere in the codebase** — it is dead
+code today, always printing "No concurrence data found." The real gap is a missing
+writer, not a missing export flag on existing plumbing:
 
-- **Aaroneous side:** add a safe JSON export using the existing safe accessor
-  `SupervisoryLoop::read_concurrence_snapshot()` (`core/hypervisor/src/
-  supervisory_loop.rs:476`) — not the existing unsafe `mem::transmute` shared-memory
-  read at `core/hypervisor/bin/hypervisor.rs:1383`, which stays untouched and out of
-  this milestone's scope. Add `#[derive(serde::Serialize)]` to `ConcurrenceSnapshot`
-  (`crates/compute/src/concurrence_engine.rs:36-55`) and a new `hypervisor sic
-  concurrence --export <path>` flag (or subcommand) that writes the real struct
-  fields (`rolling_concurrence`, `total_ticks`, `total_agreements`, `avg_confidence`,
-  `avg_reward`, `divergence_mse`, `graduated`, `ticks_since_graduation`) as JSON to
-  an explicit output path. No new `unsafe`.
+- **Aaroneous side:** add `#[derive(serde::Serialize)]` to `ConcurrenceSnapshot`
+  (`crates/compute/src/concurrence_engine.rs:36-55`; currently only `Debug, Clone,
+  Copy`). In `core/hypervisor/src/supervisory_loop.rs`, near the existing
+  `concurrence_snapshot.write()` update at line 1579 (inside the heartbeat thread
+  that already holds the live snapshot), add a periodic JSON serialize-and-write to
+  an explicit output path (e.g. `paths.data().join("concurrence_report.json")`),
+  using the struct's real fields (`rolling_concurrence`, `total_ticks`,
+  `total_agreements`, `avg_confidence`, `avg_reward`, `divergence_mse`, `graduated`,
+  `ticks_since_graduation`). This uses only safe code the heartbeat thread already
+  has in memory — it does not touch, fix, or rely on the existing unsafe
+  `mem::transmute` shm-file reader at `hypervisor.rs:1383`, which stays untouched
+  and out of this milestone's scope (that dead/unsafe path is a separate, unstarted
+  cleanup item, not part of M40).
 - **Devtools side:** `foundation/crates/foundation_cli/src/scheduler.rs` accepts an
   optional explicit `--concurrence-report <path>` input (matching the existing
   explicit-input-path convention in `foundation_cli`). When present and parseable,
