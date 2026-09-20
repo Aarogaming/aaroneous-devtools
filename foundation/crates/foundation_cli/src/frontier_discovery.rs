@@ -1,3 +1,4 @@
+use crate::intake::read_bounded;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -43,7 +44,12 @@ pub fn discover_native(checkout: &Path) -> Result<NativeDiscoverySummary> {
         .map(|s| s.to_string())
         .collect();
 
-    let submodules_count = repo.submodules().ok().flatten().map(|s| s.count()).unwrap_or(0);
+    let submodules_count = repo
+        .submodules()
+        .ok()
+        .flatten()
+        .map(|s| s.count())
+        .unwrap_or(0);
 
     let tracked_files_count = repo
         .index_or_empty()
@@ -81,7 +87,9 @@ pub fn search_crates_io(query: &str, limit: usize) -> Result<Vec<CrateCandidate>
         bail!("crates.io returned HTTP status {}", resp.status());
     }
 
-    let json: serde_json::Value = resp.json().context("Failed to parse crates.io response JSON")?;
+    let json: serde_json::Value = resp
+        .json()
+        .context("Failed to parse crates.io response JSON")?;
     let mut candidates = Vec::new();
 
     if let Some(crates) = json["crates"].as_array() {
@@ -104,7 +112,11 @@ pub fn search_crates_io(query: &str, limit: usize) -> Result<Vec<CrateCandidate>
     Ok(candidates)
 }
 
-pub fn firecrawl_scrape(url: &str, endpoint: Option<&str>, api_key: Option<&str>) -> Result<String> {
+pub fn firecrawl_scrape(
+    url: &str,
+    endpoint: Option<&str>,
+    api_key: Option<&str>,
+) -> Result<String> {
     let target_endpoint = endpoint.unwrap_or("http://localhost:3002/v1/scrape");
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(30))
@@ -120,16 +132,15 @@ pub fn firecrawl_scrape(url: &str, endpoint: Option<&str>, api_key: Option<&str>
         req = req.header("Authorization", format!("Bearer {key}"));
     }
 
-    let resp = req.send().with_context(|| format!("Firecrawl request failed for {url}"))?;
+    let resp = req
+        .send()
+        .with_context(|| format!("Firecrawl request failed for {url}"))?;
     if !resp.status().is_success() {
         bail!("Firecrawl scrape failed with status: {}", resp.status());
     }
 
     let val: serde_json::Value = resp.json().context("Failed to parse Firecrawl response")?;
-    let markdown = val["data"]["markdown"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let markdown = val["data"]["markdown"].as_str().unwrap_or("").to_string();
 
     if markdown.trim().is_empty() {
         bail!("Firecrawl returned empty markdown content for {url}");
@@ -147,8 +158,14 @@ pub fn create_frontier_job(
         bail!("output_dir must be an absolute path");
     }
 
-    let job_id = format!("FRONTIER-{}", candidate.name.to_uppercase().replace('-', "_"));
-    let filename = format!("frontier-{}.toml", candidate.name.to_lowercase().replace('_', "-"));
+    let job_id = format!(
+        "FRONTIER-{}",
+        candidate.name.to_uppercase().replace('-', "_")
+    );
+    let filename = format!(
+        "frontier-{}.toml",
+        candidate.name.to_lowercase().replace('_', "-")
+    );
     let destination = output_dir.join(&filename);
 
     let instruction = format!(
@@ -170,6 +187,102 @@ pub fn create_frontier_job(
     let toml_str = toml::to_string_pretty(&manifest)?;
     std::fs::write(&destination, toml_str)?;
     Ok(destination)
+}
+
+/// Parse a newline-separated queries file: blank lines and lines starting
+/// with `#` (comments) are skipped, everything else is trimmed and kept.
+fn parse_queries(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_string)
+        .collect()
+}
+
+fn checked_interval(interval_minutes: u32) -> Result<Duration> {
+    if interval_minutes == 0 || interval_minutes > 1440 {
+        bail!("interval must be 1-1440 minutes, got {interval_minutes}");
+    }
+    Ok(Duration::from_secs(u64::from(interval_minutes) * 60))
+}
+
+fn cycle(queries_path: &Path, output_dir: &Path, limit: usize) -> bool {
+    let text = match read_bounded(queries_path, 65536) {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!(
+                "frontier-discover-serve: cycle failed reading {}: {e:#}",
+                queries_path.display()
+            );
+            return false;
+        }
+    };
+
+    for query in parse_queries(&text) {
+        match search_crates_io(&query, limit) {
+            Ok(candidates) => {
+                for candidate in &candidates {
+                    if let Err(e) =
+                        create_frontier_job(candidate, output_dir, "docs/ARCHITECTURE.md")
+                    {
+                        eprintln!(
+                            "frontier-discover-serve: failed to create job for candidate '{}' (query '{query}'): {e:#}",
+                            candidate.name
+                        );
+                    }
+                }
+                println!(
+                    "frontier-discover-serve: query '{query}' -> {} candidate(s)",
+                    candidates.len()
+                );
+            }
+            Err(e) => {
+                eprintln!("frontier-discover-serve: query '{query}' failed: {e:#}");
+            }
+        }
+    }
+
+    true
+}
+
+/// Run frontier discovery cycles on an interval until stopped (Ctrl+C) or
+/// until 5 consecutive cycle-level failures occur. `queries_path` must be an
+/// explicit, absolute path to a newline-separated list of search queries —
+/// this tool never infers or scans for queries on its own (see
+/// FOUNDATION_BOUNDARY.md's "no ambient discovery" convention). A single
+/// query's network/parse failure is logged and does not fail the cycle; only
+/// a cycle-level problem (e.g. `queries_path` itself unreadable) counts
+/// against the consecutive-failure budget.
+pub(crate) fn serve(
+    queries_path: &Path,
+    output_dir: &Path,
+    limit: usize,
+    interval_minutes: u32,
+) -> Result<()> {
+    if !queries_path.is_absolute() {
+        bail!("queries path must be absolute: {}", queries_path.display());
+    }
+    if !output_dir.is_absolute() {
+        bail!("output_dir must be an absolute path");
+    }
+    let interval = checked_interval(interval_minutes)?;
+    println!(
+        "frontier-discover-serve: starting, interval {interval_minutes}m, queries {}",
+        queries_path.display()
+    );
+    let mut consecutive_failures = 0u32;
+    loop {
+        if cycle(queries_path, output_dir, limit) {
+            consecutive_failures = 0;
+        } else {
+            consecutive_failures += 1;
+            eprintln!("frontier-discover-serve: cycle failure count: {consecutive_failures}/5");
+            if consecutive_failures >= 5 {
+                bail!("frontier-discover-serve stopped after 5 consecutive permanent failures");
+            }
+        }
+        std::thread::sleep(interval);
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -261,7 +374,9 @@ pub fn validate_standard_filtration_gates(
     let desc_lower = description.to_lowercase();
 
     // G2: Kernel Extractability
-    let monolithic = desc_lower.contains("monolithic") || desc_lower.contains("full-stack framework") || desc_lower.contains("desktop app");
+    let monolithic = desc_lower.contains("monolithic")
+        || desc_lower.contains("full-stack framework")
+        || desc_lower.contains("desktop app");
     gates.push(FiltrationGateRecord {
         gate_id: "G2".into(),
         name: "KernelExtractability".into(),
@@ -274,20 +389,25 @@ pub fn validate_standard_filtration_gates(
     });
 
     // G3: Deterministic Tractability
-    let non_deterministic = desc_lower.contains("unmanaged driver") || desc_lower.contains("hardware non-deterministic");
+    let non_deterministic = desc_lower.contains("unmanaged driver")
+        || desc_lower.contains("hardware non-deterministic");
     gates.push(FiltrationGateRecord {
         gate_id: "G3".into(),
         name: "DeterministicTractability".into(),
         passed: !non_deterministic,
         violation_reason: if non_deterministic {
-            Some("Candidate relies on non-deterministic hardware interactions or unmanaged drivers".into())
+            Some(
+                "Candidate relies on non-deterministic hardware interactions or unmanaged drivers"
+                    .into(),
+            )
         } else {
             None
         },
     });
 
     // G4: Ecosystem Independence
-    let foreign_toolchain = desc_lower.contains("requires cmake") || desc_lower.contains("requires msvc toolchain");
+    let foreign_toolchain =
+        desc_lower.contains("requires cmake") || desc_lower.contains("requires msvc toolchain");
     gates.push(FiltrationGateRecord {
         gate_id: "G4".into(),
         name: "EcosystemIndependence".into(),
@@ -300,7 +420,8 @@ pub fn validate_standard_filtration_gates(
     });
 
     // G5: Refactoring Surface Limit
-    let surface_excessive = desc_lower.contains("multi-million loc") || desc_lower.contains("mammoth codebase");
+    let surface_excessive =
+        desc_lower.contains("multi-million loc") || desc_lower.contains("mammoth codebase");
     gates.push(FiltrationGateRecord {
         gate_id: "G5".into(),
         name: "RefactoringSurfaceLimit".into(),
@@ -356,10 +477,8 @@ pub fn compute_quadratic_review(input: ReviewInput<'_>) -> FrontierEvaluationRep
     // Weights per Tier 2 Standard: Q1 Needle = 0.30, Q2 Feasibility = 0.30, Q3 Tests = 0.20, Q4 Leverage = 0.20
     let linear_weighted_score = (0.30 * q1 + 0.30 * q2 + 0.20 * q3 + 0.20 * q4) * 10.0;
     let penalty_lambda = 0.05;
-    let defect_sum = (10.0 - q1).powi(2)
-        + (10.0 - q2).powi(2)
-        + (10.0 - q3).powi(2)
-        + (10.0 - q4).powi(2);
+    let defect_sum =
+        (10.0 - q1).powi(2) + (10.0 - q2).powi(2) + (10.0 - q3).powi(2) + (10.0 - q4).powi(2);
     let quadratic_defect_penalty = penalty_lambda * defect_sum;
 
     let composite_score = (linear_weighted_score - quadratic_defect_penalty).clamp(0.0, 100.0);
@@ -439,10 +558,39 @@ mod tests {
             downloads: 50_000_000,
         };
 
-        let job_file = create_frontier_job(&candidate, temp.path(), "docs/ARCHITECTURE.md").unwrap();
+        let job_file =
+            create_frontier_job(&candidate, temp.path(), "docs/ARCHITECTURE.md").unwrap();
         assert!(job_file.exists());
         let text = std::fs::read_to_string(job_file).unwrap();
         assert!(text.contains("FRONTIER-CROSSBEAM_QUEUE"));
+    }
+
+    #[test]
+    fn test_parse_queries_skips_blank_and_comment_lines() {
+        let text =
+            "\n# a comment\nasync runtime\n\n  \n#another comment\nzero-copy serialization\n";
+        let queries = parse_queries(text);
+        assert_eq!(queries, vec!["async runtime", "zero-copy serialization"]);
+    }
+
+    #[test]
+    fn test_parse_queries_trims_whitespace() {
+        let text = "  lock-free queue  \n\tembedded allocator\t\n";
+        let queries = parse_queries(text);
+        assert_eq!(queries, vec!["lock-free queue", "embedded allocator"]);
+    }
+
+    #[test]
+    fn test_parse_queries_empty_input_yields_no_queries() {
+        assert!(parse_queries("").is_empty());
+        assert!(parse_queries("# only comments\n\n").is_empty());
+    }
+
+    #[test]
+    fn test_checked_interval_bounds() {
+        assert!(checked_interval(0).is_err());
+        assert!(checked_interval(1441).is_err());
+        assert_eq!(checked_interval(30).unwrap(), Duration::from_secs(1800));
     }
 
     #[test]
@@ -462,7 +610,10 @@ mod tests {
 
     #[test]
     fn test_filtration_passes_permissive_license() {
-        let gates = validate_standard_filtration_gates(Some("MIT OR Apache-2.0"), "Lock-free queue without global state");
+        let gates = validate_standard_filtration_gates(
+            Some("MIT OR Apache-2.0"),
+            "Lock-free queue without global state",
+        );
         assert!(gates.iter().all(|g| g.passed));
     }
 
@@ -494,7 +645,10 @@ mod tests {
         });
 
         // Quadratic defect penalty must be significantly higher on the lopsided candidate
-        assert!(lopsided.scores.unwrap().quadratic_defect_penalty > balanced.scores.unwrap().quadratic_defect_penalty);
+        assert!(
+            lopsided.scores.unwrap().quadratic_defect_penalty
+                > balanced.scores.unwrap().quadratic_defect_penalty
+        );
     }
 
     #[test]
