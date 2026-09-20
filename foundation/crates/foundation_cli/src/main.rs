@@ -234,6 +234,28 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Write a code draft to an explicit, already-existing checkout and run a
+    /// caller-scoped `cargo` verification command against it, capturing
+    /// pass/fail as a versioned report. Never creates or initializes the
+    /// checkout itself; the checkout must already exist.
+    VerifyDraft {
+        /// Absolute path to an already-existing Git checkout.
+        #[arg(long)]
+        checkout: PathBuf,
+        /// Relative path (from checkout root) the draft is written to.
+        #[arg(long)]
+        target_file: PathBuf,
+        /// Absolute path to a file containing the draft source to verify.
+        #[arg(long)]
+        draft_file: PathBuf,
+        /// Verification command args passed to `cargo`, e.g. `check` or
+        /// `test -p some_crate`.
+        #[arg(long = "verify-command", num_args = 1..)]
+        verify_command: Vec<String>,
+        /// Absolute path for the versioned verification report file.
+        #[arg(long)]
+        output: PathBuf,
+    },
     ValidateIntake {
         #[arg(long)]
         proposal: PathBuf,
@@ -570,6 +592,23 @@ fn main() -> Result<()> {
             num_predict,
         } => local_proposal::run(&endpoint, &model, &evidence, &output, num_predict),
         Command::DogfoodMetadata { checkout, output } => dogfood::metadata(&checkout, &output),
+        Command::VerifyDraft {
+            checkout,
+            target_file,
+            draft_file,
+            verify_command,
+            output,
+        } => {
+            if !draft_file.is_absolute() {
+                bail!(
+                    "draft_file must be an absolute path: {}",
+                    draft_file.display()
+                );
+            }
+            let draft = intake::read_bounded(&draft_file, 65536)
+                .with_context(|| format!("failed to read {}", draft_file.display()))?;
+            dogfood::verify_draft(&checkout, &target_file, &draft, &verify_command, &output)
+        }
         Command::ValidateIntake { proposal, output } => intake::validate(&proposal, &output),
         Command::GenerateIntake {
             endpoint,
