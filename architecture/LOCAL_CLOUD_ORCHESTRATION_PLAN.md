@@ -130,18 +130,37 @@ of the Tier-2-adjacent authority question the original framing implied.
 - **Evidence:** committed report-generation code with passing devtools checks; a
   real run against an actual `ConsensusLedger` showing correct row matching.
 
-### M43 — Auto-partition non-crossing work packets
+### M43 — Auto-partition non-crossing work packets (corrected scope, 2026-09-20)
 
-Use `foundation/crates/foundation_cli/src/dependency_review.rs` and
-`component_inventory.rs` output to derive non-overlapping file/module lanes before
-a packet is published, so concurrently dispatched local and cloud work does not
-collide on `governance/COORDINATION_QUEUE.md` claims. Scope as a read-only report
-generator first (propose lane boundaries), not an automatic claim writer.
+**Corrected after reading the actual source**: `foundation/crates/foundation_cli/
+src/local_worker.rs:162` already has `fn scope_reserved(queue: &str, evidence:
+&[String]) -> bool` — a textual scope-overlap check against
+`governance/COORDINATION_QUEUE.md`'s `Claimed`/`Review` rows, including bracketed
+directory scopes (`crates/paths/**`), used today to skip dispatching a local-worker
+job whose evidence overlaps active work. This is most of what M43 asked for,
+already built — just private to `local_worker.rs` and checked one packet at a
+time against the queue, not across a freshly-generated *batch* of candidates
+before they're all written to `worker-jobs/`.
 
-- **Dependency:** M41 (needs a steady packet supply to partition)
-- **Preferred capability:** Dependency graph analysis
-- **Evidence:** committed lane-derivation tool, a reviewed sample run against the
-  current queue with no incorrect overlap.
+**Real remaining gap:** M41's `frontier_discover-serve` and M47's
+`capability-compose` can each emit several candidate packets per cycle. Nothing
+today checks whether two candidates from the *same* batch would overlap each
+other's scope before both land in `worker-jobs/` (only checked against the queue,
+not against each other). Revised scope: extract `scope_reserved`'s matching logic
+into a small shared, reusable function (or expose it `pub(crate)` if extraction is
+riskier than reuse — judgment call for whoever implements this), and add a
+batch-level check: given a set of freshly-generated candidate packets, report which
+pairs overlap in declared evidence, so a batch can be trimmed to non-crossing
+candidates before any of them are written. Still read-only/report-only, per the
+original intent — it does not touch `COORDINATION_QUEUE.md` or auto-resolve
+overlaps, only reports them.
+
+- **Dependency:** M41 (needs a batch of candidates to check for cross-overlap)
+- **Preferred capability:** Rust systems review, reuse of existing logic over new
+  design
+- **Evidence:** committed extraction/reuse of `scope_reserved` plus the new
+  batch-overlap report, with a test proving two overlapping candidates in one
+  batch are correctly flagged and non-overlapping ones are not.
 
 ### M44 — Expand job templates beyond read-only analysis, with local pre-proofing
 
