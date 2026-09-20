@@ -164,6 +164,35 @@ overlaps, only reports them.
 
 ### M44 — Expand job templates beyond read-only analysis, with local pre-proofing
 
+**Precise hook point, verified 2026-09-20:** `foundation/crates/foundation_cli/src/
+local_worker.rs:414-415` already computes `let is_code_draft = matches!(job.mode,
+Mode::CodeDraft);` and immediately discards it: `let _ = is_code_draft;`. The
+`Mode` enum (`Analysis`/`TestFixture`/`CodeDraft`, line ~37) and `Draft.rust_draft:
+Option<String>` (line ~50) already parse and carry a code draft end to end — the
+mode is recognized, just not yet branched on. This is exactly M44's hook: replace
+`let _ = is_code_draft;` with real branching that triggers local pre-proofing when
+true, nothing more needs to be built to recognize the mode.
+
+**Pre-proofing must follow the existing `dogfood.rs` pattern, not invent a new
+one.** `dogfood::metadata(checkout: &Path, output: &Path)` (~line 15) already runs
+a command against an explicit, caller-supplied Git checkout, writes a versioned
+JSON report, and never creates or otherwise mutates the checkout beyond what's
+explicitly asked. Per `FOUNDATION_BOUNDARY.md` ("no... automatic Aaroneous source
+mutation") and `CONTRIBUTING.md`'s "explicit input and output paths" rule,
+devtools code may **not** autonomously create an Aaroneous git worktree on its own
+initiative — the throwaway worktree pre-proofing runs against must be an explicit,
+already-prepared checkout path passed in (by whoever configured the local-worker
+service, per `LOCAL_WORKER_SERVICE.md`'s existing config-driven model), not
+something `local_worker.rs` spins up itself. Extend `dogfood.rs` with a function
+in the same shape — e.g. `verify_draft(checkout: &Path, target_file: &Path, draft:
+&str, output: &Path)` that writes `draft` to `checkout.join(target_file)`, runs
+`cargo xtask gate` (or a narrower single check, TBD by whoever implements this —
+full gate may be too slow for a per-job pre-proof loop; consider starting with
+`cargo check`/`cargo test -p <crate>` scoped to the touched crate, escalating to
+full gate only before final promotion) via `Command::new("cargo")` exactly as
+`metadata` already does, and reports pass/fail — rather than adding pre-proofing
+logic directly inside `local_worker.rs`'s dispatch loop.
+
 Only one job template (read-only wire research) is enabled today. Cautiously add
 `test-fixture` and bounded `code-draft` templates already supported by the packet
 schema (`mode` field), gated by `foundation_cli/src/cross_verifier.rs` and
