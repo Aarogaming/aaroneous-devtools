@@ -57,6 +57,23 @@ enum Command {
         #[arg(long, default_value = "d:\\aaroneous-devtools\\worker-jobs")]
         output_dir: PathBuf,
     },
+    /// Run frontier discovery cycles on an interval until stopped (Ctrl+C).
+    /// Reads an explicit, absolute queries file (one search term per line;
+    /// blank lines and `#` comments are skipped) instead of inferring what
+    /// to search for. Persistence lives in this process, not an installed
+    /// OS scheduled task: start it when you want discovery running, stop it
+    /// when you don't.
+    FrontierDiscoverServe {
+        /// Absolute path to a newline-separated list of crates.io search queries.
+        #[arg(long)]
+        queries: PathBuf,
+        #[arg(long, default_value = "d:\\aaroneous-devtools\\worker-jobs")]
+        output_dir: PathBuf,
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+        #[arg(long, default_value_t = 30)]
+        interval_minutes: u32,
+    },
     /// Scrape and convert an external architecture document or whitepaper using Firecrawl
     FirecrawlScrape {
         #[arg(long)]
@@ -404,20 +421,37 @@ fn main() -> Result<()> {
             limit,
             output_dir,
         } => {
-            println!("Searching crates.io for open-source frontier candidates: '{query}' (limit: {limit})...");
+            println!(
+                "Searching crates.io for open-source frontier candidates: '{query}' (limit: {limit})..."
+            );
             let candidates = frontier_discovery::search_crates_io(&query, limit)?;
             println!("Found {} candidates:", candidates.len());
             for (idx, c) in candidates.iter().enumerate() {
-                println!("  [{}] {} (v{}) - {}", idx + 1, c.name, c.version, c.description);
+                println!(
+                    "  [{}] {} (v{}) - {}",
+                    idx + 1,
+                    c.name,
+                    c.version,
+                    c.description
+                );
                 let job_path = frontier_discovery::create_frontier_job(
                     c,
                     &output_dir,
                     "docs/ARCHITECTURE.md",
                 )?;
-                println!("      -> Created frontier audit job: {}", job_path.display());
+                println!(
+                    "      -> Created frontier audit job: {}",
+                    job_path.display()
+                );
             }
             Ok(())
         }
+        Command::FrontierDiscoverServe {
+            queries,
+            output_dir,
+            limit,
+            interval_minutes,
+        } => frontier_discovery::serve(&queries, &output_dir, limit, interval_minutes),
         Command::FirecrawlScrape {
             url,
             endpoint,
@@ -467,21 +501,32 @@ fn main() -> Result<()> {
                 format!("Evaluated against active workspace need: '{active_need}'")
             });
 
-            let report = frontier_discovery::compute_quadratic_review(frontier_discovery::ReviewInput {
-                target_crate: &target_crate,
-                version: &version,
-                repository_url,
-                active_need: &active_need,
-                now,
-                gates,
-                raw_scores,
-                rationale: &rat,
-            });
+            let report =
+                frontier_discovery::compute_quadratic_review(frontier_discovery::ReviewInput {
+                    target_crate: &target_crate,
+                    version: &version,
+                    repository_url,
+                    active_need: &active_need,
+                    now,
+                    gates,
+                    raw_scores,
+                    rationale: &rat,
+                });
 
             println!("=== FRONTIER EVALUATION REPORT ===");
-            println!("Target Crate:    {} (v{})", report.target_crate, report.version);
+            println!(
+                "Target Crate:    {} (v{})",
+                report.target_crate, report.version
+            );
             println!("Active Need:     {}", report.active_need);
-            println!("Filtration:      {}", if report.filtration_passed { "PASSED" } else { "FAILED" });
+            println!(
+                "Filtration:      {}",
+                if report.filtration_passed {
+                    "PASSED"
+                } else {
+                    "FAILED"
+                }
+            );
             for g in &report.gates {
                 let status_str = if g.passed { "PASS" } else { "FAIL" };
                 println!("  [{status_str}] {}: {}", g.gate_id, g.name);
@@ -491,10 +536,22 @@ fn main() -> Result<()> {
             }
             if let Some(ref s) = report.scores {
                 println!("---------------------------------");
-                println!("Q1 (Needle 30%):        {:.1} / 10.0", s.q1_algorithmic_needle);
-                println!("Q2 (Feasibility 30%):   {:.1} / 10.0", s.q2_refactoring_feasibility);
-                println!("Q3 (Tests 20%):         {:.1} / 10.0", s.q3_test_portability);
-                println!("Q4 (Leverage 20%):      {:.1} / 10.0", s.q4_milestone_leverage);
+                println!(
+                    "Q1 (Needle 30%):        {:.1} / 10.0",
+                    s.q1_algorithmic_needle
+                );
+                println!(
+                    "Q2 (Feasibility 30%):   {:.1} / 10.0",
+                    s.q2_refactoring_feasibility
+                );
+                println!(
+                    "Q3 (Tests 20%):         {:.1} / 10.0",
+                    s.q3_test_portability
+                );
+                println!(
+                    "Q4 (Leverage 20%):      {:.1} / 10.0",
+                    s.q4_milestone_leverage
+                );
                 println!("Linear Weighted Score:  {:.2}", s.linear_weighted_score);
                 println!("Quadratic Penalty:      -{:.2}", s.quadratic_defect_penalty);
                 println!("Composite Score:        {:.2} / 100.0", s.composite_score);
