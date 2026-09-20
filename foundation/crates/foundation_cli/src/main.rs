@@ -292,6 +292,24 @@ enum Command {
         #[arg(long)]
         output_dir: PathBuf,
     },
+    /// Record a human reviewer's accept/reject outcome for one
+    /// `exploration_group` sibling job (M46). Never inferred or guessed by
+    /// this tool: the reviewer supplies the outcome after comparing an
+    /// `exploration_group`'s `*-exploration-summary.json` artifact.
+    RecordExplorationOutcome {
+        /// Absolute path to the local worker's results directory.
+        #[arg(long)]
+        results_dir: PathBuf,
+        /// The `id` of the job being marked.
+        #[arg(long)]
+        job_id: String,
+        /// `accepted` or `rejected`.
+        #[arg(long)]
+        outcome: String,
+        /// Required when `outcome` is `rejected`: why this sibling lost.
+        #[arg(long)]
+        reason: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -423,17 +441,28 @@ fn main() -> Result<()> {
             limit,
             output_dir,
         } => {
-            println!("Searching crates.io for open-source frontier candidates: '{query}' (limit: {limit})...");
+            println!(
+                "Searching crates.io for open-source frontier candidates: '{query}' (limit: {limit})..."
+            );
             let candidates = frontier_discovery::search_crates_io(&query, limit)?;
             println!("Found {} candidates:", candidates.len());
             for (idx, c) in candidates.iter().enumerate() {
-                println!("  [{}] {} (v{}) - {}", idx + 1, c.name, c.version, c.description);
+                println!(
+                    "  [{}] {} (v{}) - {}",
+                    idx + 1,
+                    c.name,
+                    c.version,
+                    c.description
+                );
                 let job_path = frontier_discovery::create_frontier_job(
                     c,
                     &output_dir,
                     "docs/ARCHITECTURE.md",
                 )?;
-                println!("      -> Created frontier audit job: {}", job_path.display());
+                println!(
+                    "      -> Created frontier audit job: {}",
+                    job_path.display()
+                );
             }
             Ok(())
         }
@@ -486,21 +515,32 @@ fn main() -> Result<()> {
                 format!("Evaluated against active workspace need: '{active_need}'")
             });
 
-            let report = frontier_discovery::compute_quadratic_review(frontier_discovery::ReviewInput {
-                target_crate: &target_crate,
-                version: &version,
-                repository_url,
-                active_need: &active_need,
-                now,
-                gates,
-                raw_scores,
-                rationale: &rat,
-            });
+            let report =
+                frontier_discovery::compute_quadratic_review(frontier_discovery::ReviewInput {
+                    target_crate: &target_crate,
+                    version: &version,
+                    repository_url,
+                    active_need: &active_need,
+                    now,
+                    gates,
+                    raw_scores,
+                    rationale: &rat,
+                });
 
             println!("=== FRONTIER EVALUATION REPORT ===");
-            println!("Target Crate:    {} (v{})", report.target_crate, report.version);
+            println!(
+                "Target Crate:    {} (v{})",
+                report.target_crate, report.version
+            );
             println!("Active Need:     {}", report.active_need);
-            println!("Filtration:      {}", if report.filtration_passed { "PASSED" } else { "FAILED" });
+            println!(
+                "Filtration:      {}",
+                if report.filtration_passed {
+                    "PASSED"
+                } else {
+                    "FAILED"
+                }
+            );
             for g in &report.gates {
                 let status_str = if g.passed { "PASS" } else { "FAIL" };
                 println!("  [{status_str}] {}: {}", g.gate_id, g.name);
@@ -510,10 +550,22 @@ fn main() -> Result<()> {
             }
             if let Some(ref s) = report.scores {
                 println!("---------------------------------");
-                println!("Q1 (Needle 30%):        {:.1} / 10.0", s.q1_algorithmic_needle);
-                println!("Q2 (Feasibility 30%):   {:.1} / 10.0", s.q2_refactoring_feasibility);
-                println!("Q3 (Tests 20%):         {:.1} / 10.0", s.q3_test_portability);
-                println!("Q4 (Leverage 20%):      {:.1} / 10.0", s.q4_milestone_leverage);
+                println!(
+                    "Q1 (Needle 30%):        {:.1} / 10.0",
+                    s.q1_algorithmic_needle
+                );
+                println!(
+                    "Q2 (Feasibility 30%):   {:.1} / 10.0",
+                    s.q2_refactoring_feasibility
+                );
+                println!(
+                    "Q3 (Tests 20%):         {:.1} / 10.0",
+                    s.q3_test_portability
+                );
+                println!(
+                    "Q4 (Leverage 20%):      {:.1} / 10.0",
+                    s.q4_milestone_leverage
+                );
                 println!("Linear Weighted Score:  {:.2}", s.linear_weighted_score);
                 println!("Quadratic Penalty:      -{:.2}", s.quadratic_defect_penalty);
                 println!("Composite Score:        {:.2} / 100.0", s.composite_score);
@@ -627,6 +679,12 @@ fn main() -> Result<()> {
             mode,
             output_dir,
         } => job_converter::sync_worker_jobs(&queue, &mode, &output_dir).map(|_| ()),
+        Command::RecordExplorationOutcome {
+            results_dir,
+            job_id,
+            outcome,
+            reason,
+        } => local_worker::record_exploration_outcome(&results_dir, &job_id, &outcome, reason),
     }
 }
 
