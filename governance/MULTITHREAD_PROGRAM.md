@@ -69,6 +69,14 @@ queue before claiming; portfolio entries are not Ready source reservations.
 | P2 | M36 | Authenticated dashboard integration: REGISTRAR.md gap | C15/C19 acceptance | Explicit same-origin credential setup and negative lifecycle tests; no product writes |
 | P2 | M37 | Worker liveness and persistence failure policy: local_worker.rs/multithreader.rs | Ownership and deployment inputs | Observable quiet/reserved/error states, bounded permanent failure policy, crash-marker tests |
 | P2 | M38 | Utility client CI: standalone client.test.mjs gate | Reviewer capacity / exact workflow claim | Existing client tests automated on Windows/Linux, read-only bounded CI |
+| P2 | M40 | Surface `ConcurrenceSnapshot` as an advisory confidence field on scheduler recommendations | none — see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` | Rust systems review / read-only cross-repo analysis |
+| P2 | M41 | Make `frontier_discovery.rs` self-scheduling and packet-generating instead of manually invoked | none — see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` | Rust foundation / scheduling |
+| P3 | M42 | Scope (design only) a `cloud_providers.rs` dispatch adapter contract for cloud-routine queue read/write | M40, M41 informative | Release governance / distributed coordination design |
+| P2 | M43 | Auto-derive non-crossing work-packet lanes from dependency/component inventory | M41 | Dependency graph analysis |
+| P3 | M44 | Expand worker-jobs templates past read-only analysis with local pre-proofing (cargo xtask gate/ast_auditor on a throwaway worktree), gated by cross_verifier/consensus_engine | M42 | Release governance / verification design |
+| P3 | M45 | Route local-worker and frontier-discovered drafts through the existing cratify/adaptation_engine/ast_auditor pipeline as one shared compliance path | M44, M41 | Component architecture / compiler-adjacent tooling |
+| P3 | M46 | Add perspective/goal/exploration_group meta-tagging to worker-jobs schema; rank multi-variant drafts before full proofing | M41, M45 | Data/schema design, workflow tooling |
+| P2 | M47 | Export the capability_broker.rs registry as JSON; propose and score internal capability compositions via BUILD_WORTHINESS_STANDARD.md | M40, BUILD_WORTHINESS_STANDARD.md | Combinatorial/graph analysis, Rust systems review |
 
 ## Intake rules
 
