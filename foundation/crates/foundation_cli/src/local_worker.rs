@@ -159,6 +159,21 @@ fn evidence_file_multi(roots: &[&Path], relative: &str) -> Result<PathBuf> {
     }
     evidence_file(roots[0], relative)
 }
+/// Returns true if `path` falls within `scope`, where `scope` is either an
+/// exact path/text match or a bracketed directory glob of the form
+/// `dir/**` (matching any path nested under `dir/`).
+///
+/// This is the shared overlap-matching primitive: `scope_reserved` uses it
+/// to check a job's evidence against a declared scope pulled out of a
+/// `governance/COORDINATION_QUEUE.md` row, and `batch_overlap` reuses it
+/// unchanged to compare two candidate packets' evidence lists against each
+/// other before either lands in `worker-jobs/`.
+pub(crate) fn scope_matches_path(scope: &str, path: &str) -> bool {
+    scope == path
+        || scope
+            .strip_suffix("/**")
+            .is_some_and(|prefix| path.starts_with(&format!("{prefix}/")))
+}
 fn scope_reserved(queue: &str, evidence: &[String]) -> bool {
     queue.lines().filter(|s| s.starts_with('|')).any(|row| {
         let cols: Vec<_> = row.split('|').map(str::trim).collect();
@@ -166,12 +181,7 @@ fn scope_reserved(queue: &str, evidence: &[String]) -> bool {
             return false;
         }
         evidence.iter().any(|path| {
-            row.contains(path)
-                || row.split('`').any(|scope| {
-                    scope
-                        .strip_suffix("/**")
-                        .is_some_and(|prefix| path.starts_with(&format!("{prefix}/")))
-                })
+            row.contains(path) || row.split('`').any(|scope| scope_matches_path(scope, path))
         })
     })
 }

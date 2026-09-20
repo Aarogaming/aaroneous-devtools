@@ -1,4 +1,5 @@
 mod agentic_registrar;
+mod batch_overlap;
 mod cloud_providers;
 mod component_inventory;
 mod consensus_engine;
@@ -208,6 +209,19 @@ enum Command {
         #[arg(long)]
         checkout: PathBuf,
         /// Absolute path for the report file; its parent must already exist.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Read a directory of freshly-generated candidate `.toml` packets
+    /// (schema: schema_version, id, mode, evidence, instruction) and report
+    /// which pairs declare overlapping evidence, before any of them are
+    /// written to worker-jobs/. Read-only: never modifies, moves, or
+    /// deletes candidate files.
+    BatchOverlapCheck {
+        /// Absolute path to a directory of candidate `.toml` packets.
+        #[arg(long)]
+        candidates_dir: PathBuf,
+        /// Absolute path for the JSON overlap report; its parent must already exist.
         #[arg(long)]
         output: PathBuf,
     },
@@ -623,6 +637,10 @@ fn main() -> Result<()> {
         Command::DependencyReview { checkout, output } => {
             dependency_review::run(&checkout, &output)
         }
+        Command::BatchOverlapCheck {
+            candidates_dir,
+            output,
+        } => batch_overlap::check_directory(&candidates_dir, &output),
         Command::ScheduleReview {
             queue,
             program,
