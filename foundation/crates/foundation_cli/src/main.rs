@@ -2,6 +2,7 @@ mod agentic_registrar;
 mod cloud_providers;
 mod component_inventory;
 mod consensus_engine;
+mod consensus_readiness;
 mod cross_verifier;
 mod dependency_review;
 mod dogfood;
@@ -223,6 +224,17 @@ enum Command {
         /// Optional advisory concurrence report from an Aaroneous hypervisor run.
         #[arg(long)]
         concurrence_report: Option<PathBuf>,
+    },
+    /// Cross-reference a coordination queue against a consensus ledger and
+    /// write a read-only readiness report. Never modifies the queue or the
+    /// ledger; a human reviewer still performs the actual Done edit.
+    ConsensusReadiness {
+        #[arg(long)]
+        queue: PathBuf,
+        #[arg(long)]
+        ledger: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
     },
     /// Inventory one declared Cargo component without modifying its checkout.
     ComponentInventory {
@@ -624,6 +636,11 @@ fn main() -> Result<()> {
             primary_capacity,
             concurrence_report.as_deref(),
         ),
+        Command::ConsensusReadiness {
+            queue,
+            ledger,
+            output,
+        } => consensus_readiness::run(&queue, &ledger, &output),
         Command::ComponentInventory {
             checkout,
             crate_path,
