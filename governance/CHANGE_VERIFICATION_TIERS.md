@@ -77,3 +77,7 @@ needed is cheap; getting less than a security-relevant change needed is not.
 - `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` — M44's local pre-proofing and
   M45's cratification path are the mechanisms that actually produce the Tier 1/2
   evidence this document requires.
+- `governance/REVIEW_CONDITIONS.md` — a fixed condition table mapping what a
+  change touches to which tier and which specific check applies, so tier
+  assignment here is a lookup against concrete conditions rather than a per-change
+  judgment call.
