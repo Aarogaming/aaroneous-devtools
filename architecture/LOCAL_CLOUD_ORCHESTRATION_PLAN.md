@@ -261,15 +261,27 @@ packet (feeding M41's/M44's packet supply); everything below is archived with it
 score per that standard's `ARCHIVE_AS_ROADMAPPED`/`REJECT_LOG_REASON` outcomes, not
 silently discarded.
 
+**Scoping decision (2026-09-20):** the devtools side does not attempt to
+mechanically *compute* a Quadrant I/II value judgment from capability metadata
+alone — that's a real judgment call, not arithmetic, and claiming a text-matching
+heuristic can do it would overclaim what's actually happening. Instead it
+generates bounded candidate pairs (real `CapabilityDescriptor` data, not
+speculative ones) and emits each as a `worker-jobs/*.toml` packet
+(`mode = "analysis"`) asking a reviewer to score it against
+`BUILD_WORTHINESS_STANDARD.md` — the same pattern `frontier_discovery::
+create_frontier_job` already uses for external candidates (it doesn't auto-score
+either; it creates a job for a reviewer to assess). This keeps M47 honest about
+what's mechanical (pairing, bounding, packet emission) versus what needs judgment
+(the actual score).
+
 - **Dependency:** M40 (proves the export/import file-contract pattern works before
-  reusing it here); `governance/BUILD_WORTHINESS_STANDARD.md` (scoring method must
-  exist first, this milestone consumes it rather than inventing its own scoring)
+  reusing it here); `governance/BUILD_WORTHINESS_STANDARD.md` (the scoring method
+  the emitted packets ask a reviewer to apply)
 - **Preferred capability:** Combinatorial/graph analysis, Rust systems review
-- **Evidence:** committed export code (Aaroneous) and composition-proposer code
-  (devtools) with passing gates on both sides; at least one real composition
-  proposal scored and either admitted or archived through
-  `BUILD_WORTHINESS_STANDARD.md`, not just a design doc with no candidate run
-  through it.
+- **Evidence:** committed export code (Aaroneous) and pair-generation/packet-
+  emission code (devtools) with passing gates on both sides; at least one real
+  composition packet actually scored and either admitted or archived through
+  `BUILD_WORTHINESS_STANDARD.md`, not just plumbing with nothing run through it.
 
 ## Decisions log
 
