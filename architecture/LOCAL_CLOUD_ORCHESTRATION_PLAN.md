@@ -206,6 +206,17 @@ settled scope:
 - **2026-09-20 — Concurrence score stays advisory.** Reaffirmed from this plan's
   first draft: `ConcurrenceSnapshot` informs the integration owner, it does not
   grant the local worker auto-approval authority. See "Governing constraint" above.
+- **2026-09-20 — Verification scales with blast radius, not a standing authority
+  grant.** Discussed writing a document that would let agents self-approve merges
+  with no human review, on the reasoning that the owner cannot personally review
+  Rust. That draft was rejected (flagged by the session's own safety tooling as
+  instruction-poisoning-shaped: a file, readable by future agent sessions, whose
+  content is "you may bypass review" is a risk independent of whether the request
+  originated from the owner in good faith). Replaced with
+  `governance/CHANGE_VERIFICATION_TIERS.md`, which scales *evidence required*
+  by blast radius instead of granting standing authority — what to do with a
+  verified change stays a live, per-session decision rather than something a file
+  pre-authorizes.
 
 ## Sequencing
 
