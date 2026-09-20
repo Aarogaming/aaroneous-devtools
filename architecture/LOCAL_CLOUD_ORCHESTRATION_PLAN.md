@@ -2,7 +2,7 @@
 
 **Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
 been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M46 in `governance/MULTITHREAD_PROGRAM.md`.
+governance boundaries for milestones M40–M47 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -233,6 +233,44 @@ blind-retry an angle already tried and rejected.
   least one real `exploration_group` with multiple drafts, a documented selection,
   and archived rejected siblings with recorded reasons.
 
+### M47 — Internal capability composition explorer
+
+The internal half of the discovery/research/filter/translate/recreate/review/repeat
+loop discussed in planning: not "what does the ecosystem have that we don't"
+(M41), but "what do our own existing primitives unlock when combined that neither
+does alone." Grounded in real code, not invented structure: Aaroneous's
+`core/hypervisor/src/capability_broker.rs` already has a typed capability registry
+— `CapabilityDescriptor { id, name, description, category: CapabilityCategory,
+parameters: Vec<CapabilityParameter> }`, where `CapabilityParameter` carries
+`name`, `param_type`, `required`, `default_value`. Real categories already
+registered include `Specialist`, `DevTools`, `MemoryFabric`, `ModelFoundry`,
+`SystemBus`, `ScreenAutomation`, `SafetyInterlock`.
+
+**Contract, same file-based pattern as M40** (devtools takes no Cargo dependency on
+Aaroneous): Aaroneous side adds a read-only JSON export of the registered
+`CapabilityDescriptor` list (reusing the same atomic-write pattern M40 established
+— write to a `.partial` file, then rename). Devtools side reads that JSON as an
+explicit input and proposes compositions: pairs (or bounded n-tuples) where one
+capability's parameter shape plausibly accepts another's described output, scored
+and pruned using `governance/BUILD_WORTHINESS_STANDARD.md`'s Quadrant
+I/II scoring (capability value, implementation feasibility) rather than
+brute-force enumeration — the combinatorial-explosion risk named when this idea
+was first discussed. A proposal that scores above `BUILD_WORTHINESS_STANDARD.md`'s
+`ADMIT_TO_READY`/`ADMIT_WITH_SCOPING` threshold becomes a `worker-jobs/*.toml`
+packet (feeding M41's/M44's packet supply); everything below is archived with its
+score per that standard's `ARCHIVE_AS_ROADMAPPED`/`REJECT_LOG_REASON` outcomes, not
+silently discarded.
+
+- **Dependency:** M40 (proves the export/import file-contract pattern works before
+  reusing it here); `governance/BUILD_WORTHINESS_STANDARD.md` (scoring method must
+  exist first, this milestone consumes it rather than inventing its own scoring)
+- **Preferred capability:** Combinatorial/graph analysis, Rust systems review
+- **Evidence:** committed export code (Aaroneous) and composition-proposer code
+  (devtools) with passing gates on both sides; at least one real composition
+  proposal scored and either admitted or archived through
+  `BUILD_WORTHINESS_STANDARD.md`, not just a design doc with no candidate run
+  through it.
+
 ## Decisions log
 
 Dated decisions from planning discussion, kept so later sessions don't re-litigate
@@ -271,6 +309,18 @@ settled scope:
   by blast radius instead of granting standing authority — what to do with a
   verified change stays a live, per-session decision rather than something a file
   pre-authorizes.
+- **2026-09-20 — Closed a naming gap: M47 was missing.** The internal-discovery
+  idea (composing existing capabilities to find hidden value, distinct from M41's
+  external ecosystem discovery) was discussed and agreed on in planning, then not
+  actually written up as its own milestone — M46 became packet meta-tagging
+  instead and the internal-discovery idea was quietly dropped rather than
+  recorded. Added as M47 once the gap was noticed, rather than left missing.
+- **2026-09-20 — Delivered the "judgement, document-driven" rubric.** Requested
+  earlier in planning and not delivered at the time. `governance/
+  BUILD_WORTHINESS_STANDARD.md` generalizes `FRONTIER_FILTRATION_STANDARD_V1.md`'s
+  scoring method to internally-generated ideas (M47's primary consumer) instead of
+  external crate candidates, using the same quadratic-scoring math so the two
+  standards stay comparable.
 
 ## Sequencing
 
@@ -281,6 +331,9 @@ M41's packet supply as a second input source) and should not be claimed before a
 proofed local draft actually exists to route through it. M46 depends on both M41
 and M45 and is deliberately last — meta-tagging and multi-variant exploration add
 real complexity and are only worth it once there is enough packet volume and one
-stable acceptance funnel to organize. No milestone in this plan authorizes paid
-cloud dispatch or local write/claim authority — those remain explicit future
-decisions, not defaults unlocked by completing M40–M46.
+stable acceptance funnel to organize. M47 depends on M40 (proves the file-contract
+pattern) and on `governance/BUILD_WORTHINESS_STANDARD.md` existing; it can proceed
+in parallel with M41/M44/M45/M46 rather than waiting on them, since it feeds the
+same packet supply M41 does rather than depending on it. No milestone in this plan
+authorizes paid cloud dispatch or local write/claim authority — those remain
+explicit future decisions, not defaults unlocked by completing M40–M47.
