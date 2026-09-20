@@ -69,6 +69,11 @@ queue before claiming; portfolio entries are not Ready source reservations.
 | P2 | M36 | Authenticated dashboard integration: REGISTRAR.md gap | C15/C19 acceptance | Explicit same-origin credential setup and negative lifecycle tests; no product writes |
 | P2 | M37 | Worker liveness and persistence failure policy: local_worker.rs/multithreader.rs | Ownership and deployment inputs | Observable quiet/reserved/error states, bounded permanent failure policy, crash-marker tests |
 | P2 | M38 | Utility client CI: standalone client.test.mjs gate | Reviewer capacity / exact workflow claim | Existing client tests automated on Windows/Linux, read-only bounded CI |
+| P2 | M40 | Surface `ConcurrenceSnapshot` as an advisory confidence field on scheduler recommendations | none — see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` | Rust systems review / read-only cross-repo analysis |
+| P2 | M41 | Make `frontier_discovery.rs` self-scheduling and packet-generating instead of manually invoked | none — see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` | Rust foundation / scheduling |
+| P3 | M42 | Scope (design only) a `cloud_providers.rs` dispatch adapter contract for cloud-routine queue read/write | M40, M41 informative | Release governance / distributed coordination design |
+| P2 | M43 | Auto-derive non-crossing work-packet lanes from dependency/component inventory | M41 | Dependency graph analysis |
+| P3 | M44 | Expand worker-jobs templates past read-only analysis, gated by cross_verifier/consensus_engine | M42 | Release governance / verification design |
 
 ## Intake rules
 
