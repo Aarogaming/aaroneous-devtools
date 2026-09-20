@@ -2,6 +2,7 @@ use crate::intake::{read_bounded, relative_file};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeMap,
     fs,
     io::Read,
     path::{Path, PathBuf},
@@ -42,6 +43,23 @@ struct Job {
     mode: Mode,
     evidence: Vec<String>,
     instruction: String,
+    /// The angle this particular attempt takes on `goal` (M46), e.g.
+    /// `correctness-first`, `performance-first`, `minimal-diff`. Free text,
+    /// not an enum yet. `#[serde(default)]` so packets written before M46
+    /// (which have none of these three fields) keep deserializing exactly as
+    /// before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    perspective: Option<String>,
+    /// A short id naming the problem being solved, independent of how any
+    /// given attempt solves it (M46).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    goal: Option<String>,
+    /// An id shared by every packet attempting the same `goal` from a
+    /// different `perspective`, so siblings are structurally linked (M46).
+    /// `None` means this job is a singleton, unaffected by exploration-group
+    /// handling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exploration_group: Option<String>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -77,6 +95,13 @@ struct Record {
     /// pre-proofing configured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pre_proof_report: Option<String>,
+    /// Set by a human reviewer (or the `record-exploration-outcome` CLI
+    /// command a reviewer runs) after comparing an `exploration_group`'s
+    /// siblings, per `governance/LOCAL_AGENT_CONTROL_PLANE.md`: the local
+    /// worker never sets or infers this field itself. `None` for every
+    /// record that predates M46 or has not yet been reviewed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rejection_reason: Option<String>,
 }
 struct Reservation(PathBuf);
 impl Drop for Reservation {
@@ -245,6 +270,171 @@ fn persist(c: &Config, record: &Record) -> Result<()> {
     }
     bail!("result sequence exhausted")
 }
+
+/// One `exploration_group` member surfaced in a comparison summary (M46):
+/// enough to find and read its own already-persisted result record, never a
+/// verdict on it.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+struct ExplorationGroupMember {
+    job_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    perspective: Option<String>,
+    /// Absolute path to that member's own `Record` JSON file, so a reviewer
+    /// (human or a later session) can open it directly.
+    result_record: String,
+}
+
+/// A side-by-side comparison artifact for one `exploration_group` (M46).
+/// This is surfacing, not selection: it never ranks, scores, or names a
+/// winner among `members` — see `governance/LOCAL_AGENT_CONTROL_PLANE.md`,
+/// which reserves that judgment call for the integration owner. A reviewer
+/// records their choice afterward with `record_exploration_outcome`.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct ExplorationGroupSummary {
+    schema_version: u32,
+    artifact_kind: String,
+    exploration_group: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    goal: Option<String>,
+    members: Vec<ExplorationGroupMember>,
+    generated_at_secs: u64,
+}
+
+/// Returns the path within `directory` whose filename is `{job_id}-NNNN.json`
+/// (the `persist` naming scheme), skipping pre-proof reports and any other
+/// `{job_id}-`-prefixed non-record artifact. `directory` must already exist;
+/// a missing directory yields no match rather than an error, since not every
+/// caller's archive directory is guaranteed to exist yet.
+fn find_job_record(directory: &Path, job_id: &str) -> Option<PathBuf> {
+    let entries = fs::read_dir(directory).ok()?;
+    let prefix = format!("{job_id}-");
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Some(rest) = name
+            .strip_prefix(&prefix)
+            .and_then(|r| r.strip_suffix(".json"))
+        else {
+            continue;
+        };
+        if rest.len() == 4 && rest.bytes().all(|b| b.is_ascii_digit()) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Groups jobs by `exploration_group`, dropping singletons (`None` or a
+/// group with only one member) since those are unaffected by M46 and are
+/// processed exactly as any other job. Pure and independent of I/O so the
+/// grouping logic itself is directly testable.
+fn group_by_exploration(jobs: &[Job]) -> BTreeMap<&str, Vec<&Job>> {
+    let mut groups: BTreeMap<&str, Vec<&Job>> = BTreeMap::new();
+    for job in jobs {
+        if let Some(group) = job.exploration_group.as_deref() {
+            groups.entry(group).or_default().push(job);
+        }
+    }
+    groups.retain(|_, members| members.len() >= 2);
+    groups
+}
+
+/// The M46 "comparison step": for every `exploration_group` whose members
+/// have *all* already been dispatched (each one already went through the
+/// unmodified per-job analysis/draft path as an ordinary job — this function
+/// never changes when or how a member is dispatched), write one summary
+/// artifact listing every sibling's id, perspective, and result-record path
+/// side by side. It deliberately does not rank, score, or select a "best"
+/// member: per `governance/LOCAL_AGENT_CONTROL_PLANE.md`, that judgment call
+/// belongs to the integration owner, not the local worker. Idempotent: once
+/// `{group}-exploration-summary.json` exists in `results_directory`, later
+/// calls skip that group without touching the file, the same
+/// already-processed check `tick_with` uses for individual jobs.
+fn write_exploration_group_summaries(c: &Config, now: u64) -> Result<()> {
+    let mut jobs = Vec::new();
+    for path in files(&c.jobs_directory, "toml")? {
+        if let Ok(text) = read_bounded(&path, 16384) {
+            if let Ok(job) = toml::from_str::<Job>(&text) {
+                jobs.push(job);
+            }
+        }
+    }
+    for (group, members) in group_by_exploration(&jobs) {
+        let summary_path = c
+            .results_directory
+            .join(format!("{group}-exploration-summary.json"));
+        if summary_path.exists() {
+            continue;
+        }
+        let mut resolved = Vec::with_capacity(members.len());
+        let mut all_dispatched = true;
+        for job in &members {
+            let record_path = find_job_record(&c.results_directory, &job.id)
+                .or_else(|| find_job_record(&c.archive_directory, &job.id));
+            match record_path {
+                Some(path) => resolved.push(ExplorationGroupMember {
+                    job_id: job.id.clone(),
+                    perspective: job.perspective.clone(),
+                    result_record: path.display().to_string(),
+                }),
+                None => {
+                    all_dispatched = false;
+                    break;
+                }
+            }
+        }
+        if !all_dispatched {
+            continue;
+        }
+        let goal = members.iter().find_map(|job| job.goal.clone());
+        let summary = ExplorationGroupSummary {
+            schema_version: 1,
+            artifact_kind: "foundation.local-worker-exploration-group-summary".into(),
+            exploration_group: group.to_string(),
+            goal,
+            members: resolved,
+            generated_at_secs: now,
+        };
+        let data = serde_json::to_vec_pretty(&summary)?;
+        let staging = summary_path.with_extension("partial");
+        fs::write(&staging, &data)?;
+        fs::rename(&staging, &summary_path)?;
+    }
+    Ok(())
+}
+
+/// Records a human reviewer's outcome for one `exploration_group` sibling
+/// (M46). This never infers or guesses an outcome; it only writes what the
+/// caller supplies. `results_dir` is searched by the same `{job_id}-NNNN.json`
+/// naming `find_job_record` uses elsewhere in this file.
+pub(crate) fn record_exploration_outcome(
+    results_dir: &Path,
+    job_id: &str,
+    outcome: &str,
+    reason: Option<String>,
+) -> Result<()> {
+    if !matches!(outcome, "accepted" | "rejected") {
+        bail!("outcome must be 'accepted' or 'rejected'");
+    }
+    if outcome == "rejected" && reason.as_deref().is_none_or(|r| r.trim().is_empty()) {
+        bail!("a rejected outcome requires a non-empty reason");
+    }
+    let record_path =
+        find_job_record(results_dir, job_id).context("no result record found for job id")?;
+    let mut record: Record = serde_json::from_str(&read_bounded(&record_path, 1048576)?)?;
+    record.outcome = outcome.to_string();
+    record.rejection_reason = if outcome == "rejected" { reason } else { None };
+    let data = serde_json::to_vec_pretty(&record)?;
+    let staging = record_path.with_extension("partial");
+    fs::write(&staging, &data)?;
+    fs::rename(&staging, &record_path)?;
+    println!("local worker: recorded {job_id} as {outcome}");
+    Ok(())
+}
+
 fn tick_with<F>(config_path: &Path, minute: u32, now: u64, delegate: F) -> Result<()>
 where
     F: Fn(&str, &str) -> Result<Draft>,
@@ -384,6 +574,12 @@ where
             }
         }
     }
+    // M46 pre-dispatch grouping step: before the per-job loop below dispatches
+    // jobs one at a time, surface any `exploration_group` whose members have
+    // all already been dispatched (each member still went through the same
+    // per-job analysis/draft path as a singleton — this step never changes
+    // dispatch order or picks a "best" member, see write_exploration_group_summaries).
+    write_exploration_group_summaries(&c, now)?;
     let queue = read_bounded(&c.queue, 262144)?;
     for path in files(&c.jobs_directory, "toml")? {
         let job: Job = toml::from_str(&read_bounded(&path, 16384)?)?;
@@ -439,6 +635,7 @@ where
             proposal: None,
             error: None,
             pre_proof_report: None,
+            rejection_reason: None,
         };
         let is_code_draft = matches!(job.mode, Mode::CodeDraft);
         match delegate(&c.endpoint, &record.input) {
@@ -852,7 +1049,10 @@ pub(crate) fn serve(config: &Path, poll_interval_secs: u64) -> Result<()> {
         if let Ok(text) = read_bounded(config, 16384) {
             if let Ok(c) = toml::from_str::<Config>(&text) {
                 if let Ok(pending_files) = files(&c.results_directory, "json") {
-                    let mut result_files: Vec<_> = pending_files.into_iter().filter(|p| is_result_file(p)).collect();
+                    let mut result_files: Vec<_> = pending_files
+                        .into_iter()
+                        .filter(|p| is_result_file(p))
+                        .collect();
                     if result_files.len() >= c.max_pending {
                         result_files.sort();
                         let to_archive = result_files.len().saturating_sub(c.max_pending / 2);
@@ -948,6 +1148,9 @@ mod tests {
             mode: Mode::Analysis,
             evidence: vec!["lib.rs".into()],
             instruction: "review reducer".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
         };
         fs::write(
             c.jobs_directory.join("job.toml"),
@@ -1039,6 +1242,9 @@ mod tests {
             mode: Mode::CodeDraft,
             evidence: vec!["lib.rs".into()],
             instruction: "draft a reducer".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
         };
         fs::write(
             c.jobs_directory.join("job.toml"),
@@ -1074,6 +1280,198 @@ mod tests {
                     .file_name()
                     .and_then(|n| n.to_str())
                     .is_some_and(|n| n.contains("pre-proof")))
+        );
+    }
+    #[test]
+    fn packet_without_m46_fields_deserializes_exactly_as_before() {
+        // A `.toml` packet written before M46, carrying only the original
+        // five fields, must still parse: the three new fields are
+        // `#[serde(default)]` so their absence is not an error.
+        let text = r#"
+schema_version = 1
+id = "JOB-1"
+mode = "analysis"
+evidence = ["lib.rs"]
+instruction = "review reducer"
+"#;
+        let job: Job = toml::from_str(text).expect("pre-M46 packet still parses");
+        assert_eq!(job.schema_version, 1);
+        assert_eq!(job.id, "JOB-1");
+        assert!(job.perspective.is_none());
+        assert!(job.goal.is_none());
+        assert!(job.exploration_group.is_none());
+    }
+    #[test]
+    fn packet_with_m46_fields_deserializes_correctly() {
+        let text = r#"
+schema_version = 1
+id = "JOB-2"
+mode = "code-draft"
+evidence = ["lib.rs"]
+instruction = "draft a reducer"
+perspective = "correctness-first"
+goal = "faster-reducer"
+exploration_group = "faster-reducer-group"
+"#;
+        let job: Job = toml::from_str(text).expect("M46 packet parses");
+        assert_eq!(job.perspective.as_deref(), Some("correctness-first"));
+        assert_eq!(job.goal.as_deref(), Some("faster-reducer"));
+        assert_eq!(
+            job.exploration_group.as_deref(),
+            Some("faster-reducer-group")
+        );
+    }
+    fn exploration_job(
+        id: &str,
+        group: Option<&str>,
+        goal: Option<&str>,
+        perspective: &str,
+    ) -> Job {
+        Job {
+            schema_version: 1,
+            id: id.into(),
+            mode: Mode::CodeDraft,
+            evidence: vec!["lib.rs".into()],
+            instruction: "draft a reducer".into(),
+            perspective: Some(perspective.into()),
+            goal: goal.map(Into::into),
+            exploration_group: group.map(Into::into),
+        }
+    }
+    #[test]
+    fn grouping_clusters_shared_exploration_group_and_leaves_ungrouped_alone() {
+        let jobs = vec![
+            exploration_job("A1", Some("group-x"), Some("goal-x"), "correctness-first"),
+            exploration_job("A2", Some("group-x"), Some("goal-x"), "performance-first"),
+            exploration_job("SINGLETON", None, None, "n/a"),
+            exploration_job("LONER", Some("group-y"), Some("goal-y"), "minimal-diff"),
+        ];
+        let groups = group_by_exploration(&jobs);
+        assert_eq!(groups.len(), 1, "only group-x has 2+ members");
+        let members = &groups["group-x"];
+        assert_eq!(members.len(), 2);
+        assert!(members.iter().any(|j| j.id == "A1"));
+        assert!(members.iter().any(|j| j.id == "A2"));
+        assert!(
+            !groups.contains_key("group-y"),
+            "single-member group-y must not appear"
+        );
+    }
+    fn exploration_fixture_record(job_id: &str, now: u64) -> Record {
+        Record {
+            schema_version: 1,
+            artifact_kind: "foundation.local-worker-result".into(),
+            job_id: job_id.into(),
+            submitted_at_secs: now,
+            outcome: "pending-owner-review".into(),
+            input: format!("input for {job_id}"),
+            proposal: Some(draft()),
+            error: None,
+            pre_proof_report: None,
+            rejection_reason: None,
+        }
+    }
+    #[test]
+    fn exploration_group_summary_written_once_all_members_dispatched_and_not_regenerated() {
+        let (_d, c, _config) = fixture();
+        let jobs_dir = &c.jobs_directory;
+        fs::write(
+            jobs_dir.join("group-a1.toml"),
+            toml::to_string(&exploration_job(
+                "A1",
+                Some("group-x"),
+                Some("goal-x"),
+                "correctness-first",
+            ))
+            .expect("job"),
+        )
+        .expect("write A1");
+        fs::write(
+            jobs_dir.join("group-a2.toml"),
+            toml::to_string(&exploration_job(
+                "A2",
+                Some("group-x"),
+                Some("goal-x"),
+                "performance-first",
+            ))
+            .expect("job"),
+        )
+        .expect("write A2");
+
+        // Not all members dispatched yet: no summary should appear.
+        write_exploration_group_summaries(&c, 1).expect("no-op pass");
+        let summary_path = c.results_directory.join("group-x-exploration-summary.json");
+        assert!(!summary_path.exists());
+
+        // Dispatch (persist a result record for) only A1: still incomplete.
+        persist(&c, &exploration_fixture_record("A1", 1)).expect("persist A1");
+        write_exploration_group_summaries(&c, 2).expect("still incomplete");
+        assert!(!summary_path.exists());
+
+        // Dispatch A2 too: now the group is complete and a summary should
+        // be written listing both siblings, without ranking either one.
+        persist(&c, &exploration_fixture_record("A2", 2)).expect("persist A2");
+        write_exploration_group_summaries(&c, 3).expect("complete pass");
+        assert!(summary_path.exists());
+        let summary: ExplorationGroupSummary =
+            serde_json::from_str(&fs::read_to_string(&summary_path).expect("read summary"))
+                .expect("valid summary");
+        assert_eq!(summary.exploration_group, "group-x");
+        assert_eq!(summary.goal.as_deref(), Some("goal-x"));
+        assert_eq!(summary.members.len(), 2);
+        assert!(
+            summary
+                .members
+                .iter()
+                .any(|m| m.job_id == "A1" && m.perspective.as_deref() == Some("correctness-first"))
+        );
+        assert!(
+            summary
+                .members
+                .iter()
+                .any(|m| m.job_id == "A2" && m.perspective.as_deref() == Some("performance-first"))
+        );
+
+        // Already written: a later call must not regenerate it, mirroring
+        // how this file already avoids reprocessing unchanged jobs.
+        fs::write(&summary_path, "SENTINEL-DO-NOT-OVERWRITE").expect("sentinel");
+        write_exploration_group_summaries(&c, 4).expect("skip already-written group");
+        assert_eq!(
+            fs::read_to_string(&summary_path).expect("read after second pass"),
+            "SENTINEL-DO-NOT-OVERWRITE"
+        );
+    }
+    #[test]
+    fn record_exploration_outcome_writes_reviewer_decision_and_requires_reason_on_reject() {
+        let (_d, c, _config) = fixture();
+        persist(&c, &exploration_fixture_record("A1", 1)).expect("persist A1");
+        record_exploration_outcome(&c.results_directory, "A1", "accepted", None)
+            .expect("accept without reason is fine");
+        let record_path = find_job_record(&c.results_directory, "A1").expect("record exists");
+        let record: Record =
+            serde_json::from_str(&fs::read_to_string(&record_path).expect("read")).expect("record");
+        assert_eq!(record.outcome, "accepted");
+        assert!(record.rejection_reason.is_none());
+
+        persist(&c, &exploration_fixture_record("A2", 1)).expect("persist A2");
+        assert!(
+            record_exploration_outcome(&c.results_directory, "A2", "rejected", None).is_err(),
+            "reject without reason must be refused"
+        );
+        record_exploration_outcome(
+            &c.results_directory,
+            "A2",
+            "rejected",
+            Some("lost to A1 on correctness".into()),
+        )
+        .expect("reject with reason");
+        let record_path = find_job_record(&c.results_directory, "A2").expect("record exists");
+        let record: Record =
+            serde_json::from_str(&fs::read_to_string(&record_path).expect("read")).expect("record");
+        assert_eq!(record.outcome, "rejected");
+        assert_eq!(
+            record.rejection_reason.as_deref(),
+            Some("lost to A1 on correctness")
         );
     }
     #[test]

@@ -362,6 +362,24 @@ enum Command {
         #[arg(long)]
         output_dir: PathBuf,
     },
+    /// Record a human reviewer's accept/reject outcome for one
+    /// `exploration_group` sibling job (M46). Never inferred or guessed by
+    /// this tool: the reviewer supplies the outcome after comparing an
+    /// `exploration_group`'s `*-exploration-summary.json` artifact.
+    RecordExplorationOutcome {
+        /// Absolute path to the local worker's results directory.
+        #[arg(long)]
+        results_dir: PathBuf,
+        /// The `id` of the job being marked.
+        #[arg(long)]
+        job_id: String,
+        /// `accepted` or `rejected`.
+        #[arg(long)]
+        outcome: String,
+        /// Required when `outcome` is `rejected`: why this sibling lost.
+        #[arg(long)]
+        reason: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -770,6 +788,12 @@ fn main() -> Result<()> {
             mode,
             output_dir,
         } => job_converter::sync_worker_jobs(&queue, &mode, &output_dir).map(|_| ()),
+        Command::RecordExplorationOutcome {
+            results_dir,
+            job_id,
+            outcome,
+            reason,
+        } => local_worker::record_exploration_outcome(&results_dir, &job_id, &outcome, reason),
     }
 }
 
