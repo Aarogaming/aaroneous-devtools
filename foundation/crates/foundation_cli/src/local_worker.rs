@@ -23,6 +23,10 @@ struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hypervisor_mcp_endpoint: Option<String>,
     max_pending: usize,
+    /// Model name to use for Ollama requests. Defaults to "qwen3.5:9b-q6"
+    /// if not set, preserving backward compatibility with existing configs.
+    #[serde(default = "default_model")]
+    model: String,
     /// Optional local pre-proofing settings (M44). All three must be present
     /// for pre-proofing to run; when any is absent, behavior is unchanged from
     /// before pre-proofing existed. `pre_proof_checkout` must be an already-
@@ -706,7 +710,7 @@ pub(crate) fn set_rejection_reason_from_review(
 
 fn tick_with<F>(config_path: &Path, minute: u32, now: u64, delegate: F) -> Result<()>
 where
-    F: Fn(&str, &str) -> Result<Draft>,
+    F: Fn(&str, &str, &str) -> Result<Draft>,
 {
     if !config_path.is_absolute() || minute > 59 {
         bail!("absolute config and minute 0..59 required");
@@ -1083,7 +1087,7 @@ where
             .and_then(|p| p.parent())
             .unwrap_or(&c.checkout);
         let roots = [&c.checkout, devtools_root];
-        match delegate(&c.endpoint, &record.input) {
+        match delegate(&c.endpoint, &c.model, &record.input) {
             Ok(proposal) => {
                 let mut violations = verify_proposal_quality(&proposal);
                 violations.extend(verify_proposal_citations(&proposal, &roots));
@@ -1107,7 +1111,7 @@ where
                         record.input,
                         violations.join("\n- ")
                     );
-                    match delegate(&c.endpoint, &retry_input) {
+                    match delegate(&c.endpoint, &c.model, &retry_input) {
                         Ok(retry_proposal) => {
                             let mut retry_violations = verify_proposal_quality(&retry_proposal);
                             retry_violations
@@ -1288,12 +1292,17 @@ fn draft_schema() -> serde_json::Value {
         }
     })
 }
-fn delegate(endpoint: &str, input: &str) -> Result<Draft> {
-    delegate_tuned(endpoint, input, false, false)
+fn default_model() -> String {
+    "qwen3.5:9b-q6".into()
+}
+
+fn delegate(endpoint: &str, model: &str, input: &str) -> Result<Draft> {
+    delegate_tuned(endpoint, model, input, false, false)
 }
 
 fn delegate_tuned(
     endpoint: &str,
+    model: &str,
     input: &str,
     is_retry: bool,
     is_code_draft: bool,
@@ -1321,7 +1330,7 @@ fn delegate_tuned(
     let num_predict = if is_code_generation { 8192 } else { 4096 };
 
     let request = serde_json::json!({
-        "model":"qwen3.5:9b-q6",
+        "model": model,
         "stream":false,
         "think":false,
         "format":draft_schema(),
@@ -1387,14 +1396,68 @@ pub fn verify_proposal_quality(draft: &Draft) -> Vec<String> {
     if draft.task.trim().is_empty() {
         violations.push("task title is empty".into());
     }
+    if draft.task.len() > 256 {
+        violations.push(format!(
+            "task title is {} bytes, exceeds 256-byte limit",
+            draft.task.len()
+        ));
+    }
     if draft.recommended_next_step.trim().is_empty() {
         violations.push("recommended_next_step is empty".into());
+    }
+    if draft.recommended_next_step.len() > 512 {
+        violations.push(format!(
+            "recommended_next_step is {} bytes, exceeds 512-byte limit",
+            draft.recommended_next_step.len()
+        ));
     }
     if draft.observations.is_empty() {
         violations.push("observations array is empty".into());
     }
+    if draft.observations.len() > 3 {
+        violations.push(format!(
+            "observations has {} items, exceeds maxItems=3",
+            draft.observations.len()
+        ));
+    }
+    for (i, obs) in draft.observations.iter().enumerate() {
+        if obs.len() > 512 {
+            violations.push(format!(
+                "observations[{i}] is {} bytes, exceeds 512-byte limit",
+                obs.len()
+            ));
+        }
+    }
+    if draft.risks.len() > 6 {
+        violations.push(format!(
+            "risks has {} items, exceeds maxItems=6",
+            draft.risks.len()
+        ));
+    }
+    for (i, risk) in draft.risks.iter().enumerate() {
+        if risk.len() > 512 {
+            violations.push(format!(
+                "risks[{i}] is {} bytes, exceeds 512-byte limit",
+                risk.len()
+            ));
+        }
+    }
     if draft.test_plan.is_empty() {
         violations.push("test_plan array is empty".into());
+    }
+    if draft.test_plan.len() > 3 {
+        violations.push(format!(
+            "test_plan has {} items, exceeds maxItems=3",
+            draft.test_plan.len()
+        ));
+    }
+    for (i, step) in draft.test_plan.iter().enumerate() {
+        if step.len() > 256 {
+            violations.push(format!(
+                "test_plan[{i}] is {} bytes, exceeds 256-byte limit",
+                step.len()
+            ));
+        }
     }
 
     let mut seen = std::collections::HashSet::new();
@@ -1414,6 +1477,12 @@ pub fn verify_proposal_quality(draft: &Draft) -> Vec<String> {
     }
 
     if let Some(ref code) = draft.rust_draft {
+        if code.len() > 24000 {
+            violations.push(format!(
+                "rust_draft is {} bytes, exceeds 24000-byte limit",
+                code.len()
+            ));
+        }
         if code.contains("todo!(") || code.contains("unimplemented!(") {
             violations.push("rust_draft contains forbidden stubs (todo! / unimplemented!)".into());
         }
@@ -1466,10 +1535,12 @@ pub fn verify_proposal_quality(draft: &Draft) -> Vec<String> {
 pub fn verify_proposal_citations(draft: &Draft, roots: &[&Path]) -> Vec<String> {
     let mut violations = Vec::new();
     let text = format!(
-        "{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}",
         draft.task,
         draft.recommended_next_step,
-        draft.observations.join("\n")
+        draft.observations.join("\n"),
+        draft.risks.join("\n"),
+        draft.test_plan.join("\n")
     );
     let cited_paths = crate::fact_checker::extract_cited_paths(&text);
     for rel in cited_paths {
@@ -1718,6 +1789,19 @@ fn run_pre_tick_maintenance(config_path: &Path) {
     let Ok(c) = toml::from_str::<Config>(&text) else {
         return;
     };
+    // Clean up orphaned .partial staging files from interrupted writes.
+    // These are safe to remove: a partial file left behind by a crashed
+    // tick is never referenced by any other code path, and the intended
+    // destination .json file either exists (rename completed) or doesn't
+    // (write never finished). Removing them prevents slow disk bloat.
+    if let Ok(entries) = fs::read_dir(&c.results_directory) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("partial") {
+                let _ = fs::remove_file(&path);
+            }
+        }
+    }
     let verdicts_path = c
         .results_directory
         .parent()
@@ -1867,6 +1951,7 @@ mod tests {
             endpoint: "http://127.0.0.1:1".into(),
             hypervisor_mcp_endpoint: None,
             max_pending: 2,
+            model: "qwen3.5:9b-q6".into(),
             pre_proof_checkout: None,
             pre_proof_target_file: None,
             pre_proof_command: None,
@@ -2026,7 +2111,7 @@ mod tests {
             "interrupted",
         )
         .expect("partial");
-        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("dispatch");
+        tick_with(&config, 10, 1, |_, _, _| Ok(draft())).expect("dispatch");
         let result = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -2037,7 +2122,7 @@ mod tests {
                 .join(result.file_name().expect("filename")),
         )
         .expect("archive");
-        tick_with(&config, 10, 2, |_, _| panic!("archived input regenerated")).expect("skip");
+        tick_with(&config, 10, 2, |_, _, _| panic!("archived input regenerated")).expect("skip");
         assert!(
             files(&c.results_directory, "json")
                 .expect("results")
@@ -2049,7 +2134,7 @@ mod tests {
     fn active_owner_prevents_dispatch_without_product_mutation() {
         let (_d, c, config) = fixture();
         fs::write(&c.queue, "| OWNER | `lib.rs` | Claimed | Gemini |\n").expect("claim");
-        tick_with(&config, 10, 1, |_, _| panic!("active scope dispatched")).expect("skip");
+        tick_with(&config, 10, 1, |_, _, _| panic!("active scope dispatched")).expect("skip");
         assert_eq!(
             fs::read_to_string(c.checkout.join("lib.rs")).expect("source"),
             "fn reduce() {}"
@@ -2082,7 +2167,7 @@ mod tests {
         )
         .expect("write job");
         fs::write(&c.queue, "| OWNER | `lib.rs` | Claimed | Gemini |\n").expect("claim");
-        tick_with(&config, 10, 1, |_, _| {
+        tick_with(&config, 10, 1, |_, _, _| {
             panic!("range-suffixed evidence dispatched despite an active claim on the base file")
         })
         .expect("skip");
@@ -2091,7 +2176,7 @@ mod tests {
     fn escaped_input_records_remain_readable_at_the_storage_bound() {
         let (_d, c, config) = fixture();
         fs::write(c.checkout.join("lib.rs"), vec![0u8; 32700]).expect("bounded input");
-        tick_with(&config, 10, 1, |_, _| {
+        tick_with(&config, 10, 1, |_, _, _| {
             let mut proposal = draft();
             proposal.rust_draft = Some("\0".repeat(3000));
             Ok(proposal)
@@ -2102,7 +2187,7 @@ mod tests {
             .pop()
             .expect("file");
         assert!(fs::metadata(record).expect("size").len() > 200000);
-        tick_with(&config, 10, 2, |_, _| {
+        tick_with(&config, 10, 2, |_, _, _| {
             panic!("unchanged escaped input dispatched")
         })
         .expect("read previous record");
@@ -2222,7 +2307,7 @@ pub fn add(a: i32, b: i32) -> i32 {
             toml::to_string(&job).expect("job"),
         )
         .expect("write job");
-        tick_with(&config, 10, 1, |_, _| {
+        tick_with(&config, 10, 1, |_, _, _| {
             let mut code_draft = draft();
             code_draft.task = "JOB-CODE-1".into();
             code_draft.rust_draft = Some("fn reduce(value: u32) -> u32 { value }".into());
@@ -2501,7 +2586,7 @@ exploration_group = "faster-reducer-group"
         // Both the initial attempt and the self-correction retry return a
         // draft with a real hot-path unwrap, so this genuinely reaches
         // outcome == "failed", not just a single quality-check miss.
-        let always_violates = |_: &str, _: &str| {
+        let always_violates = |_: &str, _: &str, _: &str| {
             calls.set(calls.get() + 1);
             let mut d = draft();
             d.rust_draft = Some("pub fn f() -> i32 { 1i32.checked_add(1).unwrap() }".into());
@@ -2537,15 +2622,15 @@ exploration_group = "faster-reducer-group"
     #[test]
     fn unchanged_inputs_are_not_regenerated_and_changes_are() {
         let (_d, c, config) = fixture();
-        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("first");
-        tick_with(&config, 10, 2, |_, _| panic!("unchanged input dispatched")).expect("unchanged");
+        tick_with(&config, 10, 1, |_, _, _| Ok(draft())).expect("first");
+        tick_with(&config, 10, 2, |_, _, _| panic!("unchanged input dispatched")).expect("unchanged");
         fs::write(c.checkout.join("lib.rs"), "fn changed() {}").expect("change");
-        tick_with(&config, 10, 3, |_, _| Ok(draft())).expect("changed");
+        tick_with(&config, 10, 3, |_, _, _| Ok(draft())).expect("changed");
         assert_eq!(
             files(&c.results_directory, "json").expect("results").len(),
             2
         );
-        tick_with(&config, 10, 4, |_, _| panic!("backpressure ignored")).expect("throttled");
+        tick_with(&config, 10, 4, |_, _, _| panic!("backpressure ignored")).expect("throttled");
     }
     #[test]
     fn read_status_outcome_parses_present_and_missing_files() {
@@ -2614,6 +2699,7 @@ exploration_group = "faster-reducer-group"
             endpoint: "http://127.0.0.1:1".into(),
             hypervisor_mcp_endpoint: None,
             max_pending: 4,
+            model: "qwen3.5:9b-q6".into(),
             pre_proof_checkout: None,
             pre_proof_target_file: None,
             pre_proof_command: None,
@@ -2683,7 +2769,7 @@ exploration_group = "faster-reducer-group"
 
         // Tick 1: both jobs equally never-attempted (last_attempt_secs = 0
         // for both) — alphabetical tie-break picks AUDIT-A first.
-        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick 1");
+        tick_with(&config, 10, 1, |_, _, _| Ok(draft())).expect("tick 1");
         assert_eq!(last_dispatched(&c), "AUDIT-A");
 
         // Simulate AUDIT-A being a recurring job whose content changes
@@ -2696,7 +2782,7 @@ exploration_group = "faster-reducer-group"
         // AUDIT-B has never been attempted (last_attempt_secs = 0) — this
         // is exactly the case pure alphabetical order gets wrong.
         // AUDIT-B must get this turn.
-        tick_with(&config, 10, 2, |_, _| Ok(draft())).expect("tick 2");
+        tick_with(&config, 10, 2, |_, _, _| Ok(draft())).expect("tick 2");
         assert_eq!(
             last_dispatched(&c),
             "AUDIT-B",
@@ -2709,7 +2795,7 @@ exploration_group = "faster-reducer-group"
         // Tick 3: AUDIT-A (last attempted at 1) is now older than AUDIT-B
         // (last attempted at 2), so it's A's turn again — proving this is
         // real rotation, not just "B always wins now".
-        tick_with(&config, 10, 3, |_, _| Ok(draft())).expect("tick 3");
+        tick_with(&config, 10, 3, |_, _, _| Ok(draft())).expect("tick 3");
         assert_eq!(last_dispatched(&c), "AUDIT-A");
     }
 
@@ -2762,7 +2848,7 @@ exploration_group = "faster-reducer-group"
         )
         .expect("write job p0");
 
-        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        tick_with(&config, 10, 1, |_, _, _| Ok(draft())).expect("tick");
         let path = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -2829,7 +2915,7 @@ exploration_group = "faster-reducer-group"
         // sorts before "JOB-P2", proving unset priority competed on equal
         // footing rather than losing to the explicit P2 or winning
         // outright as if it were P0.
-        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        tick_with(&config, 10, 1, |_, _, _| Ok(draft())).expect("tick");
         let path = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -2939,7 +3025,7 @@ exploration_group = "faster-reducer-group"
         )
         .expect("write job");
 
-        tick_with(&config, 10, 1, |_, input| {
+        tick_with(&config, 10, 1, |_, _, input| {
             assert!(input.contains("line 1400"));
             assert!(input.contains("line 1440"));
             assert!(
@@ -3006,7 +3092,7 @@ exploration_group = "faster-reducer-group"
         )
         .expect("write job good");
 
-        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect(
+        tick_with(&config, 10, 1, |_, _, _| Ok(draft())).expect(
             "tick_with must succeed despite one unreadable/oversized job among the candidates",
         );
         let path = files(&c.results_directory, "json")
@@ -3023,7 +3109,7 @@ exploration_group = "faster-reducer-group"
     fn shared_lock_and_quiet_window_prevent_dispatch() {
         let (_d, c, config) = fixture();
         fs::write(c.reservation_directory.join("review.lock"), "owner").expect("reserve");
-        tick_with(&config, 10, 2, |_, _| panic!("lock ignored")).expect("reserved");
+        tick_with(&config, 10, 2, |_, _, _| panic!("lock ignored")).expect("reserved");
         assert_eq!(
             fs::read_to_string(c.reservation_directory.join("review.lock")).expect("lock"),
             "owner"
@@ -3032,8 +3118,8 @@ exploration_group = "faster-reducer-group"
     #[test]
     fn failure_is_retained_and_not_retried_unchanged() {
         let (_d, c, config) = fixture();
-        assert!(tick_with(&config, 10, 1, |_, _| bail!("bad model response")).is_err());
-        tick_with(&config, 10, 2, |_, _| {
+        assert!(tick_with(&config, 10, 1, |_, _, _| bail!("bad model response")).is_err());
+        tick_with(&config, 10, 2, |_, _, _| {
             panic!("failed unchanged job retried")
         })
         .expect("skip");
@@ -3061,7 +3147,7 @@ exploration_group = "faster-reducer-group"
         f.set_times(std::fs::FileTimes::new().set_modified(past))
             .expect("set_times");
         drop(f);
-        tick_with(&config, 10, 1000, |_, _| bail!("fail")).expect_err("job fail");
+        tick_with(&config, 10, 1000, |_, _, _| bail!("fail")).expect_err("job fail");
         assert!(
             c.results_directory
                 .join("crash_marker_retained.json")
@@ -3219,7 +3305,7 @@ mod protocol_tests {
     fn worker_uses_complete_json_protocol() {
         let response=serde_json::json!({"task":"fixture","observations":[],"risks":[],"test_plan":["owner test"],"recommended_next_step":"review draft","rust_draft":"fn reduce(value: u32) -> u32 { value }"}).to_string();
         let (endpoint, server) = mock(&response, "stop");
-        let draft = delegate(&endpoint, "approved fixture evidence").expect("draft");
+        let draft = delegate(&endpoint, "qwen3.5:9b-q6", "approved fixture evidence").expect("draft");
         assert!(draft.rust_draft.expect("code").contains("fn reduce"));
         server.join().expect("server");
     }
@@ -3227,13 +3313,13 @@ mod protocol_tests {
     fn worker_rejects_truncated_and_malformed_output() {
         for (response, reason) in [("{}", "stop"), ("{}", "length")] {
             let (endpoint, server) = mock(response, reason);
-            assert!(delegate(&endpoint, "evidence").is_err());
+            assert!(delegate(&endpoint, "qwen3.5:9b-q6", "evidence").is_err());
             server.join().expect("server");
         }
     }
     #[test]
     fn worker_forbids_remote_endpoints_and_parent_traversal() {
-        assert!(delegate("http://example.com", "evidence").is_err());
+        assert!(delegate("http://example.com", "qwen3.5:9b-q6", "evidence").is_err());
         let d = tempfile::tempdir().expect("fixture");
         assert!(evidence_file(d.path(), "../outside.rs").is_err());
     }
