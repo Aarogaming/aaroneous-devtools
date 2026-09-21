@@ -24,6 +24,7 @@ mod job_converter;
 mod local_proposal;
 mod local_worker;
 mod multithreader;
+mod outbox;
 mod portfolio_digest;
 mod portfolio_jobs;
 mod scheduler;
@@ -306,6 +307,61 @@ enum Command {
         #[arg(long)]
         candidates_dir: PathBuf,
         /// Absolute path for the JSON overlap report; its parent must already exist.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// List every pending result under `artifacts/local-worker-service/results/`
+    /// as a compact, machine-readable summary (job id, outcome, one-line gist,
+    /// risk count, whether it's already been reviewed) -- so a reviewer, human
+    /// or another agent with file/shell access, doesn't have to open dozens of
+    /// individual JSON files one at a time. Read-only.
+    OutboxList {
+        #[arg(long)]
+        results: PathBuf,
+        /// Optional: marks entries `reviewed: true` if they already have a
+        /// recorded verdict in this file.
+        #[arg(long)]
+        verdicts: Option<PathBuf>,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Write the full `Record` (including the complete proposal) for one
+    /// `job_id` from the outbox. Read-only.
+    OutboxShow {
+        #[arg(long)]
+        results: PathBuf,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Append one reviewer's structured verdict (accept/reject/needs-changes/
+    /// uncertain) on one outbox result to `verdicts`. Never promotes, claims,
+    /// or edits the result itself -- this only records evidence a reviewer
+    /// (human, or another agent) can act on; actual promotion still goes
+    /// through `agentic-registrar promote`. Refuses an unknown `job_id` or an
+    /// unrecognized verdict string before writing anything.
+    OutboxVerdict {
+        #[arg(long)]
+        results: PathBuf,
+        #[arg(long)]
+        verdicts: PathBuf,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        reviewer: String,
+        /// One of: accept, reject, needs-changes, uncertain.
+        #[arg(long)]
+        verdict: String,
+        #[arg(long, default_value = "")]
+        notes: String,
+    },
+    /// Write every recorded verdict from `verdicts` as a JSON array to
+    /// `output`. Read-only; an empty (not missing-file-error) result if no
+    /// verdicts have been recorded yet.
+    OutboxListVerdicts {
+        #[arg(long)]
+        verdicts: PathBuf,
         #[arg(long)]
         output: PathBuf,
     },
@@ -1126,6 +1182,27 @@ fn main() -> Result<()> {
             candidates_dir,
             output,
         } => batch_overlap::check_directory(&candidates_dir, &output),
+        Command::OutboxList {
+            results,
+            verdicts,
+            output,
+        } => outbox::run_list(&results, verdicts.as_deref(), &output),
+        Command::OutboxShow {
+            results,
+            id,
+            output,
+        } => outbox::run_show(&results, &id, &output),
+        Command::OutboxVerdict {
+            results,
+            verdicts,
+            id,
+            reviewer,
+            verdict,
+            notes,
+        } => outbox::run_verdict(&results, &verdicts, &id, &reviewer, &verdict, &notes),
+        Command::OutboxListVerdicts { verdicts, output } => {
+            outbox::run_list_verdicts(&verdicts, &output)
+        }
         Command::ScheduleReview {
             queue,
             program,
