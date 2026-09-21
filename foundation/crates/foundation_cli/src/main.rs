@@ -36,6 +36,21 @@ struct Cli {
     command: Command,
 }
 
+/// CLI-selectable mirror of `dogfood::ComplianceProfile`'s variants (M53).
+/// `clap::ValueEnum` can't derive directly on `ComplianceProfile` itself
+/// since `AaroneousStrict`/`Custom` carry data a flag value can't hold; this
+/// plain enum picks which named preset applies, and the surrounding
+/// `Option<PathBuf>`/`Vec<String>` sibling args (`cratify_target`,
+/// `verify_command`) supply that variant's data, matching how other
+/// commands in this file already spread a compound choice across several
+/// `#[arg(long)]` fields rather than one complex enum arg.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum ProfileKind {
+    AaroneousStrict,
+    DevtoolsOperatingModel,
+    Custom,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Agentic Queue Registrar & Dispatch Control Plane
@@ -372,6 +387,38 @@ enum Command {
         /// e.g. the crate/directory containing `target_file`.
         #[arg(long)]
         cratify_target: PathBuf,
+        /// Absolute path for the versioned verification report file.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Write a code draft to an already-existing checkout and verify it
+    /// against a named, selectable `ComplianceProfile` (M53) instead of a
+    /// hand-constructed `verify_command`. `--profile aaroneous-strict` and
+    /// `--profile devtools-operating-model` are deliberately not
+    /// interchangeable — see `governance/REVIEW_CONDITIONS.md`'s devtools
+    /// conditions table for which applies to which target. Never creates or
+    /// initializes the checkout itself.
+    VerifyDraftWithProfile {
+        /// Absolute path to an already-existing Git checkout.
+        #[arg(long)]
+        checkout: PathBuf,
+        /// Relative path (from checkout root) the draft is written to.
+        #[arg(long)]
+        target_file: PathBuf,
+        /// Absolute path to a file containing the draft source to verify.
+        #[arg(long)]
+        draft_file: PathBuf,
+        /// Which compliance ruleset to verify against.
+        #[arg(long, value_enum)]
+        profile: ProfileKind,
+        /// Relative path (from checkout root) passed to `cratify audit`.
+        /// Required (and only meaningful) when `--profile aaroneous-strict`.
+        #[arg(long)]
+        cratify_target: Option<PathBuf>,
+        /// Verification command args passed to `cargo`. Required (and only
+        /// meaningful) when `--profile custom`.
+        #[arg(long = "verify-command", num_args = 0..)]
+        verify_command: Vec<String>,
         /// Absolute path for the versioned verification report file.
         #[arg(long)]
         output: PathBuf,
@@ -914,6 +961,47 @@ fn main() -> Result<()> {
             let draft = intake::read_bounded(&draft_file, 65536)
                 .with_context(|| format!("failed to read {}", draft_file.display()))?;
             dogfood::cratify_audit(&checkout, &target_file, &draft, &cratify_target, &output)
+        }
+        Command::VerifyDraftWithProfile {
+            checkout,
+            target_file,
+            draft_file,
+            profile,
+            cratify_target,
+            verify_command,
+            output,
+        } => {
+            if !draft_file.is_absolute() {
+                bail!(
+                    "draft_file must be an absolute path: {}",
+                    draft_file.display()
+                );
+            }
+            let profile = match profile {
+                ProfileKind::AaroneousStrict => {
+                    let cratify_target = cratify_target.context(
+                        "--cratify-target is required when --profile is aaroneous-strict",
+                    )?;
+                    dogfood::ComplianceProfile::AaroneousStrict { cratify_target }
+                }
+                ProfileKind::DevtoolsOperatingModel => {
+                    if cratify_target.is_some() {
+                        bail!(
+                            "--cratify-target is not used when --profile is devtools-operating-model"
+                        );
+                    }
+                    dogfood::ComplianceProfile::DevtoolsOperatingModel
+                }
+                ProfileKind::Custom => {
+                    if verify_command.is_empty() {
+                        bail!("--verify-command is required when --profile is custom");
+                    }
+                    dogfood::ComplianceProfile::Custom(verify_command)
+                }
+            };
+            let draft = intake::read_bounded(&draft_file, 65536)
+                .with_context(|| format!("failed to read {}", draft_file.display()))?;
+            dogfood::verify_draft_with_profile(&checkout, &target_file, &draft, &profile, &output)
         }
         Command::ValidateIntake { proposal, output } => intake::validate(&proposal, &output),
         Command::GenerateIntake {
