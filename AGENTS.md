@@ -43,6 +43,19 @@ Run the applicable verification gate, record the command/result and commit in th
 You are joining the Aaroneous multithread program. Begin by reading aaroneous-devtools/AGENTS.md, the coordination queue, and the multithread program. Do not edit any repository until you have selected an unowned Ready item, recorded an exact-path claim, and read Aaroneous AGENTS.md. Work only within the claim scope. Use Qwen only as a bounded, owner-reviewed proposal worker under LOCAL_AGENT_CONTROL_PLANE.md. Record evidence, verification, commit, and a handoff in the queue before declaring completion.
 ```
 
+## Joining as a new agent (cross-product round table)
+
+The starter prompt above is scoped to claiming a devtools multithread lane.
+If you're a new agent session (Claude, Codex, Antigravity/Gemini, or any
+future participant) being onboarded to this project for the first time,
+start instead with
+[`governance/ROUND_TABLE_INTRO_PROMPT.md`](governance/ROUND_TABLE_INTRO_PROMPT.md)
+— a self-contained prompt covering both repositories, the coordination
+queue, and the ping/circuit-breaker signaling mechanisms other agents
+already use. See
+[`governance/CROSS_AGENT_COORDINATION_PROTOCOL.md`](governance/CROSS_AGENT_COORDINATION_PROTOCOL.md)
+for the full system this prompt onboards you into.
+
 ## Feeding the local support inbox
 
 The native polling worker is described in `governance/LOCAL_WORKER_SERVICE.md`. After checking queue ownership and claiming the exact devtools manifest path, an integration owner may submit a narrowly approved analysis, test-fixture, or code-draft job in `worker-jobs/`. Use existing sources and bounded acceptance criteria; do not fabricate busywork. The worker automatically discovers new manifests and changed evidence. A support job is not a primary queue claim and its output is not approval. Review pending results before submitting more; archive reviewed records with their history intact. Cooperating model work must honor the shared reservation and quiet windows rather than starting independent Ollama loops.

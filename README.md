@@ -24,6 +24,7 @@ The React/TypeScript GUI (`gui/`) and registrar (`agentic_registrar.rs`) exist i
 - [Priority portfolio](governance/MULTITHREAD_PROGRAM.md): what to work on next.
 - [Coordination queue](governance/COORDINATION_QUEUE.md): who owns exact files now.
 - [Maintenance system](governance/MAINTENANCE_SYSTEM.md): evidence and planning lifecycle.
+- [Cross-agent coordination protocol](governance/CROSS_AGENT_COORDINATION_PROTOCOL.md) and [round table intro prompt](governance/ROUND_TABLE_INTRO_PROMPT.md): how multiple agent sessions (Claude, Codex, Antigravity/Gemini, local Qwen) coordinate across both repositories, and the onboarding prompt for a new one joining.
 - [Foundation architecture](architecture/FOUNDATION_ARCHITECTURE.md), [technology policy](governance/TECH_STACKS.md), [ecosystem catalogue](stacks/RUST_ECOSYSTEMS.md) and [dogfooding](governance/DOGFOOD_PROTOCOL.md).
 - [Git workflow](governance/GIT_WORKFLOW.md), [decisions](governance/DECISIONS.md), [releases](governance/RELEASES.md) and [security](SECURITY.md).
 

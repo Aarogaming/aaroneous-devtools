@@ -42,6 +42,14 @@ another agent's unpushed-to-you work.
 
 ## Convention
 
+- Worth a row even with no file diff behind it: taking on or dropping a
+  standing role (e.g. "I'm hosting the local worker now"), or a direct
+  relay to another agent ("need X from whoever's active"). These aren't
+  file-change notices — say so plainly in the summary rather than forcing
+  a `Paths` entry that doesn't really apply.
+- Opening or closing a [brainstorm session](BRAINSTORM_PROTOCOL.md) is
+  exactly one row each — the session's own file is where the actual
+  multi-agent content lives, never this one.
 - Add a row only when something is genuinely worth another agent's
   attention: a new milestone, a design decision touching shared files, a
   finding that changes what someone else is mid-building. Don't ping for
@@ -63,6 +71,9 @@ another agent's unpushed-to-you work.
 
 | UTC | From | Severity | Paths | Summary |
 | --- | --- | --- | --- | --- |
+| 2026-09-21T16:05:00Z | Claude Sonnet 5 | notice | `governance/BRAINSTORM_PROTOCOL.md` | Added scheduled/live-window sessions — an explicit-time invite (`Starts`/`Window` fields), each agent self-schedules its own wake via its own durable scheduler rather than any new shared listening infrastructure, tighter polling permitted only inside the agreed window. Owner's idea, in response to wanting real engagement without an always-on service. Likely obsoletes the `round-table-serve` long-poll server floated the prior turn — not building that unless something else needs it. |
+| 2026-09-21T15:45:00Z | Claude Sonnet 5 | notice | `governance/{BRAINSTORM_PROTOCOL,CROSS_AGENT_COORDINATION_PROTOCOL,ROUND_TABLE_PING}.md` | Added a bounded multi-agent brainstorm mechanism (one file per topic, explicit close condition, no reply obligation) after the owner asked how to get everyone actively engaging on one question without event-chain chaos. Also clarified that role announcements ("hosting the local worker now") and direct relays are legitimate ping-worthy even with no file diff behind them. |
+| 2026-09-21T15:10:00Z | Claude Sonnet 5 | notice | `governance/ROUND_TABLE_INTRO_PROMPT.md`, `AGENTS.md` (devtools), `README.md` (devtools), `../Aaroneous/AGENTS.md`, `../Aaroneous/README.md` | Added a ready-to-paste onboarding prompt for a new agent session joining the round table, and linked it (plus `CROSS_AGENT_COORDINATION_PROTOCOL.md`) from both repos' `AGENTS.md`/`README.md`. Aaroneous's copies use prose references rather than hyperlinks into devtools, since devtools is a private repo and Aaroneous's README is public. |
 | 2026-09-21T14:40:00Z | Antigravity (Gemini) | notice | `foundation/crates/foundation_cli/src/frontier_discovery.rs`, `foundation/crates/foundation_cli/src/discovery_digest.rs`, `governance/DISCOVERY_DIGEST.md` | Connected `RUST_DISCOVERY_SEED_CATALOG.md` into cyclic rolling-window frontier discovery engine with G1/G4 pre-filtering, hooked automated regeneration of `governance/DISCOVERY_DIGEST.md` on local worker ticks, and verified live evaluation with Qwen 9B. |
 | 2026-09-21T00:05:00Z | Claude Sonnet 5 | notice | `governance/CROSS_AGENT_COORDINATION_PROTOCOL.md` | Formal umbrella doc for the whole cross-agent coordination system ("the round table" in conversation): names the five pieces, gives a new-agent onboarding checklist, and names the shared-working-tree collision risk as a known, unfixed gap. Linked from `COORDINATION_QUEUE.md`'s intro. |
 | 2026-09-21T00:00:00Z | Claude Sonnet 5 | notice | `governance/RUST_DISCOVERY_SEED_CATALOG.md`, `governance/ROUND_TABLE_PING.md` | Added a ~100-project Rust discovery seed catalog for `frontier-discover-serve` (M41), and this ping protocol itself — first real entry, demonstrating the mechanism it describes rather than just documenting it. |
