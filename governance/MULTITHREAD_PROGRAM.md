@@ -77,6 +77,7 @@ queue before claiming; portfolio entries are not Ready source reservations.
 | P3 | M45 | Route local-worker and frontier-discovered drafts through the existing cratify/adaptation_engine/ast_auditor pipeline as one shared compliance path | M44, M41 | Component architecture / compiler-adjacent tooling |
 | P3 | M46 | Add perspective/goal/exploration_group meta-tagging to worker-jobs schema; rank multi-variant drafts before full proofing | M41, M45 | Data/schema design, workflow tooling |
 | P2 | M47 | Export the capability_broker.rs registry as JSON; propose and score internal capability compositions via BUILD_WORTHINESS_STANDARD.md | M40, BUILD_WORTHINESS_STANDARD.md | Combinatorial/graph analysis, Rust systems review |
+| P3 | M48 | Multi-perspective draft-seeding producer: emit several code-draft packets attempting one goal from different angles, sharing one exploration_group, for M46 to compare | M46, M44 | Rust systems review, workflow tooling |
 
 ## Intake rules
 

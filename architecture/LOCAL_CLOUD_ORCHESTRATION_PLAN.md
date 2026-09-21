@@ -2,7 +2,7 @@
 
 **Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
 been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M47 in `governance/MULTITHREAD_PROGRAM.md`.
+governance boundaries for milestones M40–M48 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -129,6 +129,20 @@ of the Tier-2-adjacent authority question the original framing implied.
 - **Preferred capability:** Rust systems review, read-only report generation
 - **Evidence:** committed report-generation code with passing devtools checks; a
   real run against an actual `ConsensusLedger` showing correct row matching.
+
+**Scope boundary found, 2026-09-20 (documented, not a defect):** an audit of job
+sources found this repo actually runs **two structurally separate systems**, not
+one — (A) `worker-jobs/*.toml` → the local worker → `cross_verifier.rs`/
+`consensus_engine.rs`, which this report reads; and (B) `multithreader.rs`/
+`intake_generator.rs` → a `review-NNNNNN.json` inbox → `COORDINATION_QUEUE.md`'s
+primary-lane rows directly, which never touches `worker-jobs/` or produces a
+`ConsensusRecord` at all. This report can only ever surface System A's work as
+"ready for signoff" — a System B-sourced queue row can be genuinely ready and this
+report will never say so, because there is no consensus ledger entry for it to
+find. This is not a bug to fix in M42; it's a real architectural boundary worth
+knowing rather than assuming the report is complete. Closing it (if ever wanted)
+would mean either routing System B's candidates through `cross_verify` too, or
+building a second, System-B-shaped readiness signal — neither is in scope here.
 
 ### M43 — Auto-partition non-crossing work packets (corrected scope, 2026-09-20)
 
@@ -339,6 +353,93 @@ settled. Dispatching M46 concurrently with M44 risks two agents editing
   least one real `exploration_group` with multiple drafts, a documented selection,
   and archived rejected siblings with recorded reasons.
 
+**Gap found and closed, 2026-09-20:** an audit of "how many job sources exist and
+are we accounting for all of them" found that once the `Job` struct changes above
+landed (as part of M46's own implementation), **no producer actually populated
+the three new fields** — the consumer side (grouping, comparison summaries) was
+real and tested, but nothing fed it. Checked all three current producers and
+resolved each:
+
+- `frontier_discovery::create_frontier_job` — **wired.** Every candidate found for
+  one query now gets `goal = <query>`, `exploration_group = slugify(<query>)`,
+  `perspective = <candidate crate name>`. This was a natural, low-cost fit: one
+  query producing several crate candidates already *is* an exploration group (the
+  same goal — "find something useful for X" — approached via several different
+  candidates), and it needed three added fields on an existing struct, not a new
+  producer. A single-candidate query still gets tagged; M46's own grouping step
+  already drops groups under two members, so unconditional tagging is simpler than
+  special-casing.
+- `capability_composition::create_composition_job` — **deliberately left
+  untagged.** Each candidate pair is already a unique, one-shot proposal, not one
+  of several attempts at a shared goal; forcing an `exploration_group` onto it
+  would misrepresent what the packets are. If a real use case for grouping
+  composition candidates emerges later (e.g. several pairings all targeting one
+  named capability gap), revisit then — not speculatively now.
+- `job_converter::recurring_catalog()` — **deliberately left untagged.** Each
+  catalog item (`AUDIT-01`, `PREP-04`, etc.) is its own distinct, named audit
+  concern; they aren't different attempts at solving the same thing. No fit.
+
+**Real remaining gap, not yet closed — M48 below:** none of the three producers
+above emit `code-draft` mode packets, which is the actual case M46 was designed
+for (the "recreate" stage of the discovery/research/filter/translate/recreate/
+review/repeat loop — several different implementation attempts at one goal). There
+is currently no producer anywhere that generates more than one drafting attempt at
+anything. M46's mechanism is proven end-to-end for analysis-mode candidates
+(frontier discovery); it has never been exercised for its originally-intended
+code-draft use case, because nothing creates the multi-attempt input it needs.
+
+### M48 — Multi-perspective draft-seeding producer
+
+The producer M46 actually needs and doesn't have: given one `code-draft` goal, emit
+several packets attempting it from different angles, sharing one
+`exploration_group`, so M46's comparison-summary and M44's pre-proofing have
+something real to compare once results come back.
+
+**Design:**
+
+- A new function (e.g. `foundation/crates/foundation_cli/src/exploration_seed.rs`,
+  or a small addition to an existing producer-shaped module — implementer's call,
+  document the reasoning) taking an explicit base `instruction: &str`, `evidence:
+  Vec<String>` (same shape `Job.evidence` already takes), an `output_dir: &Path`,
+  and a `perspectives: Vec<String>` (default to a small fixed starter vocabulary —
+  `correctness-first`, `performance-first`, `minimal-diff` — the same three named
+  as examples when M46 was first scoped, since real usage hasn't yet shown a
+  reason to deviate from them).
+- For each perspective, emit one `worker-jobs/*.toml` packet: `mode = "code-draft"`,
+  a shared generated `exploration_group` (e.g. a short hash or slug of the base
+  instruction plus a timestamp, to disambiguate repeated seedings of a similar
+  goal), `goal` set to a short caller-supplied label (not the full instruction —
+  keep it a label, matching `frontier_discovery`'s use of the query as `goal`), and
+  an `instruction` built from the base instruction plus one fixed, perspective-
+  specific directive appended (e.g. correctness-first: "Optimize primarily for
+  correctness and edge-case coverage over performance or diff size."; performance-
+  first: "Optimize primarily for runtime performance, even if the diff is larger or
+  less minimal."; minimal-diff: "Optimize primarily for the smallest diff that
+  solves the problem.").
+- **No new dispatch, pre-proofing, or scoring logic needed.** Each emitted packet
+  is an ordinary `code-draft` job; M44's existing dispatch-loop hook and
+  pre-proofing already handle it once picked up, and M46's existing grouping/
+  comparison-summary already handles multiple drafts sharing an
+  `exploration_group` once results land. This milestone is purely packet
+  generation — everything downstream of "packet exists in `worker-jobs/`" is
+  already built.
+- A CLI subcommand (e.g. `Command::SeedExploration { instruction_file, evidence,
+  goal, perspectives, output_dir }`, reading the instruction from an explicit file
+  per this crate's established convention for larger text input) so a human or a
+  cloud session can trigger a seeding round explicitly — this stays a deliberate,
+  invoked action, not something that fires on its own; unlike M41/M47's discovery
+  loops, there's no natural automatic trigger for "we should try N different
+  approaches to X" the way there is for "search the ecosystem on a schedule."
+
+- **Dependency:** M46 (consumer side must exist first — this milestone is pure
+  input for it), M44 (drafts this produces flow through pre-proofing unchanged)
+- **Preferred capability:** Rust systems review, workflow tooling
+- **Evidence:** committed producer code with passing tests; at least one real
+  seeded `exploration_group` (3 perspectives on one real goal) carried all the way
+  through dispatch, pre-proofing, and M46's comparison-summary artifact — closing
+  the loop M46's own evidence bar already asked for but nothing could satisfy
+  until this milestone exists.
+
 ### M47 — Internal capability composition explorer
 
 The internal half of the discovery/research/filter/translate/recreate/review/repeat
@@ -439,6 +540,16 @@ settled scope:
   scoring method to internally-generated ideas (M47's primary consumer) instead of
   external crate candidates, using the same quadratic-scoring math so the two
   standards stay comparable.
+- **2026-09-20 — Audited "how many job sources exist" and closed what could be
+  closed immediately.** Found two structurally separate systems (worker-jobs/
+  local-worker vs. multithreader/intake/queue), a real M42 scope boundary from
+  that split (documented in M42's section), two stale `worker-jobs/*.toml`
+  packets for already-`Done` queue rows (`c33.toml`/`c34.toml`, deleted), and
+  M46's actual gap — its consumer side worked but no producer populated the new
+  fields. Wired `frontier_discovery::create_frontier_job` to populate them (a
+  real, low-cost fit already present in its existing shape); added M48 as the
+  still-open gap — a producer for M46's originally-intended `code-draft`
+  multi-attempt use case, which nothing generates yet.
 
 ## Sequencing
 
@@ -454,6 +565,10 @@ real complexity and are only worth it once there is enough packet volume and one
 stable acceptance funnel to organize. M47 depends on M40 (proves the file-contract
 pattern) and on `governance/BUILD_WORTHINESS_STANDARD.md` existing; it can proceed
 in parallel with M41/M44/M45/M46 rather than waiting on them, since it feeds the
-same packet supply M41 does rather than depending on it. No milestone in this plan
-authorizes paid cloud dispatch or local write/claim authority — those remain
-explicit future decisions, not defaults unlocked by completing M40–M47.
+same packet supply M41 does rather than depending on it. M48 depends on M46
+(consumer must exist first) and M44 (its output flows through pre-proofing
+unchanged); unlike the other milestones it has no natural automatic trigger, so it
+stays an explicitly-invoked producer rather than something a serve loop calls on
+its own. No milestone in this plan authorizes paid cloud dispatch or local
+write/claim authority — those remain explicit future decisions, not defaults
+unlocked by completing M40–M48.
