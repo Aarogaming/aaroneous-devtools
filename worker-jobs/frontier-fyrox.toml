@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "full_rust_game_engine_uses_its_own_ecs_adjacent_scene_graph"
+goal = "Full Rust game engine (uses its own ECS-adjacent scene graph)"
+id = "FRONTIER-FYROX"
+instruction = """
+Audit external open-source crate 'fyrox' (v1.0.1) for potential dogfooding or architectural influence in Aaroneous.
+Description: Feature-rich, easy-to-use, 2D/3D game engine with a scene editor. Like Godot, but in Rust.
+Repository: https://github.com/FyroxEngine/Fyrox
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "fyrox"
+schema_version = 1

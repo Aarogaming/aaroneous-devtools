@@ -1,0 +1,13 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "older_archetype_ecs_predecessor_lineage"
+goal = "Older archetype ECS (predecessor lineage)"
+id = "FRONTIER-SPECS"
+instruction = """
+Audit external open-source crate 'specs' (v0.20.0) for potential dogfooding or architectural influence in Aaroneous.
+Description: Specs is an Entity-Component-System library written in Rust.
+
+Repository: https://github.com/slide-rs/specs
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "specs"
+schema_version = 1

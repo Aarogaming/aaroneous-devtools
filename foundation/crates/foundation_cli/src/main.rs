@@ -12,6 +12,7 @@ mod cratification_intake;
 mod cross_verifier;
 mod decision_trace;
 mod dependency_review;
+mod discovery_digest;
 mod dogfood;
 mod exploration_seed;
 mod fact_checker;
@@ -337,6 +338,19 @@ enum Command {
     /// Aggregate completed local-worker portfolio triage results into
     /// a unified human- and cloud-agent-facing digest markdown file.
     PortfolioDigest {
+        /// Absolute path to the local worker's results directory.
+        #[arg(long)]
+        results_dir: PathBuf,
+        /// Optional absolute path to the local worker's archive directory.
+        #[arg(long)]
+        archive_dir: Option<PathBuf>,
+        /// Absolute path for the generated markdown digest file.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Aggregate internal capability composition and external frontier discovery results into
+    /// a unified executive discovery digest markdown file.
+    DiscoveryDigest {
         /// Absolute path to the local worker's results directory.
         #[arg(long)]
         results_dir: PathBuf,
@@ -1136,6 +1150,11 @@ fn main() -> Result<()> {
             output,
         } => portfolio_digest::generate_digest(&results_dir, archive_dir.as_deref(), &output)
             .map(|_| ()),
+        Command::DiscoveryDigest {
+            results_dir,
+            archive_dir,
+            output,
+        } => discovery_digest::run(&results_dir, archive_dir.as_deref(), &output).map(|_| ()),
         Command::QueryCandidates {
             metadata_dir,
             like,

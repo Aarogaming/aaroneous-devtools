@@ -1,0 +1,11 @@
+schema_version = 1
+id = "PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0005"
+mode = "analysis"
+evidence = ["crates/orchestrator/src/lib.rs"]
+instruction = """
+Research and investigate task scheduler core affinity, execution budgets, and supervisor tick boundaries.
+
+[PRIOR AUDIT CONTEXT - Pass 5]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: IntelligenceEngine contains TaskRoutingEngine but lacks explicit core affinity pinning (no `pin_current_thread_to_core` usage). | Obs: No execution budget enforcement visible in `analyze_task` or `route_task` methods. | Obs: No supervisor tick boundary checks or `SupervisorBudget` integration in `IntelligenceEngine`. | Risk: Task routing may lack deterministic core affinity, causing cache thrashing. | Risk: Execution budgets may be undefined, risking supervisor tick overflow.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

@@ -11,7 +11,7 @@
 | **AUDIT-01-AST-SAFETY** | `AUDIT-01-AST-SAFETY-P0181` | `pending-owner-review` | unix `1789999090` | Add --others --exclude-standard to git ls-files in audit_tracked_encodings. Add fallback heuristi... |
 | **AUDIT-02-HOT-PATH-ALLOC** | `AUDIT-02-HOT-PATH-ALLOC-P0004` | `pending-owner-review` | unix `1789999423` | Refactor PluginManager to use fixed-size arrays or slab-based allocation for plugins, remove Hash... |
 | **AUDIT-03-ZERO-AMBIENT-AUTH** | `AUDIT-03-ZERO-AMBIENT-AUTH-P0004` | `pending-owner-review` | unix `1789999436` | No remediation required. All ambient authority patterns are controlled and documented. The codeba... |
-| **AUDIT-04-DEPRECATION-POLICY** | `AUDIT-04-DEPRECATION-POLICY-P0003` | `pending-owner-review` | unix `1789998868` | Verify that the migration test test_legacy_terminology_aliases_equivalence passes. If it passes, ... |
+| **AUDIT-04-DEPRECATION-POLICY** | `AUDIT-04-DEPRECATION-POLICY-P0004` | `pending-owner-review` | unix `1790001284` | Verify migration test passes with cargo test -p adaptation_plane. Confirm no production call site... |
 | **AUDIT-09-HOT-PATH-REDUCERS** | `AUDIT-09-HOT-PATH-REDUCERS-P0004` | `pending-owner-review` | unix `1789999478` | Verify production implementation of reduce_trace_bounded and extract_state_delta against test exp... |
 | **AUDIT-10-ORCHESTRATOR-BOUNDS** | `AUDIT-10-ORCHESTRATOR-BOUNDS-P0004` | `pending-owner-review` | unix `1789999503` | Remediate static counter race condition by introducing per-instance fallback key generation using... |
 | **PREP-02-COMPUTE-ENGINE-CONTAINER** | `PREP-02-COMPUTE-ENGINE-CONTAINER-P0004` | `pending-owner-review` | unix `1789999513` | Remediate by introducing bounded allocation limits, JIT execution bounds, and explicit input vali... |
@@ -89,13 +89,13 @@ No remediation required. All ambient authority patterns are controlled and docum
 
 ### AUDIT-04-DEPRECATION-POLICY
 
-- **Task Description**: AUDIT-04-DEPRECATION-POLICY-P0003
-- **Latest Job Pass**: `AUDIT-04-DEPRECATION-POLICY-P0003`
+- **Task Description**: AUDIT-04-DEPRECATION-POLICY-P0004
+- **Latest Job Pass**: `AUDIT-04-DEPRECATION-POLICY-P0004`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789998868`
+- **Timestamp**: unix `1790001284`
 
 #### Recommended Next Step
-Verify that the migration test test_legacy_terminology_aliases_equivalence passes. If it passes, prepare a removal PR for v0.4.0 that deletes all deprecated type alias definitions in capability_spec.rs and the migration test block. Ensure no other files in the workspace reference these aliases in production code (use git grep across crates/ core/ dev/).
+Verify migration test passes with cargo test -p adaptation_plane. Confirm no production call sites exist in other crates by running git grep for deprecated alias names. Prepare removal PR for v0.4.0 by deleting definition sites, re-export entries, and migration test assertions per policy section 4.2.
 
 #### Key Observations
 - Deprecated type aliases in capability_spec.rs (ParameterLocus, AgentConfigProfile, ParameterProfile, SpecialistGenome, ParameterGenome, GeneticLocus, GeneticCategory, EpigeneticState, GeneticRelationship, GeneticAnalyzer) are defined with #[deprecated(since = "0.3.3", note = "...")].

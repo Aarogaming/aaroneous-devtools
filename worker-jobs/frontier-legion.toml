@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "archetype_based_ecs"
+goal = "Archetype-based ECS"
+id = "FRONTIER-LEGION"
+instruction = """
+Audit external open-source crate 'legion' (v0.4.0) for potential dogfooding or architectural influence in Aaroneous.
+Description: High performance entity component system (ECS) library
+Repository: https://github.com/amethyst/legion
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "legion"
+schema_version = 1

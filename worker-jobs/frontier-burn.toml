@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "rust_native_deep_learning_framework"
+goal = "Rust-native deep learning framework"
+id = "FRONTIER-BURN"
+instruction = """
+Audit external open-source crate 'burn' (v0.22.0-pre.3) for potential dogfooding or architectural influence in Aaroneous.
+Description: Flexible and Comprehensive Deep Learning Framework in Rust
+Repository: https://github.com/tracel-ai/burn
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "burn"
+schema_version = 1

@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "llm_prompt_chain_orchestration"
+goal = "LLM prompt/chain orchestration"
+id = "FRONTIER-LLM_CHAIN"
+instruction = """
+Audit external open-source crate 'llm-chain' (v0.13.0) for potential dogfooding or architectural influence in Aaroneous.
+Description: A library for running chains of LLMs (such as ChatGPT) in series to complete complex tasks, such as text summation.
+Repository: https://github.com/sobelio/llm-chain/
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "llm-chain"
+schema_version = 1

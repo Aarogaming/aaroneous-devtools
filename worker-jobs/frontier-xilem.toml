@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "experimental_reactive_ui_linebender"
+goal = "Experimental reactive UI (Linebender)"
+id = "FRONTIER-XILEM"
+instruction = """
+Audit external open-source crate 'xilem' (v0.4.0) for potential dogfooding or architectural influence in Aaroneous.
+Description: A next-generation cross-platform Rust UI framework.
+Repository: https://github.com/linebender/xilem
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "xilem"
+schema_version = 1

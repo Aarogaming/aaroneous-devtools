@@ -616,6 +616,264 @@ pub(crate) fn serve(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeedEntry {
+    pub name: String,
+    pub category: String,
+    pub study_goal: String,
+}
+
+pub fn parse_seed_catalog(catalog_path: &Path) -> Result<Vec<SeedEntry>> {
+    if !catalog_path.is_absolute() {
+        bail!("catalog path must be absolute: {}", catalog_path.display());
+    }
+    let content = std::fs::read_to_string(catalog_path).with_context(|| {
+        format!(
+            "failed to read seed catalog from {}",
+            catalog_path.display()
+        )
+    })?;
+    let mut entries = Vec::new();
+    let mut current_section = String::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("## ") {
+            current_section = trimmed.trim_start_matches('#').trim().to_string();
+            continue;
+        }
+        if !trimmed.starts_with('|') {
+            continue;
+        }
+        let cols: Vec<&str> = trimmed.split('|').map(str::trim).collect();
+        if cols.len() < 4 {
+            continue;
+        }
+        let project_raw = cols[1];
+        let category = cols[2];
+        let study_goal = cols[3];
+
+        if project_raw.is_empty()
+            || project_raw == "Project"
+            || project_raw.starts_with("---")
+            || project_raw.starts_with(":---")
+        {
+            continue;
+        }
+
+        let name = if let Some(start) = project_raw.find('`') {
+            if let Some(end) = project_raw[start + 1..].find('`') {
+                project_raw[start + 1..start + 1 + end].trim().to_string()
+            } else {
+                project_raw.trim_matches('`').trim().to_string()
+            }
+        } else {
+            project_raw
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_string()
+        };
+
+        if !name.is_empty() {
+            let cat = if category.is_empty() {
+                current_section.clone()
+            } else {
+                category.to_string()
+            };
+            entries.push(SeedEntry {
+                name,
+                category: cat,
+                study_goal: study_goal.to_string(),
+            });
+        }
+    }
+
+    Ok(entries)
+}
+
+pub fn refill_frontier_discovery_jobs(
+    checkout: &Path,
+    output_dir: &Path,
+    max_batch: usize,
+) -> Result<Vec<PathBuf>> {
+    if !checkout.is_absolute() || !output_dir.is_absolute() {
+        bail!("checkout and output_dir must be absolute paths");
+    }
+
+    let devtools_root = output_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or(checkout);
+
+    let catalog_candidates = [
+        output_dir
+            .parent()
+            .map(|p| p.join("governance").join("RUST_DISCOVERY_SEED_CATALOG.md")),
+        Some(
+            devtools_root
+                .join("governance")
+                .join("RUST_DISCOVERY_SEED_CATALOG.md"),
+        ),
+        Some(
+            checkout
+                .join("governance")
+                .join("RUST_DISCOVERY_SEED_CATALOG.md"),
+        ),
+    ];
+    let catalog_path = catalog_candidates
+        .into_iter()
+        .flatten()
+        .find(|p| p.is_file());
+
+    let Some(catalog_path) = catalog_path else {
+        return Ok(Vec::new());
+    };
+
+    let evidence_rel = "docs/ARCHITECTURE.md";
+    let evidence_present =
+        checkout.join(evidence_rel).is_file() || devtools_root.join(evidence_rel).is_file();
+    if !evidence_present {
+        return Ok(Vec::new());
+    }
+
+    let seeds = match parse_seed_catalog(&catalog_path) {
+        Ok(s) => s,
+        Err(_) => return Ok(Vec::new()),
+    };
+
+    let mut candidate_dirs = vec![output_dir.join("results"), output_dir.join("archive")];
+    if let Some(parent) = output_dir.parent() {
+        candidate_dirs.push(parent.join("results"));
+        candidate_dirs.push(parent.join("archive"));
+        candidate_dirs.push(
+            parent
+                .join("artifacts")
+                .join("local-worker-service")
+                .join("results"),
+        );
+        candidate_dirs.push(
+            parent
+                .join("artifacts")
+                .join("local-worker-service")
+                .join("archive"),
+        );
+    }
+
+    let mut completed_ids = std::collections::HashSet::new();
+    for dir in candidate_dirs {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Ok(text) = std::fs::read_to_string(&path) {
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if let Some(id) = value["job_id"].as_str() {
+                                if id.starts_with("FRONTIER-") {
+                                    completed_ids.insert(id.to_uppercase());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let existing_files: std::collections::HashSet<String> = std::fs::read_dir(output_dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|e| {
+                    let fname = e.file_name().to_string_lossy().to_lowercase();
+                    if fname.starts_with("frontier-") && fname.ends_with(".toml") {
+                        Some(fname)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let metadata_dir = output_dir
+        .parent()
+        .map(|p| p.join("artifacts").join("candidate_metadata"));
+
+    let mut created = Vec::new();
+
+    for seed in seeds {
+        if created.len() >= max_batch {
+            break;
+        }
+
+        let sanitized_id_name = seed.name.to_uppercase().replace('-', "_");
+        let job_id = format!("FRONTIER-{sanitized_id_name}");
+        let filename = format!(
+            "frontier-{}.toml",
+            seed.name.to_lowercase().replace('_', "-")
+        );
+
+        if completed_ids.contains(&job_id)
+            || existing_files.contains(&filename)
+            || output_dir.join(&filename).exists()
+        {
+            continue;
+        }
+
+        let candidate = match search_crates_io(&seed.name, 1) {
+            Ok(mut found) if !found.is_empty() => found.remove(0),
+            _ => CrateCandidate {
+                name: seed.name.clone(),
+                description: seed.study_goal.clone(),
+                version: "latest".into(),
+                repository: None,
+                documentation: None,
+                downloads: 0,
+            },
+        };
+
+        let prefilter = mechanical_prefilter_with_metadata(
+            metadata_dir.as_deref(),
+            &candidate.name,
+            &candidate.version,
+        )
+        .unwrap_or(PrefilterResult {
+            license: "unknown".into(),
+            license_gate: true,
+            ecosystem_signal: EcosystemSignal::Clean,
+        });
+
+        if !prefilter.license_gate {
+            continue;
+        }
+
+        let ecosystem_notes = match &prefilter.ecosystem_signal {
+            EcosystemSignal::Clean => None,
+            EcosystemSignal::Flagged(reasons) => Some(reasons.join("; ")),
+        };
+
+        match create_frontier_job_with_notes(
+            &candidate,
+            output_dir,
+            evidence_rel,
+            &seed.category,
+            ecosystem_notes.as_deref(),
+        ) {
+            Ok(job_path) => {
+                println!("refilled frontier discovery job: {}", job_path.display());
+                created.push(job_path);
+            }
+            Err(e) => {
+                eprintln!("failed to create frontier job for {}: {e}", seed.name);
+            }
+        }
+    }
+
+    Ok(created)
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct FiltrationGateRecord {
     pub gate_id: String,
@@ -1260,5 +1518,62 @@ mod tests {
         .unwrap();
         let text = std::fs::read_to_string(job_file).unwrap();
         assert!(!text.contains("M55 mechanical pre-filter G4 signal"));
+    }
+
+    #[test]
+    fn test_parse_seed_catalog() {
+        let temp = tempdir().unwrap();
+        let catalog_path = temp.path().join("RUST_DISCOVERY_SEED_CATALOG.md");
+        let content = r#"# Seed Catalog
+
+## 1. Concurrency & Ring Buffers
+
+| Project | Category / Domain | Primary Study Goal |
+| :--- | :--- | :--- |
+| `rigtorp` | Lock-Free SPSC/SPMC | Study cache-line padding and index masking. |
+| `crossbeam-epoch` | Memory Reclamation | Evaluate zero-heap epoch tracking. |
+"#;
+        std::fs::write(&catalog_path, content).unwrap();
+
+        let entries = parse_seed_catalog(&catalog_path).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "rigtorp");
+        assert_eq!(entries[0].category, "Lock-Free SPSC/SPMC");
+        assert_eq!(entries[1].name, "crossbeam-epoch");
+    }
+
+    #[test]
+    fn test_refill_frontier_discovery_jobs() {
+        let temp = tempdir().unwrap();
+        let checkout = temp.path().join("checkout");
+        let gov_dir = checkout.join("governance");
+        let docs_dir = checkout.join("docs");
+        let jobs_dir = temp.path().join("worker-jobs");
+
+        std::fs::create_dir_all(&gov_dir).unwrap();
+        std::fs::create_dir_all(&docs_dir).unwrap();
+        std::fs::create_dir_all(&jobs_dir).unwrap();
+
+        std::fs::write(docs_dir.join("ARCHITECTURE.md"), "# Architecture").unwrap();
+        let catalog_content = r#"# Discovery Catalog
+| Project | Category | Primary Study Goal |
+| :--- | :--- | :--- |
+| `test-candidate-crate` | Testing | Test study goal |
+"#;
+        std::fs::write(
+            gov_dir.join("RUST_DISCOVERY_SEED_CATALOG.md"),
+            catalog_content,
+        )
+        .unwrap();
+
+        let refilled = refill_frontier_discovery_jobs(&checkout, &jobs_dir, 2).unwrap();
+        assert_eq!(refilled.len(), 1);
+        let job_content = std::fs::read_to_string(&refilled[0]).unwrap();
+        assert!(job_content.contains("id = \"FRONTIER-TEST_CANDIDATE_CRATE\""));
+        assert!(job_content.contains("docs/ARCHITECTURE.md"));
+
+        // Idempotency check: second run should not duplicate
+        let refilled2 = refill_frontier_discovery_jobs(&checkout, &jobs_dir, 2).unwrap();
+        assert_eq!(refilled2.len(), 0);
     }
 }

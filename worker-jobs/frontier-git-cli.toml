@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "in_process_local_model_runner"
+goal = "In-process local model runner"
+id = "FRONTIER-GIT_CLI"
+instruction = """
+Audit external open-source crate 'git-cli' (v0.5.12) for potential dogfooding or architectural influence in Aaroneous.
+Description: A CLI tool that translates natural-language task descriptions into git commands using a local LLM (mistral.rs, Ollama, or llama.cpp)
+Repository: https://github.com/somayaj/git-cli
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "git-cli"
+schema_version = 1

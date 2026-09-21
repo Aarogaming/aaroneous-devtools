@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "rust_native_ml_tensor_framework"
+goal = "Rust-native ML tensor framework"
+id = "FRONTIER-CANDLE"
+instruction = """
+Audit external open-source crate 'candle' (v0.1.0) for potential dogfooding or architectural influence in Aaroneous.
+Description: Minimal publishable shell crate for candle.
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "candle"
+schema_version = 1

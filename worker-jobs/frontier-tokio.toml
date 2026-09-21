@@ -1,0 +1,16 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "async_runtime"
+goal = "Async runtime"
+id = "FRONTIER-TOKIO"
+instruction = """
+Audit external open-source crate 'tokio' (v1.53.1) for potential dogfooding or architectural influence in Aaroneous.
+Description: An event-driven, non-blocking I/O platform for writing asynchronous I/O
+backed applications.
+
+Repository: https://github.com/tokio-rs/tokio
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools.
+
+M55 mechanical pre-filter G4 signal (advisory, not a hard gate): dependency 'windows-sys' is a -sys crate (raw FFI binding); dependency 'windows-sys' is a -sys crate (raw FFI binding)"""
+mode = "analysis"
+perspective = "tokio"
+schema_version = 1

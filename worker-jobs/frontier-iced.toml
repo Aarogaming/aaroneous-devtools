@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "gui_elm_architecture"
+goal = "GUI, Elm architecture"
+id = "FRONTIER-ICED"
+instruction = """
+Audit external open-source crate 'iced' (v0.14.0) for potential dogfooding or architectural influence in Aaroneous.
+Description: A cross-platform GUI library inspired by Elm
+Repository: https://github.com/iced-rs/iced
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "iced"
+schema_version = 1

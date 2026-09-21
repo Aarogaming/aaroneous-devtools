@@ -714,6 +714,12 @@ pub(crate) fn sync_and_refill_jobs(
         created.extend(comp_jobs);
     }
 
+    if let Ok(frontier_jobs) =
+        crate::frontier_discovery::refill_frontier_discovery_jobs(checkout, output_dir, 2)
+    {
+        created.extend(frontier_jobs);
+    }
+
     Ok(created)
 }
 

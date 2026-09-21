@@ -1,0 +1,11 @@
+schema_version = 1
+id = "AUDIT-10-ORCHESTRATOR-BOUNDS-P0005"
+mode = "analysis"
+evidence = ["crates/orchestrator/src/lib.rs"]
+instruction = """
+Audit orchestrator crate for ambient authority violations, task routing bounds, and supervisor budget enforcement.
+
+[PRIOR AUDIT CONTEXT - Pass 5]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: IntelligenceEngine::new and new_async retain static AtomicUsize counters for fallback shared memory key generation, creating potential race conditions in multi-instance deployments. | Obs: SharedMemorySynapse::new_sync and new lack explicit size validation or bounds checking before allocation. | Obs: TaskRoutingEngine::new(specialists) and update_specialist_performance lack documented or enforced supervisor budget limits per task type or agent class. | Risk: Race condition in fallback shared memory key generation may cause collisions in multi-instance environments. | Risk: Ambient authority in SharedMemorySynapse allocation could lead to resource exhaustion if size validation is absent. | Risk: Lack of supervisor budget enforcement in TaskRoutingEngine may allow unbounded task routing and resource consumption.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

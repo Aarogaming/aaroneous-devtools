@@ -1,0 +1,11 @@
+schema_version = 1
+id = "AUDIT-02-HOT-PATH-ALLOC-P0005"
+mode = "analysis"
+evidence = ["core/hypervisor/src/lib.rs"]
+instruction = """
+Audit hypervisor core module for forbidden dynamic heap allocations (String, Vec, Box, HashMap), unwraps/panics, and missing zero-copy/#[repr(C)] memory alignment invariants.
+
+[PRIOR AUDIT CONTEXT - Pass 5]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: Forbidden dynamic heap allocations detected: `std::collections::HashMap` in `PluginManager` struct. | Obs: Forbidden dynamic heap allocations detected: `Vec<Library>` in `PluginManager` struct. | Obs: Forbidden dynamic heap allocations detected: `std::sync::Mutex` in `PLUGIN_MANAGER` static initialization (Lazy<Mutex<PluginManager>>). While Mutex is often necessary for synchronization, the audit flags it as a potential violation of zero-copy/lock-free invariants in a hypervisor core context unless strictly bounded and justified. However, the primary violations are the HashMap and Vec storing dynamic objects (PluginDescriptor, Library). The Mutex wrapping a Lazy static is a common pattern for singletons,  | Risk: Use of `HashMap` and `Vec` in `PluginManager` violates the zero-copy and bounded memory allocation invariants required for a hypervisor core. | Risk: Use of `Mutex` in `PLUGIN_MANAGER` static initialization may introduce contention and potential deadlocks in a high-concurrency hypervisor environment. | Risk: Use of `anyhow::Error` for error handling may not be suitable for a hypervisor core where precise error handling and recovery are critical. | Risk: Use of `tokio::task::yield_now()` and `tokio::time::sleep()` in the hypervisor loop may introduce unnecessary latency and jitter in a real-time system. | Risk: Use of `tracing` for logging may introduce performance overhead in a high-throughput hypervisor environment. | Risk: Use of `std::fs::read_dir` and `std::path::PathBuf` for plugin discovery may introduce security risks if not properly validated and sanitized.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

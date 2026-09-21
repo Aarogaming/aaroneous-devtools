@@ -982,6 +982,21 @@ where
                 );
             }
         }
+        if record
+            .job_id
+            .to_ascii_uppercase()
+            .starts_with("COMPOSITION-")
+            || record.job_id.to_ascii_uppercase().starts_with("FRONTIER-")
+        {
+            if let Some(gov_dir) = c.queue.parent() {
+                let discovery_path = gov_dir.join("DISCOVERY_DIGEST.md");
+                let _ = crate::discovery_digest::run(
+                    &c.results_directory,
+                    Some(&c.archive_directory),
+                    &discovery_path,
+                );
+            }
+        }
         if record.outcome == "failed" {
             bail!("local job failed; retained result requires owner review");
         }
