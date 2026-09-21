@@ -78,6 +78,10 @@ queue before claiming; portfolio entries are not Ready source reservations.
 | P3 | M46 | Add perspective/goal/exploration_group meta-tagging to worker-jobs schema; rank multi-variant drafts before full proofing | M41, M45 | Data/schema design, workflow tooling |
 | P2 | M47 | Export the capability_broker.rs registry as JSON; propose and score internal capability compositions via BUILD_WORTHINESS_STANDARD.md | M40, BUILD_WORTHINESS_STANDARD.md | Combinatorial/graph analysis, Rust systems review |
 | P3 | M48 | Multi-perspective draft-seeding producer: emit several code-draft packets attempting one goal from different angles, sharing one exploration_group, for M46 to compare | M46, M44 | Rust systems review, workflow tooling |
+| P2 | M49 | Cratification intake: export CrateSpec JSON from cratify harvest (Aaroneous); emit code-draft packets from it (devtools), reusing M44/M45 rather than a nonexistent code-transform mechanism | M44, M45 | Rust systems review, cross-repo file-contract design |
+| P1 | M50 | Clean revert for already-promoted changes: revert_promotion in agentic_registrar.rs, isolated branch + PR, same pattern as promote | none | Rust systems review, git tooling |
+| P3 | M51 | Run the discovery/research/filter/translate/recreate/review/repeat loop for real, not just documented triggers (not yet designed) | M48, M49 | unassigned - needs grounding first |
+| P3 | M52 | Curated offer/accept UX ("quest reward" framing) on top of the admission pipeline (deliberately deferred) | M50 | unassigned - deferred |
 
 ## Intake rules
 

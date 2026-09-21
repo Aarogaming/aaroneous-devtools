@@ -2,7 +2,7 @@
 
 **Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
 been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M48 in `governance/MULTITHREAD_PROGRAM.md`.
+governance boundaries for milestones M40–M52 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -490,6 +490,159 @@ what's mechanical (pairing, bounding, packet emission) versus what needs judgmen
   composition packet actually scored and either admitted or archived through
   `BUILD_WORTHINESS_STANDARD.md`, not just plumbing with nothing run through it.
 
+### M49 — Cratification intake: harvest a candidate into a real code-draft, not just an audit
+
+**Corrected framing, 2026-09-20**, after reading `crates/cratify/src/main.rs` and
+`crates/adaptation_engine/src/source_extraction.rs` directly rather than assuming
+`harvest`/`scaffold`/`audit` already chain: **they don't, and can't as written.**
+`harvest(src, config) -> Vec<CrateSpec>` is read-only analysis — it returns
+`CrateSpec { name, source_path, code_info: CodeInfo { functions, structs, enums }
+}` describing what exists, nothing else. `scaffold`/`generate` takes only a crate
+`name` and creates an empty boilerplate skeleton — it has no parameter for
+`harvest`'s output and does nothing with it. Neither writes ported logic anywhere.
+There is currently **no mechanism, anywhere in either repo, that transforms
+harvested source into working code** — and there shouldn't be a naive one: porting
+external logic into this framework's zero-allocation, zero-ambient-authority
+idioms is exactly the kind of judgment call `contracts/
+FRONTIER_FILTRATION_STANDARD_V1.md` itself says needs "the local agent extraction
+loop," not a mechanical transform. That standard already names the right shape
+(Stage `CRATIFY_KERNEL_EXTRACTION`: "Run local agent extraction loop to isolate
+kernel needle... rebase into `crates/<target>/`") — M49 is building the plumbing
+that shape currently has none of.
+
+**Real design, reusing what M44/M45 already proved rather than inventing new
+mechanism:** treat a harvested candidate exactly like any other `code-draft` job —
+`harvest`'s output becomes the *evidence* for a drafting job, not an automatic
+transform.
+
+- **Aaroneous side:** `CrateSpec`/`CodeInfo` (and the `inspect::{FunctionInfo,
+  StructInfo, EnumInfo}` types they wrap) currently derive only `Debug, Clone` —
+  no `Serialize`. Add it (same fix M40 needed for `ConcurrenceSnapshot`), and add
+  a `cratify harvest --output <path>` flag exporting the `Vec<CrateSpec>` as JSON
+  via the same atomic-write pattern M40/M47 established, instead of only printing
+  a human-readable summary to stdout as it does today.
+- **Devtools side:** a new producer (mirroring `frontier_discovery::
+  create_frontier_job`'s and `capability_composition::create_composition_job`'s
+  shape exactly) that reads the exported `CrateSpec` JSON and emits **one
+  `code-draft` `worker-jobs/*.toml` packet per harvested crate spec**: `evidence`
+  points at the original source path plus the CrateSpec export; `instruction`
+  summarizes the discovered functions/structs/enums and asks for a compliant port
+  following `CONTRIBUTING.md`'s rules (no ambient authority, no heap on hot paths,
+  `#[repr(C)]` where relevant); `mode = "code-draft"`. Once M48 exists, this
+  producer should also set `goal`/`exploration_group` so multiple harvested
+  candidates — or multiple perspectives on porting one candidate — are comparable
+  the same way frontier-discovery candidates already are.
+- **Everything downstream is already built:** M44 dispatches the code-draft job
+  and pre-proofs the result against an explicit checkout; M45's `cratify_audit`
+  checks the proofed draft for compliance the same way it already does for any
+  other draft. M49 is genuinely just the missing *front door* — turning "here's
+  some external code" into "here's a properly-evidenced drafting job" — not a new
+  pipeline stage.
+- `scaffold`/`generate` stays a separate, manually-invoked convenience for
+  starting a brand-new empty crate; it has no natural role in this flow since
+  there's no code yet to scaffold *around* until a draft exists.
+
+- **Dependency:** M44 (dispatch/pre-proof), M45 (compliance audit) — both already
+  built, this milestone only adds a new evidence source feeding them
+- **Preferred capability:** Rust systems review, cross-repo file-contract design
+- **Evidence:** committed export code (Aaroneous) and packet-emission code
+  (devtools); at least one real harvested candidate carried through drafting,
+  pre-proofing, and `cratify_audit` — proving the front door actually leads
+  somewhere, not just that it opens.
+
+### M50 — Clean revert for already-promoted changes
+
+**Real, unbuilt gap**, distinct from everything the circuit breaker/high-risk
+allowlist already do. Those prevent a bad change from merging, or halt the
+pipeline after a later-discovered problem — neither one **undoes a change that
+already reached `main`.** Right now, rejecting something already delivered means
+someone manually running `git revert` themselves; there's no tool, no recorded
+trail, and no consistency with how every other action in this pipeline works
+(isolated branch, explicit review, recorded evidence).
+
+**Verified starting point:** `agentic_registrar::promote` (`foundation/crates/
+foundation_cli/src/agentic_registrar.rs`, ~line 1076 `pub fn promote`) already
+does exactly one `git add` + one `git commit` per promotion (~line 2081-2107)
+before pushing the isolated `local-agent/{task_id}` branch — so every
+`promote`-sourced change is, by construction, already a single clean commit.
+Combined with `COORDINATION_QUEUE.md`'s existing convention of recording the
+squash-merge commit hash in each Done row (e.g. C37/C38's "squash commit
+`cedfadc`" / "`46ea26d`"), a revert almost always has exactly one commit hash to
+target, already on record — this milestone doesn't need to solve "which commit,"
+just "act on it consistently and safely."
+
+**Design:** a new command in `agentic_registrar.rs`, e.g. `revert_promotion
+(config_path: &Path, commit: &str, reason: &str)`, mirroring `promote`'s own
+pattern rather than inventing a new one:
+
+1. Validate the target commit exists and is actually reachable from `main` (fail
+   loudly if not — reverting a commit that was never merged is a user error worth
+   catching, not silently no-op-ing).
+2. `git revert --no-edit <commit>` (or `-m 1 <commit>` if it's a merge commit, not
+   a squash — detect which via `git rev-list --parents -n 1 <commit>` and branch
+   on parent count) on a **new isolated branch**, e.g. `local-agent/revert-
+   {commit-short-sha}`, not directly onto `main` — a revert can itself have
+   unintended interactions with commits made since (a file another change also
+   touched), so it goes through the same review gate as any other change, just
+   starting from a safer default (undoing something) rather than a riskier one
+   (adding something).
+3. Push the branch, print the PR-creation URL (same as `promote` already does —
+   `agentic_registrar` has no GitHub credential of its own by design, per
+   `LOCAL_MODEL_AUTONOMY_POLICY.md`'s existing rationale; a cloud agent with real
+   access opens the actual PR).
+4. Record the action: append a row to `COORDINATION_QUEUE.md` (or a dedicated
+   `governance/REVERT_LOG.md`, implementer's call — a dedicated log may read more
+   clearly than mixing revert history into the primary-lane queue) with the
+   reverted commit, the stated reason, and the new branch — so "why was this
+   undone" survives as evidence, not just a diff.
+
+**Explicitly out of scope for M50:** deciding *when* a revert is warranted. That
+stays a human or capable-agent judgment call, the same as every other Tier-2-
+adjacent decision this plan has deliberately kept out of mechanical hands. M50
+makes "no, undo that" fast, safe, and evidenced once the decision is made — it
+does not make the decision.
+
+- **Dependency:** none (builds on `agentic_registrar.rs`'s existing `promote`
+  pattern, doesn't require any other M40-M49 milestone)
+- **Preferred capability:** Rust systems review, git tooling
+- **Evidence:** committed `revert_promotion` command with passing tests
+  (successful revert-and-push against a real bare-repo fixture, matching
+  `promote`'s own existing test pattern; detects and rejects an unreachable
+  commit; correctly branches merge-commit vs. squash-commit revert syntax); a
+  real revert exercised end-to-end against a disposable test commit.
+
+### M51 — A running closed loop, not just documented triggers (not yet designed)
+
+`architecture/DISCOVERY_REVIEW_LOOP.md` documents what *should* trigger each stage
+from the previous one's output, but nothing currently executes those triggers —
+`frontier-discover-serve` runs on its own schedule, and nothing automatically
+starts drafting, pre-proofing, or cratification when it produces a candidate. This
+milestone is real but genuinely not yet designed to the depth M40-M50 are; it
+needs its own grounding pass (reading whatever scheduling/orchestration primitives
+exist by the time M40-M50 have landed and settled, since M49's new producer and
+M48's seeding producer both change what "the next stage" even consumes) rather
+than a premature design written before its dependencies exist. Recorded here so
+the gap isn't lost, not scoped further today.
+
+- **Dependency:** M48, M49 (the loop can't be wired until its stages exist)
+- **Preferred capability:** unassigned — needs grounding work first, not
+  implementation
+
+### M52 — A curated offer/accept UX (deliberately deferred)
+
+The "quest reward" framing from planning discussion: presenting a discovered or
+drafted candidate to a person as a friendly accept/reject choice, rather than a
+queue row or JSON report for a technical reviewer. Deliberately **not** designed
+further right now — per this plan's own recommendation, building a friendly
+accept/reject layer on top of a pipeline that can't yet cleanly undo a rejection
+(M50) puts the UX before the safety mechanism it depends on. Revisit once M50
+exists. `gui/`'s existing read-only dashboard (per `FOUNDATION_BOUNDARY.md`:
+"full write/promotion integration remains gated on owner sign-off") is the
+plausible eventual home for this, not a new surface.
+
+- **Dependency:** M50 (a reject action needs something real to do)
+- **Preferred capability:** unassigned — deferred, not scoped
+
 ## Decisions log
 
 Dated decisions from planning discussion, kept so later sessions don't re-litigate
@@ -550,6 +703,22 @@ settled scope:
   real, low-cost fit already present in its existing shape); added M48 as the
   still-open gap — a producer for M46's originally-intended `code-draft`
   multi-attempt use case, which nothing generates yet.
+- **2026-09-20 — Answered "what's left for reverse-engineering and full
+  automation" honestly, then wrote up what could actually be designed today.**
+  Corrected an initial assumption that `cratify`'s `harvest`/`scaffold`/`audit`
+  already chain — they don't; `harvest` only analyzes, `scaffold` only creates an
+  empty skeleton unrelated to any harvest output, and no mechanism ports
+  harvested logic anywhere. M49 designs the real fix: harvested candidates become
+  evidence for an ordinary `code-draft` job, reusing M44/M45 rather than
+  inventing a code-transform mechanism (porting is a judgment call, not
+  arithmetic — consistent with this plan's standing position on BUILD_WORTHINESS
+  scoring). M50 designs the "clean revert of something already delivered"
+  mechanism this plan never had, built on `agentic_registrar::promote`'s existing
+  single-commit-per-promotion pattern. M51 (running the closed loop for real) and
+  M52 (a friendly accept/reject UX) are recorded but deliberately left
+  unscoped/deferred — M51 because its dependencies don't exist yet to design
+  against, M52 because building a reject-UX before M50's revert mechanism exists
+  would put the experience ahead of the safety it depends on.
 
 ## Sequencing
 
@@ -569,6 +738,12 @@ same packet supply M41 does rather than depending on it. M48 depends on M46
 (consumer must exist first) and M44 (its output flows through pre-proofing
 unchanged); unlike the other milestones it has no natural automatic trigger, so it
 stays an explicitly-invoked producer rather than something a serve loop calls on
-its own. No milestone in this plan authorizes paid cloud dispatch or local
-write/claim authority — those remain explicit future decisions, not defaults
-unlocked by completing M40–M48.
+its own. M49 depends only on M44/M45 (both already built) and can proceed now,
+in parallel with anything else. M50 depends on nothing else in this plan and can
+proceed immediately — it only builds on `agentic_registrar.rs`'s existing
+`promote` pattern. M51 depends on M48 and M49 (needs its stages to exist before
+the loop connecting them can be designed, let alone built) and is intentionally
+left ungrounded until then. M52 depends on M50 (a reject action needs a real
+mechanism behind it) and is deliberately deferred. No milestone in this plan
+authorizes paid cloud dispatch or local write/claim authority — those remain
+explicit future decisions, not defaults unlocked by completing M40–M52.
