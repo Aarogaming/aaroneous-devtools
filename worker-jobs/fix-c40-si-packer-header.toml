@@ -1,0 +1,40 @@
+evidence = ["crates/compute/src/si_packer.rs", "crates/si_format/src/header.rs"]
+exploration_group = "c40-codex-pr51"
+goal = "C40"
+id = "FIX-C40-SI-PACKER-HEADER"
+instruction = """
+Codex review finding on Aarogaming/aaroneous#51 (review 5262430957), independently
+re-verified this session against current source -- confirmed real:
+
+crates/compute/src/si_packer.rs writes the legacy header layout (magic(4) +
+version:u32@offset4 + flags:u32@offset8 + toc_len:u64@offset12), but
+crates/si_format/src/header.rs's SiCartridgeHeader (#[repr(C)], the canonical
+64-byte format) reads that same byte range as magic(4) + version:u16@4 +
+header_size:u16@6 + flags:u32@8 + crc32_checksum:u32@12 + block1_offset:u64@16.
+The legacy u32 version write spills into what the new header reads as
+header_size; the legacy u64 toc_len write splits across what the new header
+reads as crc32_checksum and the start of block1_offset. Cartridges SiForge
+packs via this path pass the legacy SiSolidStateLoader check but fail the
+newly documented SiCartridgeEngine/typestate verification and cannot load
+through SolidStateSiContainer.
+
+Propose a fix that makes si_packer.rs write the canonical SiCartridgeHeader
+layout (or an explicit, documented compatibility shim if immediate migration
+is unsafe -- state which you chose and why). This is a hot-path/binary-format
+crate: preserve 64-byte alignment, do not introduce heap allocation on any
+existing hot path, and do not change SiTierFlags semantics.
+
+CONSTRAINTS:
+- Zero heap allocations on hot paths (no String, Vec, Box, format!, or
+  unbounded collections) beyond what the existing code already uses.
+- Zero ambient authority (no std::env::*, no ambient clock reads).
+- Zero stubs (no todo! or unimplemented!). Propagate errors via Result.
+- Include unit test assertions proving a packed header round-trips correctly
+  through SiCartridgeHeader's own reader.
+
+This is a proposal only. It does not authorize committing, merging, or
+claiming COORDINATION_QUEUE.md row C40/C41 -- that requires owner review per
+governance/LOCAL_AGENT_CONTROL_PLANE.md."""
+mode = "code-draft"
+perspective = "codex-finding-1-of-9"
+schema_version = 1

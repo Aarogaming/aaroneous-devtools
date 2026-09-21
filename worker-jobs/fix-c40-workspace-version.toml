@@ -1,0 +1,38 @@
+evidence = ["xtask/src/workspace_metadata.rs"]
+exploration_group = "c40-codex-pr51"
+goal = "C40"
+id = "FIX-C40-WORKSPACE-VERSION"
+instruction = """
+Codex review finding on Aarogaming/aaroneous#51 (review 5262430957), around
+line 134 of xtask/src/workspace_metadata.rs -- independently re-verified
+this session against current source, confirmed real:
+
+`package.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0")` -- for a
+workspace member declaring `version.workspace = true` (e.g. core-contracts),
+that TOML value is a table (`{ workspace = true }`), not a string, so
+`.as_str()` returns None and the version silently falls through to "0.0.0".
+The generated and committed deployment manifest therefore advertises an
+incorrect version for every such crate.
+
+Propose a fix: detect the workspace-inherited case (a table with
+`workspace = true`) and resolve the real version from
+`[workspace.package].version` in the root Cargo.toml instead of treating it
+as missing.
+
+CONSTRAINTS:
+- Zero ambient authority: resolve the workspace root's Cargo.toml through the
+  same explicit path this tool already uses, not an inferred/ambient path.
+- Zero stubs. Propagate errors via Result if the workspace.package.version
+  itself is genuinely missing (a real error, not another silent 0.0.0
+  fallback).
+- Include a unit test with a fixture member using `version.workspace = true`
+  proving the resolved version matches [workspace.package].version, and a
+  second test proving a member with its own explicit version string is
+  unaffected.
+
+This is a proposal only. It does not authorize committing, merging, or
+claiming COORDINATION_QUEUE.md row C40/C41 -- that requires owner review per
+governance/LOCAL_AGENT_CONTROL_PLANE.md."""
+mode = "code-draft"
+perspective = "codex-finding-9-of-9"
+schema_version = 1
