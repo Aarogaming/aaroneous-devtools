@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m14"
+goal = "M14"
+id = "PORTFOLIO-M14-P0004"
+instruction = """
+Portfolio progressive verification request for M14 (priority P3, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Add thin platform adapters around stable foundation commands"
+Dependency: "M9"
+Preferred capability: "Windows/Linux integration"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Human review session to validate adapter design against existing foundation command interfaces and confirm Windows/Linux integration requirements before claiming. | Obs: M9 (read-only dogfood harness) is marked Done, satisfying M14's dependency. | Obs: M14 is P3 priority, indicating lower urgency and allowing for speculative architectural exploration. | Obs: Work involves thin platform adapters around stable foundation commands for Windows/Linux integration, requiring careful abstraction to maintain stability and avoid platform-specific bloat.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

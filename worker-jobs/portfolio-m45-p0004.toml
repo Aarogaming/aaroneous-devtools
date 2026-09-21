@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m45"
+goal = "M45"
+id = "PORTFOLIO-M45-P0004"
+instruction = """
+Portfolio progressive verification request for M45 (priority P3, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Route local-worker and frontier-discovered drafts through the existing cratify/adaptation_engine/ast_auditor pipeline as one shared compliance path"
+Dependency: "M44, M41"
+Preferred capability: "Component architecture / compiler-adjacent tooling"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Await M44 and M41 completion before initiating M45; propose a design review session to validate the shared compliance path architecture. | Obs: M45 is blocked by M44 (worker-jobs pre-proofing) and M41 (frontier_discovery.rs self-scheduling) completion. | Obs: M45 requires routing local-worker and frontier-discovered drafts through cratify/adaptation_engine/ast_auditor as a shared compliance path. | Obs: M45 involves component architecture and compiler-adjacent tooling integration, not product code changes.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

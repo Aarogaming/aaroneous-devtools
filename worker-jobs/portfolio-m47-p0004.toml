@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m47"
+goal = "M47"
+id = "PORTFOLIO-M47-P0004"
+instruction = """
+Portfolio progressive verification request for M47 (priority P2, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Export the capability_broker.rs registry as JSON; propose and score internal capability compositions via BUILD_WORTHINESS_STANDARD.md"
+Dependency: "M40, BUILD_WORTHINESS_STANDARD.md"
+Preferred capability: "Combinatorial/graph analysis, Rust systems review"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Await availability of `BUILD_WORTHINESS_STANDARD.md` content and M40 completion status before proceeding with reference implementation sketch. | Obs: Evidence file `governance/MULTITHREAD_PROGRAM.md` confirms M47 scope: export `capability_broker.rs` registry to JSON and score compositions via `BUILD_WORTHINESS_STANDARD.md`. | Obs: Dependency M40 (`ConcurrenceSnapshot` advisory confidence field) is listed as required but not marked as Done in the provided text. | Obs: Dependency `BUILD_WORTHINESS_STANDARD.md` is referenced but its content is not present in the provided evidence block, creating a potential blocker for scoring logic implementation.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

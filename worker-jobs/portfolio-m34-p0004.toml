@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m34"
+goal = "M34"
+id = "PORTFOLIO-M34-P0004"
+instruction = """
+Portfolio progressive verification request for M34 (priority P1, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Independent per-lane acceptance: old C10-C13/C15/C16/C19 evidence"
+Dependency: "Independent reviewer / reserved owner verdict"
+Preferred capability: "Revision/gate-based decisions; no self-certification; queue closure only for accepted slices"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Schedule a human or cloud session to claim M34 for independent review of C10-C13/C15/C16/C19 evidence. | Obs: M34 requires independent per-lane acceptance of old C10-C13/C15/C16/C19 evidence. | Obs: Dependency is an independent reviewer or reserved owner verdict. | Obs: Preferred capability is revision/gate-based decisions with no self-certification.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

@@ -3,6 +3,8 @@
 /reports/
 /artifacts/
 *.log
+logs/
+**/logs/
 .env
 .env.*
 !.env.example

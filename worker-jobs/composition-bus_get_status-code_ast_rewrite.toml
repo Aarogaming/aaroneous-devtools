@@ -1,0 +1,18 @@
+evidence = [
+    "capability:bus.get_status",
+    "capability:code.ast_rewrite",
+    "governance/BUILD_WORTHINESS_STANDARD.md",
+    'd:\aaroneous-devtools\artifacts\capabilities.json',
+]
+id = "COMPOSITION-BUS_GET_STATUS-CODE_AST_REWRITE"
+instruction = """
+Score the candidate capability composition of 'Interconnect Ring Buffer Status' (bus.get_status, category: SystemBus) and 'Automated AST Pattern Rewriter' (code.ast_rewrite, category: DevTools) against governance/BUILD_WORTHINESS_STANDARD.md.
+
+'Interconnect Ring Buffer Status': Inspects the 64MB memory-mapped IPC ring buffer throughput and generation
+'Automated AST Pattern Rewriter': Applies Comby-style structural pattern replacements across source files without LLM round-trips
+
+Evaluate whether one capability's parameter shape plausibly accepts, or could be adapted to accept, the other's described output or effect, and whether the resulting composition would unlock value neither capability provides alone.
+
+Apply BUILD_WORTHINESS_STANDARD.md's Stage 1 admissibility gates first. If the pair passes Stage 1, score it against Stage 2's quadratic criteria (Quadrant I capability value, Quadrant II implementation feasibility, Quadrant III verification rigor achievable, Quadrant IV roadmap leverage) and report the resulting composite score and outcome (ADMIT_TO_READY / ADMIT_WITH_SCOPING / ARCHIVE_AS_ROADMAPPED / REJECT_LOG_REASON). If the pair fails a Stage 1 gate, report REJECT_LOG_REASON with the failing gate and reason instead of proceeding to Stage 2."""
+mode = "analysis"
+schema_version = 1

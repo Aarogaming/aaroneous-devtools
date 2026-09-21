@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m56"
+goal = "M56"
+id = "PORTFOLIO-M56-P0004"
+instruction = """
+Portfolio progressive verification request for M56 (priority P2, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Ground-truth pre-verification: mechanically re-check a milestone's cited claims before implementation; seed competing predictions via M48/M46 when a design is genuinely uncertain, decided by evidence"
+Dependency: "M46, M48"
+Preferred capability: "Rust systems review, workflow/tooling design"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Await M46/M48 completion to enable competing prediction seeding; propose a bounded workflow design for claim verification. | Obs: M56 requires M46 (meta-tagging) and M48 (multi-perspective seeding) which are P3 items; M56 is P2, creating a circular dependency risk. | Obs: Mechanical re-verification implies deterministic comparison between claimed milestones and evidence sources (MASTER_ROADMAP.md, TODO.md, CI logs). | Obs: Evidence sources are text-heavy and potentially corrupted (M29, M33), requiring robust parsing and normalization before claim validation can occur.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

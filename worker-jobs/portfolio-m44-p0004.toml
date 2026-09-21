@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m44"
+goal = "M44"
+id = "PORTFOLIO-M44-P0004"
+instruction = """
+Portfolio progressive verification request for M44 (priority P3, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Expand worker-jobs templates past read-only analysis with local pre-proofing (cargo xtask gate/ast_auditor on a throwaway worktree), gated by cross_verifier/consensus_engine"
+Dependency: "M42"
+Preferred capability: "Release governance / verification design"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Await M42 completion or design freeze before initiating M44 pre-proofing worktree setup. | Obs: M42 (cloud_providers.rs dispatch adapter contract design) is P2 and uncompleted; M44 depends on it. | Obs: M44 requires local pre-proofing via cargo xtask gate and ast_auditor on a throwaway worktree. | Obs: M44 must be gated by cross_verifier/consensus_engine before proceeding to implementation lanes.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

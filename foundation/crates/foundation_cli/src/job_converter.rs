@@ -492,6 +492,200 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
     Ok(created)
 }
 
+pub(crate) fn refill_capability_composition_jobs(
+    checkout: &Path,
+    output_dir: &Path,
+    max_batch: usize,
+) -> Result<Vec<PathBuf>> {
+    if !checkout.is_absolute() || !output_dir.is_absolute() {
+        bail!("checkout and output_dir must be absolute paths");
+    }
+
+    let devtools_root = output_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or(checkout);
+    let standard_present = checkout
+        .join("governance/BUILD_WORTHINESS_STANDARD.md")
+        .is_file()
+        || devtools_root
+            .join("governance/BUILD_WORTHINESS_STANDARD.md")
+            .is_file();
+    if !standard_present {
+        return Ok(Vec::new());
+    }
+
+    let mut capabilities_path = None;
+    let checkout_cap = checkout.join("artifacts").join("capabilities.json");
+    if checkout_cap.is_file() {
+        capabilities_path = Some(checkout_cap);
+    } else if let Some(parent) = output_dir.parent() {
+        if output_dir.file_name().and_then(|s| s.to_str()) == Some("worker-jobs") {
+            let p = parent.join("artifacts").join("capabilities.json");
+            if p.is_file() {
+                capabilities_path = Some(p);
+            }
+        }
+    }
+
+    if capabilities_path.is_none()
+        && checkout
+            .join("core/hypervisor/src/capability_broker.rs")
+            .is_file()
+    {
+        let dest = if output_dir.file_name().and_then(|s| s.to_str()) == Some("worker-jobs") {
+            output_dir
+                .parent()
+                .map(|p| p.join("artifacts").join("capabilities.json"))
+                .unwrap_or_else(|| checkout.join("artifacts").join("capabilities.json"))
+        } else {
+            checkout.join("artifacts").join("capabilities.json")
+        };
+        let hypervisor_candidates = [
+            PathBuf::from(r"C:\CargoTargetCache\release\hypervisor.exe"),
+            PathBuf::from(r"C:\CargoTargetCache\debug\hypervisor.exe"),
+            checkout
+                .join("target")
+                .join("release")
+                .join("hypervisor.exe"),
+            checkout.join("target").join("debug").join("hypervisor.exe"),
+        ];
+        for hyp in &hypervisor_candidates {
+            if hyp.is_file() {
+                if let Some(parent) = dest.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                if let Some(dest_str) = dest.to_str() {
+                    let status = std::process::Command::new(hyp)
+                        .args(["si", "export-capabilities", "--output", dest_str])
+                        .status();
+                    if let Ok(s) = status {
+                        if s.success() && dest.is_file() {
+                            capabilities_path = Some(dest);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let Some(cap_file) = capabilities_path else {
+        return Ok(Vec::new());
+    };
+
+    let capabilities = match crate::capability_composition::read_capabilities(&cap_file) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "refill_capability_composition: failed to parse {}: {e}",
+                cap_file.display()
+            );
+            return Ok(Vec::new());
+        }
+    };
+
+    let pairs = crate::capability_composition::generate_candidate_pairs(&capabilities, 100);
+    if pairs.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut candidate_dirs = vec![output_dir.join("results"), output_dir.join("archive")];
+    if let Some(parent) = output_dir.parent() {
+        candidate_dirs.push(parent.join("results"));
+        candidate_dirs.push(parent.join("archive"));
+        candidate_dirs.push(
+            parent
+                .join("artifacts")
+                .join("local-worker-service")
+                .join("results"),
+        );
+        candidate_dirs.push(
+            parent
+                .join("artifacts")
+                .join("local-worker-service")
+                .join("archive"),
+        );
+    }
+
+    let mut completed_ids = std::collections::HashSet::new();
+    for dir in candidate_dirs {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Ok(text) = fs::read_to_string(&path) {
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if let Some(id) = value["job_id"].as_str() {
+                                if id.starts_with("COMPOSITION-") {
+                                    completed_ids.insert(id.to_uppercase());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let existing_files: std::collections::HashSet<String> = fs::read_dir(output_dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|e| {
+                    let fname = e.file_name().to_string_lossy().to_lowercase();
+                    if fname.starts_with("composition-") && fname.ends_with(".toml") {
+                        Some(fname)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let cap_source_str = cap_file.display().to_string();
+    let mut created = Vec::new();
+
+    for pair in pairs {
+        if created.len() >= max_batch {
+            break;
+        }
+
+        let first_id_sanitized = crate::capability_composition::sanitize_for_id(&pair.first.id);
+        let second_id_sanitized = crate::capability_composition::sanitize_for_id(&pair.second.id);
+        let job_id = format!("COMPOSITION-{first_id_sanitized}-{second_id_sanitized}");
+
+        if completed_ids.contains(&job_id) {
+            continue;
+        }
+
+        let first_fname_sanitized =
+            crate::capability_composition::sanitize_for_filename(&pair.first.id);
+        let second_fname_sanitized =
+            crate::capability_composition::sanitize_for_filename(&pair.second.id);
+        let filename = format!("composition-{first_fname_sanitized}-{second_fname_sanitized}.toml");
+
+        if existing_files.contains(&filename) || output_dir.join(&filename).exists() {
+            continue;
+        }
+
+        let job_path = crate::capability_composition::create_composition_job(
+            &pair,
+            output_dir,
+            &cap_source_str,
+        )?;
+        println!(
+            "refilled capability composition job: {}",
+            job_path.display()
+        );
+        created.push(job_path);
+    }
+
+    Ok(created)
+}
+
 pub(crate) fn sync_and_refill_jobs(
     checkout: &Path,
     queue_path: &Path,
@@ -514,6 +708,10 @@ pub(crate) fn sync_and_refill_jobs(
                 created.extend(prog_jobs);
             }
         }
+    }
+
+    if let Ok(comp_jobs) = refill_capability_composition_jobs(checkout, output_dir, 4) {
+        created.extend(comp_jobs);
     }
 
     Ok(created)
@@ -602,5 +800,49 @@ mod tests {
         assert_eq!(synced.len(), 2);
         assert!(temp.path().join("c33.toml").exists());
         assert!(temp.path().join("audit-01-ast-safety.toml").exists());
+    }
+
+    #[test]
+    fn refill_capability_composition_creates_jobs_and_deduplicates() {
+        let temp = tempfile::tempdir().expect("test dir");
+        let checkout = temp.path().join("checkout");
+        create_dummy_evidence(&checkout, "governance/BUILD_WORTHINESS_STANDARD.md");
+        let artifacts = checkout.join("artifacts");
+        fs::create_dir_all(&artifacts).expect("create artifacts dir");
+
+        let caps = serde_json::json!([
+            {
+                "id": "cap.a",
+                "name": "Capability A",
+                "description": "Desc A",
+                "category": "Cat1",
+                "parameters": []
+            },
+            {
+                "id": "cap.b",
+                "name": "Capability B",
+                "description": "Desc B",
+                "category": "Cat2",
+                "parameters": []
+            }
+        ]);
+        fs::write(
+            artifacts.join("capabilities.json"),
+            serde_json::to_string_pretty(&caps).unwrap(),
+        )
+        .expect("write capabilities.json");
+
+        let jobs_dir = temp.path().join("jobs");
+        fs::create_dir_all(&jobs_dir).expect("create jobs dir");
+
+        let refilled = refill_capability_composition_jobs(&checkout, &jobs_dir, 4)
+            .expect("refill composition");
+        assert_eq!(refilled.len(), 1);
+        assert!(jobs_dir.join("composition-cap_a-cap_b.toml").exists());
+
+        // Subsequent call does not duplicate
+        let refilled2 = refill_capability_composition_jobs(&checkout, &jobs_dir, 4)
+            .expect("refill composition 2");
+        assert_eq!(refilled2.len(), 0);
     }
 }

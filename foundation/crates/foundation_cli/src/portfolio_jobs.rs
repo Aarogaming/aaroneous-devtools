@@ -248,9 +248,10 @@ fn create_progressive_portfolio_job(
         )
     };
 
-    let instruction = if pass == 2 {
-        format!(
-            "Portfolio deep-dive request for {id} (priority {priority}, Pass 2: Detailed Specification & Test Architecture) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.\n\
+    let (instruction, mode) = if pass == 2 {
+        (
+            format!(
+                "Portfolio deep-dive request for {id} (priority {priority}, Pass 2: Detailed Specification & Test Architecture) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.\n\
             Work: \"{work}\"\n\
             Dependency: \"{dependency}\"\n\
             Preferred capability: \"{preferred_capability}\"\n\
@@ -263,16 +264,19 @@ fn create_progressive_portfolio_job(
             (2) Invariants that must hold across state transitions (zero-heap, zero ambient authority, deterministic state machines per AGENTS.md);\n\
             (3) Concrete trade-offs, blast radius, and code sketches comparing the branches in solution_tree;\n\
             (4) Detailed checklist of step-by-step implementation phases for the recommended branch.",
-            id = row.id,
-            priority = row.priority,
-            work = row.work,
-            dependency = row.dependency,
-            preferred_capability = row.preferred_capability,
-            context_block = context_block,
+                id = row.id,
+                priority = row.priority,
+                work = row.work,
+                dependency = row.dependency,
+                preferred_capability = row.preferred_capability,
+                context_block = context_block,
+            ),
+            "analysis",
         )
-    } else {
-        format!(
-            "Portfolio progressive verification request for {id} (priority {priority}, Pass {pass}: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.\n\
+    } else if pass == 3 {
+        (
+            format!(
+                "Portfolio progressive verification request for {id} (priority {priority}, Pass {pass}: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.\n\
             Work: \"{work}\"\n\
             Dependency: \"{dependency}\"\n\
             Preferred capability: \"{preferred_capability}\"\n\
@@ -283,19 +287,44 @@ fn create_progressive_portfolio_job(
             (1) A draft reference implementation sketch (in rust_draft or solution_tree) or mock interface;\n\
             (2) Proof that the design satisfies sequential verification gates and AST invariants (zero-heap, zero ambient authority);\n\
             (3) Isolated test fixture scenarios and failure reproduction cases.",
-            id = row.id,
-            priority = row.priority,
-            work = row.work,
-            dependency = row.dependency,
-            preferred_capability = row.preferred_capability,
-            context_block = context_block,
+                id = row.id,
+                priority = row.priority,
+                work = row.work,
+                dependency = row.dependency,
+                preferred_capability = row.preferred_capability,
+                context_block = context_block,
+            ),
+            "analysis",
+        )
+    } else {
+        (
+            format!(
+                "Portfolio progressive verification request for {id} (priority {priority}, Pass {pass}: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.\n\
+            Work: \"{work}\"\n\
+            Dependency: \"{dependency}\"\n\
+            Preferred capability: \"{preferred_capability}\"\n\
+            {context_block}\n\
+            Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.\n\
+            CONSTRAINTS:\n\
+            - Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).\n\
+            - Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).\n\
+            - Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.\n\
+            - Include thorough unit test assertions proving determinism and contract compliance in test_plan and code.",
+                id = row.id,
+                priority = row.priority,
+                work = row.work,
+                dependency = row.dependency,
+                preferred_capability = row.preferred_capability,
+                context_block = context_block,
+            ),
+            "code-draft",
         )
     };
 
     let manifest = serde_json::json!({
         "schema_version": 1,
         "id": job_id,
-        "mode": "analysis",
+        "mode": mode,
         "evidence": ["governance/MULTITHREAD_PROGRAM.md"],
         "instruction": instruction,
         "perspective": "portfolio-triage",
@@ -484,8 +513,8 @@ pub(crate) fn refill_portfolio_progression_jobs(
 
         // Advance to next pass if previous pass completed and next pass file doesn't exist
         let next_pass = completed_pass + 1;
-        if next_pass > 3 {
-            // Bounded to 3 progressive depth tiers per milestone to prevent unbounded expansion
+        if next_pass > 4 {
+            // Bounded to 4 progressive depth tiers per milestone to prevent unbounded expansion
             continue;
         }
 

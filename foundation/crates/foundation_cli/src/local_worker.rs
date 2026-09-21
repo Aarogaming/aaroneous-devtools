@@ -727,7 +727,7 @@ where
         let job: Job = toml::from_str(&read_bounded(&path, 16384)?)?;
         if job.schema_version != 1
             || job.id.is_empty()
-            || job.id.len() > 64
+            || job.id.len() > 96
             || !job
                 .id
                 .bytes()
@@ -764,9 +764,20 @@ where
             .unwrap_or(&c.checkout);
         let roots = [&c.checkout, devtools_root];
         for relative in &job.evidence {
+            if let Some(cap_id) = relative.strip_prefix("capability:") {
+                input.push_str(&format!("\nDeclared evidence: capability {cap_id}\n"));
+                continue;
+            }
+            let file_path = if let Ok(fp) = evidence_file_multi(&roots, relative) {
+                fp
+            } else if Path::new(relative).is_file() {
+                PathBuf::from(relative)
+            } else {
+                bail!("evidence requires exact relative file: {relative}");
+            };
             input.push_str(&format!(
                 "\nDeclared evidence: {relative}\n{}\n",
-                read_bounded(&evidence_file_multi(&roots, relative)?, 32768)?
+                read_bounded(&file_path, 32768)?
             ));
         }
         if input.len() > 65536 {

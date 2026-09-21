@@ -30,7 +30,7 @@ pub struct CapabilityParameter {
     pub description: String,
     pub param_type: String,
     pub required: bool,
-    pub default_value: Option<String>,
+    pub default_value: Option<serde_json::Value>,
 }
 
 /// Mirrors Aaroneous's `CapabilityDescriptor` shape. See module docs.
@@ -120,14 +120,16 @@ pub fn generate_candidate_pairs(
 /// Sanitizes a capability id for safe use in a filename / packet id
 /// component: keeps ASCII alphanumerics, replaces everything else
 /// (`.`, `:`, `/`, spaces, etc.) with `_`, and uppercases for the id form.
-fn sanitize_for_id(raw: &str) -> String {
-    raw.chars()
+pub(crate) fn sanitize_for_id(raw: &str) -> String {
+    let s: String = raw
+        .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect::<String>()
-        .to_uppercase()
+        .to_uppercase();
+    if s.len() > 32 { s[..32].to_string() } else { s }
 }
 
-fn sanitize_for_filename(raw: &str) -> String {
+pub(crate) fn sanitize_for_filename(raw: &str) -> String {
     raw.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect::<String>()
@@ -200,6 +202,7 @@ and reason instead of proceeding to Stage 2.",
         "evidence": [
             format!("capability:{}", pair.first.id),
             format!("capability:{}", pair.second.id),
+            "governance/BUILD_WORTHINESS_STANDARD.md",
             capabilities_source_path,
         ],
         "instruction": instruction

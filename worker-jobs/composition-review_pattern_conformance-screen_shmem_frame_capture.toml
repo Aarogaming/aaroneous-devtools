@@ -1,0 +1,18 @@
+evidence = [
+    "capability:review.pattern_conformance",
+    "capability:screen.shmem_frame_capture",
+    "governance/BUILD_WORTHINESS_STANDARD.md",
+    'd:\aaroneous-devtools\artifacts\capabilities.json',
+]
+id = "COMPOSITION-REVIEW_PATTERN_CONFORMANCE-SCREEN_SHMEM_FRAME_CAPTURE"
+instruction = """
+Score the candidate capability composition of 'Architectural Pattern Conformance Reviewer' (review.pattern_conformance, category: DevTools) and 'Shared Memory Desktop Duplication Capture' (screen.shmem_frame_capture, category: ScreenAutomation) against governance/BUILD_WORTHINESS_STANDARD.md.
+
+'Architectural Pattern Conformance Reviewer': Evaluates workspace code against declarative architectural patterns (Arrow SoA, Typestates, Gitoxide in-process VCS, DAZ/FTZ) and emits synthesis recommendations
+'Shared Memory Desktop Duplication Capture': Pulls desktop display buffer directly into memory-mapped frame storage
+
+Evaluate whether one capability's parameter shape plausibly accepts, or could be adapted to accept, the other's described output or effect, and whether the resulting composition would unlock value neither capability provides alone.
+
+Apply BUILD_WORTHINESS_STANDARD.md's Stage 1 admissibility gates first. If the pair passes Stage 1, score it against Stage 2's quadratic criteria (Quadrant I capability value, Quadrant II implementation feasibility, Quadrant III verification rigor achievable, Quadrant IV roadmap leverage) and report the resulting composite score and outcome (ADMIT_TO_READY / ADMIT_WITH_SCOPING / ARCHIVE_AS_ROADMAPPED / REJECT_LOG_REASON). If the pair fails a Stage 1 gate, report REJECT_LOG_REASON with the failing gate and reason instead of proceeding to Stage 2."""
+mode = "analysis"
+schema_version = 1

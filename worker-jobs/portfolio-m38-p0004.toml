@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m38"
+goal = "M38"
+id = "PORTFOLIO-M38-P0004"
+instruction = """
+Portfolio progressive verification request for M38 (priority P2, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Utility client CI: standalone client.test.mjs gate"
+Dependency: "Reviewer capacity / exact workflow claim"
+Preferred capability: "Existing client tests automated on Windows/Linux, read-only bounded CI"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Await human reviewer capacity to claim the lane and define the exact workflow claim before proceeding with any CI configuration changes. | Obs: M38 requires a 'standalone client.test.mjs gate' but explicitly depends on 'Reviewer capacity / exact workflow claim' before any CI changes. | Obs: Preferred capability is 'Existing client tests automated on Windows/Linux, read-only bounded CI', implying no product code modification. | Obs: Risk identified: Ambiguity in 'exact workflow claim' without a reviewer may lead to scope creep or misaligned CI changes.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

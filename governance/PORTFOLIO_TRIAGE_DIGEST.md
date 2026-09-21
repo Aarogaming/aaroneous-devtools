@@ -47,6 +47,7 @@
 | **M58** | M58 Portfolio Triage Producer | Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning. | Missing COORDINATION_QUEUE.md prevents verification of deduplication logic. | `pending-owner-review` |
 | **PORTFOLIO-M1-P0002** | PORTFOLIO-M1-P0002 | Await human or cloud session claim for M1 to verify CI results and define the active integration branch scope before proposing a concrete convergence plan. | CI result dependency is unverified; convergence cannot proceed without knowing the current state of the integration branch. | `pending-owner-review` |
 | **PORTFOLIO-M1-P0003** | PORTFOLIO-M1-P0003 | Await human or cloud session claim for M1 to verify CI results and define the active integration branch scope before proposing a concrete convergence plan. | CI result dependency is unverified; convergence cannot proceed without knowing the current state of the integration branch. | `pending-owner-review` |
+| **PORTFOLIO-M1-P0004** | PORTFOLIO-M1-P0004 | Await human or cloud session claim for M1 to verify CI results and define the active integration branch scope before proposing a concrete convergence plan. | Speculative implementation without verified CI results may diverge from actual integration branch state. | `pending-owner-review` |
 | **PORTFOLIO-M10-P0002** | PORTFOLIO-M10-P0002 | Wait for M8 completion or obtain 'bounded reducer reference path' artifact. Do not initiate M10 work. | Dependency risk: M10 blocked by M8. | `pending-owner-review` |
 | **PORTFOLIO-M10-P0003** | PORTFOLIO-M10-P0003 | Wait for M8 completion or obtain 'bounded reducer reference path' artifact before initiating M10 work. | Dependency risk: M10 blocked by M8. | `pending-owner-review` |
 | **PORTFOLIO-M11-P0002** | PORTFOLIO-M11-P0002 | Await M10 completion or evidence of dependency policy enforcement. If M10 is blocked, M11 must be blocked. If M10 is done, schedule a human review session to define exact 'public surface' boundaries and API refactor scope before claiming. | Dependency risk: M11 cannot proceed without M10. If M10 is delayed, M11 stalls. | `pending-owner-review` |
@@ -82,24 +83,43 @@
 | **PORTFOLIO-M39-P0002** | M39 Portfolio Deep-Dive: Packet Server Lifecycle Hardening | Execute isolated reproduction of C24 failure modes in scratch space to validate socket state transitions before architectural selection. | C24 scope may rely on unverified assumptions about socket state transitions. | `pending-owner-review` |
 | **PORTFOLIO-M39-P0003** | PORTFOLIO-M39-P0003 | Execute isolated reproduction of C24 failure modes in scratch space to validate socket state transitions before architectural selection. | C24 scope may rely on unverified assumptions about socket state transitions. | `pending-owner-review` |
 | **PORTFOLIO-M41-P0002** | PORTFOLIO-M41-P0002 | Await explicit governance approval to claim M41 from `governance/COORDINATION_QUEUE.md` before initiating implementation phases. | Speculative design may conflict with existing `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` constraints if dependency file differs from assumed ring-buffer topology. | `pending-owner-review` |
+| **PORTFOLIO-M41-P0003** | PORTFOLIO-M41-P0003 | Await explicit governance approval to claim M41 from `governance/COORDINATION_QUEUE.md` before initiating implementation phases. | Speculative design may conflict with existing `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` constraints if dependency file differs from assumed ring-buffer topology. | `pending-owner-review` |
 | **PORTFOLIO-M42-P0002** | M42 | Human session required to validate architectural fit and governance alignment before any code drafting. | Design-only scope may lack concrete acceptance criteria without human review. | `pending-owner-review` |
+| **PORTFOLIO-M42-P0003** | PORTFOLIO-M42-P0003 | Human session required to validate architectural fit and governance alignment before any code drafting. | Design-only scope may lack concrete acceptance criteria without human review. | `pending-owner-review` |
 | **PORTFOLIO-M43-P0002** | PORTFOLIO-M43-P0002 | Wait for M41 completion or claim M41 first to enable M43's dependency graph analysis capability. | M41 dependency blocks M43 execution. | `pending-owner-review` |
+| **PORTFOLIO-M43-P0003** | PORTFOLIO-M43-P0003 | Wait for M41 completion or claim M41 first to enable M43's dependency graph analysis capability. | M41 dependency blocks M43 execution. | `pending-owner-review` |
 | **PORTFOLIO-M44-P0002** | PORTFOLIO-M44-P0002 | Await M42 completion or design freeze before initiating M44 pre-proofing worktree setup. | M42 dependency may block M44 initiation if cloud_providers.rs contract is not finalized. | `pending-owner-review` |
+| **PORTFOLIO-M44-P0003** | PORTFOLIO-M44-P0003 | Await M42 completion or design freeze before initiating M44 pre-proofing worktree setup. | M42 dependency may block M44 initiation if cloud_providers.rs contract is not finalized. | `pending-owner-review` |
 | **PORTFOLIO-M45-P0002** | PORTFOLIO-M45-P0002 | Await M44 and M41 completion before initiating M45; propose a design review session to validate the shared compliance path architecture. | Dependency blockage: M45 cannot proceed without M44 and M41 completion. | `pending-owner-review` |
+| **PORTFOLIO-M45-P0003** | PORTFOLIO-M45-P0003 | Await M44 and M41 completion before initiating M45; propose a design review session to validate the shared compliance path architecture. | Dependency blockage: M45 cannot proceed without M44 and M41 completion. | `pending-owner-review` |
 | **PORTFOLIO-M46-P0002** | PORTFOLIO-M46-P0002 | Await M41 and M45 completion before proceeding with M46 implementation. Prepare architectural branches for review once dependencies are resolved. | Schema changes may break existing worker-jobs consumers if not backward compatible. | `pending-owner-review` |
+| **PORTFOLIO-M46-P0003** | PORTFOLIO-M46-P0003 | Await M41 and M45 completion before proceeding with M46 implementation. Prepare architectural branches for review once dependencies are resolved. | Schema changes may break existing worker-jobs consumers if not backward compatible. | `pending-owner-review` |
 | **PORTFOLIO-M47-P0002** | PORTFOLIO-M47-P0002 | Verify existence and structure of `capability_broker.rs` and `BUILD_WORTHINESS_STANDARD.md` before drafting export logic. | Missing `BUILD_WORTHINESS_STANDARD.md` definition prevents scoring logic implementation. | `pending-owner-review` |
+| **PORTFOLIO-M47-P0003** | PORTFOLIO-M47-P0003 | Await availability of `BUILD_WORTHINESS_STANDARD.md` content and M40 completion status before proceeding with reference implementation sketch. | Missing `BUILD_WORTHINESS_STANDARD.md` definition prevents scoring logic implementation. | `pending-owner-review` |
 | **PORTFOLIO-M48-P0002** | PORTFOLIO-M48-P0002 | Await M46 and M44 claims before initiating M48; no immediate action required. | M46 and M44 are unclaimed dependencies; M48 cannot proceed without their schema and pre-proofing infrastructure. | `pending-owner-review` |
+| **PORTFOLIO-M48-P0003** | PORTFOLIO-M48-P0003 | Await M46 and M44 claims before initiating M48; no immediate action required. | M46 and M44 are unclaimed dependencies; M48 cannot proceed without their schema and pre-proofing infrastructure. | `pending-owner-review` |
 | **PORTFOLIO-M49-P0002** | PORTFOLIO-M49-P0002 | Verify M44/M45 readiness status in COORDINATION_QUEUE.md; if blocked, defer M49 to a design-only lane or wait for dependency completion. | External dependency on Aaroneous cratify harvest availability and format stability. | `pending-owner-review` |
+| **PORTFOLIO-M49-P0003** | PORTFOLIO-M49-P0003 | Verify M44/M45 readiness status in COORDINATION_QUEUE.md; if blocked, defer M49 to a design-only lane or wait for dependency completion. | External dependency on Aaroneous cratify harvest availability and format stability. | `pending-owner-review` |
 | **PORTFOLIO-M50-P0002** | PORTFOLIO-M50-P0002 | Verify the current state of `agentic_registrar.rs` to confirm the presence of `revert_promotion` and identify the exact commit hash for the revert. | Reverting a promoted change may have downstream effects on dependent modules. | `pending-owner-review` |
+| **PORTFOLIO-M50-P0003** | PORTFOLIO-M50-P0003 | Verify the current state of `agentic_registrar.rs` in the repository to confirm the presence of `revert_promotion` and identify the exact commit hash for the revert. | Reverting a promoted change may have downstream effects on dependent modules. | `pending-owner-review` |
 | **PORTFOLIO-M51-P0002** | PORTFOLIO-M51-P0002 | Claim M48 and M49 to resolve dependencies before proceeding with M51 implementation. | M48 and M49 are unassigned; without their outputs, M51 cannot be executed. | `pending-owner-review` |
+| **PORTFOLIO-M51-P0003** | PORTFOLIO-M51-P0003 | Claim M48 and M49 to resolve dependencies before proceeding with M51 implementation; M51 cannot be executed without their outputs. | M48 and M49 are unassigned; without their outputs, M51 cannot be executed. | `pending-owner-review` |
 | **PORTFOLIO-M52-P0002** | PORTFOLIO-M52-P0002 | Await human claim via governance/COORDINATION_QUEUE.md before initiating any implementation or design work. | Work is explicitly deferred and unassigned; premature engagement violates governance/LOCAL_AGENT_CONTROL_PLANE.md. | `pending-owner-review` |
+| **PORTFOLIO-M52-P0003** | PORTFOLIO-M52-P0003 | Await human claim via governance/COORDINATION_QUEUE.md before initiating any implementation or design work. | Work is explicitly deferred and unassigned; premature engagement violates governance/LOCAL_AGENT_CONTROL_PLANE.md. | `pending-owner-review` |
 | **PORTFOLIO-M53-P0002** | PORTFOLIO-M53-P0002 | Schedule a human or cloud session to claim M53, focusing on defining the compliance profile schema and integration points with verify_draft/cratify_audit. | Dependency on M44 and M45 completion for full functionality. | `pending-owner-review` |
+| **PORTFOLIO-M53-P0003** | PORTFOLIO-M53-P0003 | Schedule a human or cloud session to claim M53, focusing on defining the compliance profile schema and integration points with verify_draft/cratify_audit, ensuring M44 and M45 dependencies are addressed. | Dependency on M44 and M45 completion for full functionality. | `pending-owner-review` |
 | **PORTFOLIO-M54-P0002** | PORTFOLIO-M54-P0002 | Wait for M41, M46, and M49 completion before claiming M54. Prepare architectural branches for speculative review. | M54 is blocked by uncompleted dependencies (M41, M46, M49). | `pending-owner-review` |
+| **PORTFOLIO-M54-P0003** | PORTFOLIO-M54-P0003 | Wait for M41, M46, and M49 completion before claiming M54. Prepare architectural branches for speculative review. | M54 is blocked by uncompleted dependencies (M41, M46, M49). | `pending-owner-review` |
 | **PORTFOLIO-M55-P0002** | PORTFOLIO-M55-P0002 | Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering capability. | M55 cannot proceed without M41's self-scheduling infrastructure. | `pending-owner-review` |
+| **PORTFOLIO-M55-P0003** | PORTFOLIO-M55-P0003 | Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering capability. M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending. M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration. G4 ecosystem-independence heuristic definition is missing from evidence. Risk: M55 cannot proceed without M41's self-scheduling infrastructure. Risk: Crates.io API rate limits may impact batch license verification. Risk: G4 ecosystem-independence | M55 cannot proceed without M41's self-scheduling infrastructure. | `pending-owner-review` |
 | **PORTFOLIO-M56-P0002** | PORTFOLIO-M56-P0002 | Await M46/M48 completion to enable competing prediction seeding; propose a bounded workflow design for claim verification. | M56 cannot proceed without M46/M48 dependencies being resolved. | `pending-owner-review` |
+| **PORTFOLIO-M56-P0003** | PORTFOLIO-M56-P0003 | Await M46/M48 completion to enable competing prediction seeding; propose a bounded workflow design for claim verification. | M56 cannot proceed without M46/M48 dependencies being resolved. | `pending-owner-review` |
 | **PORTFOLIO-M57-P0002** | PORTFOLIO-M57-P0002 | Select Branch-B (Bounded SWMR ring buffer) for initial implementation due to its balance of zero-heap guarantees, deterministic state transitions, and bounded blast radius. Proceed to define the candidate metadata schema (JSON/Protobuf) and the locking strategy for the accumulator. | Schema drift: If M41/M47 change output format, M57 must handle versioning. | `pending-owner-review` |
+| **PORTFOLIO-M57-P0003** | PORTFOLIO-M57-P0003 | Define the candidate metadata schema (JSON/Protobuf) and the locking strategy for the accumulator, focusing on Branch-B (Bounded SWMR ring buffer) for initial implementation. | Schema drift: If M41/M47 change output format, M57 must handle versioning. | `pending-owner-review` |
 | **PORTFOLIO-M58-P0002** | PORTFOLIO-M58-P0002 | Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning. | Missing COORDINATION_QUEUE.md prevents verification of deduplication logic. | `pending-owner-review` |
+| **PORTFOLIO-M58-P0003** | PORTFOLIO-M58-P0003 | Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning. | Missing COORDINATION_QUEUE.md prevents verification of deduplication logic. | `pending-owner-review` |
 | **PORTFOLIO-M8-P0002** | Error during analysis | Self-correction retry failed: duplicate risk or observation cross-repeat: 'Deterministic testing requires explicit wire geometry and pure reducers; current codebase may lack these patterns.' | Model generation failed | `failed` |
+| **PORTFOLIO-M8-P0003** | PORTFOLIO-M8-P0003 | Await human or cloud session claim via governance/COORDINATION_QUEUE.md before implementing M8. | Dependency A2 status unknown; bounded reducer reference path cannot be established without it. | `pending-owner-review` |
 
 ---
 
@@ -1164,6 +1184,33 @@ Await human or cloud session claim for M1 to verify CI results and define the ac
 
 ---
 
+### Milestone PORTFOLIO-M1-P0004
+
+- **Job ID**: `PORTFOLIO-M1-P0004`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999822`
+
+#### Task Formulation
+PORTFOLIO-M1-P0004
+
+#### Recommended Approach
+Await human or cloud session claim for M1 to verify CI results and define the active integration branch scope before proposing a concrete convergence plan.
+
+#### Observations
+- Evidence file `governance/MULTITHREAD_PROGRAM.md` confirms M1 is P0 with dependency 'CI result' and preferred capability 'Codex integration'.
+- Pass 1 triage explicitly states M1 requires human/cloud session claim to verify CI results and define active integration branch scope.
+- Current request is for speculative Solution Tree proposal only, not a claim on M1 or authorization to write product code.
+
+#### Identified Risks
+- Speculative implementation without verified CI results may diverge from actual integration branch state.
+- Zero heap allocation constraints may be infeasible for a full integration branch convergence without knowing the target scope.
+- Missing explicit constructor injection points for clock reads or environment variables may block implementation.
+
+#### Proposed Test Plan
+- Await human/cloud session claim for M1 to verify CI results and define the active integration branch scope before proposing a concrete convergence plan.
+
+---
+
 ### Milestone PORTFOLIO-M10-P0002
 
 - **Job ID**: `PORTFOLIO-M10-P0002`
@@ -2218,6 +2265,35 @@ Await explicit governance approval to claim M41 from `governance/COORDINATION_QU
 
 ---
 
+### Milestone PORTFOLIO-M41-P0003
+
+- **Job ID**: `PORTFOLIO-M41-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998903`
+
+#### Task Formulation
+PORTFOLIO-M41-P0003
+
+#### Recommended Approach
+Await explicit governance approval to claim M41 from `governance/COORDINATION_QUEUE.md` before initiating implementation phases.
+
+#### Observations
+- Evidence `governance/MULTITHREAD_PROGRAM.md` confirms M41 scope: `frontier_discovery.rs` must transition from manual invocation to self-scheduling and packet generation.
+- Dependency `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` is referenced but not provided; design assumes standard bounded ring-buffer patterns for packet queues.
+- Portfolio triage perspective requires speculative architectural branches without committing to implementation or touching product code.
+
+#### Identified Risks
+- Speculative design may conflict with existing `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` constraints if dependency file differs from assumed ring-buffer topology.
+- Self-scheduling logic introduces potential race conditions if not bounded by zero-heap invariants and explicit wire geometry.
+- Manual invocation removal requires careful state transition invariants to prevent packet loss during scheduler warmup.
+
+#### Proposed Test Plan
+- Verify sequential verification gates and AST invariants for proposed reference model.
+- Cross-check compatibility with existing `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` constraints.
+- Validate zero-heap invariants and explicit wire geometry in speculative design.
+
+---
+
 ### Milestone PORTFOLIO-M42-P0002
 
 - **Job ID**: `PORTFOLIO-M42-P0002`
@@ -2243,6 +2319,35 @@ Human session required to validate architectural fit and governance alignment be
 #### Proposed Test Plan
 - Human validation of architectural fit and governance alignment.
 - Review of proposed solution tree branches for compliance with Release governance / distributed coordination design.
+
+---
+
+### Milestone PORTFOLIO-M42-P0003
+
+- **Job ID**: `PORTFOLIO-M42-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998913`
+
+#### Task Formulation
+PORTFOLIO-M42-P0003
+
+#### Recommended Approach
+Human session required to validate architectural fit and governance alignment before any code drafting.
+
+#### Observations
+- M42 is P3 design-only; no code delivery authorized per governance/MULTITHREAD_PROGRAM.md.
+- Dependencies M40/M41 are informative only, introducing ambiguity in wire geometry.
+- Existing cloud_providers.rs may conflict with proposed contract; no codebase scan performed in this session scope.
+
+#### Identified Risks
+- Design-only scope may lack concrete acceptance criteria without human review.
+- Dependency on M40/M41 informative status introduces ambiguity in wire geometry.
+- Potential misalignment with existing cloud_providers.rs if it exists in the codebase.
+
+#### Proposed Test Plan
+- Await human validation of architectural fit and governance alignment.
+- Verify sequential verification gates and AST invariants post-design approval.
+- Assess cross-candidate compatibility and integration risks post-design approval.
 
 ---
 
@@ -2274,6 +2379,34 @@ Wait for M41 completion or claim M41 first to enable M43's dependency graph anal
 
 ---
 
+### Milestone PORTFOLIO-M43-P0003
+
+- **Job ID**: `PORTFOLIO-M43-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998923`
+
+#### Task Formulation
+PORTFOLIO-M43-P0003
+
+#### Recommended Approach
+Wait for M41 completion or claim M41 first to enable M43's dependency graph analysis capability.
+
+#### Observations
+- M43 depends on M41 (frontier_discovery.rs self-scheduling) which is unclaimed and not yet implemented.
+- M43 requires dependency graph analysis capability not yet present in the system.
+- M43 is P2 priority requiring architectural changes to auto-derive non-crossing work-packet lanes from dependency/component inventory.
+
+#### Identified Risks
+- M41 dependency blocks M43 execution.
+- Dependency graph analysis capability is not yet implemented.
+- Work-packet lane derivation may require significant architectural changes.
+
+#### Proposed Test Plan
+- Verify M41 completion status before proceeding with M43.
+- Ensure dependency graph analysis capability is implemented before attempting M43.
+
+---
+
 ### Milestone PORTFOLIO-M44-P0002
 
 - **Job ID**: `PORTFOLIO-M44-P0002`
@@ -2288,6 +2421,35 @@ Await M42 completion or design freeze before initiating M44 pre-proofing worktre
 
 #### Observations
 - M44 depends on M42 (cloud_providers.rs dispatch adapter contract design). M42 is P2 and currently uncompleted.
+- M44 requires local pre-proofing via cargo xtask gate and ast_auditor on a throwaway worktree.
+- M44 must be gated by cross_verifier/consensus_engine before proceeding to implementation lanes.
+
+#### Identified Risks
+- M42 dependency may block M44 initiation if cloud_providers.rs contract is not finalized.
+- Local pre-proofing environment (cargo xtask/ast_auditor) may require additional configuration not yet documented.
+- Cross-verifier/consensus_engine gating logic may introduce latency in workflow approval.
+
+#### Proposed Test Plan
+- Verify M42 completion status before proceeding.
+- Confirm cargo xtask and ast_auditor availability in throwaway worktree.
+- Validate cross_verifier/consensus_engine gating logic implementation.
+
+---
+
+### Milestone PORTFOLIO-M44-P0003
+
+- **Job ID**: `PORTFOLIO-M44-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998932`
+
+#### Task Formulation
+PORTFOLIO-M44-P0003
+
+#### Recommended Approach
+Await M42 completion or design freeze before initiating M44 pre-proofing worktree setup.
+
+#### Observations
+- M42 (cloud_providers.rs dispatch adapter contract design) is P2 and uncompleted; M44 depends on it.
 - M44 requires local pre-proofing via cargo xtask gate and ast_auditor on a throwaway worktree.
 - M44 must be gated by cross_verifier/consensus_engine before proceeding to implementation lanes.
 
@@ -2332,6 +2494,35 @@ Await M44 and M41 completion before initiating M45; propose a design review sess
 
 ---
 
+### Milestone PORTFOLIO-M45-P0003
+
+- **Job ID**: `PORTFOLIO-M45-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998942`
+
+#### Task Formulation
+PORTFOLIO-M45-P0003
+
+#### Recommended Approach
+Await M44 and M41 completion before initiating M45; propose a design review session to validate the shared compliance path architecture.
+
+#### Observations
+- M45 is blocked by M44 (worker-jobs pre-proofing) and M41 (frontier_discovery.rs self-scheduling) completion.
+- M45 requires routing local-worker and frontier-discovered drafts through cratify/adaptation_engine/ast_auditor as a shared compliance path.
+- M45 involves component architecture and compiler-adjacent tooling integration, not product code changes.
+
+#### Identified Risks
+- Dependency blockage: M45 cannot proceed without M44 and M41 completion.
+- Integration complexity: Merging local-worker and frontier-discovered drafts into a single pipeline may require significant refactoring.
+- Scope creep: Risk of expanding M45 beyond the bounded compliance path into broader workflow changes.
+
+#### Proposed Test Plan
+- Verify M44 and M41 completion status before proceeding.
+- Review cratify/adaptation_engine/ast_auditor pipeline architecture for shared compliance path integration.
+- Assess component architecture and compiler-adjacent tooling integration requirements.
+
+---
+
 ### Milestone PORTFOLIO-M46-P0002
 
 - **Job ID**: `PORTFOLIO-M46-P0002`
@@ -2358,6 +2549,34 @@ Await M41 and M45 completion before proceeding with M46 implementation. Prepare 
 - Verify backward compatibility of worker-jobs schema extension with existing consumers.
 - Validate draft ranking logic with multi-variant inputs once M41 and M45 are complete.
 - Ensure zero-heap and deterministic state machine invariants hold across state transitions.
+
+---
+
+### Milestone PORTFOLIO-M46-P0003
+
+- **Job ID**: `PORTFOLIO-M46-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998952`
+
+#### Task Formulation
+PORTFOLIO-M46-P0003
+
+#### Recommended Approach
+Await M41 and M45 completion before proceeding with M46 implementation. Prepare architectural branches for review once dependencies are resolved.
+
+#### Observations
+- M46 depends on M41 (self-scheduling frontier_discovery) and M45 (shared compliance path), both currently uncompleted.
+- Schema extension for worker-jobs must preserve backward compatibility to avoid breaking existing consumers.
+- Meta-tagging introduces complexity in draft ranking logic; trade-offs must be explicitly evaluated against current infrastructure constraints.
+
+#### Identified Risks
+- Schema changes may break existing worker-jobs consumers if not backward compatible.
+- M41 and M45 dependencies are not yet completed, blocking M46 implementation.
+- Meta-tagging may introduce complexity in draft ranking logic without clear benefit.
+
+#### Proposed Test Plan
+- Verify schema backward compatibility with existing worker-jobs consumers.
+- Ensure meta-tagging does not introduce complexity in draft ranking logic.
 
 ---
 
@@ -2390,6 +2609,35 @@ Verify existence and structure of `capability_broker.rs` and `BUILD_WORTHINESS_S
 
 ---
 
+### Milestone PORTFOLIO-M47-P0003
+
+- **Job ID**: `PORTFOLIO-M47-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998962`
+
+#### Task Formulation
+PORTFOLIO-M47-P0003
+
+#### Recommended Approach
+Await availability of `BUILD_WORTHINESS_STANDARD.md` content and M40 completion status before proceeding with reference implementation sketch.
+
+#### Observations
+- Evidence file `governance/MULTITHREAD_PROGRAM.md` confirms M47 scope: export `capability_broker.rs` registry to JSON and score compositions via `BUILD_WORTHINESS_STANDARD.md`.
+- Dependency M40 (`ConcurrenceSnapshot` advisory confidence field) is listed as required but not marked as Done in the provided text.
+- Dependency `BUILD_WORTHINESS_STANDARD.md` is referenced but its content is not present in the provided evidence block, creating a potential blocker for scoring logic implementation.
+
+#### Identified Risks
+- Missing `BUILD_WORTHINESS_STANDARD.md` definition prevents scoring logic implementation.
+- Dependency M40 not yet completed blocks full scope of M47.
+- Ambiguity in 'internal capability compositions' definition may require governance clarification.
+
+#### Proposed Test Plan
+- Verify existence of `capability_broker.rs` in target repository.
+- Verify existence of `BUILD_WORTHINESS_STANDARD.md` in target repository.
+- Confirm M40 completion status in dependency tracking system.
+
+---
+
 ### Milestone PORTFOLIO-M48-P0002
 
 - **Job ID**: `PORTFOLIO-M48-P0002`
@@ -2415,6 +2663,34 @@ Await M46 and M44 claims before initiating M48; no immediate action required.
 #### Proposed Test Plan
 - Verify M46 and M44 claims exist in governance/COORDINATION_QUEUE.md before proceeding.
 - Confirm M46 schema and M44 pre-proofing infrastructure are implemented before drafting M48.
+
+---
+
+### Milestone PORTFOLIO-M48-P0003
+
+- **Job ID**: `PORTFOLIO-M48-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998972`
+
+#### Task Formulation
+PORTFOLIO-M48-P0003
+
+#### Recommended Approach
+Await M46 and M44 claims before initiating M48; no immediate action required.
+
+#### Observations
+- M48 is P3 speculative; dependencies M46 (meta-tagging/ranking) and M44 (local pre-proofing) are unclaimed and unimplemented.
+- M48 cannot proceed without M46/M44 schema and pre-proofing infrastructure.
+- Speculative nature risks low-value output if M46/M44 are not implemented first.
+
+#### Identified Risks
+- M46 and M44 are unclaimed dependencies; M48 cannot proceed without their schema and pre-proofing infrastructure.
+- Speculative nature of M48 may result in low-value output if M46/M44 are not implemented.
+- Potential for redundant work if M48 is claimed before M46/M44 are ready.
+
+#### Proposed Test Plan
+- Verify M46 and M44 claims exist before proceeding with M48.
+- Ensure M48 does not proceed without M46/M44 schema and pre-proofing infrastructure.
 
 ---
 
@@ -2447,6 +2723,35 @@ Verify M44/M45 readiness status in COORDINATION_QUEUE.md; if blocked, defer M49 
 
 ---
 
+### Milestone PORTFOLIO-M49-P0003
+
+- **Job ID**: `PORTFOLIO-M49-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998982`
+
+#### Task Formulation
+PORTFOLIO-M49-P0003
+
+#### Recommended Approach
+Verify M44/M45 readiness status in COORDINATION_QUEUE.md; if blocked, defer M49 to a design-only lane or wait for dependency completion.
+
+#### Observations
+- M49 is P2 priority with dependencies M44/M45 (both P3, speculative design lanes).
+- M49 requires external Aaroneous cratify harvest availability and format stability.
+- M49 must reuse M44/M45 pipelines rather than inventing new transformation logic (nonexistent code-transform mechanism). M44/M45 are not yet implemented/stabilized, creating a speculative design lane risk. M49 sits in a speculative design lane awaiting M44/M45 stabilization or parallel readiness checks. M49 requires exporting CrateSpec JSON from cratify harvest (external dependency on Aaroneous). M49 must emit code-draft packets using existing M44/M45 pipelines rather than inventing new transformation logic.
+
+#### Identified Risks
+- External dependency on Aaroneous cratify harvest availability and format stability.
+- M44/M45 may not yet support the required input/output contracts for M49's draft packet emission.
+- Speculative nature of M49 increases risk of rework if M44/M45 implementation diverges from assumed interfaces.
+
+#### Proposed Test Plan
+- Verify M44/M45 readiness status in COORDINATION_QUEUE.md
+- Confirm external Aaroneous cratify harvest availability and format stability
+- Validate M44/M45 pipeline support for CrateSpec JSON input/output contracts
+
+---
+
 ### Milestone PORTFOLIO-M50-P0002
 
 - **Job ID**: `PORTFOLIO-M50-P0002`
@@ -2472,6 +2777,34 @@ Verify the current state of `agentic_registrar.rs` to confirm the presence of `r
 - Verify `revert_promotion` function exists in `agentic_registrar.rs`
 - Identify the exact commit hash for the revert
 - Ensure the revert pattern matches the original `promote` logic exactly
+
+---
+
+### Milestone PORTFOLIO-M50-P0003
+
+- **Job ID**: `PORTFOLIO-M50-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789998994`
+
+#### Task Formulation
+PORTFOLIO-M50-P0003
+
+#### Recommended Approach
+Verify the current state of `agentic_registrar.rs` in the repository to confirm the presence of `revert_promotion` and identify the exact commit hash for the revert.
+
+#### Observations
+- Evidence `governance/MULTITHREAD_PROGRAM.md` confirms M50 scope: clean revert of `revert_promotion` in `agentic_registrar.rs`.
+- M50 requires an isolated branch and PR submission via git tooling, matching the original `promote` pattern.
+- No actual code or commit hashes are present in the provided evidence; the file `agentic_registrar.rs` is referenced but not included in the evidence payload.
+
+#### Identified Risks
+- Reverting a promoted change may have downstream effects on dependent modules.
+- Ensuring the revert pattern matches the original `promote` logic exactly to avoid inconsistencies.
+
+#### Proposed Test Plan
+- Verify `revert_promotion` function exists in `agentic_registrar.rs`.
+- Identify the commit hash associated with the `revert_promotion` change.
+- Ensure the revert pattern matches the original `promote` logic.
 
 ---
 
@@ -2503,6 +2836,34 @@ Claim M48 and M49 to resolve dependencies before proceeding with M51 implementat
 
 ---
 
+### Milestone PORTFOLIO-M51-P0003
+
+- **Job ID**: `PORTFOLIO-M51-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999004`
+
+#### Task Formulation
+PORTFOLIO-M51-P0003
+
+#### Recommended Approach
+Claim M48 and M49 to resolve dependencies before proceeding with M51 implementation; M51 cannot be executed without their outputs.
+
+#### Observations
+- M51 is a P3 speculative task requiring a discovery/research/filter/translate/recreate/review/repeat loop implementation that is explicitly 'not yet designed' and requires grounding first.
+- Dependencies M48 (Multi-perspective draft-seeding producer) and M49 (Cratification intake) are unassigned and not yet grounded.
+- The task explicitly states it is 'not yet designed' and requires grounding before claiming real work, making implementation speculative without prior dependency resolution.
+
+#### Identified Risks
+- M48 and M49 are unassigned; without their outputs, M51 cannot be executed.
+- The loop (discovery/research/filter/translate/recreate/review/repeat) is not yet designed, making implementation speculative.
+- Task is P3 (low priority) and unassigned, indicating it may not be critical for immediate roadmap progress.
+
+#### Proposed Test Plan
+- Verify M48 and M49 are claimed and grounded before attempting M51 implementation.
+- Ensure the discovery/research/filter/translate/recreate/review/repeat loop is designed before execution.
+
+---
+
 ### Milestone PORTFOLIO-M52-P0002
 
 - **Job ID**: `PORTFOLIO-M52-P0002`
@@ -2528,6 +2889,33 @@ Await human claim via governance/COORDINATION_QUEUE.md before initiating any imp
 - Verify M50 completion status before proceeding.
 - Confirm human claim exists in governance/COORDINATION_QUEUE.md.
 - Validate admission pipeline constraints against proposed UX framing.
+
+---
+
+### Milestone PORTFOLIO-M52-P0003
+
+- **Job ID**: `PORTFOLIO-M52-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999014`
+
+#### Task Formulation
+PORTFOLIO-M52-P0003
+
+#### Recommended Approach
+Await human claim via governance/COORDINATION_QUEUE.md before initiating any implementation or design work.
+
+#### Observations
+- M52 is P3 priority with 'unassigned - deferred' capability status; no human claim exists in governance/COORDINATION_QUEUE.md.
+- Dependency M50 (P1) remains uncompleted; scope involves reverting promotion changes in agentic_registrar.rs.
+- UX framing ('quest reward') introduces subjective design requirements not yet validated against admission pipeline constraints.
+
+#### Identified Risks
+- Work is explicitly deferred and unassigned; premature engagement violates governance/LOCAL_AGENT_CONTROL_PLANE.md.
+- Dependency on M50 (P1) which is not yet completed; M50 scope involves reverting promotion changes in agentic_registrar.rs.
+
+#### Proposed Test Plan
+- Verify M50 completion status before proceeding with M52.
+- Confirm human claim exists in governance/COORDINATION_QUEUE.md before initiating work.
 
 ---
 
@@ -2560,6 +2948,35 @@ Schedule a human or cloud session to claim M53, focusing on defining the complia
 
 ---
 
+### Milestone PORTFOLIO-M53-P0003
+
+- **Job ID**: `PORTFOLIO-M53-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999024`
+
+#### Task Formulation
+PORTFOLIO-M53-P0003
+
+#### Recommended Approach
+Schedule a human or cloud session to claim M53, focusing on defining the compliance profile schema and integration points with verify_draft/cratify_audit, ensuring M44 and M45 dependencies are addressed.
+
+#### Observations
+- M53 requires a selectable compliance profile schema (AaroneousStrict/DevtoolsOperatingModel/Custom) to enable self-auditing of devtools by Aaroneous tooling.
+- Dependencies M44 and M45 are P3 items involving worker-jobs templates and cratify/adaptation_engine pipelines; M45 explicitly routes drafts through the existing cratify/adaptation_engine/ast_auditor pipeline.
+- M44 expands worker-jobs templates with local pre-proofing gated by cross_verifier/consensus_engine, which M45 depends on for compliance path routing.
+
+#### Identified Risks
+- Dependency on M44 and M45 completion for full functionality.
+- Complexity in integrating Aaroneous's self-audit tooling with devtools.
+- Potential need for extensive cross-repo coordination.
+
+#### Proposed Test Plan
+- Verify compliance profile schema definition supports AaroneousStrict, DevtoolsOperatingModel, and Custom profiles.
+- Ensure integration points with verify_draft and cratify_audit are correctly specified.
+- Confirm M44 and M45 dependencies are accounted for in the design.
+
+---
+
 ### Milestone PORTFOLIO-M54-P0002
 
 - **Job ID**: `PORTFOLIO-M54-P0002`
@@ -2586,6 +3003,35 @@ Wait for M41, M46, and M49 completion before claiming M54. Prepare architectural
 - Verify module boundary identification against Bevy ECS structure.
 - Ensure clustered candidates remain individually scorable.
 - Validate zero-heap and zero-ambient-authority invariants.
+
+---
+
+### Milestone PORTFOLIO-M54-P0003
+
+- **Job ID**: `PORTFOLIO-M54-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999035`
+
+#### Task Formulation
+PORTFOLIO-M54-P0003
+
+#### Recommended Approach
+Wait for M41, M46, and M49 completion before claiming M54. Prepare architectural branches for speculative review.
+
+#### Observations
+- M54 is blocked by M41 (self-scheduling frontier_discovery.rs), M46 (perspective/goal meta-tagging), and M49 (cratification intake).
+- Wholesale discovery fails G5 for sufficiently real targets; modular clustering is required.
+- Target decomposition must cluster large source trees (e.g., Bevy ECS) by module boundaries into bounded, individually-scorable candidates.
+
+#### Identified Risks
+- M54 is blocked by uncompleted dependencies (M41, M46, M49).
+- Decomposing large trees like Bevy ECS requires precise module boundary identification to avoid violating G5 constraints.
+- Clustering candidates must ensure they remain individually scorable without reintroducing wholesale discovery failures.
+
+#### Proposed Test Plan
+- Verify M41, M46, and M49 completion status before proceeding with M54.
+- Ensure modular clustering of large source trees (e.g., Bevy ECS) by module boundaries.
+- Confirm that clustered candidates are bounded and individually scorable.
 
 ---
 
@@ -2618,6 +3064,35 @@ Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering
 
 ---
 
+### Milestone PORTFOLIO-M55-P0003
+
+- **Job ID**: `PORTFOLIO-M55-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999046`
+
+#### Task Formulation
+PORTFOLIO-M55-P0003
+
+#### Recommended Approach
+Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering capability. M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending. M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration. G4 ecosystem-independence heuristic definition is missing from evidence. Risk: M55 cannot proceed without M41's self-scheduling infrastructure. Risk: Crates.io API rate limits may impact batch license verification. Risk: G4 ecosystem-independence
+
+#### Observations
+- M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending; M55 cannot proceed without M41's infrastructure.
+- M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration for crates.io license verification.
+- G4 ecosystem-independence heuristic definition is missing from evidence (MULTITHREAD_PROGRAM.md does not define G1/G4 criteria). Crates.io API rate limits may impact batch license verification. G4 heuristic is not explicitly provided in evidence. M55 cannot proceed without M41's self-scheduling infrastructure. Crates.io API rate limits may impact batch license verification. G4 ecosystem-independence heuristic definition is not explicitly provided in evidence. M55 cannot proceed without M41's self-scheduling
+
+#### Identified Risks
+- M55 cannot proceed without M41's self-scheduling infrastructure.
+- Crates.io API rate limits may impact batch license verification.
+- G4 ecosystem-independence heuristic definition is not explicitly provided in evidence.
+
+#### Proposed Test Plan
+- Verify M41 completion status before proceeding with M55.
+- Confirm G4 ecosystem-independence heuristic definition exists in evidence.
+- Assess Crates.io API rate limit constraints for batch license verification.
+
+---
+
 ### Milestone PORTFOLIO-M56-P0002
 
 - **Job ID**: `PORTFOLIO-M56-P0002`
@@ -2644,6 +3119,35 @@ Await M46/M48 completion to enable competing prediction seeding; propose a bound
 - Verify that M46 and M48 are marked as 'Ready' or 'In Progress' in the coordination queue before proceeding.
 - Ensure that evidence sources (e.g., `MASTER_ROADMAP.md`) are normalized and free of corruption before claim validation.
 - Validate that the claim verification engine correctly identifies discrepancies between claimed milestones and evidence.
+
+---
+
+### Milestone PORTFOLIO-M56-P0003
+
+- **Job ID**: `PORTFOLIO-M56-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999059`
+
+#### Task Formulation
+PORTFOLIO-M56-P0003
+
+#### Recommended Approach
+Await M46/M48 completion to enable competing prediction seeding; propose a bounded workflow design for claim verification.
+
+#### Observations
+- M56 requires M46 (meta-tagging) and M48 (multi-perspective seeding) which are P3 items; M56 is P2, creating a circular dependency risk.
+- Mechanical re-verification implies deterministic comparison between claimed milestones and evidence sources (MASTER_ROADMAP.md, TODO.md, CI logs).
+- Evidence sources are text-heavy and potentially corrupted (M29, M33), requiring robust parsing and normalization before claim validation can occur.
+
+#### Identified Risks
+- M56 cannot proceed without M46/M48 dependencies being resolved.
+- Mechanical verification requires clear evidence sources and claim structures.
+- Uncertainty in design decisions may require human review rather than automated resolution.
+
+#### Proposed Test Plan
+- Verify M46/M48 completion status before proceeding with M56.
+- Ensure evidence sources (MASTER_ROADMAP.md, TODO.md, CI logs) are parsed and normalized correctly.
+- Validate deterministic comparison engine between claimed milestones and evidence sources.
 
 ---
 
@@ -2677,6 +3181,36 @@ Select Branch-B (Bounded SWMR ring buffer) for initial implementation due to its
 
 ---
 
+### Milestone PORTFOLIO-M57-P0003
+
+- **Job ID**: `PORTFOLIO-M57-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999069`
+
+#### Task Formulation
+PORTFOLIO-M57-P0003
+
+#### Recommended Approach
+Define the candidate metadata schema (JSON/Protobuf) and the locking strategy for the accumulator, focusing on Branch-B (Bounded SWMR ring buffer) for initial implementation.
+
+#### Observations
+- M57 requires a mutable accumulator pattern for candidate metadata, contrasting with current independent output generation in M41/M47/M54/M55/M42.
+- Dependency chain is circular or tightly coupled: M57 depends on M41, M47, M54, M55, M42, which likely depend on M57's schema for their own outputs.
+- Schema design must support incremental updates (append-only or delta) to avoid race conditions in a multithreaded context (M41/M47 are multithreaded). Risk: Schema drift, Concurrency, Backward compatibility, Scope creep.
+
+#### Identified Risks
+- Schema drift: If M41/M47 change output format, M57 must handle versioning.
+- Concurrency: Multiple passes reading/writing the same record require explicit synchronization.
+- Backward compatibility: Existing independent outputs may need migration.
+- Scope creep: M57 becomes the central state store, increasing coupling.
+
+#### Proposed Test Plan
+- Verify schema supports incremental updates without race conditions.
+- Ensure locking strategy prevents concurrent read/write conflicts.
+- Test backward compatibility with existing independent outputs.
+
+---
+
 ### Milestone PORTFOLIO-M58-P0002
 
 - **Job ID**: `PORTFOLIO-M58-P0002`
@@ -2706,6 +3240,35 @@ Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding 
 
 ---
 
+### Milestone PORTFOLIO-M58-P0003
+
+- **Job ID**: `PORTFOLIO-M58-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999103`
+
+#### Task Formulation
+PORTFOLIO-M58-P0003
+
+#### Recommended Approach
+Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning.
+
+#### Observations
+- COORDINATION_QUEUE.md is missing from evidence set, blocking verification of deduplication logic for M58.
+- M58 requires conversion of unclaimed rows from MULTITHREAD_PROGRAM.md into analysis packets.
+- Deduplication against COORDINATION_QUEUE.md is a critical dependency for M58 implementation.
+
+#### Identified Risks
+- Missing COORDINATION_QUEUE.md prevents verification of deduplication logic.
+- Unclaimed rows in MULTITHREAD_PROGRAM.md may have ambiguous scope without explicit governance claims.
+- Potential for generating excessive analysis packets if deduplication logic is not rigorously defined.
+
+#### Proposed Test Plan
+- Verify COORDINATION_QUEUE.md is present in evidence set before proceeding.
+- Ensure unclaimed rows from MULTITHREAD_PROGRAM.md are correctly identified.
+- Validate deduplication logic against COORDINATION_QUEUE.md once available.
+
+---
+
 ### Milestone PORTFOLIO-M8-P0002
 
 - **Job ID**: `PORTFOLIO-M8-P0002`
@@ -2716,6 +3279,34 @@ Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding 
 ```
 Self-correction retry failed: duplicate risk or observation cross-repeat: 'Deterministic testing requires explicit wire geometry and pure reducers; current codebase may lack these patterns.'
 ```
+
+---
+
+### Milestone PORTFOLIO-M8-P0003
+
+- **Job ID**: `PORTFOLIO-M8-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1789999080`
+
+#### Task Formulation
+PORTFOLIO-M8-P0003
+
+#### Recommended Approach
+Await human or cloud session claim via governance/COORDINATION_QUEUE.md before implementing M8.
+
+#### Observations
+- Evidence 'governance/MULTITHREAD_PROGRAM.md' confirms M8 is P1 with dependency A2 (status unknown).
+- Instruction explicitly requests speculative reference modeling only; no product code authorization granted.
+- Preferred capability 'Deterministic systems testing' requires pure reducers and explicit wire geometry, which are not currently present in the codebase per prior triage context.
+
+#### Identified Risks
+- Dependency A2 status unknown; bounded reducer reference path cannot be established without it.
+- Deterministic testing requires explicit wire geometry and pure reducers; current codebase may lack these patterns.
+- Speculative work may conflict with active lanes if claimed prematurely.
+
+#### Proposed Test Plan
+- Verify M8 remains unclaimed in COORDINATION_QUEUE.md.
+- Confirm dependency A2 status is unresolved in governance/MULTITHREAD_PROGRAM.md.
 
 ---
 

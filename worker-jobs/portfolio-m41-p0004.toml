@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m41"
+goal = "M41"
+id = "PORTFOLIO-M41-P0004"
+instruction = """
+Portfolio progressive verification request for M41 (priority P2, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Make `frontier_discovery.rs` self-scheduling and packet-generating instead of manually invoked"
+Dependency: "none — see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`"
+Preferred capability: "Rust foundation / scheduling"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Await explicit governance approval to claim M41 from `governance/COORDINATION_QUEUE.md` before initiating implementation phases. | Obs: Evidence `governance/MULTITHREAD_PROGRAM.md` confirms M41 scope: `frontier_discovery.rs` must transition from manual invocation to self-scheduling and packet generation. | Obs: Dependency `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` is referenced but not provided; design assumes standard bounded ring-buffer patterns for packet queues. | Obs: Portfolio triage perspective requires speculative architectural branches without committing to implementation or touching product code.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

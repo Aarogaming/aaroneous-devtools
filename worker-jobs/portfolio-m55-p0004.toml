@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m55"
+goal = "M55"
+id = "PORTFOLIO-M55-P0004"
+instruction = """
+Portfolio progressive verification request for M55 (priority P1, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Mechanical Stage 1 pre-filter: G1 license (via crates.io version endpoint, SPDX-aware) and G4 ecosystem-independence heuristic, zero agent/LLM calls in the path"
+Dependency: "M41"
+Preferred capability: "Rust systems review, HTTP/API integration"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering capability. M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending. M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration. G4 ecosystem-independence heuristic definition is missing from evidence. Risk: M55 cannot proceed without M41's self-scheduling infrastructure. Risk: Crates.io API rate limits may impact batch license verification. Risk: G4 ecosystem-independence | Obs: M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending; M55 cannot proceed without M41's infrastructure. | Obs: M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration for crates.io license verification. | Obs: G4 ecosystem-independence heuristic definition is missing from evidence (MULTITHREAD_PROGRAM.md does not define G1/G4 criteria). Crates.io API rate limits may impact batch license verification. G4 heuristic is not explicitly provided in evidence. M55 cannot proceed without M41's self-scheduling infrastructure. Crates.io API rate limits may impact batch license verification. G4 ecosystem-independence heuristic definition is not explicitly provided in evidence. M55 cannot proceed without M41's self-scheduling
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

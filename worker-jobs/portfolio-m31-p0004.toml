@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m31"
+goal = "M31"
+id = "PORTFOLIO-M31-P0004"
+instruction = """
+Portfolio progressive verification request for M31 (priority P2, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Verify or relabel roadmap Phases 9–37 (`v1.2.0`–`v1.6.0`) against actual code/tests"
+Dependency: "M28"
+Preferred capability: "Rust systems review / evidence verification"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Initiate a bounded human or cloud session to claim M31, as the work requires systems review and evidence verification that exceeds automated scope. | Obs: M31 requires verification of roadmap Phases 9–37 (v1.2.0–v1.6.0) against actual code/tests, extending M30's precedent. | Obs: Roadmap version scheme (v1.x) may not align with actual workspace version (0.3.2) as noted in M28, creating risk of false claims in roadmap phases requiring manual verification. | Obs: Dependency on M28 completion for accurate label interpretation is confirmed; M28 established evidence standard for label reconciliation.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

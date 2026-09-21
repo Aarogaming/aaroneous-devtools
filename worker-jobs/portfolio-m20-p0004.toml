@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m20"
+goal = "M20"
+id = "PORTFOLIO-M20-P0004"
+instruction = """
+Portfolio progressive verification request for M20 (priority P1, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Execute the dependency plan's blocked iroh upgrade in a dedicated compatibility lane"
+Dependency: "M3 evidence"
+Preferred capability: "Cargo dependency remediation"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Await governance approval via governance/COORDINATION_QUEUE.md before initiating any code changes or dependency upgrades. | Obs: M20 requires executing a blocked iroh upgrade in a dedicated compatibility lane. | Obs: Dependency M3 (Turn dependency-review evidence into one bounded remediation plan) is marked Done. | Obs: Preferred capability is Cargo dependency remediation, implying Cargo.toml manipulation and version constraint resolution.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1
