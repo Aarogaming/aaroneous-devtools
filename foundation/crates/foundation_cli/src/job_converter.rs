@@ -199,6 +199,25 @@ pub(crate) fn convert(
     if found_scope.is_empty() {
         bail!("task {task_id} has no valid declared relative file scopes");
     }
+    // The dispatch-time schema caps evidence at 8 files (local_worker.rs's
+    // manual validation: `job.evidence.len() > 8` is a hard bail). A queue
+    // row with a long, detail-dense handoff cell -- exactly the kind this
+    // project's own evidence standard encourages -- can easily reference
+    // more than 8 distinct file paths in backticks. Truncating here means
+    // a real, valid packet always gets written instead of one that fails
+    // every single dispatch attempt and gets silently regenerated
+    // identical (and identically broken) on every refill cycle. Found this
+    // exact failure mode live: row C40 referenced 10 files and jammed the
+    // tick loop indefinitely until this fix.
+    if found_scope.len() > 8 {
+        println!(
+            "job_converter: task {task_id} referenced {} files, more than the 8-file evidence \
+             cap -- truncating to the first 8 found rather than writing a packet that would \
+             fail dispatch every cycle",
+            found_scope.len()
+        );
+        found_scope.truncate(8);
+    }
 
     let manifest = JobManifest {
         schema_version: 1,
@@ -256,6 +275,24 @@ pub(crate) fn sync_worker_jobs(
             }
             if evidence.is_empty() {
                 continue;
+            }
+            // Same 8-file dispatch-time cap as convert() -- this is the
+            // path that actually reproduced the live jam (a queue row
+            // with a long, file-dense handoff cell auto-scanned every
+            // refill cycle, regenerating an over-the-cap packet
+            // identically forever). See convert()'s comment for the full
+            // reasoning; kept in sync here rather than factored into a
+            // shared helper only because these two loops' surrounding
+            // logic differs enough that extracting one right now risks
+            // more than it saves.
+            if evidence.len() > 8 {
+                println!(
+                    "job_converter: task {task_id} referenced {} files, more than the 8-file \
+                     evidence cap -- truncating to the first 8 found rather than writing a \
+                     packet that would fail dispatch every cycle",
+                    evidence.len()
+                );
+                evidence.truncate(8);
             }
             let manifest = JobManifest {
                 schema_version: 1,
@@ -800,6 +837,40 @@ mod tests {
     }
 
     #[test]
+    fn convert_truncates_evidence_over_the_dispatch_time_cap() {
+        // Real bug found live: a detail-dense queue row (C40) referenced
+        // 10 distinct files in backticks, producing a packet that failed
+        // local_worker.rs's `evidence.len() > 8` validation on every
+        // single dispatch attempt, forever, since sync_worker_jobs skips
+        // regenerating a packet that already exists on disk.
+        let temp = tempfile::tempdir().expect("test dir");
+        let queue = temp.path().join("queue.md");
+        let paths: Vec<String> = (1..=10)
+            .map(|i| format!("crates/f{i}/src/lib.rs"))
+            .collect();
+        let backticked = paths
+            .iter()
+            .map(|p| format!("`{p}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        fs::write(
+            &queue,
+            format!("| ID | Scope | Status |\n| C99 | {backticked} | Ready |"),
+        )
+        .expect("write queue");
+
+        let out = convert(&queue, "C99", "analysis", &[], temp.path()).expect("convert");
+        let content = fs::read_to_string(&out).expect("read");
+        let manifest: JobManifest = toml::from_str(&content).expect("toml parse");
+        assert_eq!(
+            manifest.evidence.len(),
+            8,
+            "must truncate to the real dispatch-time cap, not write an already-invalid packet"
+        );
+        assert_eq!(manifest.evidence, paths[..8]);
+    }
+
+    #[test]
     fn syncs_ready_queue_rows_to_worker_jobs() {
         let temp = tempfile::tempdir().expect("test dir");
         let queue = temp.path().join("queue.md");
@@ -817,6 +888,36 @@ mod tests {
         assert!(temp.path().join("c33.toml").exists());
         assert!(temp.path().join("c34.toml").exists());
         assert!(!temp.path().join("c35.toml").exists());
+    }
+
+    #[test]
+    fn sync_worker_jobs_truncates_evidence_over_the_dispatch_time_cap() {
+        // Same real bug as convert()'s test, reproduced through the path
+        // that actually caused the live jam: sync_worker_jobs auto-scans
+        // every Ready/In Progress row on each refill cycle, so a
+        // detail-dense row here regenerates an over-the-cap packet
+        // identically forever, not just once.
+        let temp = tempfile::tempdir().expect("test dir");
+        let queue = temp.path().join("queue.md");
+        let paths: Vec<String> = (1..=10)
+            .map(|i| format!("crates/f{i}/src/lib.rs"))
+            .collect();
+        let backticked = paths
+            .iter()
+            .map(|p| format!("`{p}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        fs::write(
+            &queue,
+            format!("| ID | Scope | Status |\n| C99 | {backticked} | Ready |"),
+        )
+        .expect("write queue");
+
+        sync_worker_jobs(&queue, "analysis", temp.path()).expect("sync");
+        let content = fs::read_to_string(temp.path().join("c99.toml")).expect("read");
+        let manifest: JobManifest = toml::from_str(&content).expect("toml parse");
+        assert_eq!(manifest.evidence.len(), 8);
+        assert_eq!(manifest.evidence, paths[..8]);
     }
 
     #[test]
