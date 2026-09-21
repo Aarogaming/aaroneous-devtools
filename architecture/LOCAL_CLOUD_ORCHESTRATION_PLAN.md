@@ -2,7 +2,7 @@
 
 **Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
 been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M56 in `governance/MULTITHREAD_PROGRAM.md`.
+governance boundaries for milestones M40–M57 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -886,6 +886,73 @@ proceed on an unverified assumption.
   least one real case of two competing predictions seeded, run, and decided by
   which one's evidence actually held up.
 
+### M57 — Accumulating per-candidate metadata record (multi-pass, not single-pass)
+
+**From planning discussion, 2026-09-20/21** (the "scanning beam" framing —
+persistence and intelligence across repeated passes, so the system can
+"reconstruct from datapoints and relativity rather than just snippets," working
+like a vector embedding without training one): every pass this plan has built —
+M41's discovery, M54's decomposition, M55's mechanical gates, M47's composition
+pairing, M42's consensus readiness — currently produces output that's mostly
+independent of every other pass. A candidate that's been discovered, clustered,
+and license-checked doesn't carry one growing record of everything learned about
+it; each milestone's output sits next to the others, not accumulated onto them.
+
+**The concrete idea, stripped of metaphor:** a per-candidate metadata record that
+every applicable pass *reads before running* and *appends to after running* —
+never overwritten, never discarded. Over enough passes, that record becomes a
+real multi-dimensional representation of the candidate: license status,
+dependency signals, structural cluster, exploration group, consensus verdicts,
+rejection history, each a named, explainable field. That's functionally an
+embedding — usable for similarity/clustering/"does this resemble something we've
+already seen" — built entirely from mechanical, auditable passes rather than a
+trained model, which keeps it consistent with this plan's standing preference for
+explainable methods over black-box ones (`DISCOVERY_REVIEW_LOOP.md`'s ML-system
+discussion) and with M56's declined "recursive self-improvement" framing (the
+record accumulates facts, it does not change what future passes are allowed to
+decide).
+
+**Persistence and intelligence, made concrete:** the recurring sweep mechanisms
+already exist (`frontier-discover-serve`, `local-worker-serve`'s adaptive
+backoff) — what they currently lack is *awareness of prior passes*. A second
+sweep over an already-seen candidate should consult its accumulated record and
+behave differently because of it (skip what's confirmed, re-check only what's
+gone stale, go deeper on what's still uncertain) rather than repeating an
+identical cold check. This is the "intelligence" half; the record persisting
+across sweeps at all is the "persistence" half.
+
+**Design:**
+
+1. A record format — likely JSON, one file per candidate (keyed by a stable
+   identity, e.g. the crate name+version or the decomposition cluster's
+   `exploration_group`+`perspective`), living alongside the existing
+   `results`/`archive` directories `LOCAL_WORKER_SERVICE.md` already governs, not
+   a new storage concept.
+2. Each existing pass (M41/M47/M54/M55/M42) gets a thin, additive hook: read the
+   record if one exists for this candidate, run as normal, append this pass's
+   named findings to the record, write it back. No pass's own logic changes —
+   this is purely an accumulation layer wrapped around what's already built.
+3. A staleness/re-check policy (not full redesign — reuse the existing
+   `EVIDENCE_STANDARD.md` discipline of dated, evidenced claims): a field older
+   than some threshold is treated as needing re-verification on the next sweep,
+   not trusted forever.
+
+**Explicitly out of scope:** any clustering/similarity computation *over* the
+accumulated records (that's a real, separate milestone once real records exist
+to compute over — speculative to design before there's data) and any change to
+what any individual pass is authorized to decide (M42's read-only guarantee,
+M44/M55's gate logic, etc. — this milestone only adds a record of what already
+happened, it doesn't change any pass's authority).
+
+- **Dependency:** M41, M47, M54, M55 (existing passes this wraps), M42 (the
+  read-only reporting pattern this reuses)
+- **Preferred capability:** Rust systems review, data/schema design
+- **Evidence:** committed record format and the hook wired into at least two
+  existing passes (M54 and M55 are the natural first pair, since both already
+  ran against the real Bevy ECS data this session produced); a real run showing
+  a second sweep over an already-recorded candidate behaving differently
+  because of the accumulated record, not repeating an identical cold check.
+
 ## Decisions log
 
 Dated decisions from planning discussion, kept so later sessions don't re-litigate
@@ -1031,6 +1098,20 @@ settled scope:
   "competing predictions" half reuses M46/M48 unchanged for a new purpose
   (deciding between designs, not just between coding styles) rather than
   building new mechanism.
+- **2026-09-21 — Scoped M57 (accumulating per-candidate metadata) from the
+  "scanning beam" framing** — persistence (repeated sweeps, not one pass) and
+  intelligence (each sweep aware of what prior sweeps already found), producing
+  an explainable, multi-dimensional record functionally equivalent to an
+  embedding without training a model. Confirmed by the owner as a sharpened
+  expression of the original discovery/investigation goal stated at the start
+  of this planning arc, not a new direction. Explicitly scoped as a thin
+  accumulation layer around existing passes (M41/M47/M54/M55/M42) — no pass's
+  authority or logic changes, only a growing record of what already happened.
+  Also recorded here: real CI (`gh pr checks`) passed clean for the first time
+  this session on this exact PR after fixing the `job_converter.rs` formatting
+  drift nine separate background agents had each correctly-but-narrowly
+  deferred — the concrete answer, with evidence, to "is there a better
+  foundation-setting move than the next milestone."
 
 ## Sequencing
 
@@ -1064,7 +1145,9 @@ already built) and can proceed now — it's the real unblocking step for any
 wholesale-target discovery attempt, including the actual next target named in
 planning (Bevy ECS). M55 depends on M41 (extends its existing search call site)
 and can proceed now, independent of M54. M56 depends on M46/M48 (both already
-built — it's a new use of existing mechanism) and can proceed now. No milestone
-in this plan authorizes paid cloud dispatch or local write/claim authority —
-those remain explicit future decisions, not defaults unlocked by completing
-M40–M56.
+built — it's a new use of existing mechanism) and can proceed now. M57 depends
+on M41/M47/M54/M55/M42 (the passes it wraps) and should be claimed after at
+least two of them are stable, so the accumulation layer has real, settled pass
+output to wrap rather than a moving target. No milestone in this plan
+authorizes paid cloud dispatch or local write/claim authority — those remain
+explicit future decisions, not defaults unlocked by completing M40–M57.
