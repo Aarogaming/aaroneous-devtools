@@ -1,0 +1,13 @@
+# Windows debug builds of foundation_cli were overflowing the default ~1MiB
+# main-thread stack inside reqwest's rustls-tls path (ring/rustls's crypto
+# code has deep, stack-heavy call chains in unoptimized builds; release
+# builds don't hit this because optimization collapses those frames).
+# Reproduced with `foundation frontier-discover` against a live crates.io
+# call. Raises the linked executable's main-thread stack to 8 MiB via the
+# MSVC linker, which is the standard fix for this class of issue rather than
+# a workaround — it doesn't change TLS backend or application behavior.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/STACK:8388608"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/STACK:8388608"]
