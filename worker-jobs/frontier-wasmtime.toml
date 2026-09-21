@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "wasm_runtime"
+goal = "WASM runtime"
+id = "FRONTIER-WASMTIME"
+instruction = """
+Audit external open-source crate 'wasmtime' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: The most mature Rust WASM sandbox — directly relevant if pre-proofing ever needs to execute untrusted drafted code in isolation rather than just `cargo check` it
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "wasmtime"
+schema_version = 1

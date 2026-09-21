@@ -11,6 +11,15 @@ Preferred capability: "Systems review, data/retrieval architecture"
 [PRIOR TRIAGE CONTEXT - Pass 3]:
 Recommendation: Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index. | Obs: M57 dependency status: Not yet complete. M57 accumulates per-candidate metadata records from upstream passes (M41, M47, M54, M55, M42). | Obs: M59 core requirement: 'Explainable Jaccard similarity querying' across accumulated M57 records, requiring set-based comparison logic and attribute-level contribution surfacing (explainability). | Obs: Jaccard formula: |A ∩ B| / |A ∪ B|, requiring canonicalized set representations of metadata attributes (e.g., feature flags, component tags, dependency graphs). The term 'explainable' implies the system must surface which specific attributes contributed to the similarity score, not just the final value.
 
+[REVIEWER FEEDBACK - mimo, needs-changes]:
+Correctly identifies M57 dependency and the need to inspect actual JSON schema before designing retrieval index. However, no code draft despite code-draft mode. The Jaccard similarity explanation is accurate but the recommendation is purely passive.
+
+REQUIRED CHANGES:
+1. Propose a candidate index data structure for Jaccard similarity computation.
+2. Define the canonicalized set representation for metadata attributes (feature flags, component tags, dependency graphs).
+3. Provide a concrete rust_draft showing the similarity computation with explainability (which attributes contributed to the score).
+4. The M57 dependency can be addressed by defining a CandidateRecord trait that the implementation expects, rather than blocking entirely.
+
 Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
 CONSTRAINTS:
 - Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).

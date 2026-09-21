@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "d_bus_implementation"
+goal = "D-Bus implementation"
+id = "FRONTIER-ZBUS"
+instruction = """
+Audit external open-source crate 'zbus' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Relevant only if Linux desktop integration is ever in scope; otherwise low priority
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "zbus"
+schema_version = 1

@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "command_runner"
+goal = "Command runner"
+id = "FRONTIER-JUST"
+instruction = """
+Audit external open-source crate 'just' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Alternative/simpler to `cargo xtask` for trivial repeated commands
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "just"
+schema_version = 1

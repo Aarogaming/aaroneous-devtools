@@ -11,6 +11,15 @@ Preferred capability: "Systems automation, queue coordination"
 [PRIOR TRIAGE CONTEXT - Pass 3]:
 Recommendation: Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning. | Obs: COORDINATION_QUEUE.md is missing from evidence set, blocking verification of deduplication logic for M58. | Obs: M58 requires conversion of unclaimed rows from MULTITHREAD_PROGRAM.md into analysis packets. | Obs: Deduplication against COORDINATION_QUEUE.md is a critical dependency for M58 implementation.
 
+[REVIEWER FEEDBACK - mimo, needs-changes]:
+Correctly identifies COORDINATION_QUEUE.md is missing from evidence set. However, no code draft provided despite code-draft mode. The recommendation to 'request COORDINATION_QUEUE.md be added' is a blocking action, not a proposal.
+
+REQUIRED CHANGES:
+1. Draft the deduplication logic assuming a standard queue format (rows with status/claim fields).
+2. Define the packet schema for converting MULTITHREAD_PROGRAM.md unclaimed rows into analysis packets.
+3. Provide a concrete rust_draft showing the triage producer pipeline, even if the queue-parsing integration is behind a trait boundary.
+4. The COORDINATION_QUEUE.md dependency can be addressed by defining a QueueReader trait that the implementation expects, rather than blocking entirely.
+
 Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
 CONSTRAINTS:
 - Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).

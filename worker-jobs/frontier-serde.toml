@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "serialization_framework"
+goal = "Serialization framework"
+id = "FRONTIER-SERDE"
+instruction = """
+Audit external open-source crate 'serde' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Already load-bearing everywhere; study its `#[serde(default)]`/versioning patterns for schema evolution (already used for M46's added fields)
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "serde"
+schema_version = 1

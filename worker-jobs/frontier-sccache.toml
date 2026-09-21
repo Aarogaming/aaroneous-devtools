@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "compilation_caching"
+goal = "Compilation caching"
+id = "FRONTIER-SCCACHE"
+instruction = """
+Audit external open-source crate 'sccache' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Relevant to speeding up the pre-proofing harness's repeated `cargo check` calls across many drafted candidates
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "sccache"
+schema_version = 1

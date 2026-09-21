@@ -1,0 +1,21 @@
+schema_version = 1
+id = "PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0007"
+mode = "analysis"
+evidence = ["crates/governance/src/lib.rs"]
+instruction = """
+Research and investigate governance Z3 SMT verification rules, safety interlocks, and state reduction constraints.
+
+[PRIOR AUDIT CONTEXT - Pass 7]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: Module smt_action_interlock exists and exports SmtActionInterlock and GovernanceError, confirming prior audit context. | Obs: Module lattice_verifier exists and exports LatticeVerifier and VerificationReport, confirming prior audit context. | Obs: Module interference_checker exists and exports InterferenceChecker, MAX_HARDWARE_REGISTER, and NonInterferenceReport, confirming prior audit context. | Risk: Unverified SMT rule implementation in smt_action_interlock. | Risk: Potential state reduction gaps in lattice_verifier. | Risk: Hardware register interference risks in interference_checker.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since.
+
+[REVIEWER FEEDBACK - mimo, needs-changes from prior pass]:
+Observations were purely confirmatory ('module exists and exports X') with no analysis of whether the prior audit findings (unverified SMT rules, state reduction gaps, hardware register interference) have actually been remediated. The recommended next step 'inspect source files' is what the job was supposed to do.
+
+REQUIRED CHANGES FOR THIS PASS:
+1. Actually read the implementation of smt_action_interlock, lattice_verifier, and interference_checker.
+2. Report on whether the SMT rules are verified (do they have proof artifacts? are they tested?).
+3. Report on whether state reduction gaps have been closed.
+4. Report on whether hardware register interference checks are complete.
+5. Do not just confirm modules exist - analyze their internal implementation."""

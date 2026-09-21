@@ -11,6 +11,14 @@ Preferred capability: "Rust systems review, HTTP/API integration"
 [PRIOR TRIAGE CONTEXT - Pass 3]:
 Recommendation: Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering capability. M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending. M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration. G4 ecosystem-independence heuristic definition is missing from evidence. Risk: M55 cannot proceed without M41's self-scheduling infrastructure. Risk: Crates.io API rate limits may impact batch license verification. Risk: G4 ecosystem-independence | Obs: M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending; M55 cannot proceed without M41's infrastructure. | Obs: M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration for crates.io license verification. | Obs: G4 ecosystem-independence heuristic definition is missing from evidence (MULTITHREAD_PROGRAM.md does not define G1/G4 criteria). Crates.io API rate limits may impact batch license verification. G4 heuristic is not explicitly provided in evidence. M55 cannot proceed without M41's self-scheduling infrastructure. Crates.io API rate limits may impact batch license verification. G4 ecosystem-independence heuristic definition is not explicitly provided in evidence. M55 cannot proceed without M41's self-scheduling
 
+[REVIEWER FEEDBACK - mimo, needs-changes]:
+Dependency on M41 correctly identified, but output was 'await M41' with no code draft despite code-draft mode. G4 heuristic concern raised but not resolved. The observation about crates.io rate limits is valid but the recommended next step was passive (wait) rather than proposing preparatory work.
+
+REQUIRED CHANGES:
+1. Since M41 is blocked, produce preparatory work: define the G4 ecosystem-independence heuristic criteria explicitly (what makes a crate "ecosystem-independent"?).
+2. Draft the HTTP integration skeleton for crates.io license verification (the crates.io API client, SPDX parsing logic) independent of M41's self-scheduling - the HTTP call doesn't depend on frontier_discovery.rs.
+3. Provide a concrete rust_draft showing the G1 license check and G4 heuristic implementation structure, even if the self-scheduling integration point is a TODO-for-later.
+
 Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
 CONSTRAINTS:
 - Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).

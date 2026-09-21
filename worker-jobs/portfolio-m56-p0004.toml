@@ -11,6 +11,14 @@ Preferred capability: "Rust systems review, workflow/tooling design"
 [PRIOR TRIAGE CONTEXT - Pass 3]:
 Recommendation: Await M46/M48 completion to enable competing prediction seeding; propose a bounded workflow design for claim verification. | Obs: M56 requires M46 (meta-tagging) and M48 (multi-perspective seeding) which are P3 items; M56 is P2, creating a circular dependency risk. | Obs: Mechanical re-verification implies deterministic comparison between claimed milestones and evidence sources (MASTER_ROADMAP.md, TODO.md, CI logs). | Obs: Evidence sources are text-heavy and potentially corrupted (M29, M33), requiring robust parsing and normalization before claim validation can occur.
 
+[REVIEWER FEEDBACK - mimo, needs-changes]:
+Circular dependency observation (M56 P2 depends on M46/M48 P3) is correct and valuable. However, no code draft provided despite code-draft mode. The recommendation to just 'await M46/M48' is passive.
+
+REQUIRED CHANGES:
+1. Propose a bounded workflow skeleton for mechanical re-verification that can be implemented once dependencies unblock.
+2. Define the data model for deterministic comparison between claimed milestones and evidence sources (MASTER_ROADMAP.md, TODO.md, CI logs).
+3. Provide a concrete rust_draft showing the claim verification pipeline structure, even if the competing-prediction-seeding integration is deferred.
+
 Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
 CONSTRAINTS:
 - Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).

@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "metrics_facade"
+goal = "Metrics facade"
+id = "FRONTIER-METRICS"
+instruction = """
+Audit external open-source crate 'metrics' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Relevant to actually measuring "how long can we keep the local agent busy" quantitatively instead of eyeballing log ticks
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "metrics"
+schema_version = 1

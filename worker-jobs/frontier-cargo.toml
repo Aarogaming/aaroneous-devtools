@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "dependency_resolution_workspace_handling"
+goal = "Dependency resolution, workspace handling"
+id = "FRONTIER-CARGO"
+instruction = """
+Audit external open-source crate 'cargo' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Reference for any future workspace-aware decomposition beyond M54's directory clustering
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "cargo"
+schema_version = 1

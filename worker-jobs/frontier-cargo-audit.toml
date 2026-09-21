@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "rustsec_advisory_scanning"
+goal = "RustSec advisory scanning"
+id = "FRONTIER-CARGO_AUDIT"
+instruction = """
+Audit external open-source crate 'cargo-audit' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Could feed G1/G4 gate automation directly — checks dependency tree against known vulnerabilities
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "cargo-audit"
+schema_version = 1

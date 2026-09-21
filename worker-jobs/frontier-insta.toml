@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "snapshot_testing"
+goal = "Snapshot testing"
+id = "FRONTIER-INSTA"
+instruction = """
+Audit external open-source crate 'insta' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Relevant to `candidate_metadata.rs`'s JSON output — snapshot tests would catch unintended schema drift better than hand-written assertions
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "insta"
+schema_version = 1

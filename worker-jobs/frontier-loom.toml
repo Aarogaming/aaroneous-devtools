@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "concurrency_permutation_testing"
+goal = "Concurrency permutation testing"
+id = "FRONTIER-LOOM"
+instruction = """
+Audit external open-source crate 'loom' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Directly relevant to any lock-free/concurrent code touched via `crossbeam`/`parking_lot` adoption
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "loom"
+schema_version = 1

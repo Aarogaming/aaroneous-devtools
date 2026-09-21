@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "incremental_computation_framework_used_by_rust_analyzer"
+goal = "Incremental computation framework (used by rust-analyzer)"
+id = "FRONTIER-SALSA"
+instruction = """
+Audit external open-source crate 'salsa' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Directly relevant to M57's "accumulating metadata record" — salsa's memoized/invalidation-on-change model is a more principled version of the 24h-freshness caching we hand-rolled
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "salsa"
+schema_version = 1

@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "lexer_generator"
+goal = "Lexer generator"
+id = "FRONTIER-LOGOS"
+instruction = """
+Audit external open-source crate 'logos' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Fast tokenization, pairs with `pest`/hand-rolled parsers
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "logos"
+schema_version = 1

@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "rust_native_typesetting"
+goal = "Rust-native typesetting"
+id = "FRONTIER-TYPST"
+instruction = """
+Audit external open-source crate 'typst' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Low relevance; included as an example of a large, well-structured pure-Rust application worth a structural skim
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "typst"
+schema_version = 1

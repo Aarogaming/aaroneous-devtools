@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "vulnerability_database_data_not_a_tool"
+goal = "Vulnerability database (data, not a tool)"
+id = "FRONTIER-COMFY_TABLE"
+instruction = """
+Audit external open-source crate 'comfy-table' (v8.0.0) for potential dogfooding or architectural influence in Aaroneous.
+Description: An easy to use library for building beautiful tables with automatic content wrapping
+Repository: https://github.com/nukesor/comfy-table
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "comfy-table"
+schema_version = 1

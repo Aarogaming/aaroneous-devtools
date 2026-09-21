@@ -11,6 +11,15 @@ Preferred capability: "Rust systems review, data/schema design"
 [PRIOR TRIAGE CONTEXT - Pass 3]:
 Recommendation: Define the candidate metadata schema (JSON/Protobuf) and the locking strategy for the accumulator, focusing on Branch-B (Bounded SWMR ring buffer) for initial implementation. | Obs: M57 requires a mutable accumulator pattern for candidate metadata, contrasting with current independent output generation in M41/M47/M54/M55/M42. | Obs: Dependency chain is circular or tightly coupled: M57 depends on M41, M47, M54, M55, M42, which likely depend on M57's schema for their own outputs. | Obs: Schema design must support incremental updates (append-only or delta) to avoid race conditions in a multithreaded context (M41/M47 are multithreaded). Risk: Schema drift, Concurrency, Backward compatibility, Scope creep.
 
+[REVIEWER FEEDBACK - mimo, needs-changes]:
+Schema/locking observations are reasonable (RwLock, append-only, fixed-size arrays) but thin. No rust_draft provided despite code-draft mode. The recommended next step 'review the generated Rust draft' references a draft that doesn't exist in the output.
+
+REQUIRED CHANGES:
+1. Produce the actual rust_draft implementing the candidate metadata accumulator schema.
+2. Define the concrete data structure: what fields does each candidate record contain? What is the fixed-size layout?
+3. Implement the RwLock-based append logic with proper error propagation.
+4. Include the unit tests proving deterministic growth and zero heap allocations.
+
 Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
 CONSTRAINTS:
 - Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).

@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "raft_consensus_implementation"
+goal = "Raft consensus implementation"
+id = "FRONTIER-OPENRAFT"
+instruction = """
+Audit external open-source crate 'openraft' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Reference for what real multi-party consensus looks like, in case cross-verify ever needs more than two parties
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "openraft"
+schema_version = 1

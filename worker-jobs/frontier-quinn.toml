@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "quic"
+goal = "QUIC"
+id = "FRONTIER-QUINN"
+instruction = """
+Audit external open-source crate 'quinn' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Modern transport with built-in multiplexing/encryption — relevant if IPC ever needs to cross a real network boundary, not just local files
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "quinn"
+schema_version = 1

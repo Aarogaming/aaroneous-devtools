@@ -1,0 +1,23 @@
+schema_version = 1
+id = "AUDIT-01-AST-SAFETY-P0185"
+mode = "analysis"
+evidence = [
+    "crates/ast_auditor/src/rules/text_encoding.rs",
+    "xtask/src/gate.rs",
+]
+instruction = '''
+Audit AST auditor rules, UTF-8/LF line ending enforcement, and gate command alignment between xtask/src/gate.rs and AGENTS.md Section 6.
+
+[PRIOR AUDIT CONTEXT - Pass 185]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: text_encoding.rs: UTF-8 BOM check remains active (bytes.starts_with(b"\xef\xbb\xbf")) | Obs: text_encoding.rs: audit_tracked_encodings uses git ls-files without --others --exclude-standard (untracked files not audited) | Obs: text_encoding.rs: is_binary_extension uses static list only (no fallback heuristic for unknown extensions or magic bytes). Risk: binary files with text extensions or text files with binary extensions may be misclassified. No file command or magic bytes fallback present. Risk: false negatives on binary files with text extensions or false positives on text files with binary extensions. No file command or magic bytes fallback present. Risk: false negatives on binary files with text extensions or text files may | Risk: Untracked files not audited due to missing --others --exclude-standard flag in git ls-files. | Risk: Binary files with text extensions or text files with binary extensions may be misclassified due to static extension list only. | Risk: No file command or magic bytes fallback present. Risk: false negatives on binary files with text extensions or false positives on text files with binary extensions.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since.
+
+[REVIEWER FEEDBACK - mimo, needs-changes from prior pass]:
+Observations about untracked files (missing --others --exclude-standard) and static extension list (no magic bytes fallback) are valid technical findings. However, the recommended next step was to check AGENTS.md Section 6 for alignment requirements, which is meta-work rather than a concrete fix.
+
+REQUIRED CHANGES FOR THIS PASS:
+1. Either propose the code fix for the git ls-files flag (add --others --exclude-standard) and extension list enhancement, OR
+2. Explicitly state whether these are in-scope for this audit pass based on AGENTS.md Section 6 requirements.
+3. Do not just re-state the problem - provide actionable next steps.
+'''

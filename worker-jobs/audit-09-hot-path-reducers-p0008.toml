@@ -1,0 +1,19 @@
+schema_version = 1
+id = "AUDIT-09-HOT-PATH-REDUCERS-P0008"
+mode = "analysis"
+evidence = ["dev/emulator_harness/src/lib.rs"]
+instruction = """
+Audit compute engine and emulator harness for zero-allocation trace reduction, bounded execution budgets, and deterministic trace replay guarantees.
+
+[PRIOR AUDIT CONTEXT - Pass 8]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: TraceEvent POD layout verified: 40 bytes, 8-byte alignment, zero-copy serialization via bytemuck confirmed. | Obs: extract_state_delta correctly computes initial/final values and write counts for single address (0xCAFE). | Obs: reduce_trace_bounded enforces ReductionBudget limits; returns TraceError::BudgetExceeded on overflow (limit=2, processed=2). Deterministic replay verified (UNLIMITED == limit=10). Event filtering by memory_addr (0xBEEF vs 0xDEAD) is implicit in test expectations (4 events processed, 2 writes, 1 read). No heap allocations observed in test harness. No todo! or unimplemented! found. | Risk: Implicit filtering of unrelated memory addresses (0xDEAD) in test expectations may hide address-mismatch bugs in production
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since.
+
+[REVIEWER FEEDBACK - mimo, needs-changes from prior pass]:
+Valid observation about implicit address filtering (0xBEEF vs 0xDEAD) in test expectations potentially hiding address-mismatch bugs. TraceEvent POD layout verification and budget enforcement observations are confirmatory. However, the recommended next step 'verify production implementation' was vague.
+
+REQUIRED CHANGES FOR THIS PASS:
+1. Propose specific code changes to make address filtering explicit in reduce_trace_bounded and extract_state_delta.
+2. Identify the exact lines in reducer.rs where the implicit behavior occurs.
+3. Show how the explicit filtering would work and what tests would prove it."""

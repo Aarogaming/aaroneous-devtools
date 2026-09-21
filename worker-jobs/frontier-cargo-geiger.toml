@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "unsafe_code_detection"
+goal = "Unsafe-code detection"
+id = "FRONTIER-CARGO_GEIGER"
+instruction = """
+Audit external open-source crate 'cargo-geiger' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Relevant signal for G4/Q-scoring — unsafe density is a reasonable proxy for integration risk
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "cargo-geiger"
+schema_version = 1

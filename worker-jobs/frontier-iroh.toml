@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "p2p_networking_quic_based"
+goal = "P2P networking (QUIC-based)"
+id = "FRONTIER-IROH"
+instruction = """
+Audit external open-source crate 'iroh' (vlatest) for potential dogfooding or architectural influence in Aaroneous.
+Description: Already referenced elsewhere in the roadmap (M20's blocked iroh upgrade) — direct relevance, not just inspirational
+Repository: N/A
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "iroh"
+schema_version = 1
