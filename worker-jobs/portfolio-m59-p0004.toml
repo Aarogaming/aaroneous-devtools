@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m59"
+goal = "M59"
+id = "PORTFOLIO-M59-P0004"
+instruction = """
+Portfolio progressive verification request for M59 (priority P2, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Cross-candidate retrieval: explainable Jaccard similarity querying across accumulated M57 JSON metadata records"
+Dependency: "M57"
+Preferred capability: "Systems review, data/retrieval architecture"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index. | Obs: M57 dependency status: Not yet complete. M57 accumulates per-candidate metadata records from upstream passes (M41, M47, M54, M55, M42). | Obs: M59 core requirement: 'Explainable Jaccard similarity querying' across accumulated M57 records, requiring set-based comparison logic and attribute-level contribution surfacing (explainability). | Obs: Jaccard formula: |A ∩ B| / |A ∪ B|, requiring canonicalized set representations of metadata attributes (e.g., feature flags, component tags, dependency graphs). The term 'explainable' implies the system must surface which specific attributes contributed to the similarity score, not just the final value.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+schema_version = 1

@@ -45,6 +45,7 @@
 | **M56** | M56 portfolio triage proposal | Await M46/M48 completion to enable M56's competing prediction seeding capability; propose a bounded workflow design for claim verification. | M56 cannot proceed without M46/M48 dependencies being resolved. | `pending-owner-review` |
 | **M57** | M57 Portfolio Triage Proposal | Define the candidate metadata schema (JSON/Protobuf) and the locking strategy for the accumulator before touching M41/M47/M54/M55/M42. | Schema drift: If M41/M47 change output format, M57 must handle versioning. | `pending-owner-review` |
 | **M58** | M58 Portfolio Triage Producer | Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning. | Missing COORDINATION_QUEUE.md prevents verification of deduplication logic. | `pending-owner-review` |
+| **M59** | PORTFOLIO-M59 | Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index. | Metadata schema evolution may break backward compatibility if M57 adds fields without versioning. | `pending-owner-review` |
 | **PORTFOLIO-M1-P0002** | PORTFOLIO-M1-P0002 | Await human or cloud session claim for M1 to verify CI results and define the active integration branch scope before proposing a concrete convergence plan. | CI result dependency is unverified; convergence cannot proceed without knowing the current state of the integration branch. | `pending-owner-review` |
 | **PORTFOLIO-M1-P0003** | PORTFOLIO-M1-P0003 | Await human or cloud session claim for M1 to verify CI results and define the active integration branch scope before proposing a concrete convergence plan. | CI result dependency is unverified; convergence cannot proceed without knowing the current state of the integration branch. | `pending-owner-review` |
 | **PORTFOLIO-M1-P0004** | PORTFOLIO-M1-P0004 | Await human or cloud session claim for M1 to verify CI results and define the active integration branch scope before proposing a concrete convergence plan. | Speculative implementation without verified CI results may diverge from actual integration branch state. | `pending-owner-review` |
@@ -140,16 +141,25 @@
 | **PORTFOLIO-M53-P0004** | M53 | Implement the compliance profile schema and integration points with verify_draft/cratify_audit, ensuring M44 and M45 dependencies are addressed. | M44 and M45 dependencies are P3 items and may not be fully implemented. | `pending-owner-review` |
 | **PORTFOLIO-M54-P0002** | PORTFOLIO-M54-P0002 | Wait for M41, M46, and M49 completion before claiming M54. Prepare architectural branches for speculative review. | M54 is blocked by uncompleted dependencies (M41, M46, M49). | `pending-owner-review` |
 | **PORTFOLIO-M54-P0003** | PORTFOLIO-M54-P0003 | Wait for M41, M46, and M49 completion before claiming M54. Prepare architectural branches for speculative review. | M54 is blocked by uncompleted dependencies (M41, M46, M49). | `pending-owner-review` |
+| **PORTFOLIO-M54-P0004** | PORTFOLIO-M54-P0004 | Wait for completion of M41 (self-scheduling frontier_discovery.rs), M46 (perspective/goal meta-tagging), and M49 (cratification intake) before claiming M54. Prepare architectural branches for speculative review. | M54 is blocked by uncompleted dependencies. | `pending-owner-review` |
 | **PORTFOLIO-M55-P0002** | PORTFOLIO-M55-P0002 | Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering capability. | M55 cannot proceed without M41's self-scheduling infrastructure. | `pending-owner-review` |
 | **PORTFOLIO-M55-P0003** | PORTFOLIO-M55-P0003 | Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering capability. M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending. M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration. G4 ecosystem-independence heuristic definition is missing from evidence. Risk: M55 cannot proceed without M41's self-scheduling infrastructure. Risk: Crates.io API rate limits may impact batch license verification. Risk: G4 ecosystem-independence | M55 cannot proceed without M41's self-scheduling infrastructure. | `pending-owner-review` |
+| **PORTFOLIO-M55-P0004** | PORTFOLIO-M55-P0004 | Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering capability. M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending. M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration. G4 ecosystem-independence heuristic definition is missing from evidence. Risk: M55 cannot proceed without M41's self-scheduling infrastructure. Risk: Crates.io API rate limits may impact batch license verification. Risk: G4 ecosystem-independence \| Obs: | M55 cannot proceed without M41's self-scheduling infrastructure. | `pending-owner-review` |
 | **PORTFOLIO-M56-P0002** | PORTFOLIO-M56-P0002 | Await M46/M48 completion to enable competing prediction seeding; propose a bounded workflow design for claim verification. | M56 cannot proceed without M46/M48 dependencies being resolved. | `pending-owner-review` |
 | **PORTFOLIO-M56-P0003** | PORTFOLIO-M56-P0003 | Await M46/M48 completion to enable competing prediction seeding; propose a bounded workflow design for claim verification. | M56 cannot proceed without M46/M48 dependencies being resolved. | `pending-owner-review` |
+| **PORTFOLIO-M56-P0004** | PORTFOLIO-M56-P0004 | Await M46/M48 completion to enable competing prediction seeding; propose a bounded workflow design for claim verification. | Circular dependency: M56 (P2) depends on M46/M48 (P3). | `pending-owner-review` |
 | **PORTFOLIO-M57-P0002** | PORTFOLIO-M57-P0002 | Select Branch-B (Bounded SWMR ring buffer) for initial implementation due to its balance of zero-heap guarantees, deterministic state transitions, and bounded blast radius. Proceed to define the candidate metadata schema (JSON/Protobuf) and the locking strategy for the accumulator. | Schema drift: If M41/M47 change output format, M57 must handle versioning. | `pending-owner-review` |
 | **PORTFOLIO-M57-P0003** | PORTFOLIO-M57-P0003 | Define the candidate metadata schema (JSON/Protobuf) and the locking strategy for the accumulator, focusing on Branch-B (Bounded SWMR ring buffer) for initial implementation. | Schema drift: If M41/M47 change output format, M57 must handle versioning. | `pending-owner-review` |
+| **PORTFOLIO-M57-P0004** | PORTFOLIO-M57-P0004 | Review the generated Rust draft for correctness and alignment with M57 requirements. Consider integrating this accumulator pattern into existing passes (M41/M47/M54/M55/M42) once validated. | Schema drift if future passes introduce incompatible metadata fields without versioning. | `pending-owner-review` |
 | **PORTFOLIO-M58-P0002** | PORTFOLIO-M58-P0002 | Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning. | Missing COORDINATION_QUEUE.md prevents verification of deduplication logic. | `pending-owner-review` |
 | **PORTFOLIO-M58-P0003** | PORTFOLIO-M58-P0003 | Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning. | Missing COORDINATION_QUEUE.md prevents verification of deduplication logic. | `pending-owner-review` |
+| **PORTFOLIO-M58-P0004** | M58: Portfolio triage producer | Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning. | Proceeding without COORDINATION_QUEUE.md will result in incomplete deduplication logic. | `pending-owner-review` |
+| **PORTFOLIO-M59-P0002** | PORTFOLIO-M59-P0002 | Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index. M59 depends on M57, which accumulates per-candidate metadata records from multiple upstream passes (M41, M47, M54, M55, M42). | Schema mismatch: M57 output schema may not support efficient set-based operations or canonicalization required for Jaccard similarity. | `pending-owner-review` |
+| **PORTFOLIO-M59-P0003** | PORTFOLIO-M59-P0003 | Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index. | Designing retrieval index without M57 schema and cardinality data may lead to inefficient or incorrect index structures. | `pending-owner-review` |
+| **PORTFOLIO-M59-P0004** | PORTFOLIO-M59-P0004 | Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index. | M57 dependency not yet complete prevents inspection of actual JSON schema and cardinality of accumulated records. | `pending-owner-review` |
 | **PORTFOLIO-M8-P0002** | Error during analysis | Self-correction retry failed: duplicate risk or observation cross-repeat: 'Deterministic testing requires explicit wire geometry and pure reducers; current codebase may lack these patterns.' | Model generation failed | `failed` |
 | **PORTFOLIO-M8-P0003** | PORTFOLIO-M8-P0003 | Await human or cloud session claim via governance/COORDINATION_QUEUE.md before implementing M8. | Dependency A2 status unknown; bounded reducer reference path cannot be established without it. | `pending-owner-review` |
+| **PORTFOLIO-M8-P0004** | PORTFOLIO-M8-P0004 | Await human or cloud session claim via governance/COORDINATION_QUEUE.md before implementing M8. | Dependency A2 status is unknown, which may block implementation. | `pending-owner-review` |
 
 ---
 
@@ -1153,6 +1163,37 @@ Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding 
 #### Proposed Test Plan
 - Verify deduplication logic against COORDINATION_QUEUE.md once available.
 - Validate that generated analysis packets conform to local-worker schema.
+
+---
+
+### Milestone M59
+
+- **Job ID**: `PORTFOLIO-M59`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790001869`
+
+#### Task Formulation
+PORTFOLIO-M59
+
+#### Recommended Approach
+Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index.
+
+#### Observations
+- M59 depends on M57, which accumulates per-candidate metadata records from multiple upstream passes (M41, M47, M54, M55, M42).
+- M57 output is described as 'explainable' JSON metadata records, implying structured, queryable data.
+- M59 requires 'explainable Jaccard similarity querying', suggesting a need for set-based comparison logic over metadata fields (e.g., feature flags, component tags, dependency graphs). Jaccard similarity is defined as |A ∩ B| / |A ∪ B|, requiring canonicalized set representations of metadata attributes. The term 'explainable' implies the system must surface which specific attributes contributed to the similarity score, not just the final value. This suggests the metadata schema must include atomic, hashable,
+
+#### Identified Risks
+- Metadata schema evolution may break backward compatibility if M57 adds fields without versioning.
+- Jaccard similarity over high-dimensional metadata may yield false positives if attribute sets are sparse or noisy.
+- Scalability concerns: if M57 accumulates millions of records, naive pairwise Jaccard computation becomes O(n²).
+- Ambiguity in 'explainable': unclear whether explanations must be human-readable, machine-actionable, or both.
+- Dependency on M57's timing: M59 cannot proceed until M57's data pipeline is stable and production-ready.
+
+#### Proposed Test Plan
+- Validate Jaccard similarity calculation against known set pairs (unit test).
+- Verify explainability output includes contributing attribute subsets (integration test).
+- Benchmark query latency at 10k, 100k, and 1M record scales (performance test).
 
 ---
 
@@ -4042,6 +4083,32 @@ Wait for M41, M46, and M49 completion before claiming M54. Prepare architectural
 
 ---
 
+### Milestone PORTFOLIO-M54-P0004
+
+- **Job ID**: `PORTFOLIO-M54-P0004`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790001888`
+
+#### Task Formulation
+PORTFOLIO-M54-P0004
+
+#### Recommended Approach
+Wait for completion of M41 (self-scheduling frontier_discovery.rs), M46 (perspective/goal meta-tagging), and M49 (cratification intake) before claiming M54. Prepare architectural branches for speculative review.
+
+#### Observations
+- M41, M46, and M49 are uncompleted dependencies blocking M54.
+- Wholesale discovery fails G5 for sufficiently real targets; modular clustering is required.
+
+#### Identified Risks
+- M54 is blocked by uncompleted dependencies.
+
+#### Proposed Test Plan
+- Verify M41 completion status.
+- Verify M46 completion status.
+- Verify M49 completion status.
+
+---
+
 ### Milestone PORTFOLIO-M55-P0002
 
 - **Job ID**: `PORTFOLIO-M55-P0002`
@@ -4100,6 +4167,35 @@ Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering
 
 ---
 
+### Milestone PORTFOLIO-M55-P0004
+
+- **Job ID**: `PORTFOLIO-M55-P0004`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790001903`
+
+#### Task Formulation
+PORTFOLIO-M55-P0004
+
+#### Recommended Approach
+Await M41 completion or claim M41 first to enable M55's mechanical pre-filtering capability. M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending. M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration. G4 ecosystem-independence heuristic definition is missing from evidence. Risk: M55 cannot proceed without M41's self-scheduling infrastructure. Risk: Crates.io API rate limits may impact batch license verification. Risk: G4 ecosystem-independence | Obs:
+
+#### Observations
+- M55 requires M41 (frontier_discovery.rs self-scheduling) which is unclaimed and pending; M55 cannot proceed without M41's infrastructure.
+- M55 mandates zero agent/LLM calls, requiring pure Rust HTTP/API integration for crates.io license verification.
+- G4 ecosystem-independence heuristic definition is missing from evidence (MULTITHREAD_PROGRAM.md does not define G1/G4 criteria). Crates.io API rate limits may impact batch license verification. G4 heuristic is not explicitly provided in evidence. M55 cannot proceed without M41's self-scheduling infrastructure. Crates.io API rate limits may impact batch license verification. G4 ecosystem-independence heuristic definition is not explicitly provided in evidence. M55 cannot proceed without M41's self-scheduling
+
+#### Identified Risks
+- M55 cannot proceed without M41's self-scheduling infrastructure.
+- Crates.io API rate limits may impact batch license verification.
+- G4 ecosystem-independence heuristic definition is not explicitly provided in evidence.
+
+#### Proposed Test Plan
+- Verify M41 dependency status before proceeding with M55 implementation.
+- Define G4 ecosystem-independence heuristic criteria before implementing license verification logic.
+- Implement pure Rust HTTP/API integration for crates.io license verification without heap allocations on hot paths.
+
+---
+
 ### Milestone PORTFOLIO-M56-P0002
 
 - **Job ID**: `PORTFOLIO-M56-P0002`
@@ -4155,6 +4251,35 @@ Await M46/M48 completion to enable competing prediction seeding; propose a bound
 - Verify M46/M48 completion status before proceeding with M56.
 - Ensure evidence sources (MASTER_ROADMAP.md, TODO.md, CI logs) are parsed and normalized correctly.
 - Validate deterministic comparison engine between claimed milestones and evidence sources.
+
+---
+
+### Milestone PORTFOLIO-M56-P0004
+
+- **Job ID**: `PORTFOLIO-M56-P0004`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790001916`
+
+#### Task Formulation
+PORTFOLIO-M56-P0004
+
+#### Recommended Approach
+Await M46/M48 completion to enable competing prediction seeding; propose a bounded workflow design for claim verification.
+
+#### Observations
+- M56 requires M46 (meta-tagging) and M48 (multi-perspective seeding) which are P3 items; M56 is P2, creating a circular dependency risk.
+- Mechanical re-verification implies deterministic comparison between claimed milestones and evidence sources (MASTER_ROADMAP.md, TODO.md, CI logs).
+- Evidence sources are text-heavy and potentially corrupted (M29, M33), requiring robust parsing and normalization before claim validation can occur.
+
+#### Identified Risks
+- Circular dependency: M56 (P2) depends on M46/M48 (P3).
+- Text corruption in evidence sources (M29, M33) may cause false negatives in mechanical verification.
+- Ambiguity in 'competing predictions' seeding mechanism without M48 implementation.
+
+#### Proposed Test Plan
+- Verify deterministic parsing of MASTER_ROADMAP.md without heap allocations.
+- Confirm zero ambient authority (no std::env, no clock reads).
+- Ensure all error paths propagate Result without stubs.
 
 ---
 
@@ -4218,6 +4343,33 @@ Define the candidate metadata schema (JSON/Protobuf) and the locking strategy fo
 
 ---
 
+### Milestone PORTFOLIO-M57-P0004
+
+- **Job ID**: `PORTFOLIO-M57-P0004`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790001928`
+
+#### Task Formulation
+PORTFOLIO-M57-P0004
+
+#### Recommended Approach
+Review the generated Rust draft for correctness and alignment with M57 requirements. Consider integrating this accumulator pattern into existing passes (M41/M47/M54/M55/M42) once validated.
+
+#### Observations
+- Schema design for candidate metadata accumulator defined using fixed-size arrays and zero-copy wrappers to satisfy heap constraints.
+- Locking strategy implemented via `RwLock` with explicit read/write guards, avoiding interior mutability panics by propagating errors through Result types.
+- Append-only record structure ensures deterministic growth without reallocation on hot paths by pre-allocating fixed capacity buffers where possible or using bounded queues.
+
+#### Identified Risks
+- Schema drift if future passes introduce incompatible metadata fields without versioning.
+- Concurrency issues if multiple threads attempt to append simultaneously without proper synchronization.
+
+#### Proposed Test Plan
+- Verify that the accumulator correctly appends metadata from each pass (M41/M47/M54/M55/M42) without race conditions.
+- Ensure zero heap allocations on hot paths by checking for String, Vec, Box usage in critical sections.
+
+---
+
 ### Milestone PORTFOLIO-M58-P0002
 
 - **Job ID**: `PORTFOLIO-M58-P0002`
@@ -4276,6 +4428,118 @@ Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding 
 
 ---
 
+### Milestone PORTFOLIO-M58-P0004
+
+- **Job ID**: `PORTFOLIO-M58-P0004`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790001981`
+
+#### Task Formulation
+M58: Portfolio triage producer
+
+#### Recommended Approach
+Request COORDINATION_QUEUE.md to be added to the evidence set before proceeding with M58 implementation planning.
+
+#### Observations
+- COORDINATION_QUEUE.md is missing from evidence set, blocking verification of deduplication logic for M58.
+- M58 requires conversion of unclaimed rows from MULTITHREAD_PROGRAM.md into analysis packets.
+- Deduplication against COORDINATION_QUEUE.md is a critical dependency for M58 implementation.
+
+#### Identified Risks
+- Proceeding without COORDINATION_QUEUE.md will result in incomplete deduplication logic.
+- Unclaimed rows from MULTITHREAD_PROGRAM.md may be incorrectly processed without a reference queue.
+
+#### Proposed Test Plan
+- Verify that COORDINATION_QUEUE.md is present before processing.
+- Ensure unclaimed rows from MULTITHREAD_PROGRAM.md are correctly identified.
+- Validate deduplication logic against COORDINATION_QUEUE.md.
+
+---
+
+### Milestone PORTFOLIO-M59-P0002
+
+- **Job ID**: `PORTFOLIO-M59-P0002`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790002115`
+
+#### Task Formulation
+PORTFOLIO-M59-P0002
+
+#### Recommended Approach
+Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index. M59 depends on M57, which accumulates per-candidate metadata records from multiple upstream passes (M41, M47, M54, M55, M42).
+
+#### Observations
+- M57 dependency status: Not yet complete. M57 accumulates per-candidate metadata records from upstream passes (M41, M47, M54, M55, M42).
+- M57 output characteristics: 'Explainable' JSON metadata records, implying structured, queryable data with atomic, hashable attributes.
+- M59 core requirement: 'Explainable Jaccard similarity querying' across accumulated M57 records, requiring set-based comparison logic and attribute-level contribution surfacing (explainability). Jaccard formula: |A ∩ B| / |A ∪ B|, requiring canonicalized set representations of metadata attributes (e.g., feature flags, component tags, dependency graphs). The term 'explainable' implies the system must surface which specific attributes contributed to the similarity score, not just the final value. This suggests
+
+#### Identified Risks
+- Schema mismatch: M57 output schema may not support efficient set-based operations or canonicalization required for Jaccard similarity.
+- Cardinality explosion: Accumulated records from multiple upstream passes may result in unbounded growth, impacting retrieval performance.
+- Explainability overhead: Surfacing specific attribute contributions to similarity scores may introduce significant computational overhead or require complex data structures.
+- Dependency coupling: M59 is strictly dependent on M57 completion; any delays in M57 will block M59 progress.
+
+#### Proposed Test Plan
+- Verify M57 output schema supports atomic, hashable attributes required for set-based operations.
+- Validate Jaccard similarity calculation accuracy against known test cases.
+- Measure explainability overhead and ensure it meets performance constraints.
+
+---
+
+### Milestone PORTFOLIO-M59-P0003
+
+- **Job ID**: `PORTFOLIO-M59-P0003`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790002135`
+
+#### Task Formulation
+PORTFOLIO-M59-P0003
+
+#### Recommended Approach
+Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index.
+
+#### Observations
+- M57 dependency status: Not yet complete. M57 accumulates per-candidate metadata records from upstream passes (M41, M47, M54, M55, M42).
+- M59 core requirement: 'Explainable Jaccard similarity querying' across accumulated M57 records, requiring set-based comparison logic and attribute-level contribution surfacing (explainability).
+- Jaccard formula: |A ∩ B| / |A ∪ B|, requiring canonicalized set representations of metadata attributes (e.g., feature flags, component tags, dependency graphs). The term 'explainable' implies the system must surface which specific attributes contributed to the similarity score, not just the final value.
+
+#### Identified Risks
+- Designing retrieval index without M57 schema and cardinality data may lead to inefficient or incorrect index structures.
+- Implementing explainable Jaccard similarity without understanding the attribute structure of M57 records may result in inability to surface contributing attributes.
+
+#### Proposed Test Plan
+- Once M57 is complete, validate the JSON schema and cardinality of accumulated records.
+- Design and implement a retrieval index based on the validated M57 schema.
+- Implement explainable Jaccard similarity querying across accumulated M57 records, ensuring attribute-level contribution surfacing.
+
+---
+
+### Milestone PORTFOLIO-M59-P0004
+
+- **Job ID**: `PORTFOLIO-M59-P0004`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790002148`
+
+#### Task Formulation
+PORTFOLIO-M59-P0004
+
+#### Recommended Approach
+Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index.
+
+#### Observations
+- M57 dependency status: Not yet complete. M57 accumulates per-candidate metadata records from upstream passes (M41, M47, M54, M55, M42).
+- M59 core requirement: 'Explainable Jaccard similarity querying' across accumulated M57 records, requiring set-based comparison logic and attribute-level contribution surfacing (explainability).
+- Jaccard formula: |A ∩ B| / |A ∪ B|, requiring canonicalized set representations of metadata attributes (e.g., feature flags, component tags, dependency graphs). The term 'explainable' implies the system must surface which specific attributes contributed to the similarity score, not just the final value.
+
+#### Identified Risks
+- M57 dependency not yet complete prevents inspection of actual JSON schema and cardinality of accumulated records.
+- Designing retrieval index without knowledge of actual data structure may lead to suboptimal or incorrect implementation.
+
+#### Proposed Test Plan
+- Await M57 completion to inspect the actual JSON schema and cardinality of accumulated records before designing the retrieval index.
+
+---
+
 ### Milestone PORTFOLIO-M8-P0002
 
 - **Job ID**: `PORTFOLIO-M8-P0002`
@@ -4314,6 +4578,32 @@ Await human or cloud session claim via governance/COORDINATION_QUEUE.md before i
 #### Proposed Test Plan
 - Verify M8 remains unclaimed in COORDINATION_QUEUE.md.
 - Confirm dependency A2 status is unresolved in governance/MULTITHREAD_PROGRAM.md.
+
+---
+
+### Milestone PORTFOLIO-M8-P0004
+
+- **Job ID**: `PORTFOLIO-M8-P0004`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790001957`
+
+#### Task Formulation
+PORTFOLIO-M8-P0004
+
+#### Recommended Approach
+Await human or cloud session claim via governance/COORDINATION_QUEUE.md before implementing M8.
+
+#### Observations
+- Evidence 'governance/MULTITHREAD_PROGRAM.md' confirms M8 is P1 with dependency A2 (status unknown).
+- Instruction explicitly requests speculative reference modeling only; no product code authorization granted.
+- Preferred capability 'Deterministic systems testing' requires pure reducers and explicit wire geometry, which are not currently present in the codebase per prior triage context.
+
+#### Identified Risks
+- Dependency A2 status is unknown, which may block implementation.
+- No product code authorization granted for this milestone.
+
+#### Proposed Test Plan
+- Await human or cloud session claim via governance/COORDINATION_QUEUE.md before implementing M8.
 
 ---
 

@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "data_parallelism"
+goal = "Data-parallelism"
+id = "FRONTIER-RAYON"
+instruction = """
+Audit external open-source crate 'rayon' (v1.12.0) for potential dogfooding or architectural influence in Aaroneous.
+Description: Simple work-stealing parallelism for Rust
+Repository: https://github.com/rayon-rs/rayon
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "rayon"
+schema_version = 1

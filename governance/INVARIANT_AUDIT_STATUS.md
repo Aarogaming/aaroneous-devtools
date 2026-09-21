@@ -8,16 +8,16 @@
 
 | Invariant Family | Latest Pass | Status | Submitted | Executive Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| **AUDIT-01-AST-SAFETY** | `AUDIT-01-AST-SAFETY-P0181` | `pending-owner-review` | unix `1789999090` | Add --others --exclude-standard to git ls-files in audit_tracked_encodings. Add fallback heuristi... |
-| **AUDIT-02-HOT-PATH-ALLOC** | `AUDIT-02-HOT-PATH-ALLOC-P0004` | `pending-owner-review` | unix `1789999423` | Refactor PluginManager to use fixed-size arrays or slab-based allocation for plugins, remove Hash... |
-| **AUDIT-03-ZERO-AMBIENT-AUTH** | `AUDIT-03-ZERO-AMBIENT-AUTH-P0004` | `pending-owner-review` | unix `1789999436` | No remediation required. All ambient authority patterns are controlled and documented. The codeba... |
-| **AUDIT-04-DEPRECATION-POLICY** | `AUDIT-04-DEPRECATION-POLICY-P0004` | `pending-owner-review` | unix `1790001284` | Verify migration test passes with cargo test -p adaptation_plane. Confirm no production call site... |
-| **AUDIT-09-HOT-PATH-REDUCERS** | `AUDIT-09-HOT-PATH-REDUCERS-P0004` | `pending-owner-review` | unix `1789999478` | Verify production implementation of reduce_trace_bounded and extract_state_delta against test exp... |
-| **AUDIT-10-ORCHESTRATOR-BOUNDS** | `AUDIT-10-ORCHESTRATOR-BOUNDS-P0004` | `pending-owner-review` | unix `1789999503` | Remediate static counter race condition by introducing per-instance fallback key generation using... |
-| **PREP-02-COMPUTE-ENGINE-CONTAINER** | `PREP-02-COMPUTE-ENGINE-CONTAINER-P0004` | `pending-owner-review` | unix `1789999513` | Remediate by introducing bounded allocation limits, JIT execution bounds, and explicit input vali... |
-| **PREP-03-GOVERNANCE-SMT-INTERLOCKS** | `PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0004` | `pending-owner-review` | unix `1789999529` | Inspect source files for smt_action_interlock, lattice_verifier, and interference_checker to veri... |
-| **PREP-04-ORCHESTRATOR-TASK-SCHEDULER** | `PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0004` | `pending-owner-review` | unix `1789999543` | Implement core affinity pinning, execution budget enforcement, and supervisor tick boundary check... |
-| **PREP-06-STUDIO-HUD-PANIC-CONTAINMENT** | `PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0004` | `pending-owner-review` | unix `1789999557` | Implement RFC-0006 Section 7 panic containment: wrap `plugin_tick` FFI calls in `catch_unwind`, m... |
+| **AUDIT-01-AST-SAFETY** | `AUDIT-01-AST-SAFETY-P0183` | `pending-owner-review` | unix `1790002898` | Remediate text_encoding.rs by adding --others --exclude-standard to git ls-files invocation and i... |
+| **AUDIT-02-HOT-PATH-ALLOC** | `AUDIT-02-HOT-PATH-ALLOC-P0006` | `pending-owner-review` | unix `1790002911` | Refactor PluginManager to use fixed-size arrays or slab-based allocation for plugins, remove Hash... |
+| **AUDIT-03-ZERO-AMBIENT-AUTH** | `AUDIT-03-ZERO-AMBIENT-AUTH-P0006` | `pending-owner-review` | unix `1790002926` | No remediation required. All ambient authority patterns are controlled and documented. The codeba... |
+| **AUDIT-04-DEPRECATION-POLICY** | `AUDIT-04-DEPRECATION-POLICY-P0006` | `pending-owner-review` | unix `1790003115` | Verify that no other crates reference these deprecated aliases by running git grep across the wor... |
+| **AUDIT-09-HOT-PATH-REDUCERS** | `AUDIT-09-HOT-PATH-REDUCERS-P0006` | `pending-owner-review` | unix `1790002938` | Verify production implementation of reduce_trace_bounded and extract_state_delta in dev/emulator_... |
+| **AUDIT-10-ORCHESTRATOR-BOUNDS** | `AUDIT-10-ORCHESTRATOR-BOUNDS-P0006` | `pending-owner-review` | unix `1790002958` | Remediate static counter race condition by introducing per-instance fallback key generation using... |
+| **PREP-02-COMPUTE-ENGINE-CONTAINER** | `PREP-02-COMPUTE-ENGINE-CONTAINER-P0006` | `pending-owner-review` | unix `1790002969` | Remediate by introducing bounded allocation limits, JIT execution bounds, and explicit input vali... |
+| **PREP-03-GOVERNANCE-SMT-INTERLOCKS** | `PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0006` | `pending-owner-review` | unix `1790002987` | Inspect source files for smt_action_interlock, lattice_verifier, and interference_checker to veri... |
+| **PREP-04-ORCHESTRATOR-TASK-SCHEDULER** | `PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0006` | `pending-owner-review` | unix `1790003002` | Implement core affinity pinning, execution budget enforcement, and supervisor tick boundary check... |
+| **PREP-06-STUDIO-HUD-PANIC-CONTAINMENT** | `PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0006` | `pending-owner-review` | unix `1790003016` | Implement RFC-0006 Section 7 panic containment: wrap `replay_commands()` in `catch_unwind` and ad... |
 
 ---
 
@@ -25,13 +25,13 @@
 
 ### AUDIT-01-AST-SAFETY
 
-- **Task Description**: AUDIT-01-AST-SAFETY-P0181
-- **Latest Job Pass**: `AUDIT-01-AST-SAFETY-P0181`
+- **Task Description**: AUDIT-01-AST-SAFETY-P0183
+- **Latest Job Pass**: `AUDIT-01-AST-SAFETY-P0183`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789999090`
+- **Timestamp**: unix `1790002898`
 
 #### Recommended Next Step
-Add --others --exclude-standard to git ls-files in audit_tracked_encodings. Add fallback heuristic (file command or magic bytes) to is_binary_extension for unknown extensions.
+Remediate text_encoding.rs by adding --others --exclude-standard to git ls-files invocation and implementing magic byte detection fallback for binary classification. Verify gate.rs alignment with AGENTS.md Section 6.
 
 #### Key Observations
 - text_encoding.rs: UTF-8 BOM check remains active (bytes.starts_with(b"\xef\xbb\xbf"))
@@ -39,21 +39,20 @@ Add --others --exclude-standard to git ls-files in audit_tracked_encodings. Add 
 - text_encoding.rs: is_binary_extension uses static list only (no fallback heuristic for unknown extensions or magic bytes). Risk: binary files with text extensions or text files with binary extensions may be misclassified. No file command or magic bytes fallback present. Risk: false negatives on binary files with text extensions or false positives on text files with binary extensions. No file command or magic bytes fallback present. Risk: false negatives on binary files with text extensions or false positive
 
 #### Identified Risks
-- text_encoding.rs: audit_tracked_encodings uses git ls-files which may miss untracked files; consider adding git ls-files --others --exclude-standard if untracked files must be audited.
-- text_encoding.rs: is_binary_extension list is static; consider adding a fallback heuristic (e.g., file command or magic bytes) for unknown extensions.
-- xtask/src/gate.rs: run_cmd does not capture stdout/stderr; consider adding logging for debugging failed gates.
+- Untracked files not audited due to missing --others --exclude-standard flag in git ls-files.
+- Binary files with text extensions or text files with binary extensions may be misclassified due to static extension list only.
 
 ---
 
 ### AUDIT-02-HOT-PATH-ALLOC
 
-- **Task Description**: AUDIT-02-HOT-PATH-ALLOC-P0004
-- **Latest Job Pass**: `AUDIT-02-HOT-PATH-ALLOC-P0004`
+- **Task Description**: AUDIT-02-HOT-PATH-ALLOC-P0006
+- **Latest Job Pass**: `AUDIT-02-HOT-PATH-ALLOC-P0006`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789999423`
+- **Timestamp**: unix `1790002911`
 
 #### Recommended Next Step
-Refactor PluginManager to use fixed-size arrays or slab-based allocation for plugins, remove HashMap and Vec, and consider lock-free alternatives for PLUGIN_MANAGER if contention is critical.
+Refactor PluginManager to use fixed-size arrays or slab-based allocation for plugins, remove HashMap and Vec, and consider lock-free alternatives for the static singleton.
 
 #### Key Observations
 - Forbidden dynamic heap allocations detected: `std::collections::HashMap` in `PluginManager` struct.
@@ -72,10 +71,10 @@ Refactor PluginManager to use fixed-size arrays or slab-based allocation for plu
 
 ### AUDIT-03-ZERO-AMBIENT-AUTH
 
-- **Task Description**: AUDIT-03-ZERO-AMBIENT-AUTH-P0004
-- **Latest Job Pass**: `AUDIT-03-ZERO-AMBIENT-AUTH-P0004`
+- **Task Description**: AUDIT-03-ZERO-AMBIENT-AUTH-P0006
+- **Latest Job Pass**: `AUDIT-03-ZERO-AMBIENT-AUTH-P0006`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789999436`
+- **Timestamp**: unix `1790002926`
 
 #### Recommended Next Step
 No remediation required. All ambient authority patterns are controlled and documented. The codebase adheres to the zero-hardcoded-path invariant.
@@ -89,13 +88,13 @@ No remediation required. All ambient authority patterns are controlled and docum
 
 ### AUDIT-04-DEPRECATION-POLICY
 
-- **Task Description**: AUDIT-04-DEPRECATION-POLICY-P0004
-- **Latest Job Pass**: `AUDIT-04-DEPRECATION-POLICY-P0004`
+- **Task Description**: AUDIT-04-DEPRECATION-POLICY-P0006
+- **Latest Job Pass**: `AUDIT-04-DEPRECATION-POLICY-P0006`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790001284`
+- **Timestamp**: unix `1790003115`
 
 #### Recommended Next Step
-Verify migration test passes with cargo test -p adaptation_plane. Confirm no production call sites exist in other crates by running git grep for deprecated alias names. Prepare removal PR for v0.4.0 by deleting definition sites, re-export entries, and migration test assertions per policy section 4.2.
+Verify that no other crates reference these deprecated aliases by running git grep across the workspace. Confirm that the migration test passes. Prepare the removal PR for v0.4.0 by deleting the deprecated type aliases, the migration test, and any #[allow(deprecated)] re-export blocks in lib.rs files.
 
 #### Key Observations
 - Deprecated type aliases in capability_spec.rs (ParameterLocus, AgentConfigProfile, ParameterProfile, SpecialistGenome, ParameterGenome, GeneticLocus, GeneticCategory, EpigeneticState, GeneticRelationship, GeneticAnalyzer) are defined with #[deprecated(since = "0.3.3", note = "...")].
@@ -111,18 +110,18 @@ Verify migration test passes with cargo test -p adaptation_plane. Confirm no pro
 
 ### AUDIT-09-HOT-PATH-REDUCERS
 
-- **Task Description**: AUDIT-09-HOT-PATH-REDUCERS-P0004
-- **Latest Job Pass**: `AUDIT-09-HOT-PATH-REDUCERS-P0004`
+- **Task Description**: AUDIT-09-HOT-PATH-REDUCERS-P0006
+- **Latest Job Pass**: `AUDIT-09-HOT-PATH-REDUCERS-P0006`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789999478`
+- **Timestamp**: unix `1790002938`
 
 #### Recommended Next Step
-Verify production implementation of reduce_trace_bounded and extract_state_delta against test expectations to ensure no address-mismatch bugs exist outside test harness.
+Verify production implementation of reduce_trace_bounded and extract_state_delta in dev/emulator_harness/src/reducer.rs to ensure implicit address filtering logic is explicit and robust against address-mismatch bugs.
 
 #### Key Observations
 - TraceEvent POD layout verified: 40 bytes, 8-byte alignment, zero-copy serialization via bytemuck confirmed.
 - extract_state_delta correctly computes initial/final values and write counts for single address (0xCAFE).
-- reduce_trace_bounded enforces ReductionBudget limits; returns TraceError::BudgetExceeded on overflow (limit=2, processed=2). Deterministic replay verified (UNLIMITED == limit=10). Event filtering by memory_addr (0xBEEF vs 0xDEAD) is implicit in test expectations (4 events processed, 2 writes, 1 read). No heap allocations observed in test harness. No todo! or unimplemented! found. Risk: Implicit filtering of unrelated memory addresses (0xDEAD) in test expectations may hide address-mismatch bugs in production
+- reduce_trace_bounded enforces ReductionBudget limits; returns TraceError::BudgetExceeded on overflow (limit=2, processed=2). Deterministic replay verified (UNLIMITED == limit=10). Event filtering by memory_addr (0xBEEF vs 0xDEAD) is implicit in test expectations (4 events processed, 2 writes, 1 read). No heap allocations observed in test harness. No todo! or unimplemented! found.
 
 #### Identified Risks
 - Implicit filtering of unrelated memory addresses (0xDEAD) in test expectations may hide address-mismatch bugs in production
@@ -131,13 +130,13 @@ Verify production implementation of reduce_trace_bounded and extract_state_delta
 
 ### AUDIT-10-ORCHESTRATOR-BOUNDS
 
-- **Task Description**: AUDIT-10-ORCHESTRATOR-BOUNDS-P0004
-- **Latest Job Pass**: `AUDIT-10-ORCHESTRATOR-BOUNDS-P0004`
+- **Task Description**: AUDIT-10-ORCHESTRATOR-BOUNDS-P0006
+- **Latest Job Pass**: `AUDIT-10-ORCHESTRATOR-BOUNDS-P0006`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789999503`
+- **Timestamp**: unix `1790002958`
 
 #### Recommended Next Step
-Remediate static counter race condition by introducing per-instance fallback key generation using a thread-local or scoped atomic counter, and enforce explicit size validation in SharedMemorySynapse constructors.
+Remediate static counter race condition by introducing per-instance fallback key generation using a unique identifier derived from thread-local state or a scoped atomic counter. Add explicit size validation to SharedMemorySynapse constructors. Implement supervisor budget enforcement in TaskRoutingEngine with configurable limits per task type.
 
 #### Key Observations
 - IntelligenceEngine::new and new_async retain static AtomicUsize counters for fallback shared memory key generation, creating potential race conditions in multi-instance deployments.
@@ -153,10 +152,10 @@ Remediate static counter race condition by introducing per-instance fallback key
 
 ### PREP-02-COMPUTE-ENGINE-CONTAINER
 
-- **Task Description**: PREP-02-COMPUTE-ENGINE-CONTAINER-P0004
-- **Latest Job Pass**: `PREP-02-COMPUTE-ENGINE-CONTAINER-P0004`
+- **Task Description**: PREP-02-COMPUTE-ENGINE-CONTAINER-P0006
+- **Latest Job Pass**: `PREP-02-COMPUTE-ENGINE-CONTAINER-P0006`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789999513`
+- **Timestamp**: unix `1790002969`
 
 #### Recommended Next Step
 Remediate by introducing bounded allocation limits, JIT execution bounds, and explicit input validation in the execute method.
@@ -175,10 +174,10 @@ Remediate by introducing bounded allocation limits, JIT execution bounds, and ex
 
 ### PREP-03-GOVERNANCE-SMT-INTERLOCKS
 
-- **Task Description**: PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0004
-- **Latest Job Pass**: `PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0004`
+- **Task Description**: PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0006
+- **Latest Job Pass**: `PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0006`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789999529`
+- **Timestamp**: unix `1790002987`
 
 #### Recommended Next Step
 Inspect source files for smt_action_interlock, lattice_verifier, and interference_checker to verify remediation of unverified SMT rules, state reduction gaps, and hardware register interference risks.
@@ -197,10 +196,10 @@ Inspect source files for smt_action_interlock, lattice_verifier, and interferenc
 
 ### PREP-04-ORCHESTRATOR-TASK-SCHEDULER
 
-- **Task Description**: PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0004
-- **Latest Job Pass**: `PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0004`
+- **Task Description**: PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0006
+- **Latest Job Pass**: `PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0006`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789999543`
+- **Timestamp**: unix `1790003002`
 
 #### Recommended Next Step
 Implement core affinity pinning, execution budget enforcement, and supervisor tick boundary checks in IntelligenceEngine.
@@ -218,13 +217,13 @@ Implement core affinity pinning, execution budget enforcement, and supervisor ti
 
 ### PREP-06-STUDIO-HUD-PANIC-CONTAINMENT
 
-- **Task Description**: PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0004
-- **Latest Job Pass**: `PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0004`
+- **Task Description**: PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0006
+- **Latest Job Pass**: `PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0006`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1789999557`
+- **Timestamp**: unix `1790003016`
 
 #### Recommended Next Step
-Implement RFC-0006 Section 7 panic containment: wrap `plugin_tick` FFI calls in `catch_unwind`, map caught panics to `TickResult::PluginFaulted`, and add fault rate-limiting (3 consecutive faults trigger unload).
+Implement RFC-0006 Section 7 panic containment: wrap `replay_commands()` in `catch_unwind` and add `TickResult::PluginFaulted` handling with rate-limiting logic to `PluginManager`.
 
 #### Key Observations
 - RFC-0006 Section 7 mandates `catch_unwind` at FFI boundary and `TickResult::PluginFaulted` handling, but `crates/studio_hud/src/plugin_api.rs` lacks any FFI boundary wrappers or panic isolation in `replay_commands()`. | Observed: `replay_commands()` executes `ui.label`, `ui.button`, etc., directly without `catch_unwind` wrappers. No panic isolation exists.

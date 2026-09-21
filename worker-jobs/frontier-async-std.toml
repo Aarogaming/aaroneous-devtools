@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "alternative_async_runtime"
+goal = "Alternative async runtime"
+id = "FRONTIER-ASYNC_STD"
+instruction = """
+Audit external open-source crate 'async-std' (v1.13.2) for potential dogfooding or architectural influence in Aaroneous.
+Description: Deprecated in favor of `smol` - Async version of the Rust standard library
+Repository: https://github.com/async-rs/async-std
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "async-std"
+schema_version = 1

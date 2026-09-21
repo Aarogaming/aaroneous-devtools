@@ -1,0 +1,12 @@
+evidence = ["docs/ARCHITECTURE.md"]
+exploration_group = "minimal_async_runtime"
+goal = "Minimal async runtime"
+id = "FRONTIER-SMOL"
+instruction = """
+Audit external open-source crate 'smol' (v2.0.2) for potential dogfooding or architectural influence in Aaroneous.
+Description: A small and fast async runtime
+Repository: https://github.com/smol-rs/smol
+Evaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools."""
+mode = "analysis"
+perspective = "smol"
+schema_version = 1
