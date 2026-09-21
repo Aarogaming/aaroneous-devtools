@@ -124,7 +124,12 @@ pub struct DependencyInfo {
 /// M55 G4 ecosystem-independence signal: a heuristic, not a hard gate.
 /// `Flagged` carries human-readable reasons a reviewer should weigh, mirroring
 /// G2/G3's own judgment-call nature in `FRONTIER_FILTRATION_STANDARD_V1.md`.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// `Serialize`/`Deserialize` (M57): needed so a `PrefilterResult` can round-
+/// trip through a `CandidateRecord`'s `serde_json::Value` findings and be
+/// reused by a later sweep instead of re-fetched -- see
+/// `mechanical_prefilter_with_metadata`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EcosystemSignal {
     Clean,
     Flagged(Vec<String>),
@@ -133,7 +138,7 @@ pub enum EcosystemSignal {
 /// M55 mechanical Stage 1 pre-filter result: `license_gate` is G1, a hard
 /// pass/fail (license compliance isn't a judgment call). `ecosystem_signal`
 /// is G4, advisory only.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrefilterResult {
     pub license: String,
     pub license_gate: bool,
@@ -301,6 +306,53 @@ pub fn mechanical_prefilter(name: &str, version: &str) -> Result<PrefilterResult
     })
 }
 
+/// M57: `mechanical_prefilter` wrapped with the accumulating per-candidate
+/// metadata record. When `metadata_dir` is `Some`, this is the "intelligence"
+/// half the milestone asks for -- a second sweep over an already-seen crate
+/// consults its accumulated record first: if a `"mechanical_prefilter"` pass
+/// entry exists and is still fresh (`candidate_metadata::PREFILTER_STALE_AFTER_SECS`),
+/// the recorded result is reused and the network calls are skipped entirely;
+/// otherwise (or when `metadata_dir` is `None`) it runs exactly as
+/// `mechanical_prefilter` always has, and -- when `metadata_dir` is `Some` --
+/// appends the fresh result as a new pass entry afterward.
+///
+/// `metadata_dir` being `None` reproduces `mechanical_prefilter`'s exact
+/// prior behavior, unchanged, per this milestone's additive requirement.
+pub fn mechanical_prefilter_with_metadata(
+    metadata_dir: Option<&Path>,
+    name: &str,
+    version: &str,
+) -> Result<PrefilterResult> {
+    let Some(dir) = metadata_dir else {
+        return mechanical_prefilter(name, version);
+    };
+
+    let now = crate::candidate_metadata::now_secs();
+    if let Some(record) = crate::candidate_metadata::read_record(dir, "crate", name)? {
+        if let Some(pass) = crate::candidate_metadata::find_recent_pass(
+            &record,
+            "mechanical_prefilter",
+            now,
+            crate::candidate_metadata::PREFILTER_STALE_AFTER_SECS,
+        ) {
+            if let Ok(cached) = serde_json::from_value::<PrefilterResult>(pass.findings.clone()) {
+                println!(
+                    "M57: reusing recorded mechanical_prefilter for '{name}' (recorded {}s ago) -- skipping network calls",
+                    now.saturating_sub(pass.recorded_at_secs)
+                );
+                return Ok(cached);
+            }
+        }
+    }
+
+    let result = mechanical_prefilter(name, version)?;
+    let findings =
+        serde_json::to_value(&result).context("failed to serialize mechanical_prefilter result")?;
+    crate::candidate_metadata::append_pass(dir, "crate", name, "mechanical_prefilter", findings)
+        .with_context(|| format!("failed to record M57 metadata for crate '{name}'"))?;
+    Ok(result)
+}
+
 pub fn firecrawl_scrape(
     url: &str,
     endpoint: Option<&str>,
@@ -442,7 +494,12 @@ fn checked_interval(interval_minutes: u32) -> Result<Duration> {
     Ok(Duration::from_secs(u64::from(interval_minutes) * 60))
 }
 
-fn cycle(queries_path: &Path, output_dir: &Path, limit: usize) -> bool {
+fn cycle(
+    queries_path: &Path,
+    output_dir: &Path,
+    limit: usize,
+    metadata_dir: Option<&Path>,
+) -> bool {
     let text = match read_bounded(queries_path, 65536) {
         Ok(text) => text,
         Err(e) => {
@@ -458,8 +515,11 @@ fn cycle(queries_path: &Path, output_dir: &Path, limit: usize) -> bool {
         match search_crates_io(&query, limit) {
             Ok(candidates) => {
                 for candidate in &candidates {
-                    let prefilter = match mechanical_prefilter(&candidate.name, &candidate.version)
-                    {
+                    let prefilter = match mechanical_prefilter_with_metadata(
+                        metadata_dir,
+                        &candidate.name,
+                        &candidate.version,
+                    ) {
                         Ok(p) => p,
                         Err(e) => {
                             eprintln!(
@@ -523,12 +583,18 @@ pub(crate) fn serve(
     output_dir: &Path,
     limit: usize,
     interval_minutes: u32,
+    metadata_dir: Option<&Path>,
 ) -> Result<()> {
     if !queries_path.is_absolute() {
         bail!("queries path must be absolute: {}", queries_path.display());
     }
     if !output_dir.is_absolute() {
         bail!("output_dir must be an absolute path");
+    }
+    if let Some(dir) = metadata_dir {
+        if !dir.is_absolute() {
+            bail!("metadata_dir must be an absolute path: {}", dir.display());
+        }
     }
     let interval = checked_interval(interval_minutes)?;
     println!(
@@ -537,7 +603,7 @@ pub(crate) fn serve(
     );
     let mut consecutive_failures = 0u32;
     loop {
-        if cycle(queries_path, output_dir, limit) {
+        if cycle(queries_path, output_dir, limit, metadata_dir) {
             consecutive_failures = 0;
         } else {
             consecutive_failures += 1;
@@ -1124,6 +1190,52 @@ mod tests {
         let text = std::fs::read_to_string(job_file).unwrap();
         assert!(text.contains("M55 mechanical pre-filter G4 signal"));
         assert!(text.contains("openssl-sys"));
+    }
+
+    // M57: mechanical_prefilter_with_metadata reuses a recent recorded
+    // result instead of calling the network. This is provable without a
+    // live crates.io call by pre-seeding the candidate's metadata record
+    // directly (append_pass), then asserting the wrapper returns exactly
+    // that recorded result -- if it had fallen through to
+    // `mechanical_prefilter`'s real network call here, this test would fail
+    // (no network access in this sandbox) rather than silently pass.
+    #[test]
+    fn mechanical_prefilter_with_metadata_reuses_recent_recorded_result() {
+        let temp = tempdir().unwrap();
+        let cached = PrefilterResult {
+            license: "MIT".into(),
+            license_gate: true,
+            ecosystem_signal: EcosystemSignal::Flagged(vec!["pre-recorded reason".into()]),
+        };
+        let findings = serde_json::to_value(&cached).unwrap();
+        crate::candidate_metadata::append_pass(
+            temp.path(),
+            "crate",
+            "definitely-not-a-real-crate-xyz",
+            "mechanical_prefilter",
+            findings,
+        )
+        .unwrap();
+
+        let result = mechanical_prefilter_with_metadata(
+            Some(temp.path()),
+            "definitely-not-a-real-crate-xyz",
+            "0.1.0",
+        )
+        .unwrap();
+
+        assert_eq!(result, cached);
+
+        // still exactly one pass entry -- the cache hit did not append a
+        // second, redundant entry.
+        let record = crate::candidate_metadata::read_record(
+            temp.path(),
+            "crate",
+            "definitely-not-a-real-crate-xyz",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(record.passes.len(), 1);
     }
 
     #[test]
