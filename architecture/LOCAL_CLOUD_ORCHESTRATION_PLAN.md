@@ -2,7 +2,7 @@
 
 **Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
 been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M52 in `governance/MULTITHREAD_PROGRAM.md`.
+governance boundaries for milestones M40–M53 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -643,6 +643,75 @@ plausible eventual home for this, not a new surface.
 - **Dependency:** M50 (a reject action needs something real to do)
 - **Preferred capability:** unassigned — deferred, not scoped
 
+### M53 — Selectable compliance profiles for cross-repo verification
+
+**Verified, 2026-09-20:** `ast_auditor::run_workspace_audit<I, P>(targets: I) where
+P: AsRef<Path>` (`crates/ast_auditor/src/lib.rs:174`) takes arbitrary paths with
+no workspace-boundary check — it walks and audits whatever path it's given,
+regardless of which Cargo workspace that path belongs to. Combined with
+`dogfood::verify_draft`'s existing checkout-agnostic subprocess design (M44), this
+means Aaroneous's own compliance tooling can already, mechanically, check
+devtools' code — `cargo run --manifest-path D:\Aaroneous\Cargo.toml -p cratify --
+audit <absolute-path-into-devtools-foundation>` works today, via the same
+subprocess pattern `dogfood.rs` already uses, with zero Cargo dependency from
+devtools onto Aaroneous (a subprocess call is not a link — `FOUNDATION_BOUNDARY.md`'s
+hard rule stays intact).
+
+**Why this needs to be a selectable profile, not a default:** Aaroneous's
+compliance rules are *deliberately stricter* than devtools' own.
+`governance/OPERATING_MODEL.md` states devtools follows "the lighter devtools
+standards... heap allocation and ordinary service I/O are welcome here." Running
+Aaroneous's `ast_auditor` against devtools code as-is would flag devtools' normal,
+correct-for-devtools patterns (heap allocation, async I/O) as violations — not
+because the code is wrong, but because it would be checked against the wrong
+ruleset for that target. `dogfood::cratify_audit` (M45) is already exactly one
+hardcoded preset of the fully-generic `verify_draft` — this milestone generalizes
+that pattern into an explicit, named, extensible set of profiles instead of one-off
+wrapper functions, so "which ruleset applies" is always a stated choice, never an
+assumption.
+
+**Design:**
+
+- A small `ComplianceProfile` type (in `dogfood.rs` alongside `cratify_audit`, or
+  a small sibling module — implementer's call, following this plan's established
+  precedent of leaving genuinely either-way choices to whoever builds it) with at
+  least: `AaroneousStrict` (resolves to today's `cratify_audit` behavior —
+  `cargo run -p cratify -- audit <target>`), `DevtoolsOperatingModel` (resolves to
+  devtools' own Foundation CI check — `cargo clippy --manifest-path
+  foundation/Cargo.toml -- -D warnings`, matching `.github/workflows/
+  foundation-ci.yml`'s actual lint step), and `Custom(Vec<String>)` (falls through
+  to `verify_draft`'s existing fully-generic behavior unchanged, for anything not
+  worth a named preset).
+- A resolver function turning a `ComplianceProfile` + `checkout` into the concrete
+  `verify_command` `verify_draft` already accepts — this is genuinely small, since
+  `verify_draft` itself needs no changes at all; this milestone only adds a named,
+  documented layer in front of a parameter it already takes.
+- Extend (or add a sibling to) the existing `VerifyDraft`/`CratifyAuditDraft` CLI
+  subcommands with a `--profile <aaroneous-strict|devtools-operating-model>` flag,
+  so the choice is explicit on every invocation rather than implied by which
+  wrapper function happened to be called.
+- A short governance note (in this file or `governance/REVIEW_CONDITIONS.md`)
+  stating plainly that `AaroneousStrict` and `DevtoolsOperatingModel` are not
+  interchangeable and naming which applies to which target — making the
+  distinction a durable, written fact rather than something only stated once in a
+  planning conversation.
+
+**Explicitly in scope, explicitly not yet:** this milestone only makes "check
+devtools' code with Aaroneous's own tooling" a real, correct, selectable option —
+it does not wire it into any automatic trigger. Whether and when devtools code
+actually gets checked this way (routinely, on-demand, as part of M51's eventual
+closed loop) is a separate decision, deliberately left open here the same way
+M51/M52 are.
+
+- **Dependency:** M44 (`verify_draft`), M45 (`cratify_audit` is the pattern being
+  generalized) — both already built, this milestone only adds a named selector
+  layer in front of them
+- **Preferred capability:** Rust systems review, cross-repo tooling design
+- **Evidence:** committed `ComplianceProfile` type and resolver with passing
+  tests; a real run of `DevtoolsOperatingModel` against actual devtools code and
+  `AaroneousStrict` against actual Aaroneous code from the same tool, proving both
+  presets produce correct, non-cross-contaminated results.
+
 ## Decisions log
 
 Dated decisions from planning discussion, kept so later sessions don't re-litigate
@@ -719,6 +788,18 @@ settled scope:
   unscoped/deferred — M51 because its dependencies don't exist yet to design
   against, M52 because building a reject-UX before M50's revert mechanism exists
   would put the experience ahead of the safety it depends on.
+- **2026-09-20 — Scoped a self-referential capability deliberately kept internal
+  for now.** Planning discussion covered contributing fixes to external
+  open-source projects and even Aaroneous auditing devtools' own code with its
+  own compliance tooling. Decided to stay internal-only for now (get Aaroneous's
+  own Rust compliance solid first) rather than build the outbound-contribution
+  track immediately. Verified the self-audit idea is mechanically real today
+  (`ast_auditor::run_workspace_audit` takes arbitrary paths, no workspace-boundary
+  check) and scoped the one piece worth building now: M53, a named, selectable
+  compliance profile, since Aaroneous's and devtools' rules are legitimately
+  different (`OPERATING_MODEL.md`'s "lighter devtools standards" vs. Aaroneous's
+  strict zero-allocation rules) and a self-audit tool needs to pick the right one
+  explicitly, not assume Aaroneous's rules apply everywhere.
 
 ## Sequencing
 
@@ -744,6 +825,9 @@ proceed immediately — it only builds on `agentic_registrar.rs`'s existing
 `promote` pattern. M51 depends on M48 and M49 (needs its stages to exist before
 the loop connecting them can be designed, let alone built) and is intentionally
 left ungrounded until then. M52 depends on M50 (a reject action needs a real
-mechanism behind it) and is deliberately deferred. No milestone in this plan
+mechanism behind it) and is deliberately deferred. M53 depends on M44/M45 (both
+already built) and can proceed immediately, entirely independent of everything
+else in this plan — it's the smallest milestone here, a named layer in front of
+a parameter `verify_draft` already accepts. No milestone in this plan
 authorizes paid cloud dispatch or local write/claim authority — those remain
-explicit future decisions, not defaults unlocked by completing M40–M52.
+explicit future decisions, not defaults unlocked by completing M40–M53.
