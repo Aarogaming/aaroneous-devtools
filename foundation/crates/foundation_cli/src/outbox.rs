@@ -231,7 +231,32 @@ pub fn run_verdict(
         promoted_branch: None,
         promoted_commit: None,
     };
-    append_verdict_entry(verdicts_path, &entry)
+    append_verdict_entry(verdicts_path, &entry)?;
+    bridge_rejection_feedback(results_dir, job_id, verdict, notes);
+    Ok(())
+}
+
+/// Feeds a `reject`/`needs-changes` verdict's reasoning into the existing
+/// closed-loop mechanism (`local_worker::set_rejection_reason_from_review`)
+/// so the next generation attempt for this job actually sees it, instead of
+/// the reasoning only ever living in `outbox_verdicts.jsonl`. Best-effort
+/// and silent on failure -- the verdict itself is already recorded by the
+/// time this runs, and a missing/unreadable record here shouldn't turn an
+/// otherwise-successful verdict recording into an error. Requires
+/// non-empty `notes`: a reason with nothing in it has nothing useful to
+/// feed forward.
+fn bridge_rejection_feedback(results_dir: &Path, job_id: &str, verdict: &str, notes: &str) {
+    if !matches!(verdict, "reject" | "needs-changes") || notes.trim().is_empty() {
+        return;
+    }
+    if let Err(e) =
+        crate::local_worker::set_rejection_reason_from_review(results_dir, job_id, notes)
+    {
+        println!(
+            "outbox: recorded verdict but could not feed it into future generation for \
+             {job_id}: {e:#}"
+        );
+    }
 }
 
 fn now_secs() -> u64 {
@@ -413,6 +438,7 @@ pub fn run_promote(
 
     append_verdict_entry(verdicts_path, &entry)?;
     println!("{summary_line}");
+    bridge_rejection_feedback(results_dir, job_id, &entry.verdict, &entry.notes);
 
     if entry.promoted_branch.is_some()
         && let Some(ping_path) = ping_path
@@ -543,7 +569,7 @@ mod tests {
             selected_branch: None,
             selection_rationale: None,
         };
-        let path = dir.join(format!("{job_id}.json"));
+        let path = dir.join(format!("{job_id}-0000.json"));
         fs::write(path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
     }
 
@@ -574,7 +600,7 @@ mod tests {
             selected_branch: None,
             selection_rationale: None,
         };
-        let path = dir.join(format!("{job_id}.json"));
+        let path = dir.join(format!("{job_id}-0000.json"));
         fs::write(path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
     }
 
@@ -681,6 +707,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(list_verdicts(&verdicts_path).unwrap().len(), 2);
+
+        // The needs-changes verdict must have bridged into the underlying
+        // Record's rejection_reason (M61), not just outbox_verdicts.jsonl --
+        // that's what makes it reach the local worker's existing closed-loop
+        // feedback injection on the next generation attempt.
+        let underlying: crate::local_worker::Record = serde_json::from_str(
+            &fs::read_to_string(results.path().join("JOB-0000.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            underlying.rejection_reason.as_deref(),
+            Some("double-check the overflow case")
+        );
 
         // Invalid verdict string is rejected before anything is written.
         let before = list_verdicts(&verdicts_path).unwrap().len();

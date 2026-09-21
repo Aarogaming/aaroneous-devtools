@@ -60,6 +60,30 @@ struct Job {
     /// handling.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     exploration_group: Option<String>,
+    /// `P0`-`P3` from `governance/MULTITHREAD_PROGRAM.md`'s priority column,
+    /// set only by producers that actually have a real priority to report
+    /// (currently `portfolio_jobs.rs`). `#[serde(default)]` so every packet
+    /// written before this field existed, and every producer that doesn't
+    /// set it (the recurring safety-audit catalog, frontier discovery,
+    /// capability composition), keeps deserializing exactly as before and
+    /// is treated as the same neutral tier a portfolio `P2` job would be --
+    /// not silently starved, not silently privileged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    priority: Option<String>,
+}
+
+/// Lower sorts first (selected sooner). Unrecognized or absent priority is
+/// deliberately the neutral middle tier, matching `P2` -- not the back of
+/// the line (that would starve every non-portfolio producer, which has no
+/// priority concept to report and shouldn't be penalized for that) and not
+/// the front (an unset priority is not the same claim as a verified `P0`).
+fn priority_rank(priority: Option<&str>) -> u8 {
+    match priority {
+        Some("P0") => 0,
+        Some("P1") => 1,
+        Some("P3") => 3,
+        _ => 2,
+    }
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -553,6 +577,40 @@ pub(crate) fn record_exploration_outcome(
     Ok(())
 }
 
+/// Bridges `outbox::run_verdict`/`run_promote` (a reviewer's `reject` or
+/// `needs-changes` verdict) into the same closed-loop feedback mechanism
+/// `record_exploration_outcome` already feeds -- job generation scans
+/// prior results for `rejection_reason.is_some()` on the same `base_job_key`
+/// and injects it into the next attempt's context (see the `[PRIOR REVIEWER
+/// FEEDBACK]` block built during candidate selection). Without this, an
+/// outbox verdict was recorded to `outbox_verdicts.jsonl` and then went
+/// nowhere -- the generation loop only ever read `rejection_reason` on the
+/// `Record` itself, which the outbox never touched.
+///
+/// Deliberately narrower than `record_exploration_outcome`: only sets
+/// `rejection_reason`, never touches `outcome`. A review verdict and an
+/// `exploration_group` sibling-selection decision are not the same claim,
+/// and this function's only job is making the reasoning text reach future
+/// generation, not re-deciding what `outcome` means.
+pub(crate) fn set_rejection_reason_from_review(
+    results_dir: &Path,
+    job_id: &str,
+    reason: &str,
+) -> Result<()> {
+    if reason.trim().is_empty() {
+        bail!("a rejection reason must not be empty");
+    }
+    let record_path =
+        find_job_record(results_dir, job_id).context("no result record found for job id")?;
+    let mut record: Record = serde_json::from_str(&read_bounded(&record_path, 1048576)?)?;
+    record.rejection_reason = Some(reason.to_string());
+    let data = serde_json::to_vec_pretty(&record)?;
+    let staging = record_path.with_extension("partial");
+    fs::write(&staging, &data)?;
+    fs::rename(&staging, &record_path)?;
+    Ok(())
+}
+
 fn tick_with<F>(config_path: &Path, minute: u32, now: u64, delegate: F) -> Result<()>
 where
     F: Fn(&str, &str) -> Result<Draft>,
@@ -610,6 +668,7 @@ where
         &c.queue,
         "analysis",
         &c.jobs_directory,
+        c.max_pending,
     );
     if !dispatch_window(minute) {
         println!("local worker: scheduled quiet window");
@@ -721,6 +780,7 @@ where
         job: Job,
         input: String,
         last_attempt_secs: u64,
+        priority_rank: u8,
     }
     let mut candidates: Vec<Candidate> = Vec::new();
     for path in files(&c.jobs_directory, "toml")? {
@@ -805,19 +865,27 @@ where
             .get(base_job_key(&job.id))
             .copied()
             .unwrap_or(0);
+        let priority_rank = priority_rank(job.priority.as_deref());
         candidates.push(Candidate {
             job,
             input,
             last_attempt_secs,
+            priority_rank,
         });
     }
 
-    // Oldest-last-attempted first (never-attempted counts as oldest of
-    // all); alphabetical id as a deterministic tie-break only, never as
-    // the primary order.
+    // Priority tier first (P0 before P1 before P2/unset before P3), then
+    // oldest-last-attempted within a tier (never-attempted counts as oldest
+    // of all), alphabetical id as a final deterministic tie-break only.
+    // Tier-first rather than fairness-only means a real P0 no longer waits
+    // behind an arbitrarily large backlog of lower-priority or
+    // priority-less work just because that work happened to be queued
+    // first -- but fairness still governs *within* a tier, so nothing
+    // inside the same priority starves another same-priority job forever.
     candidates.sort_by(|a, b| {
-        a.last_attempt_secs
-            .cmp(&b.last_attempt_secs)
+        a.priority_rank
+            .cmp(&b.priority_rank)
+            .then_with(|| a.last_attempt_secs.cmp(&b.last_attempt_secs))
             .then_with(|| a.job.id.cmp(&b.job.id))
     });
 
@@ -1387,6 +1455,7 @@ fn run_pre_tick_maintenance(config_path: &Path) {
         &c.queue,
         "analysis",
         &c.jobs_directory,
+        c.max_pending,
     );
 }
 
@@ -1496,6 +1565,7 @@ mod tests {
             perspective: None,
             goal: None,
             exploration_group: None,
+            priority: None,
         };
         fs::write(
             c.jobs_directory.join("job.toml"),
@@ -1591,6 +1661,7 @@ mod tests {
             perspective: None,
             goal: None,
             exploration_group: None,
+            priority: None,
         };
         fs::write(
             c.jobs_directory.join("job.toml"),
@@ -1682,6 +1753,7 @@ exploration_group = "faster-reducer-group"
             perspective: Some(perspective.into()),
             goal: goal.map(Into::into),
             exploration_group: group.map(Into::into),
+            priority: None,
         }
     }
     #[test]
@@ -1823,6 +1895,44 @@ exploration_group = "faster-reducer-group"
         );
     }
     #[test]
+    fn set_rejection_reason_from_review_bridges_outbox_verdicts_without_touching_outcome() {
+        // The M61 outbox bridge: a reviewer's reject/needs-changes verdict
+        // must reach the same rejection_reason field record_exploration_outcome
+        // writes, so future generation's [PRIOR REVIEWER FEEDBACK] injection
+        // (base_job_key matching on rejection_reason.is_some()) picks it up --
+        // but must not repurpose `outcome`, which means something different
+        // in the exploration_group comparison this was originally built for.
+        let (_d, c, _config) = fixture();
+        persist(&c, &exploration_fixture_record("B1", 1)).expect("persist B1");
+        let record_path = find_job_record(&c.results_directory, "B1").expect("record exists");
+        let before: Record =
+            serde_json::from_str(&fs::read_to_string(&record_path).expect("read")).expect("record");
+        let original_outcome = before.outcome.clone();
+
+        set_rejection_reason_from_review(
+            &c.results_directory,
+            "B1",
+            "the overflow check is still missing on the second branch",
+        )
+        .expect("set rejection reason");
+
+        let after: Record =
+            serde_json::from_str(&fs::read_to_string(&record_path).expect("read")).expect("record");
+        assert_eq!(
+            after.rejection_reason.as_deref(),
+            Some("the overflow check is still missing on the second branch")
+        );
+        assert_eq!(
+            after.outcome, original_outcome,
+            "a review verdict must not silently rewrite outcome -- that's a different claim"
+        );
+
+        assert!(
+            set_rejection_reason_from_review(&c.results_directory, "B1", "").is_err(),
+            "an empty reason has nothing useful to feed forward and must be refused"
+        );
+    }
+    #[test]
     fn unchanged_inputs_are_not_regenerated_and_changes_are() {
         let (_d, c, config) = fixture();
         tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("first");
@@ -1927,6 +2037,7 @@ exploration_group = "faster-reducer-group"
             perspective: None,
             goal: None,
             exploration_group: None,
+            priority: None,
         };
         let job_b = Job {
             schema_version: 1,
@@ -1937,6 +2048,7 @@ exploration_group = "faster-reducer-group"
             perspective: None,
             goal: None,
             exploration_group: None,
+            priority: None,
         };
         fs::write(
             c.jobs_directory.join("a.toml"),
@@ -1998,6 +2110,134 @@ exploration_group = "faster-reducer-group"
         tick_with(&config, 10, 3, |_, _| Ok(draft())).expect("tick 3");
         assert_eq!(last_dispatched(&c), "AUDIT-A");
     }
+
+    #[test]
+    fn priority_tier_beats_fairness_ordering() {
+        // A real P0 must not wait behind an already-queued, never-attempted
+        // P3 just because the P3 happened to be written first. Priority
+        // tier is checked before last-attempted-fairness, not after.
+        let (d, c, config) = fixture();
+        // Remove fixture()'s pre-seeded neutral-tier "JOB-1" -- it would
+        // lose to JOB-P0 regardless and the test would still pass, but
+        // only by luck rather than actually isolating the comparison this
+        // test claims to make.
+        fs::remove_file(c.jobs_directory.join("job.toml")).expect("remove fixture's default job");
+        fs::write(c.checkout.join("p3.rs"), "fn p3() {}").expect("p3.rs");
+        fs::write(c.checkout.join("p0.rs"), "fn p0() {}").expect("p0.rs");
+        let job_p3 = Job {
+            schema_version: 1,
+            id: "JOB-P3".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["p3.rs".into()],
+            instruction: "low priority, written first".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
+            priority: Some("P3".into()),
+        };
+        let job_p0 = Job {
+            schema_version: 1,
+            id: "JOB-P0".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["p0.rs".into()],
+            instruction: "high priority, written second".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
+            priority: Some("P0".into()),
+        };
+        // Write P3 first, sleep-free but with a later filename sort order
+        // too, so neither alphabetical nor write-order could accidentally
+        // produce the right answer for the wrong reason.
+        fs::write(
+            c.jobs_directory.join("a-p3.toml"),
+            toml::to_string(&job_p3).expect("job p3"),
+        )
+        .expect("write job p3");
+        fs::write(
+            c.jobs_directory.join("z-p0.toml"),
+            toml::to_string(&job_p0).expect("job p0"),
+        )
+        .expect("write job p0");
+
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        let path = files(&c.results_directory, "json")
+            .expect("results")
+            .pop()
+            .expect("a record was written");
+        let record: Record =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
+        assert_eq!(
+            record.job_id, "JOB-P0",
+            "P0 must be selected over an already-queued P3 despite arriving/sorting later"
+        );
+        drop(d);
+    }
+
+    #[test]
+    fn missing_priority_is_the_same_neutral_tier_as_p2_not_the_back_of_the_line() {
+        // A job with no priority field (the recurring safety-audit
+        // catalog, frontier discovery, capability composition -- none of
+        // which have a real priority to report) must not be silently
+        // starved behind every portfolio job just because portfolio jobs
+        // now carry a structured priority and these don't.
+        let (d, c, config) = fixture();
+        // fixture() pre-seeds its own "JOB-1" job (priority: None, same
+        // neutral tier this test is about) -- remove it so it's genuinely
+        // just the two jobs this test is comparing, not a silent third
+        // competitor that happens not to affect the outcome by luck.
+        fs::remove_file(c.jobs_directory.join("job.toml")).expect("remove fixture's default job");
+        fs::write(c.checkout.join("p2.rs"), "fn p2() {}").expect("p2.rs");
+        fs::write(c.checkout.join("none.rs"), "fn none() {}").expect("none.rs");
+        let job_p2 = Job {
+            schema_version: 1,
+            id: "JOB-P2".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["p2.rs".into()],
+            instruction: "explicit P2".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
+            priority: Some("P2".into()),
+        };
+        let job_none = Job {
+            schema_version: 1,
+            id: "JOB-NONE".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["none.rs".into()],
+            instruction: "no priority field at all".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
+            priority: None,
+        };
+        fs::write(
+            c.jobs_directory.join("a-p2.toml"),
+            toml::to_string(&job_p2).expect("job p2"),
+        )
+        .expect("write job p2");
+        fs::write(
+            c.jobs_directory.join("b-none.toml"),
+            toml::to_string(&job_none).expect("job none"),
+        )
+        .expect("write job none");
+
+        // Both are the same tier (unset == P2) and equally never-attempted,
+        // so the only remaining tie-break is alphabetical id -- "JOB-NONE"
+        // sorts before "JOB-P2", proving unset priority competed on equal
+        // footing rather than losing to the explicit P2 or winning
+        // outright as if it were P0.
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        let path = files(&c.results_directory, "json")
+            .expect("results")
+            .pop()
+            .expect("a record was written");
+        let record: Record =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
+        assert_eq!(record.job_id, "JOB-NONE");
+        drop(d);
+    }
+
     #[test]
     fn shared_lock_and_quiet_window_prevent_dispatch() {
         let (_d, c, config) = fixture();

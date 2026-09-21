@@ -686,15 +686,59 @@ pub(crate) fn refill_capability_composition_jobs(
     Ok(created)
 }
 
+/// How many pending `worker-jobs/*.toml` packets, as a multiple of
+/// `max_pending` (the same capacity unit `results_directory` archival
+/// already uses), before the *expansion* producers -- portfolio triage,
+/// capability composition, frontier discovery -- stop generating new
+/// speculative work. Chosen so throttling kicks in well before the
+/// backlog becomes unreasonable to ever work through, not the instant it
+/// exceeds processing capacity for one cycle: `max_pending` already sizes
+/// how much the worker holds comfortably in `results_directory` at once,
+/// so a backlog several times that is a real, not marginal, excess.
+const EXPANSION_BACKLOG_MULTIPLIER: usize = 3;
+
+/// True once `output_dir` already holds `max_pending * EXPANSION_BACKLOG_MULTIPLIER`
+/// or more pending `.toml` packets -- i.e. production is meaningfully
+/// outpacing what the worker can actually process, not just momentarily
+/// ahead of it. Counts every `.toml` file in the directory; a missing or
+/// unreadable directory counts as zero backlog (never throttle on an
+/// error reading the count -- fail open toward producing, not silently
+/// starving the queue on a transient I/O issue).
+fn expansion_backlog_exceeds_capacity(output_dir: &Path, max_pending: usize) -> bool {
+    let Ok(entries) = fs::read_dir(output_dir) else {
+        return false;
+    };
+    let pending = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("toml"))
+        .count();
+    pending >= max_pending.saturating_mul(EXPANSION_BACKLOG_MULTIPLIER)
+}
+
 pub(crate) fn sync_and_refill_jobs(
     checkout: &Path,
     queue_path: &Path,
     default_mode: &str,
     output_dir: &Path,
+    max_pending: usize,
 ) -> Result<Vec<PathBuf>> {
+    // Owner-directed (a real queue row) and the core recurring safety-audit
+    // catalog both run unconditionally -- neither is open-ended expansion,
+    // and starving either just because speculative discovery over-produced
+    // would be the wrong thing to throttle.
     let mut created = sync_worker_jobs(queue_path, default_mode, output_dir)?;
     let refilled = refill_recurring_jobs(checkout, output_dir)?;
     created.extend(refilled);
+
+    if expansion_backlog_exceeds_capacity(output_dir, max_pending) {
+        println!(
+            "job_converter: pending worker-jobs backlog exceeds {}x max_pending -- skipping \
+             this cycle's expansion producers (portfolio triage, capability composition, \
+             frontier discovery) until it drains",
+            EXPANSION_BACKLOG_MULTIPLIER
+        );
+        return Ok(created);
+    }
 
     if let Some(gov_dir) = queue_path.parent() {
         let program_path = gov_dir.join("MULTITHREAD_PROGRAM.md");
@@ -801,11 +845,85 @@ mod tests {
         )
         .expect("write queue");
 
-        let synced = sync_and_refill_jobs(&checkout, &queue, "analysis", temp.path())
+        let synced = sync_and_refill_jobs(&checkout, &queue, "analysis", temp.path(), 64)
             .expect("sync & refill");
         assert_eq!(synced.len(), 2);
         assert!(temp.path().join("c33.toml").exists());
         assert!(temp.path().join("audit-01-ast-safety.toml").exists());
+    }
+
+    #[test]
+    fn expansion_backlog_gate_flips_exactly_at_the_multiplier_boundary() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path();
+        let max_pending = 2; // threshold = 2 * EXPANSION_BACKLOG_MULTIPLIER (3) = 6
+
+        for i in 0..5 {
+            fs::write(dir.join(format!("job-{i}.toml")), "id = \"x\"").unwrap();
+        }
+        assert!(
+            !expansion_backlog_exceeds_capacity(dir, max_pending),
+            "5 pending, threshold 6 -- must not throttle yet"
+        );
+
+        fs::write(dir.join("job-5.toml"), "id = \"x\"").unwrap();
+        assert!(
+            expansion_backlog_exceeds_capacity(dir, max_pending),
+            "6 pending, threshold 6 -- must throttle at the boundary, not just past it"
+        );
+    }
+
+    #[test]
+    fn expansion_backlog_gate_only_counts_toml_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path();
+        for i in 0..10 {
+            fs::write(dir.join(format!("not-a-job-{i}.json")), "{}").unwrap();
+        }
+        // 10 non-.toml files present, but zero .toml files -- must not throttle.
+        assert!(!expansion_backlog_exceeds_capacity(dir, 1));
+    }
+
+    #[test]
+    fn expansion_backlog_gate_fails_open_on_missing_directory() {
+        let missing = Path::new("this/does/not/exist/at/all");
+        assert!(!expansion_backlog_exceeds_capacity(missing, 1));
+    }
+
+    #[test]
+    fn sync_and_refill_still_runs_recurring_catalog_and_queue_sync_while_backlogged() {
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = temp.path().join("checkout");
+        fs::create_dir_all(&checkout).unwrap();
+        create_dummy_evidence(&checkout, "crates/ast_auditor/src/rules/text_encoding.rs");
+        create_dummy_evidence(&checkout, "xtask/src/gate.rs");
+        let queue = temp.path().join("queue.md");
+        fs::write(
+            &queue,
+            "| ID | Scope | Status |\n| C33 | `crates/orchestrator/src/lib.rs` | Ready |",
+        )
+        .unwrap();
+        let jobs_dir = temp.path().join("jobs");
+        fs::create_dir_all(&jobs_dir).unwrap();
+
+        // max_pending = 1 -> threshold = 3. Pre-seed exactly at the
+        // throttle boundary so expansion producers are skipped this call.
+        for i in 0..3 {
+            fs::write(
+                jobs_dir.join(format!("pre-existing-{i}.toml")),
+                "id = \"x\"",
+            )
+            .unwrap();
+        }
+        assert!(expansion_backlog_exceeds_capacity(&jobs_dir, 1));
+
+        sync_and_refill_jobs(&checkout, &queue, "analysis", &jobs_dir, 1).unwrap();
+
+        // Owner-directed queue conversion and the recurring safety-audit
+        // catalog are not expansion producers -- both still ran even
+        // though the backlog gate was already tripped.
+        assert!(jobs_dir.join("c33.toml").exists());
+        assert!(jobs_dir.join("audit-01-ast-safety.toml").exists());
     }
 
     #[test]

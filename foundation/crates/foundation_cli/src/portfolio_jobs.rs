@@ -157,6 +157,7 @@ fn create_portfolio_job(row: &PortfolioRow, output_dir: &Path) -> Result<PathBuf
         "perspective": "portfolio-triage",
         "goal": row.id,
         "exploration_group": slugify_id(&row.id),
+        "priority": row.priority,
     });
 
     let toml_str = toml::to_string_pretty(&manifest)?;
@@ -330,6 +331,7 @@ fn create_progressive_portfolio_job(
         "perspective": "portfolio-triage",
         "goal": row.id,
         "exploration_group": slugify_id(&row.id),
+        "priority": row.priority,
     });
 
     let toml_str = toml::to_string_pretty(&manifest)?;
