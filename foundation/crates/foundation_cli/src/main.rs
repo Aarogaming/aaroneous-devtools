@@ -5,6 +5,7 @@ mod cloud_providers;
 mod component_inventory;
 mod consensus_engine;
 mod consensus_readiness;
+mod cratification_intake;
 mod cross_verifier;
 mod dependency_review;
 mod dogfood;
@@ -87,6 +88,15 @@ enum Command {
         output_dir: PathBuf,
         #[arg(long, default_value_t = 20)]
         limit: usize,
+    },
+    /// Turn a `cratify harvest --output <path>` JSON export into one
+    /// code-draft worker-jobs packet per harvested crate, asking for a
+    /// compliant Rust port rather than auto-generating one (M49)
+    CratificationIntake {
+        #[arg(long)]
+        crate_specs: PathBuf,
+        #[arg(long)]
+        output_dir: PathBuf,
     },
     /// Scrape and convert an external architecture document or whitepaper using Firecrawl
     FirecrawlScrape {
@@ -575,6 +585,21 @@ fn main() -> Result<()> {
             );
             let written = capability_composition::run(&capabilities, &output_dir, limit)?;
             println!("Emitted {} composition analysis packet(s):", written.len());
+            for path in &written {
+                println!("  -> {}", path.display());
+            }
+            Ok(())
+        }
+        Command::CratificationIntake {
+            crate_specs,
+            output_dir,
+        } => {
+            println!(
+                "Generating code-draft cratification packets from {}...",
+                crate_specs.display()
+            );
+            let written = cratification_intake::run(&crate_specs, &output_dir)?;
+            println!("Emitted {} cratification packet(s):", written.len());
             for path in &written {
                 println!("  -> {}", path.display());
             }
