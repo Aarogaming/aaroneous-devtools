@@ -1,0 +1,50 @@
+evidence = [
+    "core/hypervisor/src/supervisory_loop.rs:360-440",
+    "core/hypervisor/src/supervisory_loop.rs:1510-1590",
+]
+exploration_group = "c40-codex-pr51"
+goal = "C40"
+id = "FIX-C40-SHADOW-LEARNER"
+instruction = """
+Two coupled Codex review findings on Aarogaming/aaroneous#51 (review 5262430957),
+both in core/hypervisor/src/supervisory_loop.rs -- fix together, since fixing
+only one leaves the other's corruption in place. The evidence excerpts below
+are lines 360-440 and 1510-1590 of that file (the two findings' own cited
+lines are ~400 and ~1548, excerpted rather than referencing the whole 93KB+
+file per M67; if either excerpt is missing surrounding context you need,
+request a wider or different range as a follow-up rather than guessing):
+
+(1) Line ~400: the production `hypervisor start` path only calls
+SupervisoryDaemon::new, never with_shadow_learner. Even when reflex_v1.si
+exists and is loaded for its self-test, per-tick shadow inference, concurrence
+updates, the graduation event, and report export stay permanently disabled.
+Wire with_shadow_learner into daemon construction on the production start
+path (load and inject the learner when reflex_v1.si is present).
+
+(2) Line ~1548: once a shadow learner IS mounted, every tick is evaluated
+against opcode zero rather than the action actually dispatched earlier in the
+supervisory loop that same tick. Long idle periods can graduate a model for
+merely predicting zero, while real plan/tool-action predictions are recorded
+as divergences from zero -- corrupting the rolling concurrence and any
+graduation decision derived from it. Feed the actually-dispatched opcode into
+concurrence tracking instead of a fixed zero.
+
+Propose fixes for both in one coherent change -- injecting the learner without
+fixing (2) would just start producing corrupted concurrence data immediately
+instead of producing no data.
+
+CONSTRAINTS:
+- Zero heap allocations on hot paths.
+- Zero ambient authority (no std::env::*, no ambient clock reads outside
+  existing tick inputs).
+- Zero stubs. Propagate errors via Result.
+- Include unit test assertions: one proving with_shadow_learner is reachable
+  from the production start path when reflex_v1.si exists, one proving
+  concurrence tracking receives the dispatched opcode, not a hardcoded zero.
+
+This is a proposal only. It does not authorize committing, merging, or
+claiming COORDINATION_QUEUE.md row C40/C41 -- that requires owner review per
+governance/LOCAL_AGENT_CONTROL_PLANE.md."""
+mode = "code-draft"
+perspective = "codex-finding-2-3-of-9"
+schema_version = 1

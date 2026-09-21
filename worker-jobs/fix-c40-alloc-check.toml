@@ -1,0 +1,38 @@
+evidence = ["crates/compute/src/si_solid_state.rs:500-580"]
+exploration_group = "c40-codex-pr51"
+goal = "C40"
+id = "FIX-C40-ALLOC-CHECK"
+instruction = """
+Codex review finding on Aarogaming/aaroneous#51 (review 5262430957), around
+line 540 of crates/compute/src/si_solid_state.rs (the evidence excerpt
+below is lines 500-580 of that file -- the finding's own cited line is 540,
+excerpted rather than referencing the whole 93KB+ file per M67):
+
+A hot-path allocation-check flag is always set to true even though the
+measured forward_adapted_step call actually invokes forward_delta_with_trace,
+which allocates fresh Vecs for both the intermediate and delta on every
+iteration. The verifier consequently prints "Heap Allocations: 0" and
+certifies a cartridge production-ready despite it violating the compute
+hot-path contract, so the report can falsely certify performance experiments.
+
+Propose a fix: the flag must reflect a real measurement (e.g. a real
+allocation-counting allocator/guard around the measured call, or removing the
+false-true default and requiring an actual measurement source) rather than a
+hardcoded true.
+
+CONSTRAINTS:
+- Do not add heap allocation to any path that doesn't already have it.
+- Zero ambient authority.
+- Zero stubs. Propagate errors via Result.
+- Include a unit test proving the flag reports true allocation activity when
+  forward_delta_with_trace is exercised (i.e. the test should currently fail
+  before your fix and pass after, since the flag is unconditionally true
+  today). If the excerpt doesn't show forward_delta_with_trace's own
+  definition, request it as a follow-up rather than guessing its behavior.
+
+This is a proposal only. It does not authorize committing, merging, or
+claiming COORDINATION_QUEUE.md row C40/C41 -- that requires owner review per
+governance/LOCAL_AGENT_CONTROL_PLANE.md."""
+mode = "code-draft"
+perspective = "codex-finding-5-of-9"
+schema_version = 1

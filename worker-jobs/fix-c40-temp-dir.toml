@@ -1,0 +1,42 @@
+evidence = ["crates/compute/src/si_solid_state.rs:395-475"]
+exploration_group = "c40-codex-pr51"
+goal = "C40"
+id = "FIX-C40-TEMP-DIR"
+instruction = """
+Codex review finding on Aarogaming/aaroneous#51 (review 5262430957), around
+line 436 of crates/compute/src/si_solid_state.rs (the evidence excerpt
+below is lines 395-475 of that file -- the finding's own cited line is 436,
+excerpted rather than referencing the whole 93KB+ file per M67):
+
+Constructing an otherwise in-memory SolidStateSiContainer now creates and
+reads a file in the process-global temporary directory. In sandboxed services
+or deployments where the temp directory is unavailable or read-only, factory
+initialization and `si init-defaults` fail even when the requested model
+output directory is writable.
+
+Note: AGENTS.md explicitly bans std::env::temp_dir and ambient filesystem
+authority outside bootstrap CLI entrypoints (Section 2, Zero Ambient
+Authority) -- this finding is a direct instance of that rule being violated
+in library/constructor code, not just a portability nit.
+
+Propose a fix: serialize the initial weights entirely in memory (no
+filesystem round-trip), or if a scratch path is genuinely required, accept it
+as an explicit constructor parameter (typed config struct, matching the
+codebase's existing WorkspacePathsConfig/ShmSegmentConfig pattern) rather than
+reading std::env::temp_dir() internally.
+
+CONSTRAINTS:
+- No std::env::temp_dir, std::env::var, or other ambient authority in the
+  constructor path.
+- Zero heap allocation beyond what the existing serialization already does.
+- Zero stubs. Propagate errors via Result.
+- Include a unit test using tempfile::tempdir() (per AGENTS.md Section 4's
+  mandatory-tempdir-in-tests rule) proving construction succeeds with no
+  ambient temp directory access.
+
+This is a proposal only. It does not authorize committing, merging, or
+claiming COORDINATION_QUEUE.md row C40/C41 -- that requires owner review per
+governance/LOCAL_AGENT_CONTROL_PLANE.md."""
+mode = "code-draft"
+perspective = "codex-finding-6-of-9"
+schema_version = 1
