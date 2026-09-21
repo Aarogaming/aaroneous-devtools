@@ -35,6 +35,7 @@
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 /// Worker-jobs schema (see `local_worker.rs`/`multithreader.rs`) bounds
@@ -163,19 +164,59 @@ fn slugify(name: &str) -> String {
 /// non-alphanumeric runs replaced with `_`, capped to fit the worker-jobs
 /// schema's 64-character `id` limit (`local_worker.rs`'s
 /// `job.id.len() > 64` check) alongside the `DECOMPOSE-` prefix.
+///
+/// Found by running this against a real harvest of Bevy ECS (2026-09-20):
+/// naively truncating a long absolute path from the front collapsed every
+/// cluster to an identical id, because clusters under one harvest run share
+/// a long common prefix (the harvest source root) and only diverge near the
+/// *end* of the path -- exactly the part a front-truncation throws away.
+/// Fixed by keying on the path's last 1-2 components (the actual
+/// distinguishing module name) instead of the full path, with a short
+/// deterministic hash of the *complete* original path appended so two
+/// clusters that happen to share a final component (e.g. two different
+/// crates each having a `tests` subdirectory) still can't collide.
 fn sanitize_for_id(raw: &str) -> String {
     const PREFIX_LEN: usize = "DECOMPOSE-".len();
-    let sanitized: String = raw
+    const HASH_LEN: usize = 8; // hex chars from the suffix hash
+    let max_len = 64 - PREFIX_LEN;
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    raw.hash(&mut hasher);
+    let hash_suffix = format!("{:08X}", (hasher.finish() as u32));
+    debug_assert_eq!(hash_suffix.len(), HASH_LEN);
+
+    // Prefer the last two path components (e.g. "world/entity_access") as
+    // the human-readable core; fall back to whatever's available for a
+    // shallow path.
+    let components: Vec<&str> = raw.split('/').filter(|s| !s.is_empty()).collect();
+    let readable_core = components
+        .iter()
+        .rev()
+        .take(2)
+        .rev()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("_");
+
+    let sanitized_core: String = readable_core
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect::<String>()
         .to_uppercase();
-    let max_len = 64 - PREFIX_LEN;
-    if sanitized.len() > max_len {
-        sanitized[..max_len].to_string()
+
+    // Reserve room for "_" + the hash suffix, truncate the readable core
+    // (from the front this time -- the core is already just the last 1-2
+    // components, so its own *end* is the most specific part) to fit, then
+    // append the hash so uniqueness never depends on truncation alone.
+    let reserved = 1 + HASH_LEN;
+    let core_budget = max_len.saturating_sub(reserved);
+    let truncated_core = if sanitized_core.len() > core_budget {
+        sanitized_core[sanitized_core.len() - core_budget..].to_string()
     } else {
-        sanitized
-    }
+        sanitized_core
+    };
+
+    format!("{truncated_core}_{hash_suffix}")
 }
 
 fn sanitize_for_filename(raw: &str) -> String {
