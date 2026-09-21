@@ -9,6 +9,7 @@ mod cratification_intake;
 mod cross_verifier;
 mod dependency_review;
 mod dogfood;
+mod exploration_seed;
 mod frontier_discovery;
 mod hypervisor_mcp;
 mod intake;
@@ -95,6 +96,32 @@ enum Command {
     CratificationIntake {
         #[arg(long)]
         crate_specs: PathBuf,
+        #[arg(long)]
+        output_dir: PathBuf,
+    },
+    /// Seed a multi-perspective draft-exploration round (M48): given one
+    /// base `code-draft` goal, emit one `worker-jobs/*.toml` packet per
+    /// perspective, all sharing a freshly generated `exploration_group`, so
+    /// M46's comparison-summary and M44's pre-proofing have several real
+    /// drafts to compare once results come back. `--perspectives` may be
+    /// repeated; omit it entirely to use the fixed starter vocabulary
+    /// (`correctness-first`, `performance-first`, `minimal-diff`).
+    SeedExploration {
+        /// Absolute path to a text file containing the base drafting
+        /// goal/instruction.
+        #[arg(long)]
+        instruction_file: PathBuf,
+        /// Relative evidence file path(s), same shape the emitted job's
+        /// `evidence` field takes. Repeat the flag for multiple paths.
+        #[arg(long)]
+        evidence: Vec<PathBuf>,
+        /// Short label for this goal, not the full instruction.
+        #[arg(long)]
+        goal: String,
+        /// Perspective label(s) to seed. Repeat the flag for multiple
+        /// perspectives; omit entirely to use the default three.
+        #[arg(long)]
+        perspectives: Vec<String>,
         #[arg(long)]
         output_dir: PathBuf,
     },
@@ -627,6 +654,31 @@ fn main() -> Result<()> {
             );
             let written = cratification_intake::run(&crate_specs, &output_dir)?;
             println!("Emitted {} cratification packet(s):", written.len());
+            for path in &written {
+                println!("  -> {}", path.display());
+            }
+            Ok(())
+        }
+        Command::SeedExploration {
+            instruction_file,
+            evidence,
+            goal,
+            perspectives,
+            output_dir,
+        } => {
+            println!(
+                "Seeding exploration round for goal '{goal}' from {}...",
+                instruction_file.display()
+            );
+            let evidence: Vec<String> = evidence.iter().map(|p| p.display().to_string()).collect();
+            let written = exploration_seed::run(
+                &instruction_file,
+                evidence,
+                &goal,
+                perspectives,
+                &output_dir,
+            )?;
+            println!("Emitted {} exploration packet(s):", written.len());
             for path in &written {
                 println!("  -> {}", path.display());
             }
