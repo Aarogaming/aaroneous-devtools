@@ -1227,6 +1227,161 @@ fn promote_locked(config: &RegistrarConfig, task_id: &str) -> Result<()> {
     }
 }
 
+/// Cleanly revert an already-promoted commit (M50 —
+/// `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`). Mirrors `promote`'s own
+/// shape rather than inventing a new one: validates the target first, does
+/// its work on a fresh isolated branch (never directly on `main`, since a
+/// revert can itself conflict with commits made since — it goes through the
+/// same review gate as any other change), pushes that branch, and always
+/// restores the original branch afterward. Does not open a pull request
+/// itself, for the same reason `promote` doesn't — see
+/// `governance/LOCAL_MODEL_AUTONOMY_POLICY.md`.
+///
+/// Deciding *when* a revert is warranted is explicitly out of scope (a
+/// human/cloud-agent judgment call, same as the rest of this pipeline's
+/// Tier-2-adjacent decisions) — this only makes "undo that, safely and with
+/// a recorded reason" fast once the decision is already made.
+///
+/// `revert_log_path` is the caller-supplied, absolute path to
+/// `governance/REVERT_LOG.md` (or wherever the caller wants the evidence
+/// trail kept) — kept as an explicit parameter rather than a `RegistrarConfig`
+/// field because it's a per-invocation output path, the same shape
+/// `RegistrarAction::Dashboard`'s existing `--output` argument already uses
+/// in `main.rs`, and it keeps every existing `RegistrarConfig` fixture/test
+/// untouched.
+pub fn revert_promotion(
+    config_path: &Path,
+    commit: &str,
+    reason: &str,
+    revert_log_path: &Path,
+) -> Result<()> {
+    let config = load_config(config_path)?;
+    let now = now_secs()?;
+    with_reservation(
+        &config.reservation_directory,
+        "foundation.agentic-registrar.revert-promotion",
+        now,
+        || revert_promotion_locked(&config, commit, reason, revert_log_path),
+    )
+}
+
+/// Outcome of the revert-and-push closure inside `revert_promotion_locked`,
+/// mirroring `PromoteOutcome` for the same reason: kept distinct from a hard
+/// `Err` so the caller can still always attempt to restore the original
+/// branch before deciding what to report.
+enum RevertOutcome {
+    Pushed,
+    CommittedNotPushed(String),
+    RevertFailed(String),
+}
+
+fn revert_promotion_locked(
+    config: &RegistrarConfig,
+    commit: &str,
+    reason: &str,
+    revert_log_path: &Path,
+) -> Result<()> {
+    if !revert_log_path.is_absolute() {
+        bail!(
+            "revert log path must be absolute: {}",
+            revert_log_path.display()
+        );
+    }
+    if reason.trim().is_empty() {
+        bail!(
+            "a revert requires a non-empty reason — it is the only record of why this was undone"
+        );
+    }
+
+    let resolved = git_resolve_commit(&config.checkout, commit)
+        .with_context(|| format!("cannot revert unknown commit '{commit}'"))?;
+    if !git_is_ancestor_of_main(&config.checkout, &resolved)? {
+        bail!(
+            "commit {resolved} is not reachable from 'main' in this checkout — refusing to \
+             revert a commit that was never merged"
+        );
+    }
+
+    let original_branch = git_current_branch(&config.checkout)?;
+    if !git_working_tree_clean(&config.checkout)? {
+        bail!(
+            "checkout has uncommitted changes on branch '{original_branch}'; refusing to \
+             revert onto a dirty working tree"
+        );
+    }
+
+    let is_merge_commit = git_commit_parent_count(&config.checkout, &resolved)? > 1;
+
+    let short_sha = &resolved[..resolved.len().min(8)];
+    let branch_name = format!("local-agent/revert-{short_sha}");
+    git_checkout_new_branch(&config.checkout, &branch_name)
+        .with_context(|| format!("failed to create isolated branch '{branch_name}'"))?;
+
+    let outcome: Result<RevertOutcome> = {
+        println!(
+            "agentic registrar: reverting {resolved} on branch '{branch_name}' \
+             ({})...",
+            if is_merge_commit {
+                "merge commit, -m 1"
+            } else {
+                "single commit"
+            }
+        );
+        match git_revert_commit(&config.checkout, &resolved, is_merge_commit) {
+            Ok(()) => match git_push_branch(&config.checkout, &branch_name) {
+                Ok(()) => Ok(RevertOutcome::Pushed),
+                Err(push_err) => Ok(RevertOutcome::CommittedNotPushed(push_err.to_string())),
+            },
+            Err(err_msg) => {
+                git_revert_abort_best_effort(&config.checkout);
+                Ok(RevertOutcome::RevertFailed(err_msg))
+            }
+        }
+    };
+
+    // Always attempt to restore the original branch before deciding what to
+    // report, whatever happened above — same discipline `promote_locked`
+    // follows, so a revert attempt never leaves the checkout sitting on a
+    // throwaway branch.
+    let restore = git_checkout_branch(&config.checkout, &original_branch);
+    let outcome = outcome?;
+    restore.with_context(|| {
+        format!("revert result computed but failed to restore original branch '{original_branch}'")
+    })?;
+
+    match outcome {
+        RevertOutcome::Pushed => {
+            append_revert_log(revert_log_path, &resolved, reason, &branch_name, "pushed")?;
+            println!(
+                "agentic registrar: pushed revert of {resolved} to branch '{branch_name}' — \
+                 open a PR for full CI + cloud-agent review"
+            );
+            Ok(())
+        }
+        RevertOutcome::CommittedNotPushed(push_err) => {
+            // Same reasoning as promote_locked: a push/network failure is
+            // not evidence the revert itself is wrong, so the commit and
+            // branch are left in place locally for a manual `git push`
+            // retry rather than discarded.
+            append_revert_log(
+                revert_log_path,
+                &resolved,
+                reason,
+                &branch_name,
+                "committed, push failed",
+            )?;
+            bail!(
+                "revert of {resolved} committed to local branch '{branch_name}' but push to \
+                 origin failed, branch left in place for retry: {push_err}"
+            );
+        }
+        RevertOutcome::RevertFailed(err_msg) => {
+            git_delete_local_branch(&config.checkout, &branch_name);
+            bail!("git revert failed for commit {resolved}, rolled back:\n{err_msg}");
+        }
+    }
+}
+
 pub fn run_pipeline(config_path: &Path) -> Result<()> {
     println!("=== Running Closed-Loop Autonomous Development Pipeline ===");
     let config = load_config(config_path)?;
@@ -2226,6 +2381,175 @@ fn git_push_branch(checkout: &Path, branch: &str) -> Result<()> {
     if !status.success() {
         bail!("git push -u origin {branch} failed");
     }
+    Ok(())
+}
+
+/// Resolve `commit` (a full or abbreviated sha, or any other git revision
+/// expression) to a full sha, failing loudly if it does not name a real
+/// commit object in `checkout` — a revert must never silently no-op on an
+/// invalid or unreachable commit (M50's explicit requirement).
+fn git_resolve_commit(checkout: &Path, commit: &str) -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--verify", &format!("{commit}^{{commit}}")])
+        .current_dir(checkout)
+        .output()
+        .context("Failed to run git rev-parse --verify")?;
+    if !output.status.success() {
+        bail!(
+            "'{commit}' does not name a commit in this checkout: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let full = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if full.is_empty() {
+        bail!("'{commit}' resolved to an empty commit hash");
+    }
+    Ok(full)
+}
+
+/// Whether `commit` is reachable from `main` in `checkout`. `git merge-base
+/// --is-ancestor` exits 0 when it is, 1 when it plainly is not, and any
+/// other code means the check itself failed (e.g. no local `main`) — that
+/// last case must not be treated as "not an ancestor".
+fn git_is_ancestor_of_main(checkout: &Path, commit: &str) -> Result<bool> {
+    let status = Command::new("git")
+        .args(["merge-base", "--is-ancestor", commit, "main"])
+        .current_dir(checkout)
+        .status()
+        .context("Failed to run git merge-base --is-ancestor")?;
+    match status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => bail!("git merge-base --is-ancestor {commit} main failed to run to completion"),
+    }
+}
+
+/// Number of parents listed by `git rev-list --parents -n 1 <commit>`,
+/// i.e. everything after the commit hash itself in that one line of
+/// output. Factored out as a pure function so the merge-vs-squash decision
+/// (more than one parent => merge commit => needs `-m 1`) is unit-testable
+/// without a real git subprocess.
+fn count_parents_from_rev_list_output(output: &str) -> usize {
+    output.split_whitespace().skip(1).count()
+}
+
+fn git_commit_parent_count(checkout: &Path, commit: &str) -> Result<usize> {
+    let output = Command::new("git")
+        .args(["rev-list", "--parents", "-n", "1", commit])
+        .current_dir(checkout)
+        .output()
+        .context("Failed to run git rev-list --parents")?;
+    if !output.status.success() {
+        bail!(
+            "git rev-list --parents -n 1 {commit} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    Ok(count_parents_from_rev_list_output(
+        &String::from_utf8_lossy(&output.stdout),
+    ))
+}
+
+/// Run the actual revert. `-m 1` is required for a merge commit (parent 1 is
+/// always "mainline" by convention here, since `promote`/this pipeline only
+/// ever merges via squash or fast-forward-style single-parent history onto
+/// `main` — a real octopus merge is outside this pipeline's shape) and must
+/// be omitted for an ordinary commit, where git would otherwise reject it.
+fn git_revert_commit(checkout: &Path, commit: &str, is_merge_commit: bool) -> Result<(), String> {
+    let mut args: Vec<&str> = vec!["revert", "--no-edit"];
+    if is_merge_commit {
+        args.push("-m");
+        args.push("1");
+    }
+    args.push(commit);
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(checkout)
+        .output()
+        .map_err(|e| format!("Failed to spawn git revert: {e}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        Err(format!("git revert stderr:\n{stderr}\nstdout:\n{stdout}"))
+    }
+}
+
+/// Best-effort cleanup after a failed `git revert` (e.g. a conflict left the
+/// working tree mid-revert). Mirrors `git_delete_local_branch`'s own
+/// best-effort discipline: failure here is logged, not propagated, since it
+/// must never mask the real revert failure already being reported, and
+/// `git revert --abort` legitimately fails/no-ops when there was nothing to
+/// abort (a non-conflict failure that never entered revert state).
+fn git_revert_abort_best_effort(checkout: &Path) {
+    let status = Command::new("git")
+        .args(["revert", "--abort"])
+        .current_dir(checkout)
+        .status();
+    if !matches!(status, Ok(s) if s.success()) {
+        eprintln!(
+            "agentic registrar: note: git revert --abort found nothing to clean up (or failed) \
+             after a failed revert attempt"
+        );
+    }
+}
+
+/// Escape a value for safe embedding in a single markdown table cell: pipes
+/// would otherwise break the table's column structure, and embedded
+/// newlines would otherwise break the row layout entirely.
+fn escape_markdown_table_cell(value: &str) -> String {
+    value.replace('|', "\\|").replace(['\n', '\r'], " ")
+}
+
+/// Append one row to `governance/REVERT_LOG.md` (or wherever the caller
+/// points `revert_log_path`), creating the file with an explanatory header
+/// the first time. Kept as its own dedicated log — per M50's design — rather
+/// than mixed into `COORDINATION_QUEUE.md`'s primary-lane history, so "why
+/// was this undone" survives as its own evidence trail.
+fn append_revert_log(
+    revert_log_path: &Path,
+    commit: &str,
+    reason: &str,
+    branch_name: &str,
+    status: &str,
+) -> Result<()> {
+    const HEADER: &str = "# Revert Log\n\n\
+Records every commit reverted via `agentic_registrar::revert_promotion` (M50 —\n\
+see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`), the stated reason, and\n\
+the isolated branch carrying the revert — kept separate from\n\
+`governance/COORDINATION_QUEUE.md`'s primary-lane history so \"why was this\n\
+undone\" survives as its own evidence trail rather than mixing into ordinary\n\
+task rows. Deciding *when* a revert is warranted stays a human/cloud-agent\n\
+judgment call; this only records that one already happened.\n\n\
+| Commit reverted | Reason | Branch | Status | Timestamp (unix secs) |\n\
+| --- | --- | --- | --- | --- |\n";
+
+    if let Some(parent) = revert_log_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let needs_header = !revert_log_path.exists();
+
+    let now = now_secs()?;
+    let row = format!(
+        "| {} | {} | {} | {} | {now} |\n",
+        escape_markdown_table_cell(commit),
+        escape_markdown_table_cell(reason),
+        escape_markdown_table_cell(branch_name),
+        escape_markdown_table_cell(status),
+    );
+
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(revert_log_path)?;
+    if needs_header {
+        file.write_all(HEADER.as_bytes())?;
+    }
+    file.write_all(row.as_bytes())?;
     Ok(())
 }
 
@@ -3236,5 +3560,233 @@ mod tests {
         let tools = v["result"]["tools"].as_array().unwrap();
         assert!(tools.iter().any(|t| t["name"] == "verify_gate_suite"));
         assert!(tools.iter().any(|t| t["name"] == "get_repository_status"));
+    }
+
+    fn git_run(checkout: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(checkout)
+            .status()
+            .unwrap_or_else(|e| panic!("failed to run git {args:?}: {e}"));
+        assert!(
+            status.success(),
+            "git {args:?} failed in {}",
+            checkout.display()
+        );
+    }
+
+    fn git_head_sha(checkout: &Path) -> String {
+        let out = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(checkout)
+            .output()
+            .expect("git rev-parse HEAD");
+        assert!(out.status.success());
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn count_parents_from_rev_list_output_distinguishes_merge_from_single() {
+        // A root commit: just its own hash, no parents.
+        assert_eq!(count_parents_from_rev_list_output("abc123\n"), 0);
+        // An ordinary (single-parent) commit.
+        assert_eq!(count_parents_from_rev_list_output("abc123 def456\n"), 1);
+        // A merge commit: two or more parents after the commit hash.
+        assert_eq!(
+            count_parents_from_rev_list_output("abc123 def456 ghi789\n"),
+            2
+        );
+    }
+
+    #[test]
+    fn revert_promotion_rejects_empty_reason_before_touching_git() {
+        let (d, config, cfg_path) = fixture();
+        let revert_log = d.path().join("REVERT_LOG.md");
+        let err = revert_promotion(&cfg_path, "deadbeef", "   ", &revert_log)
+            .expect_err("blank reason must be rejected");
+        assert!(err.to_string().contains("non-empty reason"), "{err}");
+        assert_eq!(
+            git_current_branch(&config.checkout).expect("branch"),
+            "main"
+        );
+        assert!(!revert_log.exists());
+    }
+
+    #[test]
+    fn revert_promotion_rejects_relative_revert_log_path() {
+        let (_d, _config, cfg_path) = fixture();
+        let err = revert_promotion(
+            &cfg_path,
+            "deadbeef",
+            "a real reason",
+            Path::new("governance/REVERT_LOG.md"),
+        )
+        .expect_err("relative revert log path must be rejected");
+        assert!(err.to_string().contains("must be absolute"), "{err}");
+    }
+
+    #[test]
+    fn revert_promotion_rejects_invalid_commit_hash() {
+        let (d, _config, cfg_path) = fixture();
+        let revert_log = d.path().join("REVERT_LOG.md");
+        let err = revert_promotion(&cfg_path, "not-a-real-commit", "cleanup", &revert_log)
+            .expect_err("a commit that does not exist must be rejected, not silently no-op");
+        let chained = format!("{err:#}");
+        assert!(chained.contains("does not name a commit"), "{chained}");
+        assert!(
+            !revert_log.exists(),
+            "a rejected revert must not log anything"
+        );
+    }
+
+    #[test]
+    fn revert_promotion_rejects_commit_unreachable_from_main() {
+        let (d, config, cfg_path) = fixture();
+        git_run(&config.checkout, &["checkout", "-q", "-b", "side"]);
+        fs::write(
+            config.checkout.join("crates/demo/src/lib.rs"),
+            "pub fn existing() {}\npub fn only_on_side() {}\n",
+        )
+        .expect("write side change");
+        git_run(&config.checkout, &["commit", "-q", "-am", "side change"]);
+        let side_sha = git_head_sha(&config.checkout);
+        // Back to main without merging 'side' in — side_sha stays unreachable
+        // from main, which is exactly the case this must reject.
+        git_run(&config.checkout, &["checkout", "-q", "main"]);
+
+        let revert_log = d.path().join("REVERT_LOG.md");
+        let err = revert_promotion(&cfg_path, &side_sha, "should be rejected", &revert_log)
+            .expect_err("a commit never merged to main must be rejected, not silently no-op'd");
+        assert!(
+            err.to_string().contains("not reachable from 'main'"),
+            "{err}"
+        );
+        assert!(!revert_log.exists());
+        assert_eq!(
+            git_current_branch(&config.checkout).expect("branch"),
+            "main",
+            "a rejected revert must not leave the checkout on another branch"
+        );
+    }
+
+    #[test]
+    fn revert_promotion_pushes_isolated_branch_and_restores_original_branch_on_success() {
+        let (d, config, cfg_path) = fixture();
+        fs::write(
+            config.checkout.join("crates/demo/src/lib.rs"),
+            "pub fn existing() {}\npub fn added_by_promotion() {}\n",
+        )
+        .expect("write promoted change");
+        git_run(
+            &config.checkout,
+            &["commit", "-q", "-am", "feat(demo): add added_by_promotion"],
+        );
+        git_run(&config.checkout, &["push", "-q", "origin", "main"]);
+        let target_sha = git_head_sha(&config.checkout);
+
+        let revert_log = d.path().join("governance").join("REVERT_LOG.md");
+        revert_promotion(&cfg_path, &target_sha, "found a regression", &revert_log)
+            .expect("a clean single-commit revert must succeed");
+
+        assert_eq!(
+            git_current_branch(&config.checkout).expect("branch"),
+            "main",
+            "a successful revert must still restore the original branch"
+        );
+        let lib_on_main = fs::read_to_string(config.checkout.join("crates/demo/src/lib.rs"))
+            .expect("read lib.rs on main");
+        assert!(
+            lib_on_main.contains("added_by_promotion"),
+            "main must be untouched — the revert only exists on the isolated branch"
+        );
+
+        let short = &target_sha[..8];
+        let branch_name = format!("local-agent/revert-{short}");
+        let show = Command::new("git")
+            .args(["show", &format!("{branch_name}:crates/demo/src/lib.rs")])
+            .current_dir(&config.checkout)
+            .output()
+            .expect("git show on the revert branch");
+        assert!(show.status.success(), "revert branch must exist locally");
+        assert!(
+            !String::from_utf8_lossy(&show.stdout).contains("added_by_promotion"),
+            "the revert branch must actually undo the change"
+        );
+
+        let branches = Command::new("git")
+            .args(["branch", "-r"])
+            .current_dir(&config.checkout)
+            .output()
+            .expect("git branch -r");
+        let branches = String::from_utf8_lossy(&branches.stdout);
+        assert!(
+            branches.contains(&format!("origin/{branch_name}")),
+            "expected pushed revert branch on origin, got: {branches}"
+        );
+
+        let log_contents = fs::read_to_string(&revert_log).expect("revert log written");
+        assert!(log_contents.contains("# Revert Log"));
+        assert!(log_contents.contains(&target_sha));
+        assert!(log_contents.contains("found a regression"));
+        assert!(log_contents.contains(&branch_name));
+        assert!(log_contents.contains("pushed"));
+    }
+
+    #[test]
+    fn revert_promotion_uses_mainline_flag_for_a_merge_commit() {
+        let (d, config, cfg_path) = fixture();
+        git_run(&config.checkout, &["checkout", "-q", "-b", "feature"]);
+        fs::write(
+            config.checkout.join("crates/demo/src/lib.rs"),
+            "pub fn existing() {}\npub fn from_feature() {}\n",
+        )
+        .expect("write feature change");
+        git_run(
+            &config.checkout,
+            &["commit", "-q", "-am", "feat: from_feature"],
+        );
+        git_run(&config.checkout, &["checkout", "-q", "main"]);
+        git_run(
+            &config.checkout,
+            &["merge", "--no-ff", "-q", "-m", "Merge feature", "feature"],
+        );
+        git_run(&config.checkout, &["push", "-q", "origin", "main"]);
+        let merge_sha = git_head_sha(&config.checkout);
+
+        // Sanity: this really is a merge commit, so a plain (non -m 1)
+        // `git revert` would fail — success below proves the -m 1 branch
+        // was actually taken, not skipped.
+        assert_eq!(
+            git_commit_parent_count(&config.checkout, &merge_sha).expect("parent count"),
+            2
+        );
+
+        let revert_log = d.path().join("REVERT_LOG.md");
+        revert_promotion(&cfg_path, &merge_sha, "bad merge", &revert_log)
+            .expect("a merge commit revert must succeed via -m 1");
+
+        let lib_on_main = fs::read_to_string(config.checkout.join("crates/demo/src/lib.rs"))
+            .expect("read lib.rs on main");
+        assert!(
+            lib_on_main.contains("from_feature"),
+            "main must be untouched by the revert"
+        );
+
+        let short = &merge_sha[..8];
+        let branch_name = format!("local-agent/revert-{short}");
+        let show = Command::new("git")
+            .args(["show", &format!("{branch_name}:crates/demo/src/lib.rs")])
+            .current_dir(&config.checkout)
+            .output()
+            .expect("git show on the revert branch");
+        assert!(show.status.success());
+        assert!(
+            !String::from_utf8_lossy(&show.stdout).contains("from_feature"),
+            "the merge revert must actually undo the merged change"
+        );
+
+        let log_contents = fs::read_to_string(&revert_log).expect("revert log written");
+        assert!(log_contents.contains(&merge_sha));
+        assert!(log_contents.contains("bad merge"));
     }
 }

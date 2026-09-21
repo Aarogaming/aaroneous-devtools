@@ -461,6 +461,27 @@ enum RegistrarAction {
         #[arg(long)]
         reason: String,
     },
+    /// Cleanly revert an already-promoted commit (M50): validates `commit`
+    /// is real and reachable from `main`, reverts it on a new isolated
+    /// `local-agent/revert-{sha}` branch (never directly on `main`), pushes
+    /// that branch, and records the revert (commit, reason, branch,
+    /// timestamp) as a row in `revert_log`. Never opens a pull request
+    /// itself — see governance/LOCAL_MODEL_AUTONOMY_POLICY.md. Deciding
+    /// *when* a revert is warranted stays a human/cloud-agent call; this
+    /// only executes one already decided.
+    RevertPromotion {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        commit: String,
+        #[arg(long)]
+        reason: String,
+        /// Absolute path to the revert evidence log, e.g.
+        /// governance/REVERT_LOG.md. Created with an explanatory header on
+        /// first use.
+        #[arg(long)]
+        revert_log: PathBuf,
+    },
     Serve {
         #[arg(long)]
         config: PathBuf,
@@ -516,6 +537,12 @@ fn main() -> Result<()> {
             RegistrarAction::ResetCircuitBreaker { config, reason } => {
                 agentic_registrar::reset_circuit_breaker(&config, &reason)
             }
+            RegistrarAction::RevertPromotion {
+                config,
+                commit,
+                reason,
+                revert_log,
+            } => agentic_registrar::revert_promotion(&config, &commit, &reason, &revert_log),
             RegistrarAction::Serve { config, port } => agentic_registrar::serve(&config, port),
             RegistrarAction::SetupMcp { port } => {
                 let paths = agentic_registrar::auto_register_ide_mcp_config(port)?;
