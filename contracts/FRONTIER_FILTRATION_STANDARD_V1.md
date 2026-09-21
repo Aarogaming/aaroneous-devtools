@@ -83,3 +83,32 @@ $$\text{Composite Score} = \max\left(0.0, \; 10.0 \cdot \text{Linear Score} - \t
 | **60.0 – 79.9** | `CRATIFY_KERNEL_EXTRACTION` | Stage in `dev/legacy_staging/`. Run local agent extraction loop to isolate kernel needle, replace heap with ring buffers, and rebase into `crates/<target>/`. |
 | **40.0 – 59.9** | `BORROW_SPEC_AND_SYNTHESIZE` | Do not import source. Use the candidate's test fixtures and algorithmic design as a reference for clean-room synthesis by local GPU agent. |
 | **< 40.0** | `REFACTOR_COST_PROHIBITIVE` | Refactoring cost exceeds clean-room implementation. Disqualify. |
+
+### 5.1 What `DIRECT_ADOPT_WITH_WRAPPER` does and does not claim
+
+**Clarified 2026-09-20**, after this outcome was about to be misapplied to a
+candidate (`cranelift`) that is not near-compliant by any reasonable reading —
+large, mature, heap-heavy internally, its repository is the entire Wasmtime
+monorepo. `DIRECT_ADOPT_WITH_WRAPPER` requires the candidate to **actually be**
+near-compliant already; "we can wrap it" is not the same claim as "it is
+near-compliant," and this tier requires the latter, not just the former. A
+wrapper isolates a dependency's behavior; it does not change what that
+dependency's own internals do. **Wrapping a non-compliant crate never makes that
+crate compliant — only that specific, provable boundary can be, and "provable"
+means demonstrated by this repository's own gate stack (`cargo xtask gate`,
+`ast_auditor`'s hot-path scan), not asserted because an adapter exists.**
+
+If the actual goal is "use a large, valuable, non-compliant dependency, but only
+through a boundary Aaroneous's hot-path code never crosses at runtime" (the shape
+a JIT compiler backend genuinely requires — heap-allocating compilation happens
+once, off the hot path; the hot path only ever executes already-compiled code) —
+that is a **distinct pattern from this tier**, not a variant of it, and this
+table's quadrant scoring (which measures refactoring feasibility) does not apply
+to it, since nothing is being refactored. Evaluating that pattern means proving
+the specific call sites Aaroneous's hot-path crates use never allocate — the same
+evidence bar `CONTRIBUTING.md`'s "no heap on hot paths" rule already requires for
+Aaroneous's own source — not scoring the dependency against these quadrants at
+all. Any status label or claim describing such an integration as "Aaroneous
+compliant" is false; the accurate claim is narrower: "Aaroneous's own hot-path
+code at this boundary is compliant; the dependency behind it is not, and is not
+claimed to be."
