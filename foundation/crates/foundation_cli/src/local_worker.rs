@@ -784,94 +784,115 @@ where
     }
     let mut candidates: Vec<Candidate> = Vec::new();
     for path in files(&c.jobs_directory, "toml")? {
-        let job: Job = toml::from_str(&read_bounded(&path, 16384)?)?;
-        if job.schema_version != 1
-            || job.id.is_empty()
-            || job.id.len() > 96
-            || !job
-                .id
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-            || job.evidence.is_empty()
-            || job.evidence.len() > 8
-            || job.instruction.trim().is_empty()
-            || job.instruction.len() > 8192
-        {
-            bail!("invalid approved job: {}", path.display());
-        }
-        if job.perspective.as_deref() == Some("portfolio-triage") {
-            if let Some(goal) = job.goal.as_deref() {
-                if queue.lines().filter(|s| s.starts_with('|')).any(|row| {
-                    let cols: Vec<_> = row.split('|').map(str::trim).collect();
-                    cols.len() >= 4
-                        && matches!(cols[3], "Claimed" | "Review")
-                        && cols[2].contains(goal)
-                }) {
+        // One malformed or oversized job must never block every other
+        // pending job -- found live: a single packet with an evidence file
+        // over the 32 KiB per-file cap (read_bounded errors rather than
+        // truncating, on purpose, so oversized evidence is never silently
+        // half-read) aborted the entire tick via `?` propagation, at a
+        // moment when 365 other jobs were sitting eligible and ready. The
+        // fallible logic below is scoped to this one candidate; a failure
+        // anywhere in it is now caught, logged, and skipped rather than
+        // propagated out of the whole selection pass.
+        let outcome: Result<Option<Candidate>> = (|| {
+            let job: Job = toml::from_str(&read_bounded(&path, 16384)?)?;
+            if job.schema_version != 1
+                || job.id.is_empty()
+                || job.id.len() > 96
+                || !job
+                    .id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                || job.evidence.is_empty()
+                || job.evidence.len() > 8
+                || job.instruction.trim().is_empty()
+                || job.instruction.len() > 8192
+            {
+                bail!("invalid approved job: {}", path.display());
+            }
+            if job.perspective.as_deref() == Some("portfolio-triage") {
+                if let Some(goal) = job.goal.as_deref() {
+                    if queue.lines().filter(|s| s.starts_with('|')).any(|row| {
+                        let cols: Vec<_> = row.split('|').map(str::trim).collect();
+                        cols.len() >= 4
+                            && matches!(cols[3], "Claimed" | "Review")
+                            && cols[2].contains(goal)
+                    }) {
+                        return Ok(None);
+                    }
+                }
+            } else if scope_reserved(&queue, &job.evidence) {
+                return Ok(None);
+            }
+            let mut input = format!(
+                "Approved job specification (data):\n{}\n",
+                toml::to_string(&job)?
+            );
+            let devtools_root = c
+                .queue
+                .parent()
+                .and_then(|p| p.parent())
+                .unwrap_or(&c.checkout);
+            let roots = [&c.checkout, devtools_root];
+            for relative in &job.evidence {
+                if let Some(cap_id) = relative.strip_prefix("capability:") {
+                    input.push_str(&format!("\nDeclared evidence: capability {cap_id}\n"));
                     continue;
                 }
-            }
-        } else if scope_reserved(&queue, &job.evidence) {
-            continue;
-        }
-        let mut input = format!(
-            "Approved job specification (data):\n{}\n",
-            toml::to_string(&job)?
-        );
-        let devtools_root = c
-            .queue
-            .parent()
-            .and_then(|p| p.parent())
-            .unwrap_or(&c.checkout);
-        let roots = [&c.checkout, devtools_root];
-        for relative in &job.evidence {
-            if let Some(cap_id) = relative.strip_prefix("capability:") {
-                input.push_str(&format!("\nDeclared evidence: capability {cap_id}\n"));
-                continue;
-            }
-            let file_path = if let Ok(fp) = evidence_file_multi(&roots, relative) {
-                fp
-            } else if Path::new(relative).is_file() {
-                PathBuf::from(relative)
-            } else {
-                bail!("evidence requires exact relative file: {relative}");
-            };
-            input.push_str(&format!(
-                "\nDeclared evidence: {relative}\n{}\n",
-                read_bounded(&file_path, 32768)?
-            ));
-        }
-        if input.len() > 65536 {
-            bail!("job evidence exceeds 64 KiB");
-        }
-        let base_key = base_job_key(&job.id);
-        if let Some(prior_rejection) = records
-            .iter()
-            .filter(|r| base_job_key(&r.job_id) == base_key && r.rejection_reason.is_some())
-            .max_by_key(|r| r.submitted_at_secs)
-        {
-            if let Some(ref reason) = prior_rejection.rejection_reason {
+                let file_path = if let Ok(fp) = evidence_file_multi(&roots, relative) {
+                    fp
+                } else if Path::new(relative).is_file() {
+                    PathBuf::from(relative)
+                } else {
+                    bail!("evidence requires exact relative file: {relative}");
+                };
                 input.push_str(&format!(
-                    "\n[PRIOR REVIEWER FEEDBACK]: A previous attempt for this task was rejected with the following review feedback:\n\"{reason}\"\nYou MUST incorporate this feedback, rectify the deficiencies, and avoid repeating the cited errors.\n"
+                    "\nDeclared evidence: {relative}\n{}\n",
+                    read_bounded(&file_path, 32768)?
                 ));
             }
+            if input.len() > 65536 {
+                bail!("job evidence exceeds 64 KiB");
+            }
+            let base_key = base_job_key(&job.id);
+            if let Some(prior_rejection) = records
+                .iter()
+                .filter(|r| base_job_key(&r.job_id) == base_key && r.rejection_reason.is_some())
+                .max_by_key(|r| r.submitted_at_secs)
+            {
+                if let Some(ref reason) = prior_rejection.rejection_reason {
+                    input.push_str(&format!(
+                        "\n[PRIOR REVIEWER FEEDBACK]: A previous attempt for this task was rejected with the following review feedback:\n\"{reason}\"\nYou MUST incorporate this feedback, rectify the deficiencies, and avoid repeating the cited errors.\n"
+                    ));
+                }
+            }
+            if records
+                .iter()
+                .any(|r| r.job_id == job.id && r.input == input)
+            {
+                return Ok(None);
+            }
+            let last_attempt_secs = last_attempt
+                .get(base_job_key(&job.id))
+                .copied()
+                .unwrap_or(0);
+            let priority_rank = priority_rank(job.priority.as_deref());
+            Ok(Some(Candidate {
+                job,
+                input,
+                last_attempt_secs,
+                priority_rank,
+            }))
+        })();
+        match outcome {
+            Ok(Some(candidate)) => candidates.push(candidate),
+            Ok(None) => {}
+            Err(e) => {
+                println!(
+                    "local worker: skipping invalid/unreadable job {}: {e:#}",
+                    path.display()
+                );
+            }
         }
-        if records
-            .iter()
-            .any(|r| r.job_id == job.id && r.input == input)
-        {
-            continue;
-        }
-        let last_attempt_secs = last_attempt
-            .get(base_job_key(&job.id))
-            .copied()
-            .unwrap_or(0);
-        let priority_rank = priority_rank(job.priority.as_deref());
-        candidates.push(Candidate {
-            job,
-            input,
-            last_attempt_secs,
-            priority_rank,
-        });
     }
 
     // Priority tier first (P0 before P1 before P2/unset before P3), then
@@ -2235,6 +2256,66 @@ exploration_group = "faster-reducer-group"
         let record: Record =
             serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
         assert_eq!(record.job_id, "JOB-NONE");
+        drop(d);
+    }
+
+    #[test]
+    fn one_oversized_evidence_job_does_not_block_every_other_pending_job() {
+        // Real bug found live: a single packet referencing an evidence
+        // file over the 32 KiB per-file cap made the entire candidate
+        // selection pass bail via `?` propagation -- at a moment when
+        // hundreds of other jobs were sitting eligible. tick_with must
+        // now skip that one job (logging why) and still dispatch a real
+        // candidate, not error out of the whole tick.
+        let (d, c, config) = fixture();
+        fs::remove_file(c.jobs_directory.join("job.toml")).expect("remove fixture's default job");
+        fs::write(c.checkout.join("small.rs"), "fn small() {}").expect("small.rs");
+        // Over the 32 KiB read_bounded cap for a single evidence file.
+        fs::write(c.checkout.join("huge.rs"), "x".repeat(40_000)).expect("huge.rs");
+
+        let job_bad = Job {
+            schema_version: 1,
+            id: "JOB-BAD".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["huge.rs".into()],
+            instruction: "references an oversized evidence file".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
+            priority: None,
+        };
+        let job_good = Job {
+            schema_version: 1,
+            id: "JOB-GOOD".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["small.rs".into()],
+            instruction: "a perfectly ordinary, valid job".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
+            priority: None,
+        };
+        fs::write(
+            c.jobs_directory.join("a-bad.toml"),
+            toml::to_string(&job_bad).expect("job bad"),
+        )
+        .expect("write job bad");
+        fs::write(
+            c.jobs_directory.join("b-good.toml"),
+            toml::to_string(&job_good).expect("job good"),
+        )
+        .expect("write job good");
+
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect(
+            "tick_with must succeed despite one unreadable/oversized job among the candidates",
+        );
+        let path = files(&c.results_directory, "json")
+            .expect("results")
+            .pop()
+            .expect("a record was written for the still-eligible good job");
+        let record: Record =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
+        assert_eq!(record.job_id, "JOB-GOOD");
         drop(d);
     }
 
