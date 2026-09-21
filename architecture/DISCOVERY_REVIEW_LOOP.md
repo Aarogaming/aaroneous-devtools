@@ -75,6 +75,66 @@ condition it fires automatically versus needing a person to kick it off.
    unpredictable), but on a fixed periodic cadence with accumulated evidence,
    matching this repo's existing evidence-before-status-change discipline.
 
+## Rejection quality and boundary firmness
+
+Discussed 2026-09-20: whether to treat this loop's accumulated outcomes like a
+machine learning system. The useful half of that framing is already implicit in
+what's built; the risky half is worth naming and explicitly declining.
+
+**Useful: treat the evidence trail like a dataset, not a log to discard.** Every
+`REJECT_LOG_REASON`/`ARCHIVE_AS_ROADMAPPED` outcome from
+`BUILD_WORTHINESS_STANDARD.md`, every `REFACTOR_COST_PROHIBITIVE` outcome from
+`FRONTIER_FILTRATION_STANDARD_V1.md`, every `Rejected`/`NeedsRevision` verdict
+from `cross_verifier.rs`, and (once M50 lands) every entry in
+`REVERT_LOG.md` is a labeled record: a candidate, a score or verdict, and
+increasingly a *reason*. The `Rubric drift check` above already asks someone to
+sample these periodically — that only works if the samples are worth reading.
+
+**Rejections are first-class output, not a lesser outcome of the pipeline — same
+standard as a Rust compiler error, not a discarded default.** A `rustc` error is
+not just "no"; it names the exact rule violated, the exact span, and often what
+would make it compile. A rejection anywhere in this loop should meet the same
+bar: which specific gate or quadrant failed (not just a composite score), what
+evidence was weighed, and — where it's knowable — what would need to be true for
+a different outcome. A terse "score 32.1, rejected" is worse than useless for the
+rubric-drift review it's supposed to feed; it can't be clustered by cause, so it
+can't tell anyone whether the rubric itself needs to change. This is a real
+authoring bar on every rejection this loop produces, not just a preference.
+
+**Don't reward the yes over the no.** A pipeline that only takes acceptances
+seriously (celebrated, merged, visible) and treats rejections as noise to be
+cleared out will drift toward whatever maximizes acceptance rate, not whatever is
+actually correct — the review, scoring, and archival machinery in this repo
+should give a well-evidenced "no" the same weight and permanence as a "yes": both
+get recorded, both get reasons, both are inputs to the next discovery pass and the
+periodic drift review, neither is treated as the pipeline's real product with the
+other as its byproduct.
+
+**Stand firm on boundaries; don't relax them under pressure, only under new
+evidence.** A rejection produced by a fixed rubric (`BUILD_WORTHINESS_STANDARD.md`,
+`FRONTIER_FILTRATION_STANDARD_V1.md`, `CHANGE_VERIFICATION_TIERS.md`) should not
+soften because a resubmission is rephrased, repeated, or insisted on — only
+because the actual evidence changed. This mirrors `governance/
+CHANGE_VERIFICATION_TIERS.md`'s existing "ambiguity defaults to the higher tier"
+rule and this session's own refusal to relax review requirements under direct
+pressure (see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`'s decisions log,
+2026-09-20, on the rejected self-approval draft flagged as instruction-poisoning-
+shaped). A rubric that bends to repetition
+instead of evidence isn't a boundary, it's a suggestion — and the whole point of
+writing these standards down was to make them hold the same way every time,
+regardless of who's asking or how many times.
+
+**Explicitly declined: training something to predict or make the accept/reject
+call.** A model trained on this repo's own accept/reject history would reproduce
+whatever bias already exists in that history with no way to distinguish "the
+rubric is right" from "the model learned the reviewer's blind spot," and it would
+replace an actual written reason with a number nobody can meaningfully argue
+with — undoing the entire point of the rejection-quality bar above. The dataset
+discipline is for periodic human/capable-agent review of drift (already
+`SCHEDULE.md`'s monthly cadence), not for training a scorer. If this is
+revisited later, it needs its own explicit decision, not a drift into it via
+"we already have the data."
+
 ## What "closing the loop" does not mean
 
 It does not mean unattended end-to-end automation from Discovery to a merged
