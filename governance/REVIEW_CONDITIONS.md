@@ -45,6 +45,7 @@ these conditions do not import Aaroneous's zero-allocation constraints.
 | A devtools-drafted patch is proposed for flow into an Aaroneous branch | 2 | Must pass Aaroneous's own native gates (the Aaroneous conditions table above applies in full once the patch targets Aaroneous); no autonomous writer treats its own generated output as pre-verified | `FOUNDATION_BOUNDARY.md` |
 | Adds or edits a UI change under `gui/` | 1 | Build/type checks plus meaningful behavior verification (not just a build pass) | `CONTRIBUTING.md` (devtools) |
 | A documentation-only change | 0 | Valid links, clean encoding/diffs; no test required to mirror a prose edit | `CONTRIBUTING.md` (devtools) |
+| A draft is verified via `dogfood::ComplianceProfile` (`VerifyDraftWithProfile`, M53) | 1 | `AaroneousStrict` and `DevtoolsOperatingModel` are not interchangeable: use `AaroneousStrict` (`cratify audit`) only for a draft targeting the Aaroneous repository; use `DevtoolsOperatingModel` (`cargo clippy --manifest-path foundation/Cargo.toml -- -D warnings`) only for a draft targeting devtools' own `foundation/`. Running `AaroneousStrict` against devtools code checks it against a stricter ruleset than devtools actually follows and produces false-positive findings, not a real compliance signal | `foundation/crates/foundation_cli/src/dogfood.rs` (M53), `governance/OPERATING_MODEL.md` |
 
 ## Ambiguity and gaps
 
