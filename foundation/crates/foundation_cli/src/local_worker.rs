@@ -1589,6 +1589,87 @@ fn tick_was_quiet(status_path: &Path, mtime_before: Option<std::time::SystemTime
 /// This predates and is independent of the adaptive-delay loop below —
 /// preserved here rather than dropped, since it's real maintenance that
 /// nothing else in this file performs.
+/// Moves a dispatched job's source packet out of `jobs_dir` into
+/// `jobs_archive_dir` once it has a *genuinely verified* completion
+/// signal -- `outcome == "accepted"` (from `record_exploration_outcome`)
+/// or a recorded outbox `accept` verdict in `verdicts_path` (M61) --
+/// mirroring the results-directory rotation in `run_pre_tick_maintenance`
+/// just below, but for the source packets themselves, which nothing
+/// previously cleaned up at all.
+///
+/// Deliberately narrow. An earlier version of this function treated any
+/// non-`"failed"` outcome as "done," which is wrong: `"pending-owner-
+/// review"` means exactly what it says -- nobody has reviewed it.
+/// Archiving a source packet the moment a draft merely exists, before
+/// any human or agent has judged it, would silently break the retry
+/// mechanism for the common case where a reviewer later rejects it and
+/// wants a redo: rejection's `[PRIOR REVIEWER FEEDBACK]` injection only
+/// works if the source packet is still in `jobs_dir` for the dispatch
+/// loop to find. Checked against the real pipeline before fixing this:
+/// of 716 real records, zero had `outcome == "accepted"` and only 2 had
+/// a real outbox accept verdict -- confirming review throughput, not
+/// disk hygiene, is the actual bottleneck; archiving unreviewed drafts
+/// as if they were "done" would have made that invisible, not fixed it.
+fn archive_dispatched_jobs(
+    jobs_dir: &Path,
+    results_dir: &Path,
+    archive_dir: &Path,
+    jobs_archive_dir: &Path,
+    verdicts_path: Option<&Path>,
+) -> Result<usize> {
+    let mut done_ids = std::collections::HashSet::new();
+    for dir in [results_dir, archive_dir] {
+        let Ok(paths) = files(dir, "json") else {
+            continue;
+        };
+        for path in paths {
+            if !is_result_file(&path) {
+                continue;
+            }
+            let Ok(text) = read_bounded(&path, 1_048_576) else {
+                continue;
+            };
+            let Ok(rec) = serde_json::from_str::<Record>(&text) else {
+                continue;
+            };
+            if rec.outcome == "accepted" {
+                done_ids.insert(rec.job_id);
+            }
+        }
+    }
+    if let Some(verdicts_path) = verdicts_path {
+        if let Ok(entries) = crate::outbox::list_verdicts(verdicts_path) {
+            for entry in entries {
+                if entry.verdict == "accept" {
+                    done_ids.insert(entry.job_id);
+                }
+            }
+        }
+    }
+    if done_ids.is_empty() {
+        return Ok(0);
+    }
+    fs::create_dir_all(jobs_archive_dir)?;
+    let mut archived = 0;
+    for path in files(jobs_dir, "toml")? {
+        let Ok(text) = read_bounded(&path, 16384) else {
+            continue;
+        };
+        let Ok(job) = toml::from_str::<Job>(&text) else {
+            continue;
+        };
+        if done_ids.contains(&job.id) {
+            if let Some(fname) = path.file_name() {
+                let dest = jobs_archive_dir.join(fname);
+                if fs::rename(&path, &dest).is_ok() {
+                    archived += 1;
+                }
+            }
+        }
+    }
+    Ok(archived)
+}
+
 fn run_pre_tick_maintenance(config_path: &Path) {
     let Ok(text) = read_bounded(config_path, 16384) else {
         return;
@@ -1611,6 +1692,27 @@ fn run_pre_tick_maintenance(config_path: &Path) {
                 }
             }
         }
+    }
+    // Clean up dispatched job packets before deciding whether to refill --
+    // so the same tick's throttle decision (job_converter's backlog count)
+    // is based on the real pending count, not one inflated by everything
+    // that's already been dispatched and never cleaned up.
+    if let Some(jobs_archive_dir) = c
+        .jobs_directory
+        .parent()
+        .map(|p| p.join("worker-jobs-archive"))
+    {
+        let verdicts_path = c
+            .results_directory
+            .parent()
+            .map(|p| p.join("outbox_verdicts.jsonl"));
+        let _ = archive_dispatched_jobs(
+            &c.jobs_directory,
+            &c.results_directory,
+            &c.archive_directory,
+            &jobs_archive_dir,
+            verdicts_path.as_deref(),
+        );
     }
     let _ = crate::job_converter::sync_and_refill_jobs(
         &c.checkout,
@@ -1737,6 +1839,122 @@ mod tests {
         let config = d.path().join("worker.toml");
         fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
         (d, c, config)
+    }
+    #[test]
+    fn archive_dispatched_jobs_only_moves_genuinely_verified_completions() {
+        // Real bug caught live, before it shipped: the first version of
+        // this function treated any non-"failed" outcome as "done" and
+        // would have archived a job the moment a draft merely existed --
+        // including "pending-owner-review", which means exactly what it
+        // says: nobody has reviewed it. That would silently break the
+        // retry-on-rejection mechanism (rejection's [PRIOR REVIEWER
+        // FEEDBACK] injection only works if the source packet is still
+        // in jobs_dir). Checked against the real pipeline before fixing:
+        // of 716 real records, zero had outcome == "accepted" and only 2
+        // had a real outbox accept verdict -- unreviewed drafts are the
+        // overwhelming majority, not stale dead weight, so archiving on
+        // "not failed" would have hidden a real review-throughput problem
+        // rather than cleaning up genuine dead weight.
+        let jobs = tempfile::tempdir().unwrap();
+        let results = tempfile::tempdir().unwrap();
+        let archive = tempfile::tempdir().unwrap();
+        let jobs_archive = jobs.path().join("archive-dest");
+        let verdicts_path = jobs.path().join("outbox_verdicts.jsonl");
+
+        let write_job = |id: &str| {
+            let job = Job {
+                schema_version: 1,
+                id: id.to_string(),
+                mode: Mode::Analysis,
+                evidence: vec!["lib.rs".into()],
+                instruction: "irrelevant for this test".into(),
+                perspective: None,
+                goal: None,
+                exploration_group: None,
+                priority: None,
+            };
+            fs::write(
+                jobs.path().join(format!("{}.toml", id.to_lowercase())),
+                toml::to_string(&job).unwrap(),
+            )
+            .unwrap();
+        };
+        let write_result = |dir: &Path, id: &str, outcome: &str| {
+            let record = Record {
+                schema_version: 1,
+                artifact_kind: "foundation.local-worker-result".into(),
+                job_id: id.to_string(),
+                submitted_at_secs: 1,
+                outcome: outcome.to_string(),
+                input: "x".into(),
+                proposal: None,
+                error: None,
+                pre_proof_report: None,
+                rejection_reason: None,
+                selected_branch: None,
+                selection_rationale: None,
+            };
+            fs::write(
+                dir.join(format!("{id}-0000.json")),
+                serde_json::to_vec_pretty(&record).unwrap(),
+            )
+            .unwrap();
+        };
+
+        write_job("JOB-UNREVIEWED");
+        write_job("JOB-ACCEPTED-OUTCOME");
+        write_job("JOB-ACCEPT-VERDICT");
+        write_job("JOB-REJECTED");
+        write_job("JOB-FAILED");
+        write_result(results.path(), "JOB-UNREVIEWED", "pending-owner-review");
+        write_result(results.path(), "JOB-ACCEPTED-OUTCOME", "accepted");
+        write_result(results.path(), "JOB-ACCEPT-VERDICT", "pending-owner-review");
+        write_result(results.path(), "JOB-REJECTED", "rejected");
+        write_result(results.path(), "JOB-FAILED", "failed");
+        fs::write(
+            &verdicts_path,
+            serde_json::to_string(&crate::outbox::VerdictEntry {
+                job_id: "JOB-ACCEPT-VERDICT".to_string(),
+                reviewer: "mimo".to_string(),
+                verdict: "accept".to_string(),
+                notes: "looks correct".to_string(),
+                recorded_at_secs: 1,
+                promoted_branch: None,
+                promoted_commit: None,
+            })
+            .unwrap()
+                + "\n",
+        )
+        .unwrap();
+
+        let archived_count = archive_dispatched_jobs(
+            jobs.path(),
+            results.path(),
+            archive.path(),
+            &jobs_archive,
+            Some(&verdicts_path),
+        )
+        .unwrap();
+        assert_eq!(
+            archived_count, 2,
+            "only the outcome==accepted job and the real accept-verdict job should archive"
+        );
+
+        assert!(jobs_archive.join("job-accepted-outcome.toml").exists());
+        assert!(jobs_archive.join("job-accept-verdict.toml").exists());
+        assert!(
+            jobs.path().join("job-unreviewed.toml").exists(),
+            "an unreviewed pending-owner-review draft must not be archived -- nobody has \
+             judged it yet"
+        );
+        assert!(
+            jobs.path().join("job-rejected.toml").exists(),
+            "a rejected job must stay in place for retry with injected feedback"
+        );
+        assert!(
+            jobs.path().join("job-failed.toml").exists(),
+            "a failed (M69 retry-eligible) job's source packet must stay in place"
+        );
     }
     #[test]
     fn archive_history_suppresses_regeneration_and_partial_files_are_ignored() {
