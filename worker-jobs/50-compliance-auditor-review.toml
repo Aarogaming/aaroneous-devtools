@@ -1,0 +1,5 @@
+schema_version = 1
+id = 'COMPLIANCE-AUDITOR-REVIEW'
+mode = 'analysis'
+evidence = ['crates/compliance_auditor/src/lib.rs']
+instruction = 'Inspect run_review and ReviewConfig::default for concrete risks or edge cases, not general praise. In particular: conventions::run failures are folded into unwrap_or_default(), so a real error (network, parse) and a legitimate no-CLAUDE.md case both silently become zero candidates from that pass -- is that distinguishable anywhere, and does it matter. Also examine whether max_files=40 and diff_char_budget=60000 have any enforcement tying them together (a 40-file diff could still exceed the char budget) and what concatenated_patch does when truncating. Return at most three concrete observations citing function names and, where applicable, a testable acceptance criterion. Distinguish reproduced evidence from hypotheses; do not invent behavior not shown in the evidence. rust_draft may be null.'

@@ -36,7 +36,7 @@ instruction = 'Propose one bounded regression fixture using the actual API; outp
 
 Declare 1–8 exact existing relative files. Each file is bounded to 32 KiB, total input to 64 KiB, instruction to 8 KiB, and response to 64 KiB. Do not submit entire crates or ask the model to execute commands. Keep jobs narrowly useful: fixture drafting, boundary reviews, protocol test design, report classification, or component-contract analysis. Prefer deterministic tooling over model analysis where tooling already answers the question.
 
-The three initial jobs cover emulator reducer fixtures, path edge cases and gate behavior. Polling discovers added jobs; edited instructions or evidence trigger a new attempt. Exact recorded inputs suppress repeated unchanged work, including unchanged failures. The worker intentionally becomes idle when no eligible new work exists rather than manufacturing work to keep the GPU busy.
+The initial three jobs cover emulator reducer fixtures, path edge cases and gate behavior; a second batch added 2026-09-18 covers `ast_auditor`'s safety-comment checker, `compliance_auditor`'s review pipeline, and `governance`'s rollback journal — added once the job-selection fairness fix (oldest-last-attempted-first, not alphabetical) landed, so a growing backlog rotates fairly instead of risking one job starving the rest. Polling discovers added jobs; edited instructions or evidence trigger a new attempt. Exact recorded inputs suppress repeated unchanged work, including unchanged failures. The worker intentionally becomes idle when no eligible new work exists rather than manufacturing work to keep the GPU busy.
 
 ## Reviewing results and recovery
 
@@ -61,6 +61,10 @@ Enable-ScheduledTask -TaskName 'Aaroneous-Devtools-LocalWorker'
 
 For a manual tick, run the installed foundation.exe with `local-worker-tick --config ABSOLUTE_WORKER_TOML`. Quiet windows and reservations still apply. To update the binary, pause the task, verify it is not running, build foundation, replace the copied executable, then resume. Adding multiple polling services for the same GPU is unnecessary; extend approved job manifests instead.
 
+## Adaptive persistent mode: `local-worker-serve`
+
+`foundation local-worker-serve --config ABSOLUTE_WORKER_TOML` runs ticks in-process on an adaptive interval instead of relying on the installed Windows task's fixed two-minute cadence: it ticks, reads `status.txt` to see what that tick actually did, and only then decides the next delay — doubling on a quiet tick (nothing eligible, backpressure, out of the dispatch window, or `review.lock` already held) up to a 30-minute ceiling, and resetting to the two-minute base the moment a job is actually attempted. This is the "trigger, then look at what happened, then decide when to trigger again" pattern, not a blind fixed-interval loop. Same opt-in shape as `multithreader-serve` (C21 in the coordination queue): starting the command is "on", not running it or stopping it (Ctrl+C) is "off" — nothing is installed, so there is nothing to separately disable. Do not run this alongside the installed `Aaroneous-Devtools-LocalWorker` Windows task against the same config; both would compete for the same `review.lock` and job pool. Pick one.
+
 ## Verification
 
-Foundation tests cover quiet windows, exclusive reservations, scope exclusions, changed/unchanged inputs, backpressure, failure retention and protocol handling. Live scheduled execution evidence is recorded in the coordination queue. This service does not certify Aaroneous correctness and is not a framework dependency.
+Foundation tests cover quiet windows, exclusive reservations, scope exclusions, changed/unchanged inputs, backpressure, failure retention, protocol handling, job-selection fairness (a job whose input changes every tick can no longer starve every other eligible job — selection is oldest-last-attempted-first, not alphabetical), and `local-worker-serve`'s quiet/active pacing logic. Live scheduled execution evidence is recorded in the coordination queue. This service does not certify Aaroneous correctness and is not a framework dependency.

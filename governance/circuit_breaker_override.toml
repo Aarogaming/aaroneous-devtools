@@ -1,0 +1,24 @@
+# Remote trip switch for the local-agent promotion pipeline's circuit
+# breaker (see governance/LOCAL_MODEL_AUTONOMY_POLICY.md). The local
+# breaker in `agentic_registrar` only sees verification failures at
+# promotion time; it has no way to know about a problem discovered later,
+# on GitHub, after a local-agent PR already merged (a revert, a bug report,
+# a reviewer stopping the pipeline deliberately). This file is that channel.
+#
+# A cloud agent (or anyone with push access) trips it by setting
+# `tripped = true` and a `reason`, then committing and pushing to `main`.
+# `agentic_registrar::promote` pulls this repo's `main` before every
+# promotion and refuses to proceed if `tripped = true` here — fail-closed:
+# if the pull itself fails (no network, no `devtools_repo_root` configured
+# correctly), promotion is also refused rather than silently ignoring this
+# check. Only takes effect for a registrar config that sets
+# `devtools_repo_root`; omitting that field skips this check entirely.
+#
+# To clear a trip: set `tripped = false` (or delete this file's content
+# back to this default) and push. There is no CLI command for this
+# deliberately — it's a plain tracked file, editable and reviewable like
+# any other governance change.
+
+schema_version = 1
+tripped = false
+reason = ""

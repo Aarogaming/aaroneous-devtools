@@ -1,0 +1,5 @@
+schema_version = 1
+id = 'SAFETY-COMMENT-FIXTURES'
+mode = 'test-fixture'
+evidence = ['crates/ast_auditor/src/rules/safety_comments.rs']
+instruction = 'The existing tests in this file cover: no comment (flagged), a comment directly above unsafe (accepted), a multi-line comment ending in SAFETY: right before unsafe (accepted), and SAFETY: on the first line of a 4+-line block (still flagged, the documented off-by-one). Propose at most three additional Rust #[test] fixtures for SafetyCommentVisitor covering cases not already tested: (1) two sequential unsafe blocks in the same function, one with a comment and one without, verifying the checker does not let one satisfy the other; (2) a SAFETY: comment separated from unsafe by a blank line, to see whether it falls inside the documented [line-3, line] window given that window counts blank lines too; (3) an unsafe block that is the first statement in the function body with no preceding lines at all, exercising line.saturating_sub(4) near zero. Use the existing violations() test helper already defined in the file. Output unverified test source in rust_draft; no repository changes or claims that tests passed.'

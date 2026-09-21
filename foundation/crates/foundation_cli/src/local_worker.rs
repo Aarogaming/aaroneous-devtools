@@ -35,7 +35,7 @@ struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pre_proof_command: Option<Vec<String>>,
 }
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Job {
     schema_version: u32,
@@ -61,7 +61,7 @@ struct Job {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     exploration_group: Option<String>,
 }
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum Mode {
     Analysis,
@@ -581,6 +581,28 @@ where
     // dispatch order or picks a "best" member, see write_exploration_group_summaries).
     write_exploration_group_summaries(&c, now)?;
     let queue = read_bounded(&c.queue, 262144)?;
+
+    // Last-attempt time per job id, derived from records already on disk
+    // (no separate state file needed) — the newest submitted_at_secs across
+    // every pending/archived record for that id, or 0 if it has never been
+    // attempted. Selecting by this instead of `files()`'s alphabetical
+    // order below is what stops one job from permanently occupying the
+    // front of the queue: a job whose input keeps changing between ticks
+    // (so it never matches the unchanged-input dedup) sorts to the back
+    // the moment it's actually attempted once, giving every other eligible
+    // job a turn before it can be picked again.
+    let mut last_attempt: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for record in &records {
+        let entry = last_attempt.entry(record.job_id.clone()).or_insert(0);
+        *entry = (*entry).max(record.submitted_at_secs);
+    }
+
+    struct Candidate {
+        job: Job,
+        input: String,
+        last_attempt_secs: u64,
+    }
+    let mut candidates: Vec<Candidate> = Vec::new();
     for path in files(&c.jobs_directory, "toml")? {
         let job: Job = toml::from_str(&read_bounded(&path, 16384)?)?;
         if job.schema_version != 1
@@ -625,6 +647,24 @@ where
         {
             continue;
         }
+        let last_attempt_secs = last_attempt.get(&job.id).copied().unwrap_or(0);
+        candidates.push(Candidate {
+            job,
+            input,
+            last_attempt_secs,
+        });
+    }
+
+    // Oldest-last-attempted first (never-attempted counts as oldest of
+    // all); alphabetical id as a deterministic tie-break only, never as
+    // the primary order.
+    candidates.sort_by(|a, b| {
+        a.last_attempt_secs
+            .cmp(&b.last_attempt_secs)
+            .then_with(|| a.job.id.cmp(&b.job.id))
+    });
+
+    if let Some(Candidate { job, input, .. }) = candidates.into_iter().next() {
         let mut record = Record {
             schema_version: 1,
             artifact_kind: "foundation.local-worker-result".into(),
@@ -1033,60 +1073,119 @@ pub(crate) fn tick(config: &Path, minute: u32, now: u64) -> Result<()> {
     tick_with(config, minute, now, delegate)
 }
 
-pub(crate) fn serve(config: &Path, poll_interval_secs: u64) -> Result<()> {
-    println!(
-        "local worker monitor: starting continuous 90%+ GPU event loop (poll_interval = {}s)",
-        poll_interval_secs
+/// Base and ceiling for `serve`'s adaptive delay: never tighter than the
+/// documented LocalWorker cadence (2 minutes), never looser than 30
+/// minutes even after a long idle streak, so a real backlog that shows up
+/// later is never starved for more than half an hour by an over-eager
+/// backoff.
+const SERVE_MIN_DELAY: Duration = Duration::from_secs(120);
+const SERVE_MAX_DELAY: Duration = Duration::from_secs(30 * 60);
+
+fn read_status_outcome(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    text.lines()
+        .find_map(|line| line.strip_prefix("outcome="))
+        .map(str::to_string)
+}
+
+/// `true` if this tick had nothing to show for itself: either it never
+/// reached `save_status` at all (out of the dispatch window, or
+/// `review.lock` already held by another run — `before != after` on
+/// `status.txt`'s mtime catches both), or it did reach `save_status` but
+/// only to record `backpressure` or `idle-unchanged-or-reserved-scopes`.
+/// Any other recorded outcome (a job was actually attempted, whether it
+/// then succeeded or failed) counts as real activity.
+fn tick_was_quiet(status_path: &Path, mtime_before: Option<std::time::SystemTime>) -> bool {
+    let mtime_after = fs::metadata(status_path).and_then(|m| m.modified()).ok();
+    if mtime_before == mtime_after {
+        return true;
+    }
+    read_status_outcome(status_path)
+        .map(|outcome| {
+            matches!(
+                outcome.as_str(),
+                "backpressure" | "idle-unchanged-or-reserved-scopes"
+            )
+        })
+        .unwrap_or(true)
+}
+
+/// Pre-tick maintenance: archive the oldest half of pending results once
+/// `max_pending` is reached (independent of whether this tick's job
+/// attempt succeeds), and resync/refill the job queue from the checkout.
+/// This predates and is independent of the adaptive-delay loop below —
+/// preserved here rather than dropped, since it's real maintenance that
+/// nothing else in this file performs.
+fn run_pre_tick_maintenance(config_path: &Path) {
+    let Ok(text) = read_bounded(config_path, 16384) else {
+        return;
+    };
+    let Ok(c) = toml::from_str::<Config>(&text) else {
+        return;
+    };
+    if let Ok(pending_files) = files(&c.results_directory, "json") {
+        let mut result_files: Vec<_> = pending_files
+            .into_iter()
+            .filter(|p| is_result_file(p))
+            .collect();
+        if result_files.len() >= c.max_pending {
+            result_files.sort();
+            let to_archive = result_files.len().saturating_sub(c.max_pending / 2);
+            for p in result_files.iter().take(to_archive) {
+                if let Some(fname) = p.file_name() {
+                    let dest = c.archive_directory.join(fname);
+                    let _ = fs::rename(p, dest);
+                }
+            }
+        }
+    }
+    let _ = crate::job_converter::sync_and_refill_jobs(
+        &c.checkout,
+        &c.queue,
+        "analysis",
+        &c.jobs_directory,
     );
-    let mut consecutive_failures = 0;
+}
+
+/// Adaptive persistent local-worker loop, run in-process rather than
+/// relying on an external scheduler to invoke `local-worker-tick`
+/// repeatedly on a blind fixed interval regardless of outcome: trigger a
+/// tick, look at what it actually did (via `status.txt`, not just whether
+/// the call returned `Ok` — a quiet out-of-window tick and a busy tick
+/// both do), and use that to decide the next delay. A quiet tick doubles
+/// the delay (capped at `SERVE_MAX_DELAY`); a tick that actually attempted
+/// a job — success or failure — resets it to `SERVE_MIN_DELAY`, since
+/// that's exactly when more real work is likely queued up right behind
+/// it. "On" is running this command; "off" is not running it or stopping
+/// it (Ctrl+C) — matching `multithreader-serve`'s C21 precedent, nothing
+/// is installed, so there's nothing to separately disable.
+pub(crate) fn serve(config_path: &Path) -> Result<()> {
+    let config: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
+    let status_path = config.results_directory.join("status.txt");
+    println!(
+        "local-worker-serve: starting, delay {}s-{}s adaptive, config {}",
+        SERVE_MIN_DELAY.as_secs(),
+        SERVE_MAX_DELAY.as_secs(),
+        config_path.display()
+    );
+    let mut delay = SERVE_MIN_DELAY;
     loop {
+        run_pre_tick_maintenance(config_path);
+        let mtime_before = fs::metadata(&status_path).and_then(|m| m.modified()).ok();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let minute = ((now / 60) % 60) as u32;
-
-        if let Ok(text) = read_bounded(config, 16384) {
-            if let Ok(c) = toml::from_str::<Config>(&text) {
-                if let Ok(pending_files) = files(&c.results_directory, "json") {
-                    let mut result_files: Vec<_> = pending_files
-                        .into_iter()
-                        .filter(|p| is_result_file(p))
-                        .collect();
-                    if result_files.len() >= c.max_pending {
-                        result_files.sort();
-                        let to_archive = result_files.len().saturating_sub(c.max_pending / 2);
-                        for p in result_files.iter().take(to_archive) {
-                            if let Some(fname) = p.file_name() {
-                                let dest = c.archive_directory.join(fname);
-                                let _ = fs::rename(p, dest);
-                            }
-                        }
-                    }
-                }
-                let _ = crate::job_converter::sync_and_refill_jobs(
-                    &c.checkout,
-                    &c.queue,
-                    "analysis",
-                    &c.jobs_directory,
-                );
-            }
+            .unwrap_or_default()
+            .as_secs();
+        if let Err(e) = tick(config_path, ((now / 60) % 60) as u32, now) {
+            eprintln!("local-worker-serve: tick failed: {e:#}");
         }
-
-        match tick(config, minute, now) {
-            Ok(()) => {
-                consecutive_failures = 0;
-                std::thread::sleep(Duration::from_secs(1));
-            }
-            Err(e) => {
-                consecutive_failures += 1;
-                eprintln!("local worker monitor error ({consecutive_failures}): {e:#}");
-                if consecutive_failures >= 10 {
-                    bail!("local worker monitor failed 10 consecutive times: {e:#}");
-                }
-                std::thread::sleep(Duration::from_secs(poll_interval_secs.max(3)));
-            }
-        }
+        delay = if tick_was_quiet(&status_path, mtime_before) {
+            (delay * 2).min(SERVE_MAX_DELAY)
+        } else {
+            SERVE_MIN_DELAY
+        };
+        println!("local-worker-serve: next tick in {}s", delay.as_secs());
+        std::thread::sleep(delay);
     }
 }
 
@@ -1488,7 +1587,166 @@ exploration_group = "faster-reducer-group"
         tick_with(&config, 10, 4, |_, _| panic!("backpressure ignored")).expect("throttled");
     }
     #[test]
-    fn shared_lock_prevents_dispatch() {
+    fn read_status_outcome_parses_present_and_missing_files() {
+        let d = tempfile::tempdir().expect("dir");
+        let path = d.path().join("status.txt");
+        assert_eq!(read_status_outcome(&path), None, "missing file");
+        fs::write(&path, "last_poll_secs=1\noutcome=backpressure\n").expect("write");
+        assert_eq!(read_status_outcome(&path), Some("backpressure".into()));
+    }
+    #[test]
+    fn tick_was_quiet_distinguishes_untouched_idle_and_real_activity() {
+        let d = tempfile::tempdir().expect("dir");
+        let path = d.path().join("status.txt");
+
+        // Never written at all (out-of-window / reservation-busy tick).
+        assert!(tick_was_quiet(&path, None));
+
+        // Written, but mtime unchanged from what the caller observed
+        // before the tick (simulates an out-of-window tick when a prior
+        // real tick had already written the file once).
+        fs::write(&path, "last_poll_secs=1\noutcome=pending-owner-review\n").expect("write");
+        let mtime = fs::metadata(&path)
+            .expect("meta")
+            .modified()
+            .expect("mtime");
+        assert!(
+            tick_was_quiet(&path, Some(mtime)),
+            "unchanged mtime must read as quiet regardless of the stale outcome text"
+        );
+
+        for outcome in ["backpressure", "idle-unchanged-or-reserved-scopes"] {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            fs::write(&path, format!("last_poll_secs=2\noutcome={outcome}\n")).expect("write");
+            assert!(
+                tick_was_quiet(&path, Some(mtime)),
+                "'{outcome}' must read as quiet"
+            );
+        }
+
+        for outcome in ["pending-owner-review", "failed"] {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            fs::write(&path, format!("last_poll_secs=3\noutcome={outcome}\n")).expect("write");
+            assert!(
+                !tick_was_quiet(&path, Some(mtime)),
+                "'{outcome}' must read as real activity, not quiet"
+            );
+        }
+    }
+    #[test]
+    fn alphabetically_first_job_does_not_starve_other_jobs_when_its_input_keeps_changing() {
+        // Reproduces the starvation shape reported from real-world usage:
+        // one recurring job (alphabetically first, e.g. an audit that
+        // regenerates with new content each cycle) never matches the
+        // unchanged-input dedup, so a purely alphabetical `files()` order
+        // would hand it every single tick forever, and a second, otherwise
+        // perfectly eligible job would never run.
+        let d = tempfile::tempdir().expect("fixture");
+        let c = Config {
+            schema_version: 1,
+            checkout: d.path().join("product"),
+            queue: d.path().join("queue.md"),
+            jobs_directory: d.path().join("jobs"),
+            results_directory: d.path().join("results"),
+            archive_directory: d.path().join("archive"),
+            reservation_directory: d.path().join("reservation"),
+            endpoint: "http://127.0.0.1:1".into(),
+            max_pending: 4,
+        };
+        for path in [
+            &c.checkout,
+            &c.jobs_directory,
+            &c.results_directory,
+            &c.archive_directory,
+            &c.reservation_directory,
+        ] {
+            fs::create_dir(path).expect("directory");
+        }
+        fs::write(&c.queue, "").expect("queue");
+        fs::write(c.checkout.join("a.rs"), "fn a_v0() {}").expect("a.rs");
+        fs::write(c.checkout.join("b.rs"), "fn b() {}").expect("b.rs");
+        let job_a = Job {
+            schema_version: 1,
+            id: "AUDIT-A".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["a.rs".into()],
+            instruction: "recurring audit, content changes every cycle".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
+        };
+        let job_b = Job {
+            schema_version: 1,
+            id: "AUDIT-B".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["b.rs".into()],
+            instruction: "ordinary job, never gets a turn under pure alphabetical order".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
+        };
+        fs::write(
+            c.jobs_directory.join("a.toml"),
+            toml::to_string(&job_a).expect("job a"),
+        )
+        .expect("write job a");
+        fs::write(
+            c.jobs_directory.join("b.toml"),
+            toml::to_string(&job_b).expect("job b"),
+        )
+        .expect("write job b");
+        let config = d.path().join("worker.toml");
+        fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
+
+        let last_dispatched = |c: &Config| -> String {
+            let path = files(&c.results_directory, "json")
+                .expect("results")
+                .pop()
+                .expect("a record was written");
+            let record: Record =
+                serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
+            fs::rename(
+                &path,
+                c.archive_directory
+                    .join(path.file_name().expect("filename")),
+            )
+            .expect("archive so the next tick isn't blocked by backpressure");
+            record.job_id
+        };
+
+        // Tick 1: both jobs equally never-attempted (last_attempt_secs = 0
+        // for both) — alphabetical tie-break picks AUDIT-A first.
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick 1");
+        assert_eq!(last_dispatched(&c), "AUDIT-A");
+
+        // Simulate AUDIT-A being a recurring job whose content changes
+        // every cycle, so it never matches the unchanged-input dedup and
+        // remains eligible on every subsequent tick too.
+        fs::write(c.checkout.join("a.rs"), "fn a_v1() {}").expect("change a.rs");
+
+        // Tick 2: AUDIT-A is eligible again and still sorts first
+        // alphabetically, but it was just attempted at now=1 while
+        // AUDIT-B has never been attempted (last_attempt_secs = 0) — this
+        // is exactly the case pure alphabetical order gets wrong.
+        // AUDIT-B must get this turn.
+        tick_with(&config, 10, 2, |_, _| Ok(draft())).expect("tick 2");
+        assert_eq!(
+            last_dispatched(&c),
+            "AUDIT-B",
+            "a job that never gets attempted must not be starved by an alphabetically-earlier \
+             job whose input keeps changing"
+        );
+
+        fs::write(c.checkout.join("a.rs"), "fn a_v2() {}").expect("change a.rs again");
+
+        // Tick 3: AUDIT-A (last attempted at 1) is now older than AUDIT-B
+        // (last attempted at 2), so it's A's turn again — proving this is
+        // real rotation, not just "B always wins now".
+        tick_with(&config, 10, 3, |_, _| Ok(draft())).expect("tick 3");
+        assert_eq!(last_dispatched(&c), "AUDIT-A");
+    }
+    #[test]
+    fn shared_lock_and_quiet_window_prevent_dispatch() {
         let (_d, c, config) = fixture();
         fs::write(c.reservation_directory.join("review.lock"), "owner").expect("reserve");
         tick_with(&config, 10, 2, |_, _| panic!("lock ignored")).expect("reserved");
