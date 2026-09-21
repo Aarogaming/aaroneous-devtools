@@ -181,6 +181,7 @@ enum Command {
     ConsensusStatus {
         #[arg(long)]
         config: PathBuf,
+    },
     /// Review declared evidence and populate an owner-reviewed inbox.
     MultithreaderReview {
         #[arg(long)]

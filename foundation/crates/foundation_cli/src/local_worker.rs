@@ -1651,7 +1651,11 @@ exploration_group = "faster-reducer-group"
             archive_directory: d.path().join("archive"),
             reservation_directory: d.path().join("reservation"),
             endpoint: "http://127.0.0.1:1".into(),
+            hypervisor_mcp_endpoint: None,
             max_pending: 4,
+            pre_proof_checkout: None,
+            pre_proof_target_file: None,
+            pre_proof_command: None,
         };
         for path in [
             &c.checkout,
