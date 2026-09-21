@@ -1,6 +1,6 @@
 # Local worker service
 
-This service makes the PC an unattended Rust support-work processor. It polls a directory of approved TOML jobs every two minutes and processes at most one new job per poll with local `qwen3.5:9b-q6`. It uses no cloud-model API and does not spend Codex credits. It is a support lane, not an autonomous product committer.
+This service makes the PC an unattended Rust support-work processor. It continuously polls a directory of approved TOML jobs and processes them with local `qwen3.5:9b-q6`. It uses no cloud-model API and does not spend Codex credits. It is a support lane, not an autonomous product committer.
 
 ## Scheduling and isolation
 
@@ -8,15 +8,17 @@ This service makes the PC an unattended Rust support-work processor. It polls a 
 | --- | --- | --- |
 | Native multithreader review | Hourly at :00 | Propose evidence-backed new work |
 | Codex audit and Rust reuse review | Hourly at :30 | Audit and research community alternatives |
-| Local worker | Poll every two minutes | Analyze approved evidence and draft Rust fixtures/code in artifacts |
+| Local worker | Adaptive: triggers 5s after previous tick completes, backs off to 60s when quiet | Analyze approved evidence and draft Rust fixtures/code in artifacts |
 
-Local model dispatch is allowed only during minutes 06–20 and 41–50. Requests have a 120-second timeout, leaving a margin before the hourly reviews. All local worker ticks acquire the same exclusive `review.lock` used by native multithreader review. The Codex audit is instructed to acquire that reservation for its complete deeper review and defer if it cannot. Quiet windows prevent starts around the scheduled slots; the shared reservation also covers longer reviews. Other Ollama clients do not participate in this lock; route cooperating agents through this worker.
+The local worker operates as a continuous background persistence layer. Dispatch is always allowed; there are no quiet windows or time-based cooldowns. Requests have a 120-second timeout. All local worker ticks acquire the same exclusive `review.lock` used by native multithreader review. The Codex audit is instructed to acquire that reservation for its complete deeper review and defer if it cannot. The shared reservation also covers longer reviews. Other Ollama clients do not participate in this lock; route cooperating agents through this worker.
 
 The worker skips evidence referenced by Claimed or Review queue rows, including quoted directory/** scopes. This is a conservative textual scope check, not a full Markdown/glob parser. Product source is read-only. All proposed code stays inside JSON artifacts, is explicitly unverified, and needs owner review and Aaroneous's native gates before adoption.
 
-## Installed runtime
+## Installed runtime (fallback)
 
 Windows task: `Aaroneous-Devtools-LocalWorker`, limited privileges, logged-in session, overlapping launches ignored, three-minute OS execution limit. Windows denied S4U logged-out registration, so genuinely logged-out execution is not installed. Locked-screen execution still uses the logged-in session. The PC must be awake and Ollama available. No power settings or credentials were changed.
+
+**Preferred mode:** `foundation local-worker-serve --config <path>` runs the adaptive loop in-process. This is faster (5s after activity, not 2min) and more responsive than the Windows task. Use this instead of the scheduled task when possible.
 
 Runtime root: `C:\Users\aarog\.codex\worktrees\aaroneous-devtools\artifacts\local-worker-service`. It contains a copied native executable, explicit `worker.toml`, `results/`, and `archive/`. The reservation directory is the existing native review inbox. Runtime files are ignored by Git and never placed in Aaroneous.
 
@@ -63,8 +65,8 @@ For a manual tick, run the installed foundation.exe with `local-worker-tick --co
 
 ## Adaptive persistent mode: `local-worker-serve`
 
-`foundation local-worker-serve --config ABSOLUTE_WORKER_TOML` runs ticks in-process on an adaptive interval instead of relying on the installed Windows task's fixed two-minute cadence: it ticks, reads `status.txt` to see what that tick actually did, and only then decides the next delay — doubling on a quiet tick (nothing eligible, backpressure, out of the dispatch window, or `review.lock` already held) up to a 30-minute ceiling, and resetting to the two-minute base the moment a job is actually attempted. This is the "trigger, then look at what happened, then decide when to trigger again" pattern, not a blind fixed-interval loop. Same opt-in shape as `multithreader-serve` (C21 in the coordination queue): starting the command is "on", not running it or stopping it (Ctrl+C) is "off" — nothing is installed, so there is nothing to separately disable. Do not run this alongside the installed `Aaroneous-Devtools-LocalWorker` Windows task against the same config; both would compete for the same `review.lock` and job pool. Pick one.
+`foundation local-worker-serve --config ABSOLUTE_WORKER_TOML` runs ticks in-process on an adaptive interval instead of relying on the installed Windows task's fixed two-minute cadence: it ticks, reads `status.txt` to see what that tick actually did, and only then decides the next delay — doubling on a quiet tick (nothing eligible, backpressure, or `review.lock` already held) up to a 60-second ceiling, and resetting to the 5-second base the moment a job is actually attempted. This is the "trigger, then look at what happened, then decide when to trigger again" pattern, not a blind fixed-interval loop. Same opt-in shape as `multithreader-serve` (C21 in the coordination queue): starting the command is "on", not running it or stopping it (Ctrl+C) is "off" — nothing is installed, so there is nothing to separately disable. Do not run this alongside the installed `Aaroneous-Devtools-LocalWorker` Windows task against the same config; both would compete for the same `review.lock` and job pool. Pick one.
 
 ## Verification
 
-Foundation tests cover quiet windows, exclusive reservations, scope exclusions, changed/unchanged inputs, backpressure, failure retention, protocol handling, job-selection fairness (a job whose input changes every tick can no longer starve every other eligible job — selection is oldest-last-attempted-first, not alphabetical), and `local-worker-serve`'s quiet/active pacing logic. Live scheduled execution evidence is recorded in the coordination queue. This service does not certify Aaroneous correctness and is not a framework dependency.
+Foundation tests cover exclusive reservations, scope exclusions, changed/unchanged inputs, backpressure, failure retention, protocol handling, job-selection fairness (a job whose input changes every tick can no longer starve every other eligible job — selection is oldest-last-attempted-first, not alphabetical), and `local-worker-serve`'s quiet/active pacing logic. Live scheduled execution evidence is recorded in the coordination queue. This service does not certify Aaroneous correctness and is not a framework dependency.

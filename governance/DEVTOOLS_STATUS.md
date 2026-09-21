@@ -22,7 +22,7 @@ depend on Devtools for build, CI, release, crates or runtime.
 | Area | Implemented evidence | Current limit |
 | --- | --- | --- |
 | Rust Foundation | Standalone workspace: stack/input validation, component inventory, dependency reports, dogfood evidence, intake and schedule review | Individual tools are not a unified onboarding or development workflow |
-| Local support worker | Explicit-input proposals, shared reservation, quiet windows, backpressure and unchanged-input suppression; C10 evidence | Generated drafts remain pending owner review; early quiet/reserved returns do not always refresh liveness evidence |
+| Local support worker | Explicit-input proposals, shared reservation, backpressure and unchanged-input suppression; C10 evidence | Generated drafts remain pending owner review; backpressure/ reserved returns do not always refresh liveness evidence |
 | Candidate intake | Bounded proposals and semantic validation; C9 independently reviewed and Done | Portfolio/queue reconciliation and review capacity still govern primary work; candidates cannot claim work |
 | Opt-in candidate persistence | C21 adds `foundation multithreader-serve` with bounded interval and failure-isolated cycles; no installation, default off | Source integrated; not enabled or deployed by this documentation pass; process presence is the toggle, not boot recovery |
 | Packet utility | Readiness, bounded wire research, blueprint/refinement, gated publication, result inspection/disposition; C13 and `eb90623` | One shipped research profile, not arbitrary framework component authoring; independent owner acceptance pending |

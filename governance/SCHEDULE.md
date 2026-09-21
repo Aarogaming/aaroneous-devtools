@@ -28,7 +28,7 @@ The historical Windows task `Aaroneous-Devtools-Multithreader` reviewed declared
 
 ## Local support processing
 
-`Aaroneous-Devtools-LocalWorker` polls approved `worker-jobs/` every two minutes, dispatching only in minutes 06–20 and 41–50 and yielding to the shared review reservation. It generates scratch Rust drafts and bounded analysis, suppresses unchanged inputs and pauses at eight pending results. See [LOCAL_WORKER_SERVICE.md](LOCAL_WORKER_SERVICE.md). Windows supports the installed task while logged in; S4U logged-out registration was denied. Existing worker quiet windows remain unchanged, including the former :30 slot; scheduling consolidation belongs to the native maintenance program.
+`Aaroneous-Devtools-LocalWorker` continuously polls approved `worker-jobs/` and yields to the shared review reservation. It operates as a continuous background persistence layer with no time-based dispatch windows. It generates scratch Rust drafts and bounded analysis, suppresses unchanged inputs and pauses at eight pending results. See [LOCAL_WORKER_SERVICE.md](LOCAL_WORKER_SERVICE.md). Windows supports the installed task while logged in; S4U logged-out registration was denied.
 
 ## Cloud primary-lane routine (installed 2026-09-17)
 

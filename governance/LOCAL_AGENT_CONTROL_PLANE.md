@@ -72,4 +72,4 @@ queue or apply a patch.
 
 ## Native polling worker
 
-The approved support inbox is `worker-jobs/`. The deterministic Rust dispatcher polls every two minutes, reserves the shared model lane, reads only declared evidence, and emits unverified artifacts. Qwen still has no queue, command or repository-write authority. Incoming owners should follow [LOCAL_WORKER_SERVICE.md](LOCAL_WORKER_SERVICE.md) to submit bounded jobs and review pending outputs. This service uses the existing direct Ollama boundary; Rig/Candle experiments remain separate optional lanes.
+The approved support inbox is `worker-jobs/`. The deterministic Rust dispatcher continuously polls, reserves the shared model lane, reads only declared evidence, and emits unverified artifacts. Qwen still has no queue, command or repository-write authority. Incoming owners should follow [LOCAL_WORKER_SERVICE.md](LOCAL_WORKER_SERVICE.md) to submit bounded jobs and review pending outputs. This service uses the existing direct Ollama boundary; Rig/Candle experiments remain separate optional lanes.

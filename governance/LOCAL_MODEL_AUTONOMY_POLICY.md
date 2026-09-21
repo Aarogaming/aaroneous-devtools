@@ -121,10 +121,10 @@ monitor its activity, output, byproducts, and use that to determine when to
 fire the next agent trigger... don't re-engage every second, persistence,
 we're playing the long game, efficiently." `local-worker-serve` implements
 this directly: tick, read what the tick actually did from `status.txt`
-(a real dispatch vs. quiet — nothing eligible, backpressure, out of the
-dispatch window, or the shared lock already held), and only then decide the
-next delay — doubling on quiet up to a 30-minute ceiling, resetting to the
-2-minute base the moment real work happens. The same principle applies to
+(a real dispatch vs. quiet — nothing eligible, backpressure, or the
+shared lock already held), and only then decide the
+next delay — doubling on quiet up to a 60-second ceiling, resetting to the
+5-second base the moment real work happens. The same principle applies to
 any other scheduling this pipeline grows: never fire on a blind interval
 when the previous outcome tells you something about the next one.
 
