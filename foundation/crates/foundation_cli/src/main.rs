@@ -365,6 +365,38 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Record an `accept` verdict on one outbox result and, if that
+    /// succeeds, push its draft as an isolated `local-agent/{id}` branch
+    /// (M61). One discrete, named reviewer action about one specific item
+    /// -- never an automatic trigger. See
+    /// `agentic_registrar::promote_verified_draft`'s doc comment for the
+    /// full safety-rail list (high-risk allowlist, circuit breaker,
+    /// re-verification, self-approval denylist, mandatory justification).
+    /// Never opens a pull request and never merges.
+    OutboxPromote {
+        #[arg(long)]
+        results: PathBuf,
+        #[arg(long)]
+        verdicts: PathBuf,
+        /// Absolute path to the agentic-registrar config (its own
+        /// `checkout`/reservation/circuit-breaker settings apply unchanged).
+        #[arg(long)]
+        registrar_config: PathBuf,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        crate_name: String,
+        #[arg(long)]
+        target_file: String,
+        #[arg(long)]
+        reviewer: String,
+        /// Required, non-empty: a real reason, not a blank accept.
+        #[arg(long)]
+        justification: String,
+        /// Optional: append a `notice` row here on a successful push.
+        #[arg(long)]
+        ping: Option<PathBuf>,
+    },
     /// Evaluate a coordination queue and write a read-only scheduling report.
     ScheduleReview {
         #[arg(long)]
@@ -1203,6 +1235,27 @@ fn main() -> Result<()> {
         Command::OutboxListVerdicts { verdicts, output } => {
             outbox::run_list_verdicts(&verdicts, &output)
         }
+        Command::OutboxPromote {
+            results,
+            verdicts,
+            registrar_config,
+            id,
+            crate_name,
+            target_file,
+            reviewer,
+            justification,
+            ping,
+        } => outbox::run_promote(
+            &results,
+            &verdicts,
+            &registrar_config,
+            &id,
+            &crate_name,
+            &target_file,
+            &reviewer,
+            &justification,
+            ping.as_deref(),
+        ),
         Command::ScheduleReview {
             queue,
             program,

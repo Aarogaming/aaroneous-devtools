@@ -200,6 +200,12 @@ pub struct VerdictEntry {
     #[serde(default)]
     pub notes: String,
     pub recorded_at_secs: u64,
+    /// Set only by [`run_promote`], never by [`run_verdict`] directly --
+    /// present exactly when this verdict caused a real branch push.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_commit: Option<String>,
 }
 
 /// Appends one verdict to `verdicts_path` (JSON Lines, one record per
@@ -214,6 +220,33 @@ pub fn run_verdict(
     reviewer: &str,
     verdict: &str,
     notes: &str,
+) -> Result<()> {
+    validate_verdict_inputs(results_dir, verdicts_path, job_id, reviewer, verdict)?;
+    let entry = VerdictEntry {
+        job_id: job_id.to_string(),
+        reviewer: reviewer.to_string(),
+        verdict: verdict.to_string(),
+        notes: notes.to_string(),
+        recorded_at_secs: now_secs(),
+        promoted_branch: None,
+        promoted_commit: None,
+    };
+    append_verdict_entry(verdicts_path, &entry)
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn validate_verdict_inputs(
+    results_dir: &Path,
+    verdicts_path: &Path,
+    job_id: &str,
+    reviewer: &str,
+    verdict: &str,
 ) -> Result<()> {
     crate::require_absolute_directory("results-dir", results_dir)?;
     if !verdicts_path.is_absolute() {
@@ -230,7 +263,10 @@ pub fn run_verdict(
     }
     // Confirms the job actually exists before recording anything about it.
     show_entry(results_dir, job_id)?;
+    Ok(())
+}
 
+fn append_verdict_entry(verdicts_path: &Path, entry: &VerdictEntry) -> Result<()> {
     if verdicts_path.exists()
         && fs::symlink_metadata(verdicts_path)?
             .file_type()
@@ -241,17 +277,7 @@ pub fn run_verdict(
             verdicts_path.display()
         );
     }
-    let entry = VerdictEntry {
-        job_id: job_id.to_string(),
-        reviewer: reviewer.to_string(),
-        verdict: verdict.to_string(),
-        notes: notes.to_string(),
-        recorded_at_secs: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
-    };
-    let line = serde_json::to_string(&entry)?;
+    let line = serde_json::to_string(entry)?;
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -259,6 +285,179 @@ pub fn run_verdict(
         .with_context(|| format!("opening verdicts file {}", verdicts_path.display()))?;
     writeln!(file, "{line}")
         .with_context(|| format!("writing verdict to {}", verdicts_path.display()))?;
+    Ok(())
+}
+
+/// Records an `accept` verdict on `job_id` and, if that succeeds, pushes
+/// its `rust_draft` as an isolated `local-agent/{job_id}` branch via
+/// [`crate::agentic_registrar::promote_verified_draft`] -- one discrete,
+/// named reviewer action about one specific item, matching every other
+/// write path in this system rather than any automatic/standing trigger.
+/// See that function's own doc comment for the full safety-rail list
+/// (high-risk allowlist, circuit breaker, re-verification, self-approval
+/// denylist, mandatory justification).
+///
+/// `crate_name`/`target_file` are required, explicit arguments -- this
+/// never infers where a draft belongs from its content, matching this
+/// codebase's "no ambient configuration" convention throughout.
+///
+/// On a real push, also appends a `notice` row to `ping_path` (when given)
+/// so other agents see it on their next cheap check without having to poll
+/// the verdicts file directly. Deliberately does **not** auto-append a row
+/// to `COORDINATION_QUEUE.md` -- that file's numbered IDs have already
+/// collided once this session between independently-diverged branches
+/// (see queue row C35's note on C25-27), and generating a fresh sequential
+/// ID from code reintroduces exactly that risk. The command prints a
+/// reminder to log one by hand instead.
+#[allow(clippy::too_many_arguments)]
+pub fn run_promote(
+    results_dir: &Path,
+    verdicts_path: &Path,
+    registrar_config: &Path,
+    job_id: &str,
+    crate_name: &str,
+    target_file: &str,
+    reviewer: &str,
+    justification: &str,
+    ping_path: Option<&Path>,
+) -> Result<()> {
+    validate_verdict_inputs(results_dir, verdicts_path, job_id, reviewer, "accept")?;
+    if !registrar_config.is_absolute() {
+        bail!(
+            "registrar config path must be absolute: {}",
+            registrar_config.display()
+        );
+    }
+
+    let record = show_entry(results_dir, job_id)?;
+    let rust_source = record
+        .proposal
+        .as_ref()
+        .and_then(|d| d.rust_draft.as_ref())
+        .map(|s| s.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .context("record has no non-empty rust_draft to promote")?;
+
+    let promote_result = crate::agentic_registrar::promote_verified_draft(
+        registrar_config,
+        job_id,
+        crate_name,
+        target_file,
+        rust_source,
+        reviewer,
+        justification,
+    );
+
+    use crate::agentic_registrar::AutoPromoteOutcome;
+    let (entry, summary_line) = match &promote_result {
+        Ok(AutoPromoteOutcome::Pushed { branch, commit }) => (
+            VerdictEntry {
+                job_id: job_id.to_string(),
+                reviewer: reviewer.to_string(),
+                verdict: "accept".to_string(),
+                notes: justification.to_string(),
+                recorded_at_secs: now_secs(),
+                promoted_branch: Some(branch.clone()),
+                promoted_commit: Some(commit.clone()),
+            },
+            format!(
+                "outbox-promote: {job_id} pushed to '{branch}' ({commit}) by {reviewer} -- \
+                 open a PR for full CI + cloud-agent review. Log a COORDINATION_QUEUE.md row \
+                 by hand; this command deliberately does not auto-generate one."
+            ),
+        ),
+        Ok(AutoPromoteOutcome::CommittedNotPushed {
+            branch,
+            commit,
+            push_error,
+        }) => (
+            VerdictEntry {
+                job_id: job_id.to_string(),
+                reviewer: reviewer.to_string(),
+                verdict: "accept".to_string(),
+                notes: justification.to_string(),
+                recorded_at_secs: now_secs(),
+                promoted_branch: Some(branch.clone()),
+                promoted_commit: Some(commit.clone()),
+            },
+            format!(
+                "outbox-promote: {job_id} committed ({commit}) to local branch '{branch}' but \
+                 push failed: {push_error}. Branch left in place for a manual retry."
+            ),
+        ),
+        Ok(AutoPromoteOutcome::VerificationFailed(msg)) => (
+            VerdictEntry {
+                job_id: job_id.to_string(),
+                reviewer: reviewer.to_string(),
+                verdict: "needs-changes".to_string(),
+                notes: format!("{justification} -- auto-verification failed: {msg}"),
+                recorded_at_secs: now_secs(),
+                promoted_branch: None,
+                promoted_commit: None,
+            },
+            format!("outbox-promote: {job_id} failed re-verification, rolled back:\n{msg}"),
+        ),
+        Err(e) => (
+            VerdictEntry {
+                job_id: job_id.to_string(),
+                reviewer: reviewer.to_string(),
+                verdict: "uncertain".to_string(),
+                notes: format!("{justification} -- promotion attempt errored: {e:#}"),
+                recorded_at_secs: now_secs(),
+                promoted_branch: None,
+                promoted_commit: None,
+            },
+            format!("outbox-promote: {job_id} promotion attempt errored: {e:#}"),
+        ),
+    };
+
+    append_verdict_entry(verdicts_path, &entry)?;
+    println!("{summary_line}");
+
+    if entry.promoted_branch.is_some()
+        && let Some(ping_path) = ping_path
+    {
+        append_ping_notice(
+            ping_path,
+            reviewer,
+            &format!(
+                "Auto-promoted `{job_id}` to branch `{}` -- {}",
+                entry.promoted_branch.as_deref().unwrap_or_default(),
+                justification
+            ),
+        )?;
+    }
+
+    promote_result.map(|_| ())
+}
+
+/// Appends one `notice`-severity row to the end of a
+/// `ROUND_TABLE_PING.md`-shaped file, in the existing
+/// `| UTC | From | Severity | Paths | Summary |` table format. Deliberately
+/// minimal, on purpose: appends at the file's end rather than inserting
+/// after the `## Log` header, so it doesn't match that file's own stated
+/// "newest row at the top" convention -- a human or agent tidying the
+/// table's order later is a much smaller, safer job than this function
+/// parsing and rewriting a document another agent might be mid-editing.
+/// Uses a Unix epoch second count rather than an RFC3339 timestamp for the
+/// `UTC` column, since formatting a real calendar timestamp isn't worth a
+/// new dependency for one log line; still sorts and greps correctly.
+fn append_ping_notice(ping_path: &Path, from: &str, summary: &str) -> Result<()> {
+    if !ping_path.exists() {
+        return Ok(());
+    }
+    let now = std::time::SystemTime::now();
+    let secs = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let row = format!("| epoch:{secs} | {from} | notice |  | {summary} |\n");
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(ping_path)
+        .with_context(|| format!("opening ping file {}", ping_path.display()))?;
+    file.write_all(row.as_bytes())
+        .with_context(|| format!("appending ping row to {}", ping_path.display()))?;
     Ok(())
 }
 
@@ -339,6 +538,37 @@ mod tests {
                 solution_tree: None,
             }),
             error: error.map(str::to_string),
+            pre_proof_report: None,
+            rejection_reason: None,
+            selected_branch: None,
+            selection_rationale: None,
+        };
+        let path = dir.join(format!("{job_id}.json"));
+        fs::write(path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+    }
+
+    /// Like `write_record`, but with a real (non-empty) `rust_draft` --
+    /// `write_record` always leaves it `None`, which is right for most
+    /// outbox tests (they only care about the summary fields) but wrong for
+    /// anything exercising `run_promote`'s draft-extraction path.
+    fn write_record_with_draft(dir: &Path, job_id: &str, rust_draft: &str) {
+        let record = Record {
+            schema_version: 1,
+            artifact_kind: "foundation.local-worker-result".to_string(),
+            job_id: job_id.to_string(),
+            submitted_at_secs: 1_700_000_000,
+            outcome: "pending-owner-review".to_string(),
+            input: "Approved job specification (data):\nid = \"x\"\n".to_string(),
+            proposal: Some(Draft {
+                task: job_id.to_string(),
+                observations: vec!["obs".to_string()],
+                risks: vec![],
+                test_plan: vec!["plan".to_string()],
+                recommended_next_step: "gist".to_string(),
+                rust_draft: Some(rust_draft.to_string()),
+                solution_tree: None,
+            }),
+            error: None,
             pre_proof_report: None,
             rejection_reason: None,
             selected_branch: None,
@@ -463,6 +693,79 @@ mod tests {
         let err =
             run_verdict(results.path(), &verdicts_path, "NOPE", "mimo", "accept", "").unwrap_err();
         assert!(err.to_string().contains("NOPE"));
+    }
+
+    #[test]
+    fn run_promote_refuses_before_touching_git_when_inputs_are_invalid() {
+        let results = tempfile::tempdir().unwrap();
+        // A job with no proposal at all (an analysis job, or a failed one).
+        write_record(results.path(), "NO-DRAFT", "", 0, Some("dispatch failed"));
+        let verdicts_dir = tempfile::tempdir().unwrap();
+        let verdicts_path = verdicts_dir.path().join("verdicts.jsonl");
+        let fake_registrar_config = verdicts_dir.path().join("registrar.toml"); // never read
+
+        // No rust_draft to promote -- must fail before ever touching the
+        // registrar config or any git state, and must not record a verdict.
+        let err = run_promote(
+            results.path(),
+            &verdicts_path,
+            &fake_registrar_config,
+            "NO-DRAFT",
+            "some_crate",
+            "crates/some_crate/src/lib.rs",
+            "mimo",
+            "looks fine",
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("rust_draft"));
+        assert!(list_verdicts(&verdicts_path).unwrap().is_empty());
+
+        // Empty justification is refused by promote_verified_draft itself
+        // (it never reaches git). Unlike the missing-draft case above, this
+        // *does* record a verdict -- "uncertain", not "accept" -- because a
+        // blocked/denied attempt is exactly the kind of thing worth an
+        // audit trail, more so than a routine success.
+        write_record_with_draft(results.path(), "HAS-DRAFT", "fn fixed() {}");
+        let err = run_promote(
+            results.path(),
+            &verdicts_path,
+            &fake_registrar_config,
+            "HAS-DRAFT",
+            "some_crate",
+            "crates/some_crate/src/lib.rs",
+            "mimo",
+            "",
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("empty"));
+        let recorded = list_verdicts(&verdicts_path).unwrap();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].verdict, "uncertain");
+        assert!(recorded[0].notes.contains("empty"));
+        assert!(recorded[0].promoted_branch.is_none());
+
+        // Self-approval is refused too, at the same layer, and also leaves
+        // its own audit-trail entry -- arguably the single most important
+        // case to have a record of.
+        let err = run_promote(
+            results.path(),
+            &verdicts_path,
+            &fake_registrar_config,
+            "HAS-DRAFT",
+            "some_crate",
+            "crates/some_crate/src/lib.rs",
+            "qwen3.5:9b-q6",
+            "looks fine",
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("self-approval"));
+        let recorded = list_verdicts(&verdicts_path).unwrap();
+        assert_eq!(recorded.len(), 2);
+        assert!(recorded[1].notes.contains("self-approval"));
+        assert!(recorded[1].promoted_branch.is_none());
     }
 
     #[test]

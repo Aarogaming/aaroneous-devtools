@@ -1227,6 +1227,226 @@ fn promote_locked(config: &RegistrarConfig, task_id: &str) -> Result<()> {
     }
 }
 
+/// Outcome of [`promote_verified_draft`], returned to the caller rather
+/// than bailing on every non-success path.
+#[derive(Debug, Clone)]
+pub(crate) enum AutoPromoteOutcome {
+    Pushed {
+        branch: String,
+        commit: String,
+    },
+    CommittedNotPushed {
+        branch: String,
+        commit: String,
+        push_error: String,
+    },
+    VerificationFailed(String),
+}
+
+/// Reviewer identities this function refuses to accept as the human/agent
+/// causing a promotion — the local worker (or anything claiming to speak
+/// for it) cannot be the thing that approves its own draft, even nominally.
+const SELF_APPROVAL_DENYLIST: &[&str] = &[
+    "qwen",
+    "qwen3.5:9b-q6",
+    "local-worker",
+    "local_worker",
+    "foundation.local-worker",
+];
+
+fn reject_self_approval(reviewer: &str) -> Result<()> {
+    let normalized = reviewer.trim().to_ascii_lowercase();
+    if SELF_APPROVAL_DENYLIST
+        .iter()
+        .any(|denied| normalized == *denied || normalized.contains(denied))
+    {
+        bail!(
+            "reviewer {reviewer:?} matches the self-approval denylist — the local worker \
+             cannot be the reviewer that approves its own draft for promotion"
+        );
+    }
+    Ok(())
+}
+
+/// Pushes an already pre-proofed draft as an isolated `local-agent/{task_id}`
+/// branch (M61 — auto-promote pipeline,
+/// `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`), triggered by one
+/// discrete, named reviewer action on one specific item — never by the local
+/// worker's own loop deciding on its own that a draft is ready. That
+/// distinction is deliberate: every other write action in this system
+/// (`promote` itself, a `COORDINATION_QUEUE.md` claim, a `git push`) happens
+/// because a human or agent makes a specific choice about a specific
+/// instance, not because a standing rule decided for all future instances in
+/// advance. This function preserves that shape; it does not grant the local
+/// worker any authority it didn't already have.
+///
+/// Reuses every safety primitive `promote`/`promote_locked` already
+/// enforces: the high-risk crate/`unsafe` allowlist (hard block), the
+/// circuit breaker, a clean-working-tree requirement, re-verification with
+/// `cargo check` + `clippy` immediately before committing (the caller's own
+/// pre-proof pass and this checkout are not guaranteed to be the same
+/// state), and restoring the original branch no matter what happens.
+/// Additionally refuses an empty `justification` and refuses a `reviewer`
+/// matching [`SELF_APPROVAL_DENYLIST`] before doing anything else.
+///
+/// Never opens a pull request and never merges — pushing a branch is as far
+/// as this goes, same as `promote`, same reasoning:
+/// `governance/LOCAL_MODEL_AUTONOMY_POLICY.md`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn promote_verified_draft(
+    config_path: &Path,
+    task_id: &str,
+    crate_name: &str,
+    target_file: &str,
+    rust_source: &str,
+    reviewer: &str,
+    justification: &str,
+) -> Result<AutoPromoteOutcome> {
+    if justification.trim().is_empty() {
+        bail!(
+            "justification must not be empty — a promotion needs a real reason, not a blank accept"
+        );
+    }
+    reject_self_approval(reviewer)?;
+
+    let config = load_config(config_path)?;
+    let now = now_secs()?;
+    let commit_message = format!("{justification} (auto-promoted, reviewer: {reviewer})");
+    with_reservation(
+        &config.reservation_directory,
+        "foundation.agentic-registrar.auto-promote",
+        now,
+        || {
+            promote_verified_draft_locked(
+                &config,
+                task_id,
+                crate_name,
+                target_file,
+                rust_source,
+                &commit_message,
+            )
+        },
+    )
+}
+
+fn promote_verified_draft_locked(
+    config: &RegistrarConfig,
+    task_id: &str,
+    crate_name: &str,
+    target_file: &str,
+    rust_source: &str,
+    commit_message: &str,
+) -> Result<AutoPromoteOutcome> {
+    check_circuit_breaker(config)?;
+
+    if is_high_risk(crate_name, rust_source) {
+        bail!(
+            "task {task_id} blocked by the high-risk allowlist (crate '{crate_name}' or \
+             generated `unsafe` code) — local auto-promotion is disabled for this class of \
+             change; escalate to a cloud agent to implement it directly instead"
+        );
+    }
+
+    validate_target(&config.checkout, crate_name, target_file)?;
+    let full_target_path = config.checkout.join(target_file);
+    let pre_existing = full_target_path.exists();
+    if !pre_existing {
+        let crate_root = crate_root_for(&config.checkout, target_file)
+            .context("could not resolve crate root for target_file")?;
+        ensure_new_file_is_reachable(&crate_root, &full_target_path)?;
+    }
+
+    let original_branch = git_current_branch(&config.checkout)?;
+    if !git_working_tree_clean(&config.checkout)? {
+        bail!(
+            "checkout has uncommitted changes on branch '{original_branch}'; refusing to \
+             auto-promote onto a dirty working tree"
+        );
+    }
+
+    let branch_name = format!("local-agent/{task_id}");
+    git_checkout_new_branch(&config.checkout, &branch_name)
+        .with_context(|| format!("failed to create isolated branch '{branch_name}'"))?;
+
+    let outcome: Result<AutoPromoteOutcome> = (|| {
+        if let Some(parent) = full_target_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&full_target_path, rust_source)?;
+
+        println!(
+            "agentic registrar: auto-promoting {task_id} on branch '{branch_name}' — running \
+             cargo check + clippy for '{crate_name}'..."
+        );
+        let verification = check_crate_compilation(&config.checkout, crate_name)
+            .and_then(|()| check_crate_clippy(&config.checkout, crate_name));
+
+        match verification {
+            Ok(()) => {
+                let hash = git_stage_and_commit(
+                    &config.checkout,
+                    task_id,
+                    crate_name,
+                    target_file,
+                    commit_message,
+                )?;
+                match git_push_branch(&config.checkout, &branch_name) {
+                    Ok(()) => Ok(AutoPromoteOutcome::Pushed {
+                        branch: branch_name.clone(),
+                        commit: hash,
+                    }),
+                    Err(push_err) => Ok(AutoPromoteOutcome::CommittedNotPushed {
+                        branch: branch_name.clone(),
+                        commit: hash,
+                        push_error: push_err.to_string(),
+                    }),
+                }
+            }
+            Err(err_msg) => {
+                if pre_existing {
+                    git_rollback_existing_target(&config.checkout, target_file)?;
+                } else {
+                    let _ = fs::remove_file(&full_target_path);
+                }
+                Ok(AutoPromoteOutcome::VerificationFailed(err_msg))
+            }
+        }
+    })();
+
+    // Always attempt to restore the original branch before deciding what to
+    // report, whatever happened above — an auto-promotion attempt must
+    // never leave the checkout sitting on a throwaway branch.
+    let restore = git_checkout_branch(&config.checkout, &original_branch);
+    let outcome = outcome?;
+    restore.with_context(|| {
+        format!(
+            "auto-promotion result computed but failed to restore original branch '{original_branch}'"
+        )
+    })?;
+
+    match &outcome {
+        AutoPromoteOutcome::Pushed { branch, commit } => {
+            record_circuit_breaker_outcome(config, true)?;
+            println!(
+                "agentic registrar: auto-pushed {task_id} to branch '{branch}' ({commit}) — \
+                 open a PR for full CI + cloud-agent review"
+            );
+        }
+        AutoPromoteOutcome::CommittedNotPushed { .. } => {
+            // A push/network failure is not evidence the draft is bad, so
+            // this does not count against the circuit breaker. The commit
+            // and branch are left in place locally for a manual `git push`
+            // retry rather than discarded.
+        }
+        AutoPromoteOutcome::VerificationFailed(_) => {
+            git_delete_local_branch(&config.checkout, &branch_name);
+            record_circuit_breaker_outcome(config, false)?;
+        }
+    }
+
+    Ok(outcome)
+}
+
 /// Cleanly revert an already-promoted commit (M50 —
 /// `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`). Mirrors `promote`'s own
 /// shape rather than inventing a new one: validates the target first, does
