@@ -134,7 +134,9 @@ when the previous outcome tells you something about the next one.
   until the C10-C19 review backlog gets an actual independent verdict — see
   `LANE_CLOSEOUT_PLAN.md`. This policy governs how the pipeline behaves; it
   doesn't retroactively accept its own prior lanes.
-- ~~**Revert-triggered circuit breaker trips.**~~ **Closed (C27).** The
+- ~~**Revert-triggered circuit breaker trips.**~~ **Closed (C38, renumbered
+  2026-09-20 from C27 to resolve a coordination-queue ID collision — see
+  `COORDINATION_QUEUE.md`'s C35 row).** The
   breaker still only tracks local Tier-0 verification failures at
   promotion time automatically, but a cloud agent that finds a real
   problem after the fact — a merged local-agent PR reverted, a pattern of
