@@ -1,6 +1,8 @@
 mod agentic_registrar;
+mod audit_rollup;
 mod batch_overlap;
 mod candidate_metadata;
+mod candidate_retrieval;
 mod capability_composition;
 mod cloud_providers;
 mod component_inventory;
@@ -8,9 +10,11 @@ mod consensus_engine;
 mod consensus_readiness;
 mod cratification_intake;
 mod cross_verifier;
+mod decision_trace;
 mod dependency_review;
 mod dogfood;
 mod exploration_seed;
+mod fact_checker;
 mod frontier_discovery;
 mod hypervisor_mcp;
 mod intake;
@@ -19,6 +23,7 @@ mod job_converter;
 mod local_proposal;
 mod local_worker;
 mod multithreader;
+mod portfolio_digest;
 mod portfolio_jobs;
 mod scheduler;
 mod target_decomposition;
@@ -329,6 +334,65 @@ enum Command {
         #[arg(long)]
         output_dir: PathBuf,
     },
+    /// Aggregate completed local-worker portfolio triage results into
+    /// a unified human- and cloud-agent-facing digest markdown file.
+    PortfolioDigest {
+        /// Absolute path to the local worker's results directory.
+        #[arg(long)]
+        results_dir: PathBuf,
+        /// Optional absolute path to the local worker's archive directory.
+        #[arg(long)]
+        archive_dir: Option<PathBuf>,
+        /// Absolute path for the generated markdown digest file.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Query accumulated M57 candidate metadata records using explainable
+    /// weighted Jaccard similarity (M59).
+    QueryCandidates {
+        /// Absolute path to the metadata directory.
+        #[arg(long)]
+        metadata_dir: PathBuf,
+        /// The query string or candidate ID to find matches for.
+        #[arg(long)]
+        like: String,
+        /// Optional kind filter: "crate" or "cluster".
+        #[arg(long)]
+        kind: Option<String>,
+        /// Minimum similarity threshold (0.0 to 1.0).
+        #[arg(long, default_value_t = 0.1)]
+        min_score: f64,
+        /// Maximum number of matches to return.
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+        /// Emit results as JSON instead of human-readable text.
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Verify ground-truth factual claims and citations against a repository checkout (M56).
+    VerifyClaims {
+        /// Absolute path to the repository checkout.
+        #[arg(long)]
+        checkout: PathBuf,
+        /// Absolute path to the file containing claims, or text.
+        #[arg(long)]
+        input: PathBuf,
+        /// Emit results as JSON instead of human-readable text.
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Compile continuous invariant and architectural audits into an executive status dashboard.
+    AuditRollup {
+        /// Absolute path to the local worker's results directory.
+        #[arg(long)]
+        results_dir: PathBuf,
+        /// Absolute path to the local worker's archive directory.
+        #[arg(long)]
+        archive_dir: PathBuf,
+        /// Absolute path for the generated markdown status file.
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Cross-reference a coordination queue against a consensus ledger and
     /// write a read-only readiness report. Never modifies the queue or the
     /// ledger; a human reviewer still performs the actual Done edit.
@@ -501,6 +565,28 @@ enum Command {
         /// Required when `outcome` is `rejected`: why this sibling lost.
         #[arg(long)]
         reason: Option<String>,
+    },
+    /// Record an architectural branch selection from a Solution Tree, updating
+    /// the result record and generating structured SFT/DPO decision traces.
+    SelectBranch {
+        /// Absolute path to the local worker's results directory.
+        #[arg(long)]
+        results_dir: PathBuf,
+        /// The `id` of the job whose branch is being selected.
+        #[arg(long)]
+        job_id: String,
+        /// The name of the chosen branch from the solution tree.
+        #[arg(long)]
+        branch: String,
+        /// Detailed rationale explaining why this branch was chosen over alternatives.
+        #[arg(long)]
+        rationale: String,
+        /// Directory where decision traces (SFT/DPO datasets) are stored.
+        #[arg(
+            long,
+            default_value = "d:\\aaroneous-devtools\\artifacts\\decision-traces"
+        )]
+        traces_dir: PathBuf,
     },
     /// Cluster a harvested `cratify harvest --output <path>` `CrateSpec`
     /// export by module/directory boundary and emit one `analysis`
@@ -1044,6 +1130,37 @@ fn main() -> Result<()> {
             queue,
             output_dir,
         } => portfolio_jobs::run(&program, &queue, &output_dir).map(|_| ()),
+        Command::PortfolioDigest {
+            results_dir,
+            archive_dir,
+            output,
+        } => portfolio_digest::generate_digest(&results_dir, archive_dir.as_deref(), &output)
+            .map(|_| ()),
+        Command::QueryCandidates {
+            metadata_dir,
+            like,
+            kind,
+            min_score,
+            limit,
+            json,
+        } => candidate_retrieval::run(
+            &metadata_dir,
+            &like,
+            kind.as_deref(),
+            min_score,
+            limit,
+            json,
+        ),
+        Command::VerifyClaims {
+            checkout,
+            input,
+            json,
+        } => fact_checker::run_cli(&checkout, &input, json),
+        Command::AuditRollup {
+            results_dir,
+            archive_dir,
+            output,
+        } => audit_rollup::run_cli(&results_dir, &archive_dir, &output),
         Command::ConsensusReadiness {
             queue,
             ledger,
@@ -1161,6 +1278,20 @@ fn main() -> Result<()> {
             outcome,
             reason,
         } => local_worker::record_exploration_outcome(&results_dir, &job_id, &outcome, reason),
+        Command::SelectBranch {
+            results_dir,
+            job_id,
+            branch,
+            rationale,
+            traces_dir,
+        } => decision_trace::record_branch_selection(
+            &results_dir,
+            &job_id,
+            &branch,
+            &rationale,
+            &traces_dir,
+        )
+        .map(|_| ()),
     }
 }
 

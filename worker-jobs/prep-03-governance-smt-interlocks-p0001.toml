@@ -1,5 +1,0 @@
-schema_version = 1
-id = "PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0001"
-mode = "analysis"
-evidence = ["crates/governance/src/lib.rs"]
-instruction = "Research and investigate governance Z3 SMT verification rules, safety interlocks, and state reduction constraints."

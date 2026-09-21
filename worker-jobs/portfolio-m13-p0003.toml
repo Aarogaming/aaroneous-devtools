@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m13"
+goal = "M13"
+id = "PORTFOLIO-M13-P0003"
+instruction = """
+Portfolio progressive verification request for M13 (priority P2, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Publish measured performance assurance"
+Dependency: "M8"
+Preferred capability: "Benchmarking"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Claim M8 (P1) to establish the bounded reducer reference path before attempting M13. M13 should remain unclaimed until M8 is complete and a benchmarking baseline exists. | Obs: M13 is blocked by M8 (Establish bounded reducer reference path), which is P1 and unclaimed. | Obs: M13 requires 'Benchmarking' capability; no existing benchmarking infrastructure is referenced in evidence. | Obs: M27 (Add bounded benchmark-result contract) depends on both M8 and M13, creating a tight coupling loop if M8 is not resolved first. | Risk: Dependency blockage: M13 is blocked by M8, which is unclaimed. | Risk: Capability gap: No existing benchmarking framework is evident in the codebase or roadmap. | Risk: Scope creep: 'Measured performance assurance' is vague; without a defined metric or baseline, the work may expand beyond the bounded lane capacity.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M13, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

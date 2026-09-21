@@ -1,0 +1,23 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m54"
+goal = "M54"
+id = "PORTFOLIO-M54-P0002"
+instruction = """
+Portfolio deep-dive request for M54 (priority P1, Pass 2: Detailed Specification & Test Architecture) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Target decomposition: cluster a large source tree (e.g. Bevy ECS) by module boundaries into bounded, individually-scorable candidates, since wholesale discovery fails G5 for any sufficiently real target"
+Dependency: "M41, M46, M49"
+Preferred capability: "Rust systems review, structural analysis"
+
+[PRIOR TRIAGE CONTEXT - Pass 1]:
+Recommendation: Wait for M41, M46, and M49 completion. M54 is a dependent task requiring the structural analysis and schema extensions provided by those tasks before it can be claimed. | Obs: M54 targets decomposition of large source trees (e.g., Bevy ECS) into bounded, individually-scorable candidates. | Obs: Wholesale discovery fails G5 for sufficiently real targets, necessitating modular clustering. | Obs: Dependencies: M41 (self-scheduling frontier_discovery.rs), M46 (perspective/goal meta-tagging), M49 (cratification intake). M54 cannot proceed until these are resolved. | Risk: M54 is blocked by uncompleted dependencies (M41, M46, M49). | Risk: Decomposing large trees like Bevy ECS requires precise module boundary identification to avoid violating G5 constraints. | Risk: Clustering candidates must ensure they remain individually scorable without reintroducing wholesale discovery failures.
+
+This is a request for a speculative proposed technical specification only. It is NOT a claim on M54, does not authorize writing product code, and does not authorize touching the row's actual scope -- claiming real work still goes through governance/COORDINATION_QUEUE.md per governance/LOCAL_AGENT_CONTROL_PLANE.md.
+
+Building upon Pass 1's triage recommendations, please propose a Solution Tree with 2-3 distinct architectural branches (e.g. Branch-A: Compile-time typestate/zero-alloc, Branch-B: Bounded SWMR ring buffer, Branch-C: Decoupled adapter facade):
+(1) Concrete architectural design and trait/struct interface boundaries for each branch;
+(2) Invariants that must hold across state transitions (zero-heap, zero ambient authority, deterministic state machines per AGENTS.md);
+(3) Concrete trade-offs, blast radius, and code sketches comparing the branches in solution_tree;
+(4) Detailed checklist of step-by-step implementation phases for the recommended branch."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

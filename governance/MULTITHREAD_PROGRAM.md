@@ -87,6 +87,8 @@ queue before claiming; portfolio entries are not Ready source reservations.
 | P1 | M55 | Mechanical Stage 1 pre-filter: G1 license (via crates.io version endpoint, SPDX-aware) and G4 ecosystem-independence heuristic, zero agent/LLM calls in the path | M41 | Rust systems review, HTTP/API integration |
 | P2 | M56 | Ground-truth pre-verification: mechanically re-check a milestone's cited claims before implementation; seed competing predictions via M48/M46 when a design is genuinely uncertain, decided by evidence | M46, M48 | Rust systems review, workflow/tooling design |
 | P2 | M57 | Accumulating per-candidate metadata record: every pass (M41/M47/M54/M55/M42) reads and appends to one growing, explainable record per candidate instead of producing independent output | M41, M47, M54, M55, M42 | Rust systems review, data/schema design |
+| P1 | M58 | Portfolio triage producer: convert MULTITHREAD_PROGRAM.md unclaimed rows into local-worker analysis packets, deduplicating against COORDINATION_QUEUE.md | MULTITHREAD_PROGRAM.md, COORDINATION_QUEUE.md | Systems automation, queue coordination |
+| P2 | M59 | Cross-candidate retrieval: explainable Jaccard similarity querying across accumulated M57 JSON metadata records | M57 | Systems review, data/retrieval architecture |
 
 ## Intake rules
 

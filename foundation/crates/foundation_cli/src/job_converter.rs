@@ -297,6 +297,10 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
     }
 
     let mut completed_ids = std::collections::HashSet::new();
+    let mut latest_completion_secs: std::collections::HashMap<String, u64> =
+        std::collections::HashMap::new();
+    let mut latest_completion_summary: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for dir in candidate_dirs {
         if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
@@ -305,7 +309,46 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
                     if let Ok(text) = fs::read_to_string(&path) {
                         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                             if let Some(id) = value["job_id"].as_str() {
-                                completed_ids.insert(id.to_uppercase());
+                                let upper = id.to_uppercase();
+                                completed_ids.insert(upper.clone());
+                                let submitted = value["submitted_at_secs"].as_u64().unwrap_or(0);
+                                let base = if let Some(idx) = upper.rfind("-P") {
+                                    if upper[idx + 2..].chars().all(|c| c.is_ascii_digit()) {
+                                        &upper[..idx]
+                                    } else {
+                                        &upper
+                                    }
+                                } else {
+                                    &upper
+                                };
+                                let entry =
+                                    latest_completion_secs.entry(base.to_string()).or_insert(0);
+                                if submitted >= *entry {
+                                    *entry = submitted;
+                                    if let Some(proposal) =
+                                        value.get("proposal").and_then(|p| p.as_object())
+                                    {
+                                        let mut points = Vec::new();
+                                        if let Some(obs) =
+                                            proposal.get("observations").and_then(|v| v.as_array())
+                                        {
+                                            for o in obs.iter().filter_map(|x| x.as_str()) {
+                                                points.push(format!("Obs: {o}"));
+                                            }
+                                        }
+                                        if let Some(risks) =
+                                            proposal.get("risks").and_then(|v| v.as_array())
+                                        {
+                                            for r in risks.iter().filter_map(|x| x.as_str()) {
+                                                points.push(format!("Risk: {r}"));
+                                            }
+                                        }
+                                        if !points.is_empty() {
+                                            latest_completion_summary
+                                                .insert(base.to_string(), points.join(" | "));
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -388,9 +431,50 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
             target_filename = format!("{}-p{:04}.toml", item.id.to_lowercase(), pass);
         }
 
+        // If at least one pass has already completed, check if evidence files
+        // have changed or if the 24h cooldown has elapsed. If neither, skip refilling.
+        if pass > 0 {
+            if let Some(&last_submitted) = latest_completion_secs.get(item.id) {
+                let now_secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+
+                let evidence_modified = item.evidence.iter().any(|relative| {
+                    let p = if checkout.join(relative).is_file() {
+                        checkout.join(relative)
+                    } else {
+                        devtools_root.join(relative)
+                    };
+                    if let Ok(meta) = fs::metadata(&p) {
+                        if let Ok(mtime) = meta.modified() {
+                            if let Ok(dur) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                                return dur.as_secs() > last_submitted;
+                            }
+                        }
+                    }
+                    false
+                });
+
+                let cooldown_elapsed = now_secs.saturating_sub(last_submitted) >= 900;
+                if !evidence_modified && !cooldown_elapsed {
+                    continue;
+                }
+            }
+        }
+
         let destination = output_dir.join(&target_filename);
         if destination.exists() {
             continue;
+        }
+
+        let mut instruction = item.instruction.to_owned();
+        if pass > 0 {
+            if let Some(prev_notes) = latest_completion_summary.get(item.id) {
+                instruction.push_str(&format!(
+                    "\n\n[PRIOR AUDIT CONTEXT - Pass {pass}]:\nIn previous invariant audit pass(es), the following observations were noted:\n{prev_notes}\nVerify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."
+                ));
+            }
         }
 
         let manifest = JobManifest {
@@ -398,7 +482,7 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
             id: target_id,
             mode: item.mode.to_owned(),
             evidence: item.evidence.iter().map(|s| (*s).to_owned()).collect(),
-            instruction: item.instruction.to_owned(),
+            instruction,
         };
         let toml_str = toml::to_string_pretty(&manifest)?;
         fs::write(&destination, toml_str)?;
@@ -417,6 +501,21 @@ pub(crate) fn sync_and_refill_jobs(
     let mut created = sync_worker_jobs(queue_path, default_mode, output_dir)?;
     let refilled = refill_recurring_jobs(checkout, output_dir)?;
     created.extend(refilled);
+
+    if let Some(gov_dir) = queue_path.parent() {
+        let program_path = gov_dir.join("MULTITHREAD_PROGRAM.md");
+        if program_path.is_file() {
+            if let Ok(prog_jobs) = crate::portfolio_jobs::refill_portfolio_progression_jobs(
+                &program_path,
+                queue_path,
+                output_dir,
+                4,
+            ) {
+                created.extend(prog_jobs);
+            }
+        }
+    }
+
     Ok(created)
 }
 

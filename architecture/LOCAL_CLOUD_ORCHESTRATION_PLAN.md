@@ -1,8 +1,6 @@
 # Local/cloud orchestration plan
 
-**Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
-been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M57 in `governance/MULTITHREAD_PROGRAM.md`.
+**Status:** Active / Implemented & Verified (M40–M50, M53–M55, M57–M58 merged into `integration/local-cloud-orchestration`, devtools PR #3 and Aaroneous PR #51 CI green). This document records scope, architecture, and governance boundaries for milestones M40–M58 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -611,22 +609,66 @@ does not make the decision.
   commit; correctly branches merge-commit vs. squash-commit revert syntax); a
   real revert exercised end-to-end against a disposable test commit.
 
-### M51 — A running closed loop, not just documented triggers (not yet designed)
+### M51 — The Operational Closed Loop (Execution Engine)
 
-`architecture/DISCOVERY_REVIEW_LOOP.md` documents what *should* trigger each stage
-from the previous one's output, but nothing currently executes those triggers —
-`frontier-discover-serve` runs on its own schedule, and nothing automatically
-starts drafting, pre-proofing, or cratification when it produces a candidate. This
-milestone is real but genuinely not yet designed to the depth M40-M50 are; it
-needs its own grounding pass (reading whatever scheduling/orchestration primitives
-exist by the time M40-M50 have landed and settled, since M49's new producer and
-M48's seeding producer both change what "the next stage" even consumes) rather
-than a premature design written before its dependencies exist. Recorded here so
-the gap isn't lost, not scoped further today.
+**Operational Architecture (decided 2026-09-21, following M40–M50 and M57/M58 landing):**
+`architecture/DISCOVERY_REVIEW_LOOP.md` defined the conceptual flow across stages:
+`Discover -> Filter -> Decompose -> Seed -> Draft -> Pre-Proof -> Audit -> Cross-Verify -> Sign-off`.
+With the constituent tools now physically implemented in `foundation_cli`, M51 transitions from
+documented triggers to an executable, deterministic orchestration driver (`si orchestration-loop`).
 
-- **Dependency:** M48, M49 (the loop can't be wired until its stages exist)
-- **Preferred capability:** unassigned — needs grounding work first, not
-  implementation
+#### 1. Stage-to-Stage Transition Pipeline
+
+```
+[Trigger / Intake]
+  ├── M41: Frontier Discovery (crates.io keyword queries)
+  ├── M47: Capability Composition (internal registry pairs)
+  ├── M54: Target Decomposition (large repository clusters)
+  └── M58: Portfolio Triage (MULTITHREAD_PROGRAM.md backlog)
+         │
+         ▼
+[Stage 1: Mechanical Pre-Filter (M55 + M54)]
+  ├── G1: SPDX License Check (MIT, Apache-2.0, BSD-2/3, ISC, Unlicense)
+  ├── G4: Ecosystem Independence Heuristic (flags *-sys, cc, cmake)
+  └── G5: Refactoring Surface (< 5,000 LOC module boundary)
+         │
+         ▼
+[Stage 2: Metadata Accumulation & Staleness (M57)]
+  ├── Reads / writes atomic record in `artifacts/candidate-metadata/`
+  └── Fresh records (< 24h) skip redundant network requests
+         │
+         ▼
+[Stage 3: Multi-Perspective Seeding & Collision Guard (M43 + M48)]
+  ├── `batch_overlap`: Verifies no cross-candidate file conflicts
+  ├── `scope_reserved`: Verifies no overlap with active queue claims
+  └── `exploration_seed`: Emits 3 code-draft packets sharing an `exploration_group`
+         │
+         ▼
+[Stage 4: Local Worker Execution & Pre-Proofing (M44 + M45 + M53)]
+  ├── `local_worker`: Qwen 9B synthesizes candidate code in scratch space
+  ├── `dogfood::verify_draft`: Applies draft to throwaway isolated worktree
+  └── `dogfood::cratify_audit`: Runs `ast_auditor` / `cratify` via selected `ComplianceProfile`
+         │
+         ▼
+[Stage 5: Multi-Variant Ranking & Cross-Verification (M46 + M42)]
+  ├── `exploration_group` sibling comparison ranks passing variants
+  ├── `cross_verifier`: Adversarial secondary model checks logic (model != author)
+  └── `consensus_readiness`: Compiles read-only ledger for owner review
+```
+
+#### 2. Deterministic Driver Design (`OrchestrationLoop`)
+- **Execution Mode**: Runs as a daemon or cron tick via `foundation orchestration-loop --config <orchestrator.toml>`.
+- **Tick Lifecycle**:
+  1. *Poll & Ingest*: Executes one active intake stream (e.g. portfolio triage or scheduled frontier sweep).
+  2. *Mechanical Sift*: Evaluates candidates through G1/G4/G5 without LLM invocation. Disqualified candidates are recorded in metadata and halted.
+  3. *Enqueue*: Places surviving candidates into `worker-jobs/` bounded by `max_pending` (default 64) and queue reservation guards.
+  4. *Harvest & Proof*: Inspects completed worker results; if `code-draft` passed initial syntax, triggers `verify_draft` against throwaway worktree.
+  5. *Ledger Update*: Records passing drafts in `ConsensusLedger`; updates `status.txt` with loop cycle metrics.
+- **Safety Boundaries**: The orchestration driver retains zero ambient authority. It cannot commit to `main`, push to remotes, or mark `COORDINATION_QUEUE.md` rows as `Done`. All promotion remains strictly human-initiated via `agentic_registrar::promote` or cloud-agent review.
+
+- **Dependency:** M41, M43, M44, M45, M46, M47, M48, M50, M53, M54, M55, M57 (all merged).
+- **Preferred capability:** Systems automation, Rust state machine engineering.
+- **Evidence:** Automated integration harness executing an end-to-end simulated run across discovery -> mechanical prefilter -> decomposition -> seeding -> pre-proof with zero human intervention and verified proposal artifact emission.
 
 ### M52 — A curated offer/accept UX (deliberately deferred)
 
@@ -759,13 +801,26 @@ requires no new infrastructure:
    `code-draft` packets — decomposition produces *candidates*, it does not
    pre-decide outcomes.
 
-**Explicitly not in scope:** deeper clustering (import-graph cohesion, semantic
-similarity, learned embeddings) — worth revisiting only if module-boundary
-clustering proves too coarse in practice, with real evidence of where it fails,
-not speculatively. Also explicitly not in scope: anything beyond Rust sources —
-`adaptation_engine::harvest`'s parser (`ast_auditor::inspect`) is Rust-specific;
-non-Rust targets are a distinct, much larger effort this milestone does not
-attempt (see the decisions log entry below).
+**Deepening: Hierarchical / Recursive Sub-Module Decomposition (decided 2026-09-21):**
+While initial single-directory clustering proved successful on Bevy ECS (14 clusters cleared G5),
+7 core subsystems (`entity`, `query`, `schedule`, `system`, `world`, `change_detection`, `component`)
+were correctly flagged as oversized (>5,000 LOC refactoring surface). To crack these core subsystems
+without resorting to arbitrary line chunking, decomposition supports recursive sub-module partitioning:
+1. *Sub-Module Detection*: When a top-level directory cluster exceeds 5,000 LOC, inspect its internal
+   structure for declared child modules (e.g. `src/entity/allocator.rs`, `src/entity/hash_map.rs`,
+   or child directories containing `mod.rs`).
+2. *Sub-Tree Partitioning*: Re-run clustering at the child module level. Sub-modules that are
+   self-contained or have narrow ingress boundaries become discrete sub-clusters (e.g.
+   `bevy_ecs::entity::allocator` at 650 LOC).
+3. *Child Packet Emission*: Emits child cluster packets tagged with hierarchical perspectives
+   (`perspective = "entity::allocator"`, `exploration_group = "bevy_ecs_entity"`), allowing the
+   modular parts of complex subsystems to enter filtration and drafting individually.
+4. *Atomic Leaf Bound*: If an individual leaf file cannot be decomposed further and exceeds 5,000 LOC
+   alone, it is genuinely flagged `REFACTOR_COST_PROHIBITIVE` at that abstraction boundary.
+
+**Explicitly not in scope:** arbitrary token or line-count slicing that ignores Rust AST and module
+semantics (breaking language grammar), semantic embeddings without structural grounding, and non-Rust
+targets (`adaptation_engine::harvest` is specialized for Rust).
 
 - **Dependency:** M41 (frontier discovery, if targets are discovered rather than
   named directly), M46 (the tagging/grouping fields this reuses), M49 (harvested
@@ -859,32 +914,33 @@ proceed on an unverified assumption.
 
 **Two parts:**
 
-1. **Pre-implementation fact-checking.** Given a milestone's design section
-   (function signatures cited, API response shapes claimed, file paths
-   referenced), mechanically re-verify each claim against the real source or a
-   live response before implementation starts — the same `Read`/`Grep`/live-HTTP-
-   call pattern used by hand for every milestone in this plan, run as a defined
-   step rather than an ad hoc habit. Output: a pass/fail report per cited claim,
-   flagging anything unverified *before* an agent is dispatched to build against
-   it, catching the M40/M42/M49/M55 class of correction earlier and for free.
-2. **Competing predictions, decided by evidence, not preference.** Where a
-   design section names two or more genuinely viable approaches to the same
-   problem (not invented busywork — only when the blueprint itself is actually
-   uncertain), don't force a single a priori choice: seed both as real attempts
-   using the exact mechanism M48 already builds (`exploration_seed`'s
-   perspective-tagged packets, M46's exploration-group comparison), run them,
-   and let whichever one's actual verification results hold up win. This reuses
-   M48/M46 unchanged — it's a new *use* of them (deciding between designs, not
-   just between coding styles), not new mechanism.
+1. **Automated Pre-Dispatch Fact Checker (`si verify-claims` / `fact_checker.rs`).**
+   Before an agent or local worker is dispatched to write code against a task or milestone specification,
+   a deterministic checker parses the specification's cited evidence and claims:
+   - *File Paths*: Validates each referenced file or directory path exists in the target checkout.
+   - *Code Symbols & Signatures*: Scans target source trees (via `ast_auditor` or AST inspection)
+     to confirm named structs, traits, methods, or enum variants actually exist as cited.
+   - *CLI Subcommands & Arguments*: Verifies referenced flags or commands exist in the CLI parser definition.
+   - *Network & API Shapes*: Re-checks external API assumptions against recorded schema fixtures.
+   Output: A structured `FactCheckReport` with `{ passed: Vec<Claim>, failed: Vec<Claim>, unverified: Vec<Claim> }`.
+   A failed claim aborts dispatch before tokens or developer time are wasted on invalid assumptions.
 
-- **Dependency:** M46, M48 (both already built — this reuses their comparison/
-  seeding machinery for a new purpose rather than duplicating it)
-- **Preferred capability:** Rust systems review, workflow/tooling design
-- **Evidence:** a real pre-implementation fact-check run against one of this
-  plan's own already-written milestone sections, showing it either confirms the
-  section's claims or catches something wrong before any code is written; at
-  least one real case of two competing predictions seeded, run, and decided by
-  which one's evidence actually held up.
+2. **Competing Predictions Protocol.**
+   Where a design genuinely presents two or more viable architectural patterns (e.g. trait object
+   dynamic dispatch vs. const-generic static dispatch, or in-process channel vs. memory-mapped ring),
+   the orchestrator seeds both implementations using M48's `exploration_seed` under a shared
+   `exploration_group`:
+   - Both variants are dispatched as separate `code-draft` packets to isolated worktrees.
+   - Both run through M44 local pre-proofing and M45 compliance auditing.
+   - If both pass, M46's comparison-summary evaluates objective empirical metrics (binary size,
+     benchmark throughput, gate duration, diff minimalness) to recommend the superior variant.
+   This avoids speculative theoretical debates by letting reproducible evidence select the winner.
+
+- **Dependency:** M46, M48 (both merged — reuses their comparison and seeding mechanics).
+- **Preferred capability:** Rust systems review, static analysis tooling.
+- **Evidence:** Committed `fact_checker` module with passing unit tests against real plan documents;
+  at least one real run where an incorrect path/signature in a proposed task was caught and halted
+  before dispatch, and one competing prediction evaluated on empirical benchmark evidence.
 
 ### M57 — Accumulating per-candidate metadata record (multi-pass, not single-pass)
 
@@ -944,14 +1000,65 @@ what any individual pass is authorized to decide (M42's read-only guarantee,
 M44/M55's gate logic, etc. — this milestone only adds a record of what already
 happened, it doesn't change any pass's authority).
 
-- **Dependency:** M41, M47, M54, M55 (existing passes this wraps), M42 (the
-  read-only reporting pattern this reuses)
-- **Preferred capability:** Rust systems review, data/schema design
-- **Evidence:** committed record format and the hook wired into at least two
-  existing passes (M54 and M55 are the natural first pair, since both already
-  ran against the real Bevy ECS data this session produced); a real run showing
-  a second sweep over an already-recorded candidate behaving differently
-  because of the accumulated record, not repeating an identical cold check.
+### Cross-Candidate Retrieval & Similarity Layer (Closing the Memory Gap)
+
+**Memory/Context Architecture (grounded 2026-09-21):**
+The memory/context audit identified **retrieval** ("does this resemble something already decided or built?")
+as the single genuine architectural gap in the systems-level cognition model. With M57's JSON record format
+now implemented and accumulating data in `artifacts/candidate-metadata/`, retrieval can be designed over
+real, structured facts rather than speculative embeddings:
+
+1. **Deterministic Indexing**:
+   - `candidate_metadata` records candidates under two namespaces: `crate/{name}.json` (external candidates)
+     and `cluster/{group}/{perspective}.json` (decomposed sub-modules).
+   - The retrieval layer indexes these files into an in-memory inverted index of:
+     * *Public API Tokens*: Function names, struct signatures, trait names extracted via `ast_auditor::inspect`.
+     * *Dependency Fingerprint*: Set of normal and build dependencies.
+     * *Quadrants & Sizing*: Refactoring surface LOC, mechanical prefilter status (G1/G4/G5), and review outcomes.
+2. **Explainable Similarity Metric**:
+   - Computes weighted Jaccard similarity across discrete feature sets:
+     `Sim(A, B) = w_api * Jaccard(API_A, API_B) + w_deps * Jaccard(Deps_A, Deps_B) + w_size * SizeMatch(A, B)`
+   - Every score is 100% explainable: "Candidate B resembles Candidate A (score 0.84) because both export
+     ring-buffer abstractions with zero-allocation contracts, share no C dependencies, and have similar LOC."
+   - Zero opaque float vectors, zero black-box drift, and fully deterministic across runs.
+3. **Operational Querying**:
+   - `foundation query-candidates --like <candidate-or-crate> --metadata-dir <path>` returns the top-k nearest
+     recorded candidates and their historical outcomes (e.g. "Similar candidate `X` was rejected at G5 for
+     oversized refactoring surface on 2026-09-20").
+   - Informs future frontier sweeps and human review without repeating discarded experiments.
+
+### M58 — Portfolio-Triage Producer (Backlog-to-Worker Converter)
+
+**Implemented 2026-09-21 (`portfolio_jobs.rs`, merged `b9430b2`):**
+Converts `governance/MULTITHREAD_PROGRAM.md`'s curated Priority portfolio backlog (e.g. M8, M10, M11,
+M13–M15, M20, M26, M27) into structured, speculative analysis jobs for the running local worker,
+reconciling the portfolio against `governance/COORDINATION_QUEUE.md` so active work is never duplicated.
+
+#### Design & Implementation
+- **Source Input**: Reads `MULTITHREAD_PROGRAM.md`'s Priority portfolio table directly. Filters for open
+  priorities (`P0` | `P1` | `P2` | `P3`), skipping `Done` and `Retired` items.
+- **Queue Collision Check**: Scans `COORDINATION_QUEUE.md` for rows whose `Status` is `Claimed` or `Review`.
+  Extracts each row's `Scope` text and checks whether the portfolio row's `M##` ID appears as a substring.
+  If matched (e.g. row C35 claiming "M40-M47"), the row is dropped to prevent redundant analysis.
+- **Packet Generation**: For each surviving unclaimed row, writes one `worker-jobs/portfolio-m##.toml` packet:
+  * `id`: `PORTFOLIO-M##`
+  * `mode`: `analysis`
+  * `evidence`: `["governance/MULTITHREAD_PROGRAM.md"]`
+  * `perspective`: `"portfolio-triage"`
+  * `goal`: row ID (e.g. `"M8"`)
+  * `exploration_group`: slugified ID (e.g. `"m8"`)
+  * `instruction`: Requests a speculative proposed approach: (1) possible approach/plan; (2) touched files;
+    (3) risks/open questions; (4) feasibility assessment for human/cloud claim.
+- **Strict Boundary Contract**: The emitted instruction explicitly states:
+  *"This is a request for a speculative proposed approach only. It is NOT a claim, does not authorize writing
+  product code, and does not authorize touching the row's actual scope."*
+- **CLI Command**: `foundation portfolio-triage --program <path> --queue <path> --output-dir <path>`
+  provides an explicit-input entrypoint modeled on `scheduler.rs`.
+
+- **Dependency:** `MULTITHREAD_PROGRAM.md`, `COORDINATION_QUEUE.md`
+- **Preferred capability:** Systems automation, queue coordination.
+- **Evidence:** Committed `portfolio_jobs.rs` with 10 passing unit tests (parsing, priority filtering,
+  claim suppression, packet formatting); live CLI execution emitting valid triage packets.
 
 ## Decisions log
 
@@ -1108,46 +1215,22 @@ settled scope:
   accumulation layer around existing passes (M41/M47/M54/M55/M42) — no pass's
   authority or logic changes, only a growing record of what already happened.
   Also recorded here: real CI (`gh pr checks`) passed clean for the first time
-  this session on this exact PR after fixing the `job_converter.rs` formatting
-  drift nine separate background agents had each correctly-but-narrowly
-  deferred — the concrete answer, with evidence, to "is there a better
-  foundation-setting move than the next milestone."
+- **2026-09-21 — Scoped and implemented M58 (portfolio-triage producer).**
+  Addressed the question of how to channel the project's own curated backlog
+  (`MULTITHREAD_PROGRAM.md`) into work for the running local worker, rather than
+  inventing busywork. Converts unclaimed P0–P3 rows into bounded `portfolio-m##.toml`
+  packets cross-referenced against `COORDINATION_QUEUE.md` Claimed/Review rows
+  to eliminate duplicate work. Emitted instructions strictly preserve the
+  `LOCAL_AGENT_CONTROL_PLANE.md` proposal-only boundary (speculative approach,
+  touched files, risks, claim feasibility). Verified with 10 unit tests and
+  merged into `integration/local-cloud-orchestration`.
 
 ## Sequencing
 
-M40 and M41 are independent and can both enter `Ready` immediately. M43 depends on
-M41's packet supply. M42 no longer gates M44 (corrected 2026-09-20 — M42 is a
-read-only report over existing `cross_verifier.rs`/`consensus_engine.rs`, not a
-prerequisite contract); M42 and M44 can proceed independently and in parallel.
-M45 depends on M44 (and benefits from
-M41's packet supply as a second input source) and should not be claimed before a
-proofed local draft actually exists to route through it. M46 depends on both M41
-and M45 and is deliberately last — meta-tagging and multi-variant exploration add
-real complexity and are only worth it once there is enough packet volume and one
-stable acceptance funnel to organize. M47 depends on M40 (proves the file-contract
-pattern) and on `governance/BUILD_WORTHINESS_STANDARD.md` existing; it can proceed
-in parallel with M41/M44/M45/M46 rather than waiting on them, since it feeds the
-same packet supply M41 does rather than depending on it. M48 depends on M46
-(consumer must exist first) and M44 (its output flows through pre-proofing
-unchanged); unlike the other milestones it has no natural automatic trigger, so it
-stays an explicitly-invoked producer rather than something a serve loop calls on
-its own. M49 depends only on M44/M45 (both already built) and can proceed now,
-in parallel with anything else. M50 depends on nothing else in this plan and can
-proceed immediately — it only builds on `agentic_registrar.rs`'s existing
-`promote` pattern. M51 depends on M48 and M49 (needs its stages to exist before
-the loop connecting them can be designed, let alone built) and is intentionally
-left ungrounded until then. M52 depends on M50 (a reject action needs a real
-mechanism behind it) and is deliberately deferred. M53 depends on M44/M45 (both
-already built) and can proceed immediately, entirely independent of everything
-else in this plan — it's the smallest milestone here, a named layer in front of
-a parameter `verify_draft` already accepts. M54 depends on M41/M46/M49 (all
-already built) and can proceed now — it's the real unblocking step for any
-wholesale-target discovery attempt, including the actual next target named in
-planning (Bevy ECS). M55 depends on M41 (extends its existing search call site)
-and can proceed now, independent of M54. M56 depends on M46/M48 (both already
-built — it's a new use of existing mechanism) and can proceed now. M57 depends
-on M41/M47/M54/M55/M42 (the passes it wraps) and should be claimed after at
-least two of them are stable, so the accumulation layer has real, settled pass
-output to wrap rather than a moving target. No milestone in this plan
-authorizes paid cloud dispatch or local write/claim authority — those remain
-explicit future decisions, not defaults unlocked by completing M40–M57.
+M40–M50, M53–M55, M57, and M58 are all merged into the integration branch
+`integration/local-cloud-orchestration` and verified on CI (devtools PR #3 and
+Aaroneous PR #51). M51 (the operational closed loop), M54 (hierarchical sub-module
+decomposition), M56 (ground-truth fact checking & competing predictions), and the
+cross-candidate retrieval layer represent the immediate operational horizon.
+No milestone in this plan authorizes paid cloud dispatch or local write/claim authority
+— those remain explicit future decisions, not defaults unlocked by completing M40–M58.

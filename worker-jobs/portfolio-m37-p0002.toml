@@ -1,0 +1,23 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m37"
+goal = "M37"
+id = "PORTFOLIO-M37-P0002"
+instruction = """
+Portfolio deep-dive request for M37 (priority P2, Pass 2: Detailed Specification & Test Architecture) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Worker liveness and persistence failure policy: local_worker.rs/multithreader.rs"
+Dependency: "Ownership and deployment inputs"
+Preferred capability: "Observable quiet/reserved/error states, bounded permanent failure policy, crash-marker tests"
+
+[PRIOR TRIAGE CONTEXT - Pass 1]:
+Recommendation: Await explicit ownership and deployment inputs from governance/COORDINATION_QUEUE.md before claiming M37. | Obs: M37 targets `local_worker.rs` and `multithreader.rs` for worker liveness and persistence failure policy. | Obs: Required capabilities: observable quiet/reserved/error states, bounded permanent failure policy, crash-marker tests. | Obs: Dependency: Ownership and deployment inputs (unresolved). Preferred capability: observable states and bounded failure policy. | Risk: Dependency on unresolved ownership and deployment inputs blocks immediate implementation. | Risk: Worker liveness and persistence policies require deep integration with runtime state, increasing complexity. | Risk: Crash-marker tests may require specialized test infrastructure not yet defined.
+
+This is a request for a speculative proposed technical specification only. It is NOT a claim on M37, does not authorize writing product code, and does not authorize touching the row's actual scope -- claiming real work still goes through governance/COORDINATION_QUEUE.md per governance/LOCAL_AGENT_CONTROL_PLANE.md.
+
+Building upon Pass 1's triage recommendations, please propose a Solution Tree with 2-3 distinct architectural branches (e.g. Branch-A: Compile-time typestate/zero-alloc, Branch-B: Bounded SWMR ring buffer, Branch-C: Decoupled adapter facade):
+(1) Concrete architectural design and trait/struct interface boundaries for each branch;
+(2) Invariants that must hold across state transitions (zero-heap, zero ambient authority, deterministic state machines per AGENTS.md);
+(3) Concrete trade-offs, blast radius, and code sketches comparing the branches in solution_tree;
+(4) Detailed checklist of step-by-step implementation phases for the recommended branch."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

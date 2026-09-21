@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m15"
+goal = "M15"
+id = "PORTFOLIO-M15-P0003"
+instruction = """
+Portfolio progressive verification request for M15 (priority P3, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Evaluate Candle, Rig, Burn, and ONNX Runtime in isolated foundation crates"
+Dependency: "M9"
+Preferred capability: "Experimental Rust stacks"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Await human or cloud session claim for M15 to proceed with experimental stack evaluation. | Obs: M15 is P3 speculative evaluation dependent on M9 (read-only dogfood harness). | Obs: Target technologies: Candle, Rig, Burn, ONNX Runtime in isolated foundation crates. | Obs: Constraint: No product code authorization, no scope touching, isolated evaluation only. | Risk: Experimental stacks (Candle, Rig, Burn, ONNX) introduce significant build-time and runtime dependency variance. | Risk: M9 dependency status must be verified before isolation attempts. | Risk: Speculative nature precludes immediate acceptance criteria definition.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M15, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

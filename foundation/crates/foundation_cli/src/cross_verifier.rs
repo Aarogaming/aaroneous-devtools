@@ -122,6 +122,7 @@ mod tests {
                     test_plan: vec!["Add fuzz test".into()],
                     recommended_next_step: "Reject proposal".into(),
                     rust_draft: None,
+                    solution_tree: None,
                 })
             } else {
                 Ok(Draft {
@@ -131,6 +132,7 @@ mod tests {
                     test_plan: vec!["Verification passed".into()],
                     recommended_next_step: "Proceed to promotion".into(),
                     rust_draft: None,
+                    solution_tree: None,
                 })
             }
         }
@@ -150,6 +152,7 @@ mod tests {
             test_plan: vec!["plan".into()],
             recommended_next_step: "next".into(),
             rust_draft: None,
+            solution_tree: None,
         };
         assert!(
             cross_verify_proposal(
@@ -178,6 +181,7 @@ mod tests {
             test_plan: vec!["plan".into()],
             recommended_next_step: "next".into(),
             rust_draft: None,
+            solution_tree: None,
         };
         let verdict = cross_verify_proposal(
             "local-ollama",

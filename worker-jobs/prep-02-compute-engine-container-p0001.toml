@@ -1,5 +1,0 @@
-schema_version = 1
-id = "PREP-02-COMPUTE-ENGINE-CONTAINER-P0001"
-mode = "analysis"
-evidence = ["crates/compute/src/lib.rs"]
-instruction = "Research and investigate compute engine JIT and .si container engine interfaces, execution bounds, and allocation limits."

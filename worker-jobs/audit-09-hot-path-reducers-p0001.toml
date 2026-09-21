@@ -1,5 +1,0 @@
-schema_version = 1
-id = "AUDIT-09-HOT-PATH-REDUCERS-P0001"
-mode = "analysis"
-evidence = ["dev/emulator_harness/src/lib.rs"]
-instruction = "Audit compute engine and emulator harness for zero-allocation trace reduction, bounded execution budgets, and deterministic trace replay guarantees."

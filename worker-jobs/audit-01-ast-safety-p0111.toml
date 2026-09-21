@@ -1,8 +1,0 @@
-schema_version = 1
-id = "AUDIT-01-AST-SAFETY-P0111"
-mode = "analysis"
-evidence = [
-    "crates/ast_auditor/src/rules/text_encoding.rs",
-    "xtask/src/gate.rs",
-]
-instruction = "Audit AST auditor rules, UTF-8/LF line ending enforcement, and gate command alignment between xtask/src/gate.rs and AGENTS.md Section 6."

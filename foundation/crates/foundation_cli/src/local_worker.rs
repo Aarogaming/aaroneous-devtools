@@ -68,7 +68,19 @@ enum Mode {
     TestFixture,
     CodeDraft,
 }
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub(crate) struct SolutionBranch {
+    pub(crate) branch_name: String,
+    pub(crate) architecture_paradigm: String,
+    pub(crate) approach: String,
+    pub(crate) blast_radius: String,
+    pub(crate) invariant_profile: String,
+    pub(crate) trade_offs: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) code_sketch: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Draft {
     pub(crate) task: String,
@@ -77,31 +89,40 @@ pub(crate) struct Draft {
     pub(crate) test_plan: Vec<String>,
     pub(crate) recommended_next_step: String,
     pub(crate) rust_draft: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) solution_tree: Option<Vec<SolutionBranch>>,
 }
-#[derive(Deserialize, Serialize)]
-struct Record {
-    schema_version: u32,
-    artifact_kind: String,
-    job_id: String,
-    submitted_at_secs: u64,
-    outcome: String,
-    input: String,
-    proposal: Option<Draft>,
-    error: Option<String>,
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct Record {
+    pub(crate) schema_version: u32,
+    pub(crate) artifact_kind: String,
+    pub(crate) job_id: String,
+    pub(crate) submitted_at_secs: u64,
+    pub(crate) outcome: String,
+    pub(crate) input: String,
+    pub(crate) proposal: Option<Draft>,
+    pub(crate) error: Option<String>,
     /// Absolute path to the local pre-proofing verification report (M44),
     /// when pre-proofing config is set, the job is a code-draft, and the
     /// proposal carries a non-empty `rust_draft`. `None` otherwise, including
     /// for every job dispatched before this field existed or without
     /// pre-proofing configured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pre_proof_report: Option<String>,
+    pub(crate) pre_proof_report: Option<String>,
     /// Set by a human reviewer (or the `record-exploration-outcome` CLI
     /// command a reviewer runs) after comparing an `exploration_group`'s
     /// siblings, per `governance/LOCAL_AGENT_CONTROL_PLANE.md`: the local
     /// worker never sets or infers this field itself. `None` for every
     /// record that predates M46 or has not yet been reviewed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    rejection_reason: Option<String>,
+    pub(crate) rejection_reason: Option<String>,
+    /// Selected branch name chosen during orchestration or human review.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) selected_branch: Option<String>,
+    /// Rationale explaining why the chosen branch was preferred over alternatives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) selection_rationale: Option<String>,
 }
 struct Reservation(PathBuf);
 impl Drop for Reservation {
@@ -299,6 +320,95 @@ struct ExplorationGroupSummary {
     goal: Option<String>,
     members: Vec<ExplorationGroupMember>,
     generated_at_secs: u64,
+}
+
+/// Strips pass suffixes (e.g. `-P0178` or `-p0178`) so recurring runs of the
+/// same audit share a single base key for scheduling recency tracking, deduplication,
+/// and rotation.
+pub(crate) fn base_job_key(id: &str) -> &str {
+    if let Some(pos) = id.rfind('-') {
+        let suffix = &id[pos + 1..];
+        if (suffix.starts_with('P') || suffix.starts_with('p'))
+            && suffix.len() > 1
+            && suffix[1..].chars().all(|c| c.is_ascii_digit())
+        {
+            return &id[..pos];
+        }
+    }
+    id
+}
+
+/// Moves older passes of multi-pass jobs from `results_dir` to `archive_dir`
+/// when pending results accumulate (e.g. >= max_pending / 2), keeping only the
+/// newest pass of each recurring job in `results_dir`.
+fn rotate_excess_results(results_dir: &Path, archive_dir: &Path, max_pending: usize) -> Result<()> {
+    let pending_files = files(results_dir, "json")?;
+    let pending_results: Vec<_> = pending_files
+        .into_iter()
+        .filter(|p| is_result_file(p))
+        .collect();
+
+    if pending_results.len() < max_pending / 2 {
+        return Ok(());
+    }
+
+    #[derive(Deserialize)]
+    struct Header {
+        job_id: String,
+        submitted_at_secs: u64,
+    }
+
+    let mut by_base: BTreeMap<String, Vec<(u64, PathBuf)>> = BTreeMap::new();
+    for path in &pending_results {
+        if let Ok(text) = read_bounded(path, 65536) {
+            if let Ok(header) = serde_json::from_str::<Header>(&text) {
+                let base = base_job_key(&header.job_id).to_string();
+                by_base
+                    .entry(base)
+                    .or_default()
+                    .push((header.submitted_at_secs, path.clone()));
+            }
+        }
+    }
+
+    let mut rotated = 0;
+    for (_base, mut entries) in by_base {
+        if entries.len() <= 1 {
+            continue;
+        }
+        entries.sort_by_key(|(submitted, _)| *submitted);
+        // Retain the newest entry in results_dir, move older ones to archive_dir
+        for (_, path) in &entries[..entries.len() - 1] {
+            if let Some(file_name) = path.file_name() {
+                let dest = archive_dir.join(file_name);
+                if dest.exists() {
+                    let _ = fs::remove_file(&dest);
+                }
+                if fs::rename(path, &dest).is_ok() {
+                    rotated += 1;
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        let pp_name = format!("{stem}-pre-proof.json");
+                        let pp_src = results_dir.join(&pp_name);
+                        if pp_src.exists() {
+                            let pp_dest = archive_dir.join(&pp_name);
+                            if pp_dest.exists() {
+                                let _ = fs::remove_file(&pp_dest);
+                            }
+                            let _ = fs::rename(&pp_src, &pp_dest);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if rotated > 0 {
+        println!(
+            "local worker: auto-archived {rotated} superseded pass result(s) to reduce pending bloat"
+        );
+    }
+
+    Ok(())
 }
 
 /// Returns the path within `directory` whose filename is `{job_id}-NNNN.json`
@@ -554,6 +664,7 @@ where
             .as_bytes(),
         )?;
     }
+    rotate_excess_results(&c.results_directory, &c.archive_directory, c.max_pending)?;
     let pending: Vec<_> = files(&c.results_directory, "json")?
         .into_iter()
         .filter(|p| is_result_file(p))
@@ -593,7 +704,8 @@ where
     // job a turn before it can be picked again.
     let mut last_attempt: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
     for record in &records {
-        let entry = last_attempt.entry(record.job_id.clone()).or_insert(0);
+        let key = base_job_key(&record.job_id).to_string();
+        let entry = last_attempt.entry(key).or_insert(0);
         *entry = (*entry).max(record.submitted_at_secs);
     }
 
@@ -619,7 +731,18 @@ where
         {
             bail!("invalid approved job: {}", path.display());
         }
-        if scope_reserved(&queue, &job.evidence) {
+        if job.perspective.as_deref() == Some("portfolio-triage") {
+            if let Some(goal) = job.goal.as_deref() {
+                if queue.lines().filter(|s| s.starts_with('|')).any(|row| {
+                    let cols: Vec<_> = row.split('|').map(str::trim).collect();
+                    cols.len() >= 4
+                        && matches!(cols[3], "Claimed" | "Review")
+                        && cols[2].contains(goal)
+                }) {
+                    continue;
+                }
+            }
+        } else if scope_reserved(&queue, &job.evidence) {
             continue;
         }
         let mut input = format!(
@@ -641,13 +764,28 @@ where
         if input.len() > 65536 {
             bail!("job evidence exceeds 64 KiB");
         }
+        let base_key = base_job_key(&job.id);
+        if let Some(prior_rejection) = records
+            .iter()
+            .filter(|r| base_job_key(&r.job_id) == base_key && r.rejection_reason.is_some())
+            .max_by_key(|r| r.submitted_at_secs)
+        {
+            if let Some(ref reason) = prior_rejection.rejection_reason {
+                input.push_str(&format!(
+                    "\n[PRIOR REVIEWER FEEDBACK]: A previous attempt for this task was rejected with the following review feedback:\n\"{reason}\"\nYou MUST incorporate this feedback, rectify the deficiencies, and avoid repeating the cited errors.\n"
+                ));
+            }
+        }
         if records
             .iter()
             .any(|r| r.job_id == job.id && r.input == input)
         {
             continue;
         }
-        let last_attempt_secs = last_attempt.get(&job.id).copied().unwrap_or(0);
+        let last_attempt_secs = last_attempt
+            .get(base_job_key(&job.id))
+            .copied()
+            .unwrap_or(0);
         candidates.push(Candidate {
             job,
             input,
@@ -676,11 +814,20 @@ where
             error: None,
             pre_proof_report: None,
             rejection_reason: None,
+            selected_branch: None,
+            selection_rationale: None,
         };
         let is_code_draft = matches!(job.mode, Mode::CodeDraft);
+        let devtools_root = c
+            .queue
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap_or(&c.checkout);
+        let roots = [&c.checkout, devtools_root];
         match delegate(&c.endpoint, &record.input) {
             Ok(proposal) => {
-                let violations = verify_proposal_quality(&proposal);
+                let mut violations = verify_proposal_quality(&proposal);
+                violations.extend(verify_proposal_citations(&proposal, &roots));
                 if violations.is_empty() {
                     record.proposal = Some(proposal);
                     let _ = update_probation_ledger(
@@ -703,7 +850,9 @@ where
                     );
                     match delegate(&c.endpoint, &retry_input) {
                         Ok(retry_proposal) => {
-                            let retry_violations = verify_proposal_quality(&retry_proposal);
+                            let mut retry_violations = verify_proposal_quality(&retry_proposal);
+                            retry_violations
+                                .extend(verify_proposal_citations(&retry_proposal, &roots));
                             if retry_violations.is_empty() {
                                 record.proposal = Some(retry_proposal);
                                 let _ = update_probation_ledger(
@@ -792,6 +941,28 @@ where
         persist(&c, &record)?;
         save_status(&c, now, &record.outcome)?;
         println!("local worker: {} {}", record.job_id, record.outcome);
+        if record.job_id.to_ascii_uppercase().starts_with("PORTFOLIO-") {
+            if let Some(gov_dir) = c.queue.parent() {
+                let digest_path = gov_dir.join("PORTFOLIO_TRIAGE_DIGEST.md");
+                let _ = crate::portfolio_digest::generate_digest(
+                    &c.results_directory,
+                    Some(&c.archive_directory),
+                    &digest_path,
+                );
+            }
+        }
+        if record.job_id.to_ascii_uppercase().starts_with("AUDIT-")
+            || record.job_id.to_ascii_uppercase().starts_with("PREP-")
+        {
+            if let Some(gov_dir) = c.queue.parent() {
+                let audit_path = gov_dir.join("INVARIANT_AUDIT_STATUS.md");
+                let _ = crate::audit_rollup::generate_audit_rollup(
+                    &c.results_directory,
+                    &c.archive_directory,
+                    &audit_path,
+                );
+            }
+        }
         if record.outcome == "failed" {
             bail!("local job failed; retained result requires owner review");
         }
@@ -812,7 +983,23 @@ fn draft_schema() -> serde_json::Value {
             "risks":{"type":"array","maxItems":6,"items":{"type":"string","maxLength":512}},
             "test_plan":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string","maxLength":256}},
             "recommended_next_step":{"type":"string","minLength":1,"maxLength":512},
-            "rust_draft":{"type":["string","null"],"maxLength":24000}
+            "rust_draft":{"type":["string","null"],"maxLength":24000},
+            "solution_tree":{
+                "type":["array","null"],
+                "items":{
+                    "type":"object",
+                    "required":["branch_name","architecture_paradigm","approach","blast_radius","invariant_profile","trade_offs"],
+                    "properties":{
+                        "branch_name":{"type":"string","maxLength":64},
+                        "architecture_paradigm":{"type":"string","maxLength":128},
+                        "approach":{"type":"string","maxLength":1024},
+                        "blast_radius":{"type":"string","maxLength":256},
+                        "invariant_profile":{"type":"string","maxLength":512},
+                        "trade_offs":{"type":"string","maxLength":1024},
+                        "code_sketch":{"type":["string","null"],"maxLength":8192}
+                    }
+                }
+            }
         }
     })
 }
@@ -965,6 +1152,25 @@ pub fn verify_proposal_quality(draft: &Draft) -> Vec<String> {
     violations
 }
 
+/// Verifies that any repo-relative paths cited in the proposal actually exist in the workspace or devtools checkout (M56).
+pub fn verify_proposal_citations(draft: &Draft, roots: &[&Path]) -> Vec<String> {
+    let mut violations = Vec::new();
+    let text = format!(
+        "{}\n{}\n{}",
+        draft.task,
+        draft.recommended_next_step,
+        draft.observations.join("\n")
+    );
+    let cited_paths = crate::fact_checker::extract_cited_paths(&text);
+    for rel in cited_paths {
+        let exists = roots.iter().any(|root| root.join(&rel).exists());
+        if !exists {
+            violations.push(format!("cited path '{rel}' does not exist in checkout"));
+        }
+    }
+    violations
+}
+
 pub fn update_probation_ledger(
     results_dir: &Path,
     job_id: &str,
@@ -1078,7 +1284,7 @@ pub(crate) fn tick(config: &Path, minute: u32, now: u64) -> Result<()> {
 /// minutes even after a long idle streak, so a real backlog that shows up
 /// later is never starved for more than half an hour by an over-eager
 /// backoff.
-const SERVE_MIN_DELAY: Duration = Duration::from_secs(120);
+const SERVE_MIN_DELAY: Duration = Duration::from_secs(5);
 const SERVE_MAX_DELAY: Duration = Duration::from_secs(30 * 60);
 
 fn read_status_outcome(path: &Path) -> Option<String> {
@@ -1325,6 +1531,7 @@ mod tests {
             test_plan: vec!["bounded criterion".into()],
             recommended_next_step: "owner review".into(),
             rust_draft: None,
+            solution_tree: None,
         }
     }
     #[test]
@@ -1468,6 +1675,8 @@ exploration_group = "faster-reducer-group"
             error: None,
             pre_proof_report: None,
             rejection_reason: None,
+            selected_branch: None,
+            selection_rationale: None,
         }
     }
     #[test]
@@ -1795,6 +2004,79 @@ exploration_group = "faster-reducer-group"
         assert!(
             c.results_directory
                 .join("crash_marker_retained.json")
+                .exists()
+        );
+    }
+    #[test]
+    fn test_base_job_key() {
+        assert_eq!(
+            base_job_key("AUDIT-01-AST-SAFETY-P0178"),
+            "AUDIT-01-AST-SAFETY"
+        );
+        assert_eq!(
+            base_job_key("audit-01-ast-safety-p0001"),
+            "audit-01-ast-safety"
+        );
+        assert_eq!(base_job_key("PORTFOLIO-M1"), "PORTFOLIO-M1");
+        assert_eq!(base_job_key("PORTFOLIO-M10"), "PORTFOLIO-M10");
+        assert_eq!(base_job_key("JOB-WITHOUT-PASS"), "JOB-WITHOUT-PASS");
+        assert_eq!(base_job_key("P10"), "P10");
+    }
+    #[test]
+    fn test_rotate_excess_results_archives_older_passes() {
+        let (_d, c, _config) = fixture();
+        let max_pending = 4;
+
+        for pass in 1..=3 {
+            let record = Record {
+                schema_version: 1,
+                artifact_kind: "foundation.local-worker-result".into(),
+                job_id: format!("AUDIT-01-AST-SAFETY-P{pass:04}"),
+                submitted_at_secs: 1000 + pass as u64,
+                outcome: "pending-owner-review".into(),
+                input: "input".into(),
+                proposal: None,
+                error: None,
+                pre_proof_report: None,
+                rejection_reason: None,
+                selected_branch: None,
+                selection_rationale: None,
+            };
+            let data = serde_json::to_vec_pretty(&record).unwrap();
+            fs::write(
+                c.results_directory
+                    .join(format!("AUDIT-01-AST-SAFETY-P{pass:04}-0000.json")),
+                &data,
+            )
+            .unwrap();
+        }
+
+        assert_eq!(files(&c.results_directory, "json").unwrap().len(), 3);
+        rotate_excess_results(&c.results_directory, &c.archive_directory, max_pending).unwrap();
+
+        assert!(
+            c.results_directory
+                .join("AUDIT-01-AST-SAFETY-P0003-0000.json")
+                .exists()
+        );
+        assert!(
+            !c.results_directory
+                .join("AUDIT-01-AST-SAFETY-P0001-0000.json")
+                .exists()
+        );
+        assert!(
+            !c.results_directory
+                .join("AUDIT-01-AST-SAFETY-P0002-0000.json")
+                .exists()
+        );
+        assert!(
+            c.archive_directory
+                .join("AUDIT-01-AST-SAFETY-P0001-0000.json")
+                .exists()
+        );
+        assert!(
+            c.archive_directory
+                .join("AUDIT-01-AST-SAFETY-P0002-0000.json")
                 .exists()
         );
     }

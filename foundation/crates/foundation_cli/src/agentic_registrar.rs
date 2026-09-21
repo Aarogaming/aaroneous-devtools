@@ -2557,6 +2557,7 @@ fn check_crate_compilation(checkout: &Path, crate_name: &str) -> Result<(), Stri
     let output = Command::new("cargo")
         .args(["check", "-p", crate_name, "--all-targets"])
         .current_dir(checkout)
+        .env("CARGO_TARGET_DIR", checkout.join("target"))
         .output()
         .map_err(|e| format!("Failed to spawn cargo check: {e}"))?;
 
@@ -2581,6 +2582,7 @@ fn check_crate_clippy(checkout: &Path, crate_name: &str) -> Result<(), String> {
             "warnings",
         ])
         .current_dir(checkout)
+        .env("CARGO_TARGET_DIR", checkout.join("target"))
         .output()
         .map_err(|e| format!("Failed to spawn cargo clippy: {e}"))?;
 

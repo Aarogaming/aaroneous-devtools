@@ -1,0 +1,16 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m35"
+goal = "M35"
+id = "PORTFOLIO-M35"
+instruction = """
+Portfolio triage request for M35 (priority P1) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Current docs/cadence/adoption correction: C23"
+Dependency: "Old source scopes released by handoff"
+Preferred capability: "Accurate current claims, dated history, valid links and UTF-8/LF"
+
+This is a request for a speculative proposed approach only. It is NOT a claim on M35, does not authorize writing product code, and does not authorize touching the row's actual scope -- claiming real work still goes through governance/COORDINATION_QUEUE.md per governance/LOCAL_AGENT_CONTROL_PLANE.md.
+
+Please propose: (1) a possible approach or plan for this work; (2) which files it would likely touch; (3) risks or open questions; (4) based on your own read, whether this looks like something worth a human or cloud session actually claiming."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

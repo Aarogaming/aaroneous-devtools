@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m31"
+goal = "M31"
+id = "PORTFOLIO-M31-P0003"
+instruction = """
+Portfolio progressive verification request for M31 (priority P2, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Verify or relabel roadmap Phases 9–37 (`v1.2.0`–`v1.6.0`) against actual code/tests"
+Dependency: "M28"
+Preferred capability: "Rust systems review / evidence verification"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Initiate a bounded human or cloud session to claim M31, as the work requires systems review and evidence verification that exceeds automated scope. | Obs: M28 establishes evidence standard for label reconciliation; M30 verified Phases 1–8 (v0.4.0–v1.2.0) against code/tests, confirming roadmap version scheme (v1.x) does not align with workspace version (0.3.2). | Obs: M31 requires verification of Phases 9–37 (v1.2.0–v1.6.0) against actual code/tests, extending M30's precedent. | Obs: Roadmap version scheme (v1.x) may not align with actual workspace version (0.3.2) as noted in M28, creating risk of false claims in roadmap phases requiring manual verification. | Risk: Roadmap version scheme (v1.x) may not align with actual workspace version (0.3.2) as noted in M28. | Risk: Potential for false claims in roadmap phases requiring manual verification. | Risk: Dependency on M28 completion for accurate label interpretation.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M31, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

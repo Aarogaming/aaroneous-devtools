@@ -1,8 +1,0 @@
-schema_version = 1
-id = "AUDIT-04-DEPRECATION-POLICY-P0001"
-mode = "analysis"
-evidence = [
-    "crates/adaptation_plane/src/capability_spec.rs",
-    "docs/DEPRECATION_POLICY.md",
-]
-instruction = "Audit deprecated biological/mythological type aliases against docs/DEPRECATION_POLICY.md. Verify zero production call sites remain and migration equivalence tests pass."

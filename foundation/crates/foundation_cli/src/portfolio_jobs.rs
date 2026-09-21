@@ -219,6 +219,275 @@ pub(crate) fn run(program: &Path, queue: &Path, output_dir: &Path) -> Result<Vec
     Ok(written)
 }
 
+/// Create a progressive depth analysis packet for a milestone that has
+/// completed its earlier triage pass. Injects findings from Pass 1 into
+/// Pass 2 (Detailed Specification & Test Architecture) or Pass 2 into
+/// Pass 3 (Reference Model & Invariant Proofs).
+fn create_progressive_portfolio_job(
+    row: &PortfolioRow,
+    pass: u32,
+    prior_summary: &str,
+    output_dir: &Path,
+) -> Result<PathBuf> {
+    if !output_dir.is_absolute() {
+        bail!("output_dir must be an absolute path");
+    }
+
+    let sanitized_id = row.id.to_uppercase();
+    let job_id = format!("PORTFOLIO-{sanitized_id}-P{pass:04}");
+    let filename = format!("portfolio-{}-p{pass:04}.toml", row.id.to_lowercase());
+    let destination = output_dir.join(&filename);
+
+    let context_block = if prior_summary.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n[PRIOR TRIAGE CONTEXT - Pass {}]:\n{}\n",
+            pass - 1,
+            prior_summary
+        )
+    };
+
+    let instruction = if pass == 2 {
+        format!(
+            "Portfolio deep-dive request for {id} (priority {priority}, Pass 2: Detailed Specification & Test Architecture) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.\n\
+            Work: \"{work}\"\n\
+            Dependency: \"{dependency}\"\n\
+            Preferred capability: \"{preferred_capability}\"\n\
+            {context_block}\n\
+            This is a request for a speculative proposed technical specification only. It is NOT a claim on {id}, \
+            does not authorize writing product code, and does not authorize touching the row's actual scope -- \
+            claiming real work still goes through governance/COORDINATION_QUEUE.md per governance/LOCAL_AGENT_CONTROL_PLANE.md.\n\n\
+            Building upon Pass 1's triage recommendations, please propose a Solution Tree with 2-3 distinct architectural branches (e.g. Branch-A: Compile-time typestate/zero-alloc, Branch-B: Bounded SWMR ring buffer, Branch-C: Decoupled adapter facade):\n\
+            (1) Concrete architectural design and trait/struct interface boundaries for each branch;\n\
+            (2) Invariants that must hold across state transitions (zero-heap, zero ambient authority, deterministic state machines per AGENTS.md);\n\
+            (3) Concrete trade-offs, blast radius, and code sketches comparing the branches in solution_tree;\n\
+            (4) Detailed checklist of step-by-step implementation phases for the recommended branch.",
+            id = row.id,
+            priority = row.priority,
+            work = row.work,
+            dependency = row.dependency,
+            preferred_capability = row.preferred_capability,
+            context_block = context_block,
+        )
+    } else {
+        format!(
+            "Portfolio progressive verification request for {id} (priority {priority}, Pass {pass}: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.\n\
+            Work: \"{work}\"\n\
+            Dependency: \"{dependency}\"\n\
+            Preferred capability: \"{preferred_capability}\"\n\
+            {context_block}\n\
+            This is a request for speculative reference modeling only. It is NOT a claim on {id}, \
+            does not authorize writing product code, and does not authorize touching the row's actual scope.\n\n\
+            Please propose:\n\
+            (1) A draft reference implementation sketch or mock interface;\n\
+            (2) Proof that the design satisfies sequential verification gates and AST invariants;\n\
+            (3) Cross-candidate compatibility and potential integration risks.",
+            id = row.id,
+            priority = row.priority,
+            work = row.work,
+            dependency = row.dependency,
+            preferred_capability = row.preferred_capability,
+            context_block = context_block,
+        )
+    };
+
+    let manifest = serde_json::json!({
+        "schema_version": 1,
+        "id": job_id,
+        "mode": "analysis",
+        "evidence": ["governance/MULTITHREAD_PROGRAM.md"],
+        "instruction": instruction,
+        "perspective": "portfolio-triage",
+        "goal": row.id,
+        "exploration_group": slugify_id(&row.id),
+    });
+
+    let toml_str = toml::to_string_pretty(&manifest)?;
+    fs::write(&destination, toml_str)?;
+    Ok(destination)
+}
+
+/// Automatically refills progressive depth passes for unblocked milestones
+/// when previous passes have completed. Bounded by `max_batch` to avoid flooding.
+pub(crate) fn refill_portfolio_progression_jobs(
+    program: &Path,
+    queue: &Path,
+    output_dir: &Path,
+    max_batch: usize,
+) -> Result<Vec<PathBuf>> {
+    require_absolute_file("program", program)?;
+    require_absolute_file("queue", queue)?;
+    require_absolute_dir("output_dir", output_dir)?;
+
+    let program_text = fs::read_to_string(program)
+        .with_context(|| format!("failed to read {}", program.display()))?;
+    let queue_text =
+        fs::read_to_string(queue).with_context(|| format!("failed to read {}", queue.display()))?;
+
+    let claimed_scopes = claimed_or_review_scopes(&queue_text);
+    let rows: Vec<_> = portfolio_rows(&program_text)
+        .into_iter()
+        .filter(|row| is_open_priority(&row.priority))
+        .filter(|row| !already_claimed(&row.id, &claimed_scopes))
+        .collect();
+
+    let mut candidate_dirs = vec![output_dir.join("results"), output_dir.join("archive")];
+    if let Some(parent) = output_dir.parent() {
+        candidate_dirs.push(parent.join("results"));
+        candidate_dirs.push(parent.join("archive"));
+        candidate_dirs.push(
+            parent
+                .join("artifacts")
+                .join("local-worker-service")
+                .join("results"),
+        );
+        candidate_dirs.push(
+            parent
+                .join("artifacts")
+                .join("local-worker-service")
+                .join("archive"),
+        );
+    }
+
+    // Map: milestone_id -> (highest_completed_pass, latest_summary)
+    let mut milestone_progress: std::collections::HashMap<String, (u32, String)> =
+        std::collections::HashMap::new();
+
+    for dir in candidate_dirs {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Ok(text) = fs::read_to_string(&path) {
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if let Some(job_id) = value["job_id"].as_str() {
+                                let upper = job_id.to_uppercase();
+                                if let Some(stripped) = upper.strip_prefix("PORTFOLIO-") {
+                                    let (m_id, pass) = if let Some(idx) = stripped.rfind("-P") {
+                                        let m = &stripped[..idx];
+                                        let p = stripped[idx + 2..].parse::<u32>().unwrap_or(1);
+                                        (m.to_string(), p)
+                                    } else {
+                                        (stripped.to_string(), 1)
+                                    };
+
+                                    let mut summary = String::new();
+                                    if let Some(proposal) =
+                                        value.get("proposal").and_then(|p| p.as_object())
+                                    {
+                                        let mut parts = Vec::new();
+                                        if let Some(next_step) = proposal
+                                            .get("recommended_next_step")
+                                            .and_then(|s| s.as_str())
+                                        {
+                                            parts.push(format!("Recommendation: {next_step}"));
+                                        }
+                                        if let Some(obs) =
+                                            proposal.get("observations").and_then(|v| v.as_array())
+                                        {
+                                            for o in obs.iter().filter_map(|x| x.as_str()) {
+                                                parts.push(format!("Obs: {o}"));
+                                            }
+                                        }
+                                        if let Some(risks) =
+                                            proposal.get("risks").and_then(|v| v.as_array())
+                                        {
+                                            for r in risks.iter().filter_map(|x| x.as_str()) {
+                                                parts.push(format!("Risk: {r}"));
+                                            }
+                                        }
+                                        summary = parts.join(" | ");
+                                    }
+
+                                    let entry = milestone_progress
+                                        .entry(m_id)
+                                        .or_insert((0, String::new()));
+                                    if pass >= entry.0 {
+                                        entry.0 = pass;
+                                        if !summary.is_empty() {
+                                            entry.1 = summary;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check existing files in output_dir
+    let existing_files: std::collections::HashSet<String> = fs::read_dir(output_dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().to_lowercase();
+                    if name.ends_with(".toml") {
+                        Some(name)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut written = Vec::new();
+
+    // Priority sort: P0 first, then P1, P2, P3
+    let mut sorted_rows = rows;
+    sorted_rows.sort_by_key(|r| match r.priority.as_str() {
+        "P0" => 0,
+        "P1" => 1,
+        "P2" => 2,
+        "P3" => 3,
+        _ => 4,
+    });
+
+    for row in sorted_rows {
+        if written.len() >= max_batch {
+            break;
+        }
+        let m_id = row.id.to_uppercase();
+        let (completed_pass, summary) = milestone_progress
+            .get(&m_id)
+            .cloned()
+            .unwrap_or((0, String::new()));
+
+        // Advance to next pass if previous pass completed and next pass file doesn't exist
+        let next_pass = completed_pass + 1;
+        if next_pass > 3 {
+            // Bounded to 3 progressive depth tiers per milestone to prevent unbounded expansion
+            continue;
+        }
+
+        let target_filename = if next_pass == 1 {
+            format!("portfolio-{}.toml", row.id.to_lowercase())
+        } else {
+            format!("portfolio-{}-p{next_pass:04}.toml", row.id.to_lowercase())
+        };
+
+        if existing_files.contains(&target_filename) || output_dir.join(&target_filename).exists() {
+            continue;
+        }
+
+        let job_path = if next_pass == 1 {
+            create_portfolio_job(&row, output_dir)?
+        } else {
+            create_progressive_portfolio_job(&row, next_pass, &summary, output_dir)?
+        };
+
+        println!("refilled progressive portfolio job: {}", job_path.display());
+        written.push(job_path);
+    }
+
+    Ok(written)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,5 +671,62 @@ mod tests {
             groups.len(),
             "each row must get its own exploration_group"
         );
+    }
+
+    #[test]
+    fn test_refill_portfolio_progression_advances_to_pass_2() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let program = temp.path().join("program.md");
+        let queue = temp.path().join("queue.md");
+        let output_dir = temp.path().join("worker-jobs");
+        let results_dir = output_dir.join("results");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+        fs::create_dir_all(&results_dir).expect("create results dir");
+
+        fs::write(&program, PROGRAM_FIXTURE).expect("write program");
+        fs::write(
+            &queue,
+            "| ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |\n\
+             | --- | --- | --- | --- | --- | --- | --- |\n",
+        )
+        .expect("write queue");
+
+        // Simulate that M8 has completed Pass 1
+        let pass_1_record = serde_json::json!({
+            "schema_version": 1,
+            "job_id": "PORTFOLIO-M8",
+            "outcome": "pending-owner-review",
+            "submitted_at_secs": 1000,
+            "proposal": {
+                "task": "PORTFOLIO-M8",
+                "observations": ["Reference path needs deterministic state transitions"],
+                "risks": ["Dependency on A2"],
+                "test_plan": ["Run reducer harness"],
+                "recommended_next_step": "Define reducer trait boundary"
+            }
+        });
+        fs::write(
+            results_dir.join("PORTFOLIO-M8-0000.json"),
+            serde_json::to_string_pretty(&pass_1_record).unwrap(),
+        )
+        .expect("write result");
+
+        let refilled =
+            refill_portfolio_progression_jobs(&program, &queue, &output_dir, 2).expect("refill");
+        assert!(!refilled.is_empty());
+
+        let m8_p2 = refilled.iter().find(|p| {
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .contains("m8-p0002")
+        });
+        assert!(m8_p2.is_some(), "M8 must progress to Pass 2");
+
+        let text = fs::read_to_string(m8_p2.unwrap()).expect("read m8-p0002");
+        assert!(text.contains("PORTFOLIO-M8-P0002"));
+        assert!(text.contains("Pass 2: Detailed Specification"));
+        assert!(text.contains("PRIOR TRIAGE CONTEXT"));
+        assert!(text.contains("Define reducer trait boundary"));
     }
 }

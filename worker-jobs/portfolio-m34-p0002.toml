@@ -1,0 +1,23 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m34"
+goal = "M34"
+id = "PORTFOLIO-M34-P0002"
+instruction = """
+Portfolio deep-dive request for M34 (priority P1, Pass 2: Detailed Specification & Test Architecture) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Independent per-lane acceptance: old C10-C13/C15/C16/C19 evidence"
+Dependency: "Independent reviewer / reserved owner verdict"
+Preferred capability: "Revision/gate-based decisions; no self-certification; queue closure only for accepted slices"
+
+[PRIOR TRIAGE CONTEXT - Pass 1]:
+Recommendation: Schedule a human or cloud session to claim M34 for independent review of C10-C13/C15/C16/C19 evidence. | Obs: M34 requires independent per-lane acceptance of old C10-C13/C15/C16/C19 evidence. | Obs: Dependency is an independent reviewer or reserved owner verdict. | Obs: Preferred capability is revision/gate-based decisions with no self-certification. | Risk: Old evidence may be outdated or inconsistent with current codebase. | Risk: Independent review may reveal discrepancies requiring revision or rejection. | Risk: Queue closure depends on accepted slices only.
+
+This is a request for a speculative proposed technical specification only. It is NOT a claim on M34, does not authorize writing product code, and does not authorize touching the row's actual scope -- claiming real work still goes through governance/COORDINATION_QUEUE.md per governance/LOCAL_AGENT_CONTROL_PLANE.md.
+
+Building upon Pass 1's triage recommendations, please propose a Solution Tree with 2-3 distinct architectural branches (e.g. Branch-A: Compile-time typestate/zero-alloc, Branch-B: Bounded SWMR ring buffer, Branch-C: Decoupled adapter facade):
+(1) Concrete architectural design and trait/struct interface boundaries for each branch;
+(2) Invariants that must hold across state transitions (zero-heap, zero ambient authority, deterministic state machines per AGENTS.md);
+(3) Concrete trade-offs, blast radius, and code sketches comparing the branches in solution_tree;
+(4) Detailed checklist of step-by-step implementation phases for the recommended branch."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

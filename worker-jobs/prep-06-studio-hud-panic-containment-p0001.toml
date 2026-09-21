@@ -1,8 +1,0 @@
-schema_version = 1
-id = "PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0001"
-mode = "analysis"
-evidence = [
-    "crates/studio_hud/src/plugin_api.rs",
-    "docs/rfcs/RFC-0006-PLUGIN_LIFECYCLE_AND_STABLE_UI_CARTRIDGE_ABI.md",
-]
-instruction = "Research and investigate studio_hud FFI boundary panic containment, catch_unwind wrappers, and TickResult fault handling."

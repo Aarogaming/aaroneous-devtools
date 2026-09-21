@@ -1,5 +1,0 @@
-schema_version = 1
-id = "AUDIT-03-ZERO-AMBIENT-AUTH-P0001"
-mode = "analysis"
-evidence = ["crates/paths/src/lib.rs"]
-instruction = "Audit paths crate for ambient authority violations (banned functions std::env::var, temp_dir, canonicalize). Verify path normalization via paths::normalize_path and constructor injection."
