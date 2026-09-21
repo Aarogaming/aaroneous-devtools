@@ -431,10 +431,35 @@ pub(crate) fn base_job_key(id: &str) -> &str {
     id
 }
 
+/// Loads the set of job ids that have *any* recorded reviewer verdict
+/// (accept, reject, needs-changes, or uncertain) -- i.e. a human or agent
+/// has actually looked at that exact pass. Missing/unreadable verdicts file
+/// yields an empty set rather than an error, matching `list_verdicts`'s own
+/// "no file yet" tolerance.
+fn verdicted_job_ids(verdicts_path: Option<&Path>) -> std::collections::HashSet<String> {
+    verdicts_path
+        .and_then(|p| crate::outbox::list_verdicts(p).ok())
+        .map(|entries| entries.into_iter().map(|e| e.job_id).collect())
+        .unwrap_or_default()
+}
+
 /// Moves older passes of multi-pass jobs from `results_dir` to `archive_dir`
 /// when pending results accumulate (e.g. >= max_pending / 2), keeping only the
 /// newest pass of each recurring job in `results_dir`.
-fn rotate_excess_results(results_dir: &Path, archive_dir: &Path, max_pending: usize) -> Result<()> {
+///
+/// Only rotates a pass that already has a recorded reviewer verdict in
+/// `verdicts_path` -- a pass nobody has reviewed yet is left in place no
+/// matter how many newer passes have superseded it. Before this check, a
+/// fast-regenerating recurring-catalog job (a fresh pass every tick under
+/// backlog pressure) could have every one of its passes silently archived
+/// out from under a reviewer before a verdict was ever recorded, discarding
+/// the review opportunity entirely rather than just tidying disk.
+fn rotate_excess_results(
+    results_dir: &Path,
+    archive_dir: &Path,
+    max_pending: usize,
+    verdicts_path: Option<&Path>,
+) -> Result<()> {
     let pending_files = files(results_dir, "json")?;
     let pending_results: Vec<_> = pending_files
         .into_iter()
@@ -451,27 +476,34 @@ fn rotate_excess_results(results_dir: &Path, archive_dir: &Path, max_pending: us
         submitted_at_secs: u64,
     }
 
-    let mut by_base: BTreeMap<String, Vec<(u64, PathBuf)>> = BTreeMap::new();
+    let mut by_base: BTreeMap<String, Vec<(u64, PathBuf, String)>> = BTreeMap::new();
     for path in &pending_results {
         if let Ok(text) = read_bounded(path, 65536) {
             if let Ok(header) = serde_json::from_str::<Header>(&text) {
                 let base = base_job_key(&header.job_id).to_string();
-                by_base
-                    .entry(base)
-                    .or_default()
-                    .push((header.submitted_at_secs, path.clone()));
+                by_base.entry(base).or_default().push((
+                    header.submitted_at_secs,
+                    path.clone(),
+                    header.job_id,
+                ));
             }
         }
     }
 
+    let reviewed = verdicted_job_ids(verdicts_path);
     let mut rotated = 0;
     for (_base, mut entries) in by_base {
         if entries.len() <= 1 {
             continue;
         }
-        entries.sort_by_key(|(submitted, _)| *submitted);
-        // Retain the newest entry in results_dir, move older ones to archive_dir
-        for (_, path) in &entries[..entries.len() - 1] {
+        entries.sort_by_key(|(submitted, _, _)| *submitted);
+        // Retain the newest entry in results_dir, move older *reviewed*
+        // ones to archive_dir -- an older pass with no verdict yet stays
+        // put so it still has a reviewer's attention on it.
+        for (_, path, job_id) in &entries[..entries.len() - 1] {
+            if !reviewed.contains(job_id) {
+                continue;
+            }
             if let Some(file_name) = path.file_name() {
                 let dest = archive_dir.join(file_name);
                 if dest.exists() {
@@ -792,7 +824,16 @@ where
             .as_bytes(),
         )?;
     }
-    rotate_excess_results(&c.results_directory, &c.archive_directory, c.max_pending)?;
+    let verdicts_path_for_rotation = c
+        .results_directory
+        .parent()
+        .map(|p| p.join("outbox_verdicts.jsonl"));
+    rotate_excess_results(
+        &c.results_directory,
+        &c.archive_directory,
+        c.max_pending,
+        verdicts_path_for_rotation.as_deref(),
+    )?;
     let pending: Vec<_> = files(&c.results_directory, "json")?
         .into_iter()
         .filter(|p| is_result_file(p))
@@ -1677,6 +1718,10 @@ fn run_pre_tick_maintenance(config_path: &Path) {
     let Ok(c) = toml::from_str::<Config>(&text) else {
         return;
     };
+    let verdicts_path = c
+        .results_directory
+        .parent()
+        .map(|p| p.join("outbox_verdicts.jsonl"));
     if let Ok(pending_files) = files(&c.results_directory, "json") {
         let mut result_files: Vec<_> = pending_files
             .into_iter()
@@ -1684,11 +1729,32 @@ fn run_pre_tick_maintenance(config_path: &Path) {
             .collect();
         if result_files.len() >= c.max_pending {
             result_files.sort();
+            let reviewed = verdicted_job_ids(verdicts_path.as_deref());
+            #[derive(Deserialize)]
+            struct Header {
+                job_id: String,
+            }
             let to_archive = result_files.len().saturating_sub(c.max_pending / 2);
-            for p in result_files.iter().take(to_archive) {
+            let mut archived = 0;
+            for p in &result_files {
+                if archived >= to_archive {
+                    break;
+                }
+                // Never discard the only copy of a result nobody has
+                // reviewed yet -- only rotate ones that already have a
+                // recorded verdict (same rule as `rotate_excess_results`).
+                let has_verdict = read_bounded(p, 65536)
+                    .ok()
+                    .and_then(|text| serde_json::from_str::<Header>(&text).ok())
+                    .is_some_and(|h| reviewed.contains(&h.job_id));
+                if !has_verdict {
+                    continue;
+                }
                 if let Some(fname) = p.file_name() {
                     let dest = c.archive_directory.join(fname);
-                    let _ = fs::rename(p, dest);
+                    if fs::rename(p, dest).is_ok() {
+                        archived += 1;
+                    }
                 }
             }
         }
@@ -1702,10 +1768,6 @@ fn run_pre_tick_maintenance(config_path: &Path) {
         .parent()
         .map(|p| p.join("worker-jobs-archive"))
     {
-        let verdicts_path = c
-            .results_directory
-            .parent()
-            .map(|p| p.join("outbox_verdicts.jsonl"));
         let _ = archive_dispatched_jobs(
             &c.jobs_directory,
             &c.results_directory,
@@ -3021,37 +3083,63 @@ exploration_group = "faster-reducer-group"
         assert_eq!(base_job_key("JOB-WITHOUT-PASS"), "JOB-WITHOUT-PASS");
         assert_eq!(base_job_key("P10"), "P10");
     }
+
+    fn write_pass_record(c: &Config, job_id: &str, submitted_at_secs: u64) {
+        let record = Record {
+            schema_version: 1,
+            artifact_kind: "foundation.local-worker-result".into(),
+            job_id: job_id.to_string(),
+            submitted_at_secs,
+            outcome: "pending-owner-review".into(),
+            input: "input".into(),
+            proposal: None,
+            error: None,
+            pre_proof_report: None,
+            rejection_reason: None,
+            selected_branch: None,
+            selection_rationale: None,
+        };
+        let data = serde_json::to_vec_pretty(&record).unwrap();
+        fs::write(
+            c.results_directory.join(format!("{job_id}-0000.json")),
+            &data,
+        )
+        .unwrap();
+    }
+
+    fn write_verdict(verdicts_path: &Path, job_id: &str, verdict: &str) {
+        let mut existing = fs::read_to_string(verdicts_path).unwrap_or_default();
+        existing.push_str(&format!(
+            "{{\"job_id\":\"{job_id}\",\"reviewer\":\"test\",\"verdict\":\"{verdict}\",\"notes\":\"\",\"recorded_at_secs\":1,\"promoted_branch\":null,\"promoted_commit\":null}}\n"
+        ));
+        fs::write(verdicts_path, existing).unwrap();
+    }
+
     #[test]
-    fn test_rotate_excess_results_archives_older_passes() {
+    fn test_rotate_excess_results_archives_older_reviewed_passes() {
         let (_d, c, _config) = fixture();
         let max_pending = 4;
 
         for pass in 1..=3 {
-            let record = Record {
-                schema_version: 1,
-                artifact_kind: "foundation.local-worker-result".into(),
-                job_id: format!("AUDIT-01-AST-SAFETY-P{pass:04}"),
-                submitted_at_secs: 1000 + pass as u64,
-                outcome: "pending-owner-review".into(),
-                input: "input".into(),
-                proposal: None,
-                error: None,
-                pre_proof_report: None,
-                rejection_reason: None,
-                selected_branch: None,
-                selection_rationale: None,
-            };
-            let data = serde_json::to_vec_pretty(&record).unwrap();
-            fs::write(
-                c.results_directory
-                    .join(format!("AUDIT-01-AST-SAFETY-P{pass:04}-0000.json")),
-                &data,
-            )
-            .unwrap();
+            write_pass_record(
+                &c,
+                &format!("AUDIT-01-AST-SAFETY-P{pass:04}"),
+                1000 + pass as u64,
+            );
         }
+        let verdicts_path = c.results_directory.parent().unwrap().join("verdicts.jsonl");
+        write_verdict(&verdicts_path, "AUDIT-01-AST-SAFETY-P0001", "needs-changes");
+        write_verdict(&verdicts_path, "AUDIT-01-AST-SAFETY-P0002", "accept");
+        // P0003 (the newest) deliberately has no verdict recorded.
 
         assert_eq!(files(&c.results_directory, "json").unwrap().len(), 3);
-        rotate_excess_results(&c.results_directory, &c.archive_directory, max_pending).unwrap();
+        rotate_excess_results(
+            &c.results_directory,
+            &c.archive_directory,
+            max_pending,
+            Some(&verdicts_path),
+        )
+        .unwrap();
 
         assert!(
             c.results_directory
@@ -3078,6 +3166,48 @@ exploration_group = "faster-reducer-group"
                 .join("AUDIT-01-AST-SAFETY-P0002-0000.json")
                 .exists()
         );
+    }
+
+    #[test]
+    fn test_rotate_excess_results_leaves_unreviewed_older_passes_in_place() {
+        // Real bug caught live: under backlog pressure a fast-regenerating
+        // recurring-catalog job (a fresh pass every tick) had every one of
+        // its older passes silently archived the moment a newer pass
+        // landed, with no check for whether a reviewer had ever recorded a
+        // verdict on them -- discarding the review opportunity entirely,
+        // not just tidying disk. Confirmed against the live pipeline: a
+        // reviewer's `outbox-verdict` call lost the race against this
+        // rotation for 4 of 15 items in a single review pass.
+        let (_d, c, _config) = fixture();
+        let max_pending = 4;
+
+        for pass in 1..=3 {
+            write_pass_record(
+                &c,
+                &format!("AUDIT-01-AST-SAFETY-P{pass:04}"),
+                1000 + pass as u64,
+            );
+        }
+        let verdicts_path = c.results_directory.parent().unwrap().join("verdicts.jsonl");
+        // No verdicts recorded on any pass at all.
+
+        rotate_excess_results(
+            &c.results_directory,
+            &c.archive_directory,
+            max_pending,
+            Some(&verdicts_path),
+        )
+        .unwrap();
+
+        for pass in 1..=3 {
+            assert!(
+                c.results_directory
+                    .join(format!("AUDIT-01-AST-SAFETY-P{pass:04}-0000.json"))
+                    .exists(),
+                "pass {pass} has no verdict yet and must not be rotated out from under a reviewer"
+            );
+        }
+        assert!(files(&c.archive_directory, "json").unwrap().is_empty());
     }
 }
 
