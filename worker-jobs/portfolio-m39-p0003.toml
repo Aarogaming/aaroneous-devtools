@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m39"
+goal = "M39"
+id = "PORTFOLIO-M39-P0003"
+instruction = """
+Portfolio progressive verification request for M39 (priority P1, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Packet server lifecycle hardening: C24, main.rs body/respond"
+Dependency: "Old C13 scope released; isolated reproduction"
+Preferred capability: "Bounded stalled/disconnected socket behavior, responsive status/shutdown, native gates"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Execute isolated reproduction of C24 failure modes in scratch space to validate socket state transitions before architectural selection. | Obs: Evidence confirms M39 is P1 priority with dependency on C13 scope release. | Obs: Work scope targets `main.rs` body/respond logic for packet server lifecycle hardening. | Obs: Preferred capability requires bounded stalled/disconnected socket behavior and native gates. | Risk: C24 scope may rely on unverified assumptions about socket state transitions. | Risk: Isolated reproduction might reveal dependencies on external services not present in scratch environment. | Risk: Native gates implementation could introduce new race conditions if not rigorously tested.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M39, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m44"
+goal = "M44"
+id = "PORTFOLIO-M44-P0003"
+instruction = """
+Portfolio progressive verification request for M44 (priority P3, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Expand worker-jobs templates past read-only analysis with local pre-proofing (cargo xtask gate/ast_auditor on a throwaway worktree), gated by cross_verifier/consensus_engine"
+Dependency: "M42"
+Preferred capability: "Release governance / verification design"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Await M42 completion or design freeze before initiating M44 pre-proofing worktree setup. | Obs: M44 depends on M42 (cloud_providers.rs dispatch adapter contract design). M42 is P2 and currently uncompleted. | Obs: M44 requires local pre-proofing via cargo xtask gate and ast_auditor on a throwaway worktree. | Obs: M44 must be gated by cross_verifier/consensus_engine before proceeding to implementation lanes. | Risk: M42 dependency may block M44 initiation if cloud_providers.rs contract is not finalized. | Risk: Local pre-proofing environment (cargo xtask/ast_auditor) may require additional configuration not yet documented. | Risk: Cross-verifier/consensus_engine gating logic may introduce latency in workflow approval.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M44, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

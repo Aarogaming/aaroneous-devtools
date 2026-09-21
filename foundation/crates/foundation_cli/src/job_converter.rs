@@ -509,7 +509,7 @@ pub(crate) fn sync_and_refill_jobs(
                 &program_path,
                 queue_path,
                 output_dir,
-                4,
+                8,
             ) {
                 created.extend(prog_jobs);
             }

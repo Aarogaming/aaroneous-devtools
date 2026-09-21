@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m41"
+goal = "M41"
+id = "PORTFOLIO-M41-P0003"
+instruction = """
+Portfolio progressive verification request for M41 (priority P2, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Make `frontier_discovery.rs` self-scheduling and packet-generating instead of manually invoked"
+Dependency: "none — see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`"
+Preferred capability: "Rust foundation / scheduling"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Await explicit governance approval to claim M41 from `governance/COORDINATION_QUEUE.md` before initiating implementation phases. | Obs: Evidence `governance/MULTITHREAD_PROGRAM.md` confirms M41 scope: `frontier_discovery.rs` must transition from manual invocation to self-scheduling and packet generation. | Obs: Dependency `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` is referenced but not provided; design assumes standard bounded ring-buffer patterns for packet queues. | Obs: Portfolio triage perspective requires speculative architectural branches without committing to implementation or touching product code. | Risk: Speculative design may conflict with existing `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` constraints if dependency file differs from assumed ring-buffer topology. | Risk: Self-scheduling logic introduces potential race conditions if not bounded by zero-heap invariants and explicit wire geometry. | Risk: Manual invocation removal requires careful state transition invariants to prevent packet loss during scheduler warmup.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M41, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

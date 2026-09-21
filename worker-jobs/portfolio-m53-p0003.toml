@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m53"
+goal = "M53"
+id = "PORTFOLIO-M53-P0003"
+instruction = """
+Portfolio progressive verification request for M53 (priority P2, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Selectable compliance profile (AaroneousStrict/DevtoolsOperatingModel/Custom) for verify_draft/cratify_audit, so Aaroneous's own tooling can correctly self-audit devtools"
+Dependency: "M44, M45"
+Preferred capability: "Rust systems review, cross-repo tooling design"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Schedule a human or cloud session to claim M53, focusing on defining the compliance profile schema and integration points with verify_draft/cratify_audit. | Obs: M53 requires a selectable compliance profile (AaroneousStrict/DevtoolsOperatingModel/Custom) for verify_draft/cratify_audit. | Obs: Dependencies M44 and M45 are P3 items involving worker-jobs templates and cratify/adaptation_engine pipelines. | Obs: Work involves cross-repo tooling design and Rust systems review for self-auditing devtools using Aaroneous tooling. | Risk: Dependency on M44 and M45 completion for full functionality. | Risk: Complexity in integrating Aaroneous's self-audit tooling with devtools. | Risk: Potential need for extensive cross-repo coordination.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M53, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

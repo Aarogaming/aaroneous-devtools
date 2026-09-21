@@ -280,9 +280,9 @@ fn create_progressive_portfolio_job(
             This is a request for speculative reference modeling only. It is NOT a claim on {id}, \
             does not authorize writing product code, and does not authorize touching the row's actual scope.\n\n\
             Please propose:\n\
-            (1) A draft reference implementation sketch or mock interface;\n\
-            (2) Proof that the design satisfies sequential verification gates and AST invariants;\n\
-            (3) Cross-candidate compatibility and potential integration risks.",
+            (1) A draft reference implementation sketch (in rust_draft or solution_tree) or mock interface;\n\
+            (2) Proof that the design satisfies sequential verification gates and AST invariants (zero-heap, zero ambient authority);\n\
+            (3) Isolated test fixture scenarios and failure reproduction cases.",
             id = row.id,
             priority = row.priority,
             work = row.work,
@@ -390,11 +390,35 @@ pub(crate) fn refill_portfolio_progression_jobs(
                                                 parts.push(format!("Obs: {o}"));
                                             }
                                         }
-                                        if let Some(risks) =
-                                            proposal.get("risks").and_then(|v| v.as_array())
+                                        if let Some(selected) =
+                                            value.get("selected_branch").and_then(|s| s.as_str())
                                         {
-                                            for r in risks.iter().filter_map(|x| x.as_str()) {
-                                                parts.push(format!("Risk: {r}"));
+                                            let rat = value
+                                                .get("selection_rationale")
+                                                .and_then(|s| s.as_str())
+                                                .unwrap_or("");
+                                            parts.push(format!("Selected Architecture: {selected} | Rationale: {rat}"));
+                                        } else if let Some(tree) =
+                                            proposal.get("solution_tree").and_then(|t| t.as_array())
+                                        {
+                                            let branch_summaries: Vec<_> = tree
+                                                .iter()
+                                                .filter_map(|b| {
+                                                    let obj = b.as_object()?;
+                                                    let name = obj
+                                                        .get("branch_name")
+                                                        .and_then(|s| s.as_str())?;
+                                                    let app = obj
+                                                        .get("approach")
+                                                        .and_then(|s| s.as_str())?;
+                                                    Some(format!("{name}: {app}"))
+                                                })
+                                                .collect();
+                                            if !branch_summaries.is_empty() {
+                                                parts.push(format!(
+                                                    "Proposed Branches: {}",
+                                                    branch_summaries.join("; ")
+                                                ));
                                             }
                                         }
                                         summary = parts.join(" | ");

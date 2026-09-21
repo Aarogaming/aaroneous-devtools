@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m54"
+goal = "M54"
+id = "PORTFOLIO-M54-P0003"
+instruction = """
+Portfolio progressive verification request for M54 (priority P1, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Target decomposition: cluster a large source tree (e.g. Bevy ECS) by module boundaries into bounded, individually-scorable candidates, since wholesale discovery fails G5 for any sufficiently real target"
+Dependency: "M41, M46, M49"
+Preferred capability: "Rust systems review, structural analysis"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Wait for M41, M46, and M49 completion before claiming M54. Prepare architectural branches for speculative review. | Obs: M54 is blocked by M41 (self-scheduling frontier_discovery.rs), M46 (perspective/goal meta-tagging), and M49 (cratification intake). | Obs: Wholesale discovery fails G5 for sufficiently real targets; modular clustering is required. | Obs: Target decomposition must cluster large source trees (e.g., Bevy ECS) by module boundaries into bounded, individually-scorable candidates. | Risk: M54 is blocked by uncompleted dependencies (M41, M46, M49). | Risk: Decomposing large trees like Bevy ECS requires precise module boundary identification to avoid violating G5 constraints. | Risk: Clustering candidates must ensure they remain individually scorable without reintroducing wholesale discovery failures.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M54, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

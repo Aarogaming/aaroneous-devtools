@@ -74,8 +74,13 @@ pub fn extract_cited_paths(text: &str) -> Vec<String> {
 
         let is_known_root = KNOWN_ROOT_DIRS.iter().any(|dir| path_str.starts_with(dir));
         let is_known_ext = KNOWN_EXTENSIONS.iter().any(|ext| path_str.ends_with(ext));
+        let has_ext = path_str
+            .rsplit('/')
+            .next()
+            .is_some_and(|leaf| leaf.contains('.'));
+        let is_dir = path_str.ends_with('/');
 
-        if (is_known_root || is_known_ext) && path_str.contains('/') {
+        if (is_known_ext || (is_known_root && (has_ext || is_dir))) && path_str.contains('/') {
             // Must not contain parent traversal segments
             if !path_str.contains("..") {
                 found.insert(path_str.to_string());

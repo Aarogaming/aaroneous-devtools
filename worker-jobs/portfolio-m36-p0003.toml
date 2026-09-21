@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m36"
+goal = "M36"
+id = "PORTFOLIO-M36-P0003"
+instruction = """
+Portfolio progressive verification request for M36 (priority P2, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Authenticated dashboard integration: REGISTRAR.md gap"
+Dependency: "C15/C19 acceptance"
+Preferred capability: "Explicit same-origin credential setup and negative lifecycle tests; no product writes"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Await C15/C19 acceptance evidence before generating solution tree or implementation phases. | Obs: Evidence file `governance/MULTITHREAD_PROGRAM.md` confirms M36 is P2 priority with dependency C15/C19 acceptance required. | Obs: Preferred capability explicitly restricts scope to 'no product writes', limiting output to analysis/fixtures. | Obs: Pass 1 triage recommended awaiting C15/C19 acceptance before proceeding with speculative technical specification. | Risk: Dependency C15/C19 may not be ready, blocking speculative approach. | Risk: 'No product writes' constraint limits scope to analysis/fixtures only. | Risk: Same-origin credential setup may involve complex browser security policies difficult to test in non-browser environment. | Risk: Negative lifecycle tests may require specific state setups not documented in REGISTRAR.md.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M36, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1

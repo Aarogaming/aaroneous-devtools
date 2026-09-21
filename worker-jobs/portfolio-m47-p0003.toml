@@ -1,0 +1,22 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m47"
+goal = "M47"
+id = "PORTFOLIO-M47-P0003"
+instruction = """
+Portfolio progressive verification request for M47 (priority P2, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Export the capability_broker.rs registry as JSON; propose and score internal capability compositions via BUILD_WORTHINESS_STANDARD.md"
+Dependency: "M40, BUILD_WORTHINESS_STANDARD.md"
+Preferred capability: "Combinatorial/graph analysis, Rust systems review"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Verify existence and structure of `capability_broker.rs` and `BUILD_WORTHINESS_STANDARD.md` before drafting export logic. | Obs: Evidence file `governance/MULTITHREAD_PROGRAM.md` confirms M47 scope: export `capability_broker.rs` registry to JSON and score compositions via `BUILD_WORTHINESS_STANDARD.md`. | Obs: Dependency M40 (`ConcurrenceSnapshot` advisory confidence field) is listed as required but not marked as Done in the provided text. | Obs: Dependency `BUILD_WORTHINESS_STANDARD.md` is referenced but its content is not present in the provided evidence block, creating a potential blocker for scoring logic implementation. | Risk: Missing `BUILD_WORTHINESS_STANDARD.md` definition prevents scoring logic implementation. | Risk: Dependency M40 not yet completed blocks full scope of M47. | Risk: Ambiguity in 'internal capability compositions' definition may require governance clarification.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M47, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants;
+(3) Cross-candidate compatibility and potential integration risks."""
+mode = "analysis"
+perspective = "portfolio-triage"
+schema_version = 1
