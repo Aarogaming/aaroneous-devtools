@@ -83,6 +83,7 @@ queue before claiming; portfolio entries are not Ready source reservations.
 | P3 | M51 | Run the discovery/research/filter/translate/recreate/review/repeat loop for real, not just documented triggers (not yet designed) | M48, M49 | unassigned - needs grounding first |
 | P3 | M52 | Curated offer/accept UX ("quest reward" framing) on top of the admission pipeline (deliberately deferred) | M50 | unassigned - deferred |
 | P2 | M53 | Selectable compliance profile (AaroneousStrict/DevtoolsOperatingModel/Custom) for verify_draft/cratify_audit, so Aaroneous's own tooling can correctly self-audit devtools | M44, M45 | Rust systems review, cross-repo tooling design |
+| P1 | M54 | Target decomposition: cluster a large source tree (e.g. Bevy ECS) by module boundaries into bounded, individually-scorable candidates, since wholesale discovery fails G5 for any sufficiently real target | M41, M46, M49 | Rust systems review, structural analysis |
 
 ## Intake rules
 

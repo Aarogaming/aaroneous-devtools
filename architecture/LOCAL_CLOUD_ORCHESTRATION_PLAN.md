@@ -2,7 +2,7 @@
 
 **Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
 been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M53 in `governance/MULTITHREAD_PROGRAM.md`.
+governance boundaries for milestones M40–M54 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -712,6 +712,71 @@ M51/M52 are.
   `AaroneousStrict` against actual Aaroneous code from the same tool, proving both
   presets produce correct, non-cross-contaminated results.
 
+### M54 — Target decomposition: cluster a large source tree into bounded candidates
+
+**The real gap the Cranelift/DIRECT_ADOPT_WITH_WRAPPER correction surfaced,
+2026-09-20:** pointing discovery at a whole large target (e.g. Bevy ECS — real,
+Rust, MIT/Apache-2.0, genuinely modular internally, but far past
+`FRONTIER_FILTRATION_STANDARD_V1.md`'s G5 5,000-LOC refactoring-surface gate as
+one candidate) fails the same way Cranelift did, for the same honest reason: it
+was never one bounded thing to score. Nothing currently breaks a large target
+into individually-scorable pieces before discovery/filtration runs — M54 is that
+missing step.
+
+**Design, deliberately starting with the cheap, honest option before reaching for
+anything heavier:** per this plan's own standing preference (`architecture/
+DISCOVERY_REVIEW_LOOP.md`'s ML-system discussion — structural methods before
+trained models), the first clustering signal should be Rust's own module
+boundaries, not a learned embedding. This is genuinely unsupervised in the loose,
+honest sense (derived purely from structure, no training data, no model) and
+requires no new infrastructure:
+
+1. Walk the target tree (reuse `source_extraction::extract_source_tree`'s
+   `WalkDir` traversal and extension filtering — this milestone extends that
+   function's use, not the function itself).
+2. Group files by their declared module path (directory structure plus `mod`
+   declarations) rather than by line-count chunking — a module is a real,
+   author-intended unit of cohesion; an arbitrary line-count split is not.
+3. For each module-cluster, compute a size proxy the same cheap way
+   `component_inventory.rs`'s `public_item_lines` already does (count lines
+   starting with `pub `, no full AST parse needed for this sizing step) rather
+   than inventing a new metric.
+4. Only clusters plausibly under G5's bound become candidates. A module that's
+   *itself* still too large is a real, reportable finding — "this target isn't
+   decomposable at the module level, it needs recursive decomposition or is
+   `REFACTOR_COST_PROHIBITIVE` at this granularity too" — not something to force
+   through by splitting arbitrarily.
+5. Emit one evidence bundle per surviving cluster, tagged with M46's fields:
+   `goal` = the target crate's name, `exploration_group` = a slug of the target
+   (so every cluster from one decomposition run is comparable together), and
+   `perspective` = the cluster's module path. This reuses M46's grouping/
+   comparison-summary machinery directly — a decomposition run *is* an
+   exploration group, just one whose members are "which piece of this target"
+   rather than "which angle on this goal."
+6. Each surviving cluster then enters the pipeline exactly as any other
+   candidate would: scored via `FRONTIER_FILTRATION_STANDARD_V1.md`, and (per
+   the M49 pattern) only clusters that actually clear the gates become
+   `code-draft` packets — decomposition produces *candidates*, it does not
+   pre-decide outcomes.
+
+**Explicitly not in scope:** deeper clustering (import-graph cohesion, semantic
+similarity, learned embeddings) — worth revisiting only if module-boundary
+clustering proves too coarse in practice, with real evidence of where it fails,
+not speculatively. Also explicitly not in scope: anything beyond Rust sources —
+`adaptation_engine::harvest`'s parser (`ast_auditor::inspect`) is Rust-specific;
+non-Rust targets are a distinct, much larger effort this milestone does not
+attempt (see the decisions log entry below).
+
+- **Dependency:** M41 (frontier discovery, if targets are discovered rather than
+  named directly), M46 (the tagging/grouping fields this reuses), M49 (harvested
+  clusters still enter drafting the same way)
+- **Preferred capability:** Rust systems review, structural analysis
+- **Evidence:** committed decomposition producer with passing tests; a real run
+  against an actual large target (Bevy ECS is the named real candidate) producing
+  multiple clusters, at least one of which is small enough to actually clear
+  G5 and proceed through the rest of the pipeline — proving decomposition
+  actually unblocks what wholesale discovery couldn't, not just that it runs.
+
 ## Decisions log
 
 Dated decisions from planning discussion, kept so later sessions don't re-litigate
@@ -800,6 +865,34 @@ settled scope:
   different (`OPERATING_MODEL.md`'s "lighter devtools standards" vs. Aaroneous's
   strict zero-allocation rules) and a self-audit tool needs to pick the right one
   explicitly, not assume Aaroneous's rules apply everywhere.
+- **2026-09-20 — Corrected a real mistake rather than let it stand: wrapping a
+  dependency is not a compliance claim.** Scored `cranelift` as
+  `DIRECT_ADOPT_WITH_WRAPPER` and described the integration as "Aaroneous
+  compliant" because it would be wrapped. The owner refused this framing
+  outright, correctly — a wrapper isolates a dependency's behavior, it does not
+  change what that dependency's internals do, and the standard's own text
+  already required "near-compliant," which a heap-heavy JIT compiler backend
+  simply isn't. Fixed at the source in `contracts/
+  FRONTIER_FILTRATION_STANDARD_V1.md` (new §5.1), not just in conversation: a
+  wrapper is not a compliance claim, only a provable hot-path boundary is, and
+  "large non-compliant dependency behind a cold-path boundary" is a distinct
+  pattern from `DIRECT_ADOPT_WITH_WRAPPER`, not a variant of it. Re-evaluated
+  Cranelift honestly afterward: it fits none of the four tiers and is simply out
+  of this standard's scope — an ordinary dependency decision, not an ingestion
+  candidate.
+- **2026-09-20 — Scoped M54 (target decomposition) from a real end-of-turn
+  finding, not speculatively.** The Cranelift re-evaluation showed that
+  wholesale-target discovery fails G5 for any sufficiently real target (Bevy
+  ECS, named as the actual desired next target, would fail the identical way).
+  Decided decomposition is the fix, not loosening G5 — and decided to start with
+  Rust module boundaries as the clustering signal (cheap, structural, no
+  training data or model needed) rather than reaching for embeddings, per this
+  plan's standing preference for structural methods first. Explicitly scoped out
+  non-Rust targets and any transpilation/binary-reverse-engineering ambition
+  discussed in the same conversation — `adaptation_engine::harvest`'s parser is
+  Rust-specific, and machine-native reverse engineering into `.si` models is a
+  real, legitimate, but research-grade direction, not a milestone to write up
+  the way M40-M54 were. Recorded as a named future direction, not designed.
 
 ## Sequencing
 
@@ -828,6 +921,9 @@ left ungrounded until then. M52 depends on M50 (a reject action needs a real
 mechanism behind it) and is deliberately deferred. M53 depends on M44/M45 (both
 already built) and can proceed immediately, entirely independent of everything
 else in this plan — it's the smallest milestone here, a named layer in front of
-a parameter `verify_draft` already accepts. No milestone in this plan
-authorizes paid cloud dispatch or local write/claim authority — those remain
-explicit future decisions, not defaults unlocked by completing M40–M53.
+a parameter `verify_draft` already accepts. M54 depends on M41/M46/M49 (all
+already built) and can proceed now — it's the real unblocking step for any
+wholesale-target discovery attempt, including the actual next target named in
+planning (Bevy ECS). No milestone in this plan authorizes paid cloud dispatch or
+local write/claim authority — those remain explicit future decisions, not
+defaults unlocked by completing M40–M54.
