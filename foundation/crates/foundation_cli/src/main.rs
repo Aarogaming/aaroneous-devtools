@@ -18,6 +18,7 @@ mod job_converter;
 mod local_proposal;
 mod local_worker;
 mod multithreader;
+mod portfolio_jobs;
 mod scheduler;
 mod target_decomposition;
 
@@ -304,6 +305,18 @@ enum Command {
         /// Optional advisory concurrence report from an Aaroneous hypervisor run.
         #[arg(long)]
         concurrence_report: Option<PathBuf>,
+    },
+    /// Convert unclaimed `governance/MULTITHREAD_PROGRAM.md` portfolio rows
+    /// into local-worker `worker-jobs/*.toml` analysis packets requesting a
+    /// speculative proposed approach -- never a claim. Skips any row whose
+    /// ID already appears in a `Claimed`/`Review` queue row's Scope text.
+    PortfolioTriage {
+        #[arg(long)]
+        program: PathBuf,
+        #[arg(long)]
+        queue: PathBuf,
+        #[arg(long)]
+        output_dir: PathBuf,
     },
     /// Cross-reference a coordination queue against a consensus ledger and
     /// write a read-only readiness report. Never modifies the queue or the
@@ -996,6 +1009,11 @@ fn main() -> Result<()> {
             primary_capacity,
             concurrence_report.as_deref(),
         ),
+        Command::PortfolioTriage {
+            program,
+            queue,
+            output_dir,
+        } => portfolio_jobs::run(&program, &queue, &output_dir).map(|_| ()),
         Command::ConsensusReadiness {
             queue,
             ledger,
