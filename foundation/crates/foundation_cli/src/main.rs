@@ -19,6 +19,7 @@ mod local_proposal;
 mod local_worker;
 mod multithreader;
 mod scheduler;
+mod target_decomposition;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
@@ -477,6 +478,34 @@ enum Command {
         #[arg(long)]
         reason: Option<String>,
     },
+    /// Cluster a harvested `cratify harvest --output <path>` `CrateSpec`
+    /// export by module/directory boundary and emit one `analysis`
+    /// worker-jobs packet per cluster that clears the G5 5,000-LOC
+    /// refactoring-surface bound (M54). Clusters over the bound are not
+    /// dropped -- they're recorded in the written report's `oversized` list
+    /// so an unsplittable module is a visible finding, not a silent gap.
+    DecomposeTarget {
+        /// Absolute path to a `cratify harvest --output <path>` JSON export.
+        #[arg(long)]
+        crate_specs: PathBuf,
+        /// Short label for the overall target being decomposed (e.g.
+        /// "bevy_ecs"); becomes every emitted packet's `goal`, slugged into
+        /// their shared `exploration_group`.
+        #[arg(long)]
+        target_name: String,
+        /// Size threshold in total lines per cluster; a cluster over this
+        /// does not get a packet and is recorded in the oversized report
+        /// section instead. Defaults to 5,000 to match
+        /// contracts/FRONTIER_FILTRATION_STANDARD_V1.md's G5 gate exactly.
+        #[arg(long, default_value_t = 5000)]
+        max_lines: usize,
+        #[arg(long)]
+        output_dir: PathBuf,
+        /// Absolute path the decomposition summary report JSON is written
+        /// to.
+        #[arg(long)]
+        report_output: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -703,6 +732,44 @@ fn main() -> Result<()> {
             println!("Emitted {} cratification packet(s):", written.len());
             for path in &written {
                 println!("  -> {}", path.display());
+            }
+            Ok(())
+        }
+        Command::DecomposeTarget {
+            crate_specs,
+            target_name,
+            max_lines,
+            output_dir,
+            report_output,
+        } => {
+            println!(
+                "Decomposing target '{target_name}' from {} (max {max_lines} lines/cluster)...",
+                crate_specs.display()
+            );
+            let report = target_decomposition::run(
+                &crate_specs,
+                &target_name,
+                max_lines,
+                &output_dir,
+                &report_output,
+            )?;
+            println!(
+                "Found {} cluster(s): {} passed (packets emitted), {} oversized (see {})",
+                report.total_clusters_found,
+                report.passed_count,
+                report.oversized_count,
+                report_output.display()
+            );
+            for entry in &report.passed {
+                if let Some(path) = &entry.packet_path {
+                    println!("  -> {path}");
+                }
+            }
+            for entry in &report.oversized {
+                println!(
+                    "  !! oversized: {} ({} lines, {} file(s))",
+                    entry.dir, entry.total_lines, entry.file_count
+                );
             }
             Ok(())
         }
