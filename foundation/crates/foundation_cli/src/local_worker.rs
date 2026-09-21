@@ -231,6 +231,67 @@ fn files_bounded(directory: &Path, extension: &str, limit: usize) -> Result<Vec<
     paths.sort();
     Ok(paths)
 }
+/// Maximum raw file size read from disk before extracting a requested line
+/// range -- generous enough for any real source file (the largest evidence
+/// file found live so far is ~100 KiB) but still bounded. This only raises
+/// the ceiling on how large the *source* file may be before excerpting
+/// from it; the *extracted* slice still goes through the same per-entry
+/// size check every other evidence read already uses, so raising this
+/// doesn't let more text reach the model than before -- it lets a bigger
+/// file be excerpted *from*, not read whole.
+const MAX_RANGE_SOURCE_FILE_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Maximum lines a single range excerpt may span. Excerpting exists to be
+/// precise about what the model sees (M67, in response to the C40
+/// packets that referenced whole 90-100 KiB files when every one of the
+/// underlying findings cited a single line number) -- it is not meant to
+/// become a second way to smuggle a near-whole-file read past the
+/// per-entry cap by specifying an enormous range.
+const MAX_RANGE_LINES: usize = 400;
+
+/// Parses an optional trailing `:START-END` (1-indexed, inclusive) line
+/// range off an evidence entry, e.g. `"core/foo.rs:100-150"` ->
+/// `("core/foo.rs", Some((100, 150)))`. No suffix, or a suffix that isn't
+/// a valid `START-END` pair with `1 <= START <= END`, is treated as "no
+/// range" -- `(relative, None)`, meaning read the whole file, exactly the
+/// behavior every existing evidence entry already has.
+fn split_evidence_range(relative: &str) -> (&str, Option<(usize, usize)>) {
+    if let Some(idx) = relative.rfind(':') {
+        let (path, range) = relative.split_at(idx);
+        let range = &range[1..];
+        if let Some((start, end)) = range.split_once('-') {
+            if let (Ok(start), Ok(end)) = (start.parse::<usize>(), end.parse::<usize>()) {
+                if start >= 1 && end >= start {
+                    return (path, Some((start, end)));
+                }
+            }
+        }
+    }
+    (relative, None)
+}
+
+/// Reads `path` (bounded to [`MAX_RANGE_SOURCE_FILE_BYTES`]) and returns
+/// only lines `start..=end` (1-indexed, inclusive), joined with `\n`.
+fn read_line_range(path: &Path, start: usize, end: usize) -> Result<String> {
+    if end - start + 1 > MAX_RANGE_LINES {
+        bail!(
+            "line range {start}-{end} spans more than {MAX_RANGE_LINES} lines -- excerpt a \
+             narrower range instead of a near-whole-file read"
+        );
+    }
+    let text = read_bounded(path, MAX_RANGE_SOURCE_FILE_BYTES)?;
+    let lines: Vec<&str> = text.lines().collect();
+    if start > lines.len() {
+        bail!(
+            "line range {start}-{end} starts past the end of {} ({} lines)",
+            path.display(),
+            lines.len()
+        );
+    }
+    let clamped_end = end.min(lines.len());
+    Ok(lines[start - 1..clamped_end].join("\n"))
+}
+
 fn evidence_file(root: &Path, relative: &str) -> Result<PathBuf> {
     if !relative_file(relative) {
         bail!("evidence requires exact relative file: {relative}");
@@ -820,8 +881,26 @@ where
                         return Ok(None);
                     }
                 }
-            } else if scope_reserved(&queue, &job.evidence) {
-                return Ok(None);
+            } else {
+                // scope_reserved/scope_matches_path do exact-ish string
+                // matching against COORDINATION_QUEUE.md's declared scopes
+                // and know nothing about range-excerpt syntax -- a
+                // range-suffixed entry like "foo.rs:380-420" would never
+                // match a queue row's plain "foo.rs" scope, silently
+                // bypassing the claim-collision check M67 would otherwise
+                // introduce. De-range here, at the call site, rather than
+                // teaching the shared matching primitive about a syntax
+                // only this evidence-reading path uses -- batch_overlap.rs
+                // reuses scope_matches_path unchanged and has no reason to
+                // know about ranges either.
+                let base_paths: Vec<String> = job
+                    .evidence
+                    .iter()
+                    .map(|e| split_evidence_range(e).0.to_string())
+                    .collect();
+                if scope_reserved(&queue, &base_paths) {
+                    return Ok(None);
+                }
             }
             let mut input = format!(
                 "Approved job specification (data):\n{}\n",
@@ -838,17 +917,26 @@ where
                     input.push_str(&format!("\nDeclared evidence: capability {cap_id}\n"));
                     continue;
                 }
-                let file_path = if let Ok(fp) = evidence_file_multi(&roots, relative) {
+                let (base_relative, range) = split_evidence_range(relative);
+                let file_path = if let Ok(fp) = evidence_file_multi(&roots, base_relative) {
                     fp
-                } else if Path::new(relative).is_file() {
-                    PathBuf::from(relative)
+                } else if Path::new(base_relative).is_file() {
+                    PathBuf::from(base_relative)
                 } else {
                     bail!("evidence requires exact relative file: {relative}");
                 };
-                input.push_str(&format!(
-                    "\nDeclared evidence: {relative}\n{}\n",
-                    read_bounded(&file_path, 32768)?
-                ));
+                let content = match range {
+                    Some((start, end)) => read_line_range(&file_path, start, end)?,
+                    None => read_bounded(&file_path, 32768)?,
+                };
+                if content.len() > 32768 {
+                    bail!(
+                        "evidence excerpt for {relative} is {} bytes, exceeds the 32768-byte \
+                         per-entry cap -- narrow the line range further",
+                        content.len()
+                    );
+                }
+                input.push_str(&format!("\nDeclared evidence: {relative}\n{content}\n"));
             }
             if input.len() > 65536 {
                 bail!("job evidence exceeds 64 KiB");
@@ -1635,6 +1723,38 @@ mod tests {
         );
     }
     #[test]
+    fn range_suffixed_evidence_still_respects_an_active_claim() {
+        // M67 introduced range-suffixed evidence ("lib.rs:1-1"); this must
+        // not silently bypass scope_reserved's claim-collision check the
+        // way a naive raw-string comparison against "lib.rs" would --
+        // fixed by de-ranging before the scope_reserved call, not inside
+        // scope_matches_path itself (which batch_overlap.rs also reuses
+        // and has no reason to learn range syntax).
+        let (_d, c, config) = fixture();
+        fs::remove_file(c.jobs_directory.join("job.toml")).expect("remove fixture's default job");
+        fs::write(
+            c.jobs_directory.join("ranged.toml"),
+            toml::to_string(&Job {
+                schema_version: 1,
+                id: "JOB-RANGED".into(),
+                mode: Mode::Analysis,
+                evidence: vec!["lib.rs:1-1".into()],
+                instruction: "review the claimed file by excerpt".into(),
+                perspective: None,
+                goal: None,
+                exploration_group: None,
+                priority: None,
+            })
+            .expect("job"),
+        )
+        .expect("write job");
+        fs::write(&c.queue, "| OWNER | `lib.rs` | Claimed | Gemini |\n").expect("claim");
+        tick_with(&config, 10, 1, |_, _| {
+            panic!("range-suffixed evidence dispatched despite an active claim on the base file")
+        })
+        .expect("skip");
+    }
+    #[test]
     fn escaped_input_records_remain_readable_at_the_storage_bound() {
         let (_d, c, config) = fixture();
         fs::write(c.checkout.join("lib.rs"), vec![0u8; 32700]).expect("bounded input");
@@ -2256,6 +2376,125 @@ exploration_group = "faster-reducer-group"
         let record: Record =
             serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
         assert_eq!(record.job_id, "JOB-NONE");
+        drop(d);
+    }
+
+    #[test]
+    fn split_evidence_range_parses_valid_ranges_and_leaves_everything_else_alone() {
+        assert_eq!(
+            split_evidence_range("core/foo.rs:100-150"),
+            ("core/foo.rs", Some((100, 150)))
+        );
+        assert_eq!(split_evidence_range("core/foo.rs"), ("core/foo.rs", None));
+        // A malformed/backwards/zero range is treated as "no range" --
+        // falls through to a whole-file read, which will then be
+        // evaluated against the real path (and likely fail for an
+        // unrelated reason, e.g. the literal string not being a file) --
+        // never silently misinterpreted as a different valid range.
+        assert_eq!(
+            split_evidence_range("core/foo.rs:150-100"),
+            ("core/foo.rs:150-100", None)
+        );
+        assert_eq!(
+            split_evidence_range("core/foo.rs:0-10"),
+            ("core/foo.rs:0-10", None)
+        );
+        assert_eq!(
+            split_evidence_range("core/foo.rs:abc-def"),
+            ("core/foo.rs:abc-def", None)
+        );
+        // Windows absolute paths ("C:\...") contain a colon that isn't a
+        // range separator -- must not be misparsed as one. The text after
+        // that colon ("\foo.rs") has no '-', so split_once('-') returns
+        // None and this correctly falls through to "no range" rather than
+        // misinterpreting the drive-letter colon as a range separator.
+        assert_eq!(split_evidence_range("C:\\foo.rs"), ("C:\\foo.rs", None));
+    }
+
+    #[test]
+    fn read_line_range_extracts_exact_bounds_and_refuses_an_excessive_span() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("big.rs");
+        let lines: Vec<String> = (1..=1000).map(|i| format!("line {i}")).collect();
+        fs::write(&path, lines.join("\n")).unwrap();
+
+        let excerpt = read_line_range(&path, 380, 384).unwrap();
+        assert_eq!(excerpt, "line 380\nline 381\nline 382\nline 383\nline 384");
+
+        // A range past the end of the file clamps rather than erroring --
+        // the file legitimately has fewer lines than requested, which is
+        // recoverable information, not a hard failure. Kept within
+        // MAX_RANGE_LINES so this specifically tests clamping, not the
+        // separate too-wide-a-span refusal below.
+        let excerpt = read_line_range(&path, 998, 1010).unwrap();
+        assert_eq!(excerpt, "line 998\nline 999\nline 1000");
+
+        // A start past the end of the file is a real error, not clampable.
+        assert!(read_line_range(&path, 5000, 5010).is_err());
+
+        // A span wider than MAX_RANGE_LINES is refused before even
+        // reading the file -- excerpting is meant to be precise, not a
+        // second way to smuggle a near-whole-file read past the cap.
+        let err = read_line_range(&path, 1, 500).unwrap_err();
+        assert!(err.to_string().contains("400 lines"));
+    }
+
+    #[test]
+    fn range_evidence_lets_a_job_reference_an_oversized_file_by_excerpt() {
+        // The actual motivating case (M67): the whole-file read for
+        // supervisory_loop.rs (93 KiB) exceeds the cap, but the real
+        // Codex finding only ever needed a ~40-line window around one
+        // cited line number. A range-suffixed evidence entry must let
+        // that job succeed where the whole-file version was permanently
+        // stuck.
+        let (d, c, config) = fixture();
+        fs::remove_file(c.jobs_directory.join("job.toml")).expect("remove fixture's default job");
+        // Padded well past a bare "line N" to reliably clear 32768 bytes
+        // regardless of digit-count variance across the line numbers.
+        let huge_content: String = (1..=3000)
+            .map(|i| format!("line {i} {}\n", "x".repeat(40)))
+            .collect();
+        assert!(
+            huge_content.len() > 32768,
+            "fixture must actually exceed the cap, was {} bytes",
+            huge_content.len()
+        );
+        fs::write(c.checkout.join("huge.rs"), &huge_content).expect("huge.rs");
+
+        let job = Job {
+            schema_version: 1,
+            id: "JOB-EXCERPT".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["huge.rs:1400-1440".into()],
+            instruction: "review just this one function".into(),
+            perspective: None,
+            goal: None,
+            exploration_group: None,
+            priority: None,
+        };
+        fs::write(
+            c.jobs_directory.join("excerpt.toml"),
+            toml::to_string(&job).expect("job"),
+        )
+        .expect("write job");
+
+        tick_with(&config, 10, 1, |_, input| {
+            assert!(input.contains("line 1400"));
+            assert!(input.contains("line 1440"));
+            assert!(
+                !input.contains("line 1\n"),
+                "must contain only the requested window, not the whole file"
+            );
+            Ok(draft())
+        })
+        .expect("tick_with must succeed on a range-excerpted oversized file");
+        let path = files(&c.results_directory, "json")
+            .expect("results")
+            .pop()
+            .expect("a record was written");
+        let record: Record =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
+        assert_eq!(record.job_id, "JOB-EXCERPT");
         drop(d);
     }
 
