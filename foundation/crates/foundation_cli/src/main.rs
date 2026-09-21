@@ -555,6 +555,7 @@ fn main() -> Result<()> {
                     c,
                     &output_dir,
                     "docs/ARCHITECTURE.md",
+                    &query,
                 )?;
                 println!(
                     "      -> Created frontier audit job: {}",

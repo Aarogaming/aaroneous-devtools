@@ -1,8 +1,0 @@
-schema_version = 1
-id = "C34"
-mode = "analysis"
-evidence = [
-    "docs/rfcs/RFC-0006-PLUGIN_LIFECYCLE_AND_STABLE_UI_CARTRIDGE_ABI.md",
-    "crates/studio_hud/src/plugin_api.rs",
-]
-instruction = "| C34 | M40 RFC-0006 stable repr(C) command-buffer ABI implementation: `docs/rfcs/RFC-0006-PLUGIN_LIFECYCLE_AND_STABLE_UI_CARTRIDGE_ABI.md`, `crates/studio_hud/src/plugin_api.rs` | Ready | Unassigned | main (devtools) | | Source: LANE_CLOSEOUT_PLAN.md portfolio brief M40 & RFC-0006. |"

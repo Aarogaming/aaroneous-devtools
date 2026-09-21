@@ -149,10 +149,33 @@ pub fn firecrawl_scrape(
     Ok(markdown)
 }
 
+/// Slugify a query into an id-safe `exploration_group` key: lowercase,
+/// non-alphanumeric runs collapsed to a single `_`, trimmed of leading/
+/// trailing `_`. Same query text always produces the same group id, which
+/// is the whole point — it's the join key candidates from one search share.
+fn slugify_query(query: &str) -> String {
+    let mut slug = String::with_capacity(query.len());
+    let mut last_was_sep = true; // suppress a leading separator
+    for ch in query.to_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch);
+            last_was_sep = false;
+        } else if !last_was_sep {
+            slug.push('_');
+            last_was_sep = true;
+        }
+    }
+    while slug.ends_with('_') {
+        slug.pop();
+    }
+    slug
+}
+
 pub fn create_frontier_job(
     candidate: &CrateCandidate,
     output_dir: &Path,
     evidence_rel_path: &str,
+    query: &str,
 ) -> Result<PathBuf> {
     if !output_dir.is_absolute() {
         bail!("output_dir must be an absolute path");
@@ -176,12 +199,22 @@ pub fn create_frontier_job(
         candidate.repository.as_deref().unwrap_or("N/A")
     );
 
+    // M46 meta-tagging: every candidate found for one query shares a
+    // `goal`/`exploration_group` (the query itself, and its slug), with
+    // `perspective` set to the candidate crate's own name -- the "angle"
+    // for a read-only analysis job is literally which crate is being
+    // evaluated. A single-candidate query still gets tagged; M46's own
+    // grouping step already drops groups with fewer than two members, so
+    // tagging unconditionally is harmless and simpler than special-casing.
     let manifest = serde_json::json!({
         "schema_version": 1,
         "id": job_id,
         "mode": "analysis",
         "evidence": [evidence_rel_path],
-        "instruction": instruction
+        "instruction": instruction,
+        "perspective": candidate.name,
+        "goal": query,
+        "exploration_group": slugify_query(query),
     });
 
     let toml_str = toml::to_string_pretty(&manifest)?;
@@ -223,7 +256,7 @@ fn cycle(queries_path: &Path, output_dir: &Path, limit: usize) -> bool {
             Ok(candidates) => {
                 for candidate in &candidates {
                     if let Err(e) =
-                        create_frontier_job(candidate, output_dir, "docs/ARCHITECTURE.md")
+                        create_frontier_job(candidate, output_dir, "docs/ARCHITECTURE.md", &query)
                     {
                         eprintln!(
                             "frontier-discover-serve: failed to create job for candidate '{}' (query '{query}'): {e:#}",
@@ -558,11 +591,26 @@ mod tests {
             downloads: 50_000_000,
         };
 
-        let job_file =
-            create_frontier_job(&candidate, temp.path(), "docs/ARCHITECTURE.md").unwrap();
+        let job_file = create_frontier_job(
+            &candidate,
+            temp.path(),
+            "docs/ARCHITECTURE.md",
+            "lock-free queue",
+        )
+        .unwrap();
         assert!(job_file.exists());
         let text = std::fs::read_to_string(job_file).unwrap();
         assert!(text.contains("FRONTIER-CROSSBEAM_QUEUE"));
+        assert!(text.contains("perspective = \"crossbeam-queue\""));
+        assert!(text.contains("goal = \"lock-free queue\""));
+        assert!(text.contains("exploration_group = \"lock_free_queue\""));
+    }
+
+    #[test]
+    fn test_slugify_query() {
+        assert_eq!(slugify_query("lock-free queue"), "lock_free_queue");
+        assert_eq!(slugify_query("  async   runtime!! "), "async_runtime");
+        assert_eq!(slugify_query("zero-copy"), "zero_copy");
     }
 
     #[test]
