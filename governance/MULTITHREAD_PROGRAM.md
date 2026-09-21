@@ -85,6 +85,7 @@ queue before claiming; portfolio entries are not Ready source reservations.
 | P2 | M53 | Selectable compliance profile (AaroneousStrict/DevtoolsOperatingModel/Custom) for verify_draft/cratify_audit, so Aaroneous's own tooling can correctly self-audit devtools | M44, M45 | Rust systems review, cross-repo tooling design |
 | P1 | M54 | Target decomposition: cluster a large source tree (e.g. Bevy ECS) by module boundaries into bounded, individually-scorable candidates, since wholesale discovery fails G5 for any sufficiently real target | M41, M46, M49 | Rust systems review, structural analysis |
 | P1 | M55 | Mechanical Stage 1 pre-filter: G1 license (via crates.io version endpoint, SPDX-aware) and G4 ecosystem-independence heuristic, zero agent/LLM calls in the path | M41 | Rust systems review, HTTP/API integration |
+| P2 | M56 | Ground-truth pre-verification: mechanically re-check a milestone's cited claims before implementation; seed competing predictions via M48/M46 when a design is genuinely uncertain, decided by evidence | M46, M48 | Rust systems review, workflow/tooling design |
 
 ## Intake rules
 

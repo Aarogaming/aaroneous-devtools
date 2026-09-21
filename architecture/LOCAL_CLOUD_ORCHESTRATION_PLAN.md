@@ -2,7 +2,7 @@
 
 **Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
 been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M55 in `governance/MULTITHREAD_PROGRAM.md`.
+governance boundaries for milestones M40–M56 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -837,6 +837,55 @@ the fact.
   one can be found for the test) and at least one correctly flagged by the G4
   heuristic.
 
+### M56 — Ground-truth pre-verification, with competing predictions where genuinely uncertain
+
+**From planning discussion, 2026-09-20:** every real correction this plan has
+recorded (M40's dead `.shm` code, M42's already-built `cloud_providers.rs`,
+M49's harvest/scaffold not actually chaining, M55's crates.io license field not
+being where assumed, M54's packet-id collision) came from the same manual habit:
+read the actual thing — source, API response, test output — before building on a
+claim about it. This milestone systematizes that habit instead of relying on it
+happening by discipline each time.
+
+**Explicitly not "recursive self-improvement."** A system whose own discoveries
+change its own judgment process unsupervised is exactly the shape this plan has
+declined twice already (the rejected self-approval governance draft, the
+declined "train a model to score" idea) — no checkpoint, no way to tell "it got
+better" from "it drifted." What's being built here is narrower and mechanical:
+verify factual claims against reality, and where a design genuinely has more than
+one viable candidate, let real evidence pick the winner instead of a priori
+preference — not the system inventing new judgment, the system refusing to
+proceed on an unverified assumption.
+
+**Two parts:**
+
+1. **Pre-implementation fact-checking.** Given a milestone's design section
+   (function signatures cited, API response shapes claimed, file paths
+   referenced), mechanically re-verify each claim against the real source or a
+   live response before implementation starts — the same `Read`/`Grep`/live-HTTP-
+   call pattern used by hand for every milestone in this plan, run as a defined
+   step rather than an ad hoc habit. Output: a pass/fail report per cited claim,
+   flagging anything unverified *before* an agent is dispatched to build against
+   it, catching the M40/M42/M49/M55 class of correction earlier and for free.
+2. **Competing predictions, decided by evidence, not preference.** Where a
+   design section names two or more genuinely viable approaches to the same
+   problem (not invented busywork — only when the blueprint itself is actually
+   uncertain), don't force a single a priori choice: seed both as real attempts
+   using the exact mechanism M48 already builds (`exploration_seed`'s
+   perspective-tagged packets, M46's exploration-group comparison), run them,
+   and let whichever one's actual verification results hold up win. This reuses
+   M48/M46 unchanged — it's a new *use* of them (deciding between designs, not
+   just between coding styles), not new mechanism.
+
+- **Dependency:** M46, M48 (both already built — this reuses their comparison/
+  seeding machinery for a new purpose rather than duplicating it)
+- **Preferred capability:** Rust systems review, workflow/tooling design
+- **Evidence:** a real pre-implementation fact-check run against one of this
+  plan's own already-written milestone sections, showing it either confirms the
+  section's claims or catches something wrong before any code is written; at
+  least one real case of two competing predictions seeded, run, and decided by
+  which one's evidence actually held up.
+
 ## Decisions log
 
 Dated decisions from planning discussion, kept so later sessions don't re-litigate
@@ -970,6 +1019,18 @@ settled scope:
   all — a second per-candidate call to the version endpoint is required, and
   the returned license is an SPDX expression needing real parsing, not an exact
   string match).
+- **2026-09-20 — Scoped M56 (ground-truth pre-verification) from naming what
+  every correction this plan has recorded had in common.** Systematizes the
+  manual "read the real thing before building on a claim about it" habit that
+  caught M40/M42/M49/M54/M55's real issues, rather than relying on it happening
+  by discipline each time. Explicitly distinguished from "recursive self-
+  improvement" (declined, same reasoning as the rejected self-approval draft
+  and the declined trained-scorer idea) — this verifies claims against reality
+  and lets competing predictions be decided by evidence, it does not let the
+  system's own outputs change its own judgment process unsupervised. The
+  "competing predictions" half reuses M46/M48 unchanged for a new purpose
+  (deciding between designs, not just between coding styles) rather than
+  building new mechanism.
 
 ## Sequencing
 
@@ -1002,6 +1063,8 @@ a parameter `verify_draft` already accepts. M54 depends on M41/M46/M49 (all
 already built) and can proceed now — it's the real unblocking step for any
 wholesale-target discovery attempt, including the actual next target named in
 planning (Bevy ECS). M55 depends on M41 (extends its existing search call site)
-and can proceed now, independent of M54. No milestone in this plan authorizes
-paid cloud dispatch or local write/claim authority — those remain explicit
-future decisions, not defaults unlocked by completing M40–M55.
+and can proceed now, independent of M54. M56 depends on M46/M48 (both already
+built — it's a new use of existing mechanism) and can proceed now. No milestone
+in this plan authorizes paid cloud dispatch or local write/claim authority —
+those remain explicit future decisions, not defaults unlocked by completing
+M40–M56.
