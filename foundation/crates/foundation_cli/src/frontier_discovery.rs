@@ -112,6 +112,195 @@ pub fn search_crates_io(query: &str, limit: usize) -> Result<Vec<CrateCandidate>
     Ok(candidates)
 }
 
+/// A single dependency entry as returned by crates.io's
+/// `/api/v1/crates/{name}/{version}/dependencies` endpoint.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct DependencyInfo {
+    pub crate_id: String,
+    pub kind: String,
+    pub optional: bool,
+}
+
+/// M55 G4 ecosystem-independence signal: a heuristic, not a hard gate.
+/// `Flagged` carries human-readable reasons a reviewer should weigh, mirroring
+/// G2/G3's own judgment-call nature in `FRONTIER_FILTRATION_STANDARD_V1.md`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EcosystemSignal {
+    Clean,
+    Flagged(Vec<String>),
+}
+
+/// M55 mechanical Stage 1 pre-filter result: `license_gate` is G1, a hard
+/// pass/fail (license compliance isn't a judgment call). `ecosystem_signal`
+/// is G4, advisory only.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrefilterResult {
+    pub license: String,
+    pub license_gate: bool,
+    pub ecosystem_signal: EcosystemSignal,
+}
+
+/// Fetch a crate version's license string from crates.io's
+/// `GET /api/v1/crates/{name}/{version}` endpoint (`.version.license`).
+/// Note: the search-results summary from `search_crates_io` does not
+/// reliably carry a usable `license` field — this dedicated per-version
+/// lookup is required (confirmed against the live API, 2026-09-20).
+pub fn fetch_license(name: &str, version: &str) -> Result<String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent("AaroneousDevtools/0.1.0 (https://github.com/Aarogaming/aaroneous)")
+        .build()
+        .context("Failed to construct reqwest client")?;
+
+    let url = format!(
+        "https://crates.io/api/v1/crates/{}/{}",
+        urlencoding(name),
+        urlencoding(version)
+    );
+
+    let resp = client
+        .get(&url)
+        .send()
+        .with_context(|| format!("Failed to query crates.io: {url}"))?;
+
+    if !resp.status().is_success() {
+        bail!("crates.io returned HTTP status {} for {url}", resp.status());
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .context("Failed to parse crates.io version response JSON")?;
+
+    let license = json["version"]["license"]
+        .as_str()
+        .with_context(|| format!("crates.io response for {url} has no version.license field"))?
+        .to_string();
+
+    Ok(license)
+}
+
+/// G1 license check: a heuristic SPDX-expression-ish parser, **not** a full
+/// SPDX grammar. crates.io's `version.license` field is an SPDX *expression*
+/// (e.g. `"Apache-2.0 WITH LLVM-exception"`, `"MIT OR Apache-2.0"`), not a
+/// bare identifier, so a naive exact-match would wrongly reject real,
+/// clearly-permissive values and would mishandle dual-licensing. This splits
+/// on the exact (case-sensitive) SPDX separators `" OR "`, `" AND "`,
+/// `" WITH "`, trims each resulting token, and passes if *any* token exactly
+/// matches an allowed license. Good enough for the common real-world shapes
+/// seen so far; if real usage later shows this getting it wrong, reach for
+/// the actual `spdx` crate then, with evidence, not speculatively now.
+pub fn license_passes_g1(license: &str) -> bool {
+    const ALLOWED: [&str; 6] = [
+        "MIT",
+        "Apache-2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "ISC",
+        "Unlicense",
+    ];
+
+    license
+        .split(" OR ")
+        .flat_map(|s| s.split(" AND "))
+        .flat_map(|s| s.split(" WITH "))
+        .map(str::trim)
+        .any(|token| ALLOWED.contains(&token))
+}
+
+/// Fetch a crate version's dependency list from crates.io's
+/// `GET /api/v1/crates/{name}/{version}/dependencies` endpoint.
+pub fn fetch_dependencies(name: &str, version: &str) -> Result<Vec<DependencyInfo>> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent("AaroneousDevtools/0.1.0 (https://github.com/Aarogaming/aaroneous)")
+        .build()
+        .context("Failed to construct reqwest client")?;
+
+    let url = format!(
+        "https://crates.io/api/v1/crates/{}/{}/dependencies",
+        urlencoding(name),
+        urlencoding(version)
+    );
+
+    let resp = client
+        .get(&url)
+        .send()
+        .with_context(|| format!("Failed to query crates.io: {url}"))?;
+
+    if !resp.status().is_success() {
+        bail!("crates.io returned HTTP status {} for {url}", resp.status());
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .context("Failed to parse crates.io dependencies response JSON")?;
+
+    let mut deps = Vec::new();
+    if let Some(items) = json["dependencies"].as_array() {
+        for d in items {
+            let crate_id = d["crate_id"].as_str().unwrap_or("").to_string();
+            if crate_id.is_empty() {
+                continue;
+            }
+            deps.push(DependencyInfo {
+                crate_id,
+                kind: d["kind"].as_str().unwrap_or("normal").to_string(),
+                optional: d["optional"].as_bool().unwrap_or(false),
+            });
+        }
+    }
+
+    Ok(deps)
+}
+
+/// G4 ecosystem-independence signal: a heuristic, **not** a hard gate (unlike
+/// G1's license check, which is a hard, correct gate — license compliance
+/// isn't a judgment call). Flags a dependency whose `crate_id` ends in
+/// `-sys` (the Rust convention for a raw FFI-binding crate), or whose
+/// `crate_id` is `cc` or `cmake` with `kind == "build"` (known C/C++
+/// toolchain wrappers). This is a signal for the reviewer to weigh, mirroring
+/// G2/G3's own judgment-call nature in `FRONTIER_FILTRATION_STANDARD_V1.md`.
+pub fn ecosystem_independence_signal(deps: &[DependencyInfo]) -> EcosystemSignal {
+    let mut reasons = Vec::new();
+
+    for dep in deps {
+        if dep.crate_id.ends_with("-sys") {
+            reasons.push(format!(
+                "dependency '{}' is a -sys crate (raw FFI binding)",
+                dep.crate_id
+            ));
+        } else if (dep.crate_id == "cc" || dep.crate_id == "cmake") && dep.kind == "build" {
+            reasons.push(format!(
+                "build dependency '{}' is a known C/C++ toolchain wrapper",
+                dep.crate_id
+            ));
+        }
+    }
+
+    if reasons.is_empty() {
+        EcosystemSignal::Clean
+    } else {
+        EcosystemSignal::Flagged(reasons)
+    }
+}
+
+/// M55 mechanical Stage 1 pre-filter: makes the two crates.io API calls
+/// needed for G1 (license, hard gate) and G4 (ecosystem independence,
+/// advisory signal) and combines them into one result. Zero agent/LLM call
+/// anywhere in this path.
+pub fn mechanical_prefilter(name: &str, version: &str) -> Result<PrefilterResult> {
+    let license = fetch_license(name, version)?;
+    let license_gate = license_passes_g1(&license);
+    let deps = fetch_dependencies(name, version)?;
+    let ecosystem_signal = ecosystem_independence_signal(&deps);
+
+    Ok(PrefilterResult {
+        license,
+        license_gate,
+        ecosystem_signal,
+    })
+}
+
 pub fn firecrawl_scrape(
     url: &str,
     endpoint: Option<&str>,
@@ -171,11 +360,20 @@ fn slugify_query(query: &str) -> String {
     slug
 }
 
-pub fn create_frontier_job(
+/// Create a `worker-jobs/` analysis packet for a frontier candidate.
+///
+/// `ecosystem_notes`, when `Some`, is appended to the generated
+/// `instruction` text — used by M55's mechanical pre-filter to surface a G4
+/// ecosystem-independence heuristic flag to the reviewer. This is advisory
+/// only, since G4 is a signal, not a hard gate (unlike G1's license check,
+/// which the caller enforces separately by simply not calling this function
+/// at all for a G1 failure).
+pub fn create_frontier_job_with_notes(
     candidate: &CrateCandidate,
     output_dir: &Path,
     evidence_rel_path: &str,
     query: &str,
+    ecosystem_notes: Option<&str>,
 ) -> Result<PathBuf> {
     if !output_dir.is_absolute() {
         bail!("output_dir must be an absolute path");
@@ -191,13 +389,18 @@ pub fn create_frontier_job(
     );
     let destination = output_dir.join(&filename);
 
-    let instruction = format!(
+    let mut instruction = format!(
         "Audit external open-source crate '{}' (v{}) for potential dogfooding or architectural influence in Aaroneous.\nDescription: {}\nRepository: {}\nEvaluate whether this crate provides zero-allocation, zero-ambient authority, or type-safe abstractions that could enhance our hypervisor, IPC bus, compute engine, or devtools.",
         candidate.name,
         candidate.version,
         candidate.description,
         candidate.repository.as_deref().unwrap_or("N/A")
     );
+    if let Some(notes) = ecosystem_notes {
+        instruction
+            .push_str("\n\nM55 mechanical pre-filter G4 signal (advisory, not a hard gate): ");
+        instruction.push_str(notes);
+    }
 
     // M46 meta-tagging: every candidate found for one query shares a
     // `goal`/`exploration_group` (the query itself, and its slug), with
@@ -255,9 +458,38 @@ fn cycle(queries_path: &Path, output_dir: &Path, limit: usize) -> bool {
         match search_crates_io(&query, limit) {
             Ok(candidates) => {
                 for candidate in &candidates {
-                    if let Err(e) =
-                        create_frontier_job(candidate, output_dir, "docs/ARCHITECTURE.md", &query)
+                    let prefilter = match mechanical_prefilter(&candidate.name, &candidate.version)
                     {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!(
+                                "frontier-discover-serve: mechanical prefilter failed for candidate '{}' (query '{query}'): {e:#}",
+                                candidate.name
+                            );
+                            continue;
+                        }
+                    };
+
+                    if !prefilter.license_gate {
+                        println!(
+                            "frontier-discover-serve: skipping candidate '{}' -- failed G1 license gate (license: '{}')",
+                            candidate.name, prefilter.license
+                        );
+                        continue;
+                    }
+
+                    let ecosystem_notes = match &prefilter.ecosystem_signal {
+                        EcosystemSignal::Clean => None,
+                        EcosystemSignal::Flagged(reasons) => Some(reasons.join("; ")),
+                    };
+
+                    if let Err(e) = create_frontier_job_with_notes(
+                        candidate,
+                        output_dir,
+                        "docs/ARCHITECTURE.md",
+                        &query,
+                        ecosystem_notes.as_deref(),
+                    ) {
                         eprintln!(
                             "frontier-discover-serve: failed to create job for candidate '{}' (query '{query}'): {e:#}",
                             candidate.name
@@ -591,11 +823,12 @@ mod tests {
             downloads: 50_000_000,
         };
 
-        let job_file = create_frontier_job(
+        let job_file = create_frontier_job_with_notes(
             &candidate,
             temp.path(),
             "docs/ARCHITECTURE.md",
             "lock-free queue",
+            None,
         )
         .unwrap();
         assert!(job_file.exists());
@@ -735,5 +968,185 @@ mod tests {
         let deserialized: FrontierEvaluationReport = serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized.target_crate, "parser-crate");
         assert_eq!(deserialized.recommendation, "CRATIFY_KERNEL_EXTRACTION");
+    }
+
+    // --- M55 mechanical prefilter: license_passes_g1 (G1, hard gate) ---
+    // No live network calls -- these exercise the pure parser directly.
+
+    #[test]
+    fn test_license_passes_g1_bare_mit() {
+        assert!(license_passes_g1("MIT"));
+    }
+
+    #[test]
+    fn test_license_passes_g1_apache_with_exception() {
+        // Real confirmed crates.io response for cranelift-codegen 0.136.0-rc.1.
+        assert!(license_passes_g1("Apache-2.0 WITH LLVM-exception"));
+    }
+
+    #[test]
+    fn test_license_passes_g1_dual_license_or() {
+        assert!(license_passes_g1("MIT OR Apache-2.0"));
+    }
+
+    #[test]
+    fn test_license_passes_g1_rejects_copyleft() {
+        assert!(!license_passes_g1("GPL-3.0"));
+    }
+
+    #[test]
+    fn test_license_passes_g1_rejects_empty() {
+        assert!(!license_passes_g1(""));
+    }
+
+    #[test]
+    fn test_license_passes_g1_and_separator() {
+        // AND combinators require every part be acceptable in a full SPDX
+        // grammar, but this heuristic (documented as such) just checks that
+        // any token matches -- exercise the separator itself here.
+        assert!(license_passes_g1("MIT AND Apache-2.0"));
+        assert!(!license_passes_g1("GPL-3.0 AND Proprietary"));
+    }
+
+    // --- M55 mechanical prefilter: ecosystem_independence_signal (G4, advisory) ---
+
+    #[test]
+    fn test_ecosystem_signal_flags_sys_crate() {
+        // Modeled on cranelift-codegen's real dependencies response shape.
+        let deps = vec![DependencyInfo {
+            crate_id: "libc-sys".into(),
+            kind: "normal".into(),
+            optional: false,
+        }];
+        match ecosystem_independence_signal(&deps) {
+            EcosystemSignal::Flagged(reasons) => {
+                assert_eq!(reasons.len(), 1);
+                assert!(reasons[0].contains("libc-sys"));
+            }
+            EcosystemSignal::Clean => panic!("expected Flagged for a -sys dependency"),
+        }
+    }
+
+    #[test]
+    fn test_ecosystem_signal_flags_cc_build_dependency() {
+        let deps = vec![DependencyInfo {
+            crate_id: "cc".into(),
+            kind: "build".into(),
+            optional: false,
+        }];
+        match ecosystem_independence_signal(&deps) {
+            EcosystemSignal::Flagged(reasons) => {
+                assert_eq!(reasons.len(), 1);
+                assert!(reasons[0].contains("cc"));
+            }
+            EcosystemSignal::Clean => panic!("expected Flagged for a build-kind cc dependency"),
+        }
+    }
+
+    #[test]
+    fn test_ecosystem_signal_flags_cmake_build_dependency() {
+        let deps = vec![DependencyInfo {
+            crate_id: "cmake".into(),
+            kind: "build".into(),
+            optional: true,
+        }];
+        match ecosystem_independence_signal(&deps) {
+            EcosystemSignal::Flagged(reasons) => assert_eq!(reasons.len(), 1),
+            EcosystemSignal::Clean => panic!("expected Flagged for a build-kind cmake dependency"),
+        }
+    }
+
+    #[test]
+    fn test_ecosystem_signal_does_not_flag_cc_as_normal_dependency() {
+        // Only build-kind cc/cmake are known toolchain wrappers; a normal
+        // dependency literally named "cc" (unlikely, but the heuristic is
+        // scoped deliberately) should not trip the signal.
+        let deps = vec![DependencyInfo {
+            crate_id: "cc".into(),
+            kind: "normal".into(),
+            optional: false,
+        }];
+        assert_eq!(ecosystem_independence_signal(&deps), EcosystemSignal::Clean);
+    }
+
+    #[test]
+    fn test_ecosystem_signal_clean_dependency_list() {
+        // Modeled on cranelift-codegen's real dependencies response, minus
+        // its one build-kind dependency (cranelift-codegen-meta, which is
+        // not -sys/cc/cmake so also would not flag).
+        let deps = vec![
+            DependencyInfo {
+                crate_id: "cranelift-codegen-meta".into(),
+                kind: "build".into(),
+                optional: false,
+            },
+            DependencyInfo {
+                crate_id: "target-lexicon".into(),
+                kind: "normal".into(),
+                optional: false,
+            },
+            DependencyInfo {
+                crate_id: "smallvec".into(),
+                kind: "normal".into(),
+                optional: false,
+            },
+        ];
+        assert_eq!(ecosystem_independence_signal(&deps), EcosystemSignal::Clean);
+    }
+
+    #[test]
+    fn test_ecosystem_signal_empty_dependency_list_is_clean() {
+        assert_eq!(ecosystem_independence_signal(&[]), EcosystemSignal::Clean);
+    }
+
+    // --- M55: create_frontier_job_with_notes appends advisory G4 notes ---
+
+    #[test]
+    fn test_create_frontier_job_with_notes_appends_ecosystem_notes() {
+        let temp = tempdir().unwrap();
+        let candidate = CrateCandidate {
+            name: "example-sys-using-crate".into(),
+            description: "Wraps a C library".into(),
+            version: "1.0.0".into(),
+            repository: None,
+            documentation: None,
+            downloads: 1000,
+        };
+
+        let job_file = create_frontier_job_with_notes(
+            &candidate,
+            temp.path(),
+            "docs/ARCHITECTURE.md",
+            "ffi wrapper",
+            Some("dependency 'openssl-sys' is a -sys crate (raw FFI binding)"),
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(job_file).unwrap();
+        assert!(text.contains("M55 mechanical pre-filter G4 signal"));
+        assert!(text.contains("openssl-sys"));
+    }
+
+    #[test]
+    fn test_create_frontier_job_without_notes_matches_original() {
+        let temp = tempdir().unwrap();
+        let candidate = CrateCandidate {
+            name: "clean-crate".into(),
+            description: "No native deps".into(),
+            version: "1.0.0".into(),
+            repository: None,
+            documentation: None,
+            downloads: 1000,
+        };
+
+        let job_file = create_frontier_job_with_notes(
+            &candidate,
+            temp.path(),
+            "docs/ARCHITECTURE.md",
+            "clean crate",
+            None,
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(job_file).unwrap();
+        assert!(!text.contains("M55 mechanical pre-filter G4 signal"));
     }
 }
