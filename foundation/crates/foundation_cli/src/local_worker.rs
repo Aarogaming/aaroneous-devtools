@@ -953,10 +953,32 @@ where
                     ));
                 }
             }
-            if records
-                .iter()
-                .any(|r| r.job_id == job.id && r.input == input)
-            {
+            // Only a self-correction-exhaustion failure is excluded from
+            // this dedup -- NOT every "failed" record. A transport/
+            // delegate-level failure (Ollama unreachable, a bad response)
+            // deliberately stays permanently blocked on unchanged input
+            // (see failure_is_retained_and_not_retried_unchanged): retrying
+            // an unreachable endpoint on the very next tick is likely to
+            // fail identically and just retry-storms a broken backend.
+            // Self-correction exhaustion is different in kind: the model
+            // DID respond, twice, and only failed a quality check -- if
+            // that check itself had a bug (found live: M57/M58 both
+            // failed the over-broad unwrap/expect check from M68), the
+            // job would otherwise sit permanently stuck even after the
+            // check is fixed, since nothing about its input changes on
+            // its own the way a rejection's injected feedback does.
+            // Distinguished by the exact, controlled error-string prefix
+            // written at the one call site that produces it, not by
+            // outcome alone.
+            let is_self_correction_exhaustion = |r: &Record| {
+                r.outcome == "failed"
+                    && r.error
+                        .as_deref()
+                        .is_some_and(|e| e.starts_with("Self-correction retry failed:"))
+            };
+            if records.iter().any(|r| {
+                r.job_id == job.id && r.input == input && !is_self_correction_exhaustion(r)
+            }) {
                 return Ok(None);
             }
             let last_attempt_secs = last_attempt
@@ -2182,6 +2204,54 @@ exploration_group = "faster-reducer-group"
         assert!(
             set_rejection_reason_from_review(&c.results_directory, "B1", "").is_err(),
             "an empty reason has nothing useful to feed forward and must be refused"
+        );
+    }
+    #[test]
+    fn a_failed_record_does_not_permanently_block_retry_with_unchanged_input() {
+        // Real gap found live: PORTFOLIO-M57-P0004/M58-P0004 both failed
+        // to the over-broad unwrap/expect check (M68) and, without this
+        // change, would have stayed permanently stuck even after that
+        // check was fixed -- their input never changes on its own, and
+        // the dedup check used to match on any outcome, "failed" included.
+        // A "pending-owner-review"/accepted record still correctly blocks
+        // an identical-input redispatch (that's real completed work, not
+        // a retry candidate).
+        let (_d, c, config) = fixture();
+        let calls = std::cell::Cell::new(0u32);
+        // Both the initial attempt and the self-correction retry return a
+        // draft with a real hot-path unwrap, so this genuinely reaches
+        // outcome == "failed", not just a single quality-check miss.
+        let always_violates = |_: &str, _: &str| {
+            calls.set(calls.get() + 1);
+            let mut d = draft();
+            d.rust_draft = Some("pub fn f() -> i32 { 1i32.checked_add(1).unwrap() }".into());
+            Ok(d)
+        };
+        // A "failed" outcome makes tick_with itself return Err (matching
+        // failure_is_retained_and_not_retried_unchanged's own pattern
+        // below) -- the record is still persisted regardless.
+        assert!(tick_with(&config, 10, 1, always_violates).is_err());
+        let after_first: Vec<_> = files(&c.results_directory, "json").expect("results");
+        assert_eq!(after_first.len(), 1);
+        let record: Record =
+            serde_json::from_str(&fs::read_to_string(&after_first[0]).expect("read"))
+                .expect("parse");
+        assert_eq!(record.outcome, "failed");
+        assert_eq!(
+            calls.get(),
+            2,
+            "one initial attempt plus one self-correction retry"
+        );
+
+        // Same job, same unchanged input, a later tick: must be retried,
+        // not silently skipped as "already attempted" the way a
+        // successful record would correctly cause.
+        assert!(tick_with(&config, 10, 2, always_violates).is_err());
+        assert_eq!(
+            calls.get(),
+            4,
+            "a self-correction-exhaustion failure must not block a fresh attempt on \
+             unchanged input"
         );
     }
     #[test]
