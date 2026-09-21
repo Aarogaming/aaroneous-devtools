@@ -105,7 +105,17 @@ pub(crate) fn recurring_catalog() -> &'static [CatalogItem] {
         CatalogItem {
             id: "PREP-03-GOVERNANCE-SMT-INTERLOCKS",
             mode: "analysis",
-            evidence: &["crates/governance/src/lib.rs"],
+            // Was crates/governance/src/lib.rs alone -- 31 lines of pure
+            // `pub mod`/`pub use` re-exports, zero real implementation
+            // content. Found live while reviewing pipeline output: the
+            // model correctly and honestly asked for the actual files
+            // instead of fabricating an analysis from nothing, every
+            // single cycle this job ran. Pointed at the real files the
+            // instruction is actually about instead.
+            evidence: &[
+                "crates/governance/src/smt_action_interlock.rs",
+                "crates/governance/src/lattice_verifier.rs",
+            ],
             instruction: "Research and investigate governance Z3 SMT verification rules, safety interlocks, and state reduction constraints.",
         },
         CatalogItem {

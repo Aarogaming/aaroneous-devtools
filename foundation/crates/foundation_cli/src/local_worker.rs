@@ -1064,6 +1064,17 @@ where
                                     "Self-correction retry failed: {}",
                                     retry_violations.join("; ")
                                 ));
+                                // Still persist the rejected draft (outcome
+                                // stays "failed", so it's never mistaken
+                                // for an accepted result) -- discarding it
+                                // entirely made every self-correction
+                                // failure unreviewable and undebuggable,
+                                // found live while reviewing pipeline
+                                // output: a fix here couldn't even be
+                                // properly diagnosed because the actual
+                                // rejected code was already gone by the
+                                // time anyone looked.
+                                record.proposal = Some(retry_proposal);
                                 let _ = update_probation_ledger(
                                     &c.results_directory,
                                     &record.job_id,
@@ -1355,9 +1366,29 @@ pub fn verify_proposal_quality(draft: &Draft) -> Vec<String> {
         {
             violations.push("rust_draft contains banned ambient authority calls".into());
         }
-        if code.contains(".unwrap()") || code.contains(".expect(") {
-            violations
-                .push("rust_draft contains unhandled panic calls (.unwrap() / .expect())".into());
+        // AGENTS.md's real rule (Section 6: "No Unhandled Panics") bans
+        // .unwrap()/.expect() on hot paths and production error-handling
+        // paths -- it does not ban them in tests, and idiomatic Rust test
+        // code uses .unwrap()/.expect() constantly (`foo().unwrap()` in an
+        // assertion is completely normal). The instruction this checker
+        // gates against explicitly asks for "thorough unit test
+        // assertions," so checking the *whole* draft string, test module
+        // included, made a compliant draft with normal tests
+        // indistinguishable from one with a real hot-path panic -- a real
+        // gap found live (M57/M58 both failed their one self-correction
+        // retry this way, discarding two full generation passes on real
+        // P1/P2 roadmap items for a false positive). Only the code before
+        // the first `#[cfg(test)]` module -- this codebase's own
+        // consistent convention for where tests start -- is checked here.
+        let production_code = code
+            .split_once("#[cfg(test)]")
+            .map_or(code.as_str(), |(before, _)| before);
+        if production_code.contains(".unwrap()") || production_code.contains(".expect(") {
+            violations.push(
+                "rust_draft contains unhandled panic calls (.unwrap() / .expect()) outside \
+                 any #[cfg(test)] module"
+                    .into(),
+            );
         }
         if code.contains("aaroneous_") || code.contains("aaroneous-") {
             violations
@@ -1785,6 +1816,86 @@ mod tests {
             solution_tree: None,
         }
     }
+
+    #[test]
+    fn unwrap_expect_check_ignores_a_cfg_test_module_but_still_catches_hot_path_panics() {
+        // Real bug found live while reviewing pipeline output: this check
+        // used to scan the whole draft string, so a completely normal
+        // Rust test module using .unwrap() in assertions -- exactly what
+        // the instruction that gates this check explicitly asks for
+        // ("thorough unit test assertions") -- got flagged the same as a
+        // real hot-path panic. AGENTS.md's actual rule (Section 6) scopes
+        // the ban to hot paths and production error-handling paths; tests
+        // are explicitly not included. Two real P1/P2 roadmap jobs
+        // (M57/M58) each lost a full self-correction retry to this false
+        // positive before it was caught.
+        let mut compliant_with_normal_tests = draft();
+        compliant_with_normal_tests.rust_draft = Some(
+            r#"
+pub fn add(a: i32, b: i32) -> Result<i32, String> {
+    a.checked_add(b).ok_or_else(|| "overflow".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adds_two_numbers() {
+        assert_eq!(add(2, 2).unwrap(), 4);
+    }
+
+    #[test]
+    fn rejects_overflow() {
+        add(i32::MAX, 1).expect_err("must reject overflow");
+    }
+}
+"#
+            .to_string(),
+        );
+        let violations = verify_proposal_quality(&compliant_with_normal_tests);
+        assert!(
+            violations.is_empty(),
+            "normal test-code unwrap/expect must not be flagged: {violations:?}"
+        );
+
+        let mut real_hot_path_panic = draft();
+        real_hot_path_panic.rust_draft = Some(
+            r#"
+pub fn add(a: i32, b: i32) -> i32 {
+    a.checked_add(b).unwrap()
+}
+"#
+            .to_string(),
+        );
+        let violations = verify_proposal_quality(&real_hot_path_panic);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("unhandled panic calls")),
+            "a real hot-path unwrap outside any #[cfg(test)] module must still be caught"
+        );
+
+        // A panic in production code alongside a compliant test module
+        // must still be caught -- the split only exempts what comes after
+        // #[cfg(test)], not the whole file just because a test module
+        // exists somewhere in it.
+        let mut mixed = draft();
+        mixed.rust_draft = Some(format!(
+            "{}\n{}",
+            real_hot_path_panic.rust_draft.as_ref().unwrap(),
+            "#[cfg(test)]\nmod tests {\n    #[test]\n    fn ok() { assert!(true); }\n}\n"
+        ));
+        let violations = verify_proposal_quality(&mixed);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("unhandled panic calls")),
+            "production-code unwrap must still be caught even when a compliant test module \
+             follows it"
+        );
+    }
+
     #[test]
     fn code_draft_without_pre_proof_config_behaves_exactly_like_before_m44() {
         // Omitting pre_proof_checkout/pre_proof_target_file/pre_proof_command
