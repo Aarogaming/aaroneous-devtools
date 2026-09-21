@@ -342,12 +342,22 @@ pub struct DecompositionReport {
 /// `output_dir`. Clusters over the bound are not dropped: they're recorded
 /// in the returned report's `oversized` list with their actual line count,
 /// a real "this target isn't decomposable at the module level here" finding.
-pub fn run(
+///
+/// Also takes an optional M57 accumulating-metadata hook: when
+/// `metadata_dir` is `Some`, every cluster's packet decision (whether it
+/// passed G5 or was oversized) is additionally recorded as a
+/// `"target_decomposition"` pass entry on that cluster's candidate record
+/// (kind `"cluster"`, keyed `"{target_name}/{cluster.dir}"` -- see
+/// `candidate_metadata`'s module docs for the storage layout). `metadata_dir:
+/// None` reproduces this function's pre-M57 behavior exactly, unchanged --
+/// this hook is purely additive.
+pub fn run_with_metadata(
     crate_specs_path: &Path,
     target_name: &str,
     max_lines: usize,
     output_dir: &Path,
     report_output: &Path,
+    metadata_dir: Option<&Path>,
 ) -> Result<DecompositionReport> {
     if !output_dir.is_absolute() {
         bail!(
@@ -371,7 +381,28 @@ pub fn run(
     let mut oversized = Vec::new();
 
     for cluster in &clusters {
-        if cluster.total_lines <= max_lines {
+        let passed_g5 = cluster.total_lines <= max_lines;
+
+        if let Some(dir) = metadata_dir {
+            let candidate_id = format!("{target_name}/{}", cluster.dir);
+            let findings = serde_json::json!({
+                "total_lines": cluster.total_lines,
+                "file_count": cluster.files.len(),
+                "passed_g5": passed_g5,
+            });
+            crate::candidate_metadata::append_pass(
+                dir,
+                "cluster",
+                &candidate_id,
+                "target_decomposition",
+                findings,
+            )
+            .with_context(|| {
+                format!("failed to record M57 metadata for cluster '{candidate_id}'")
+            })?;
+        }
+
+        if passed_g5 {
             let packet_path = create_decomposition_job(cluster, output_dir, target_name)?;
             passed.push(ClusterReportEntry {
                 dir: cluster.dir.clone(),
@@ -513,7 +544,15 @@ mod tests {
         std::fs::create_dir_all(&output_dir).unwrap();
         let report_output = temp.path().join("report.json");
 
-        let report = run(&json_path, "test-target", 5, &output_dir, &report_output).unwrap();
+        let report = run_with_metadata(
+            &json_path,
+            "test-target",
+            5,
+            &output_dir,
+            &report_output,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(report.passed_count, 0);
         assert_eq!(report.oversized_count, 1);
@@ -536,7 +575,15 @@ mod tests {
         std::fs::create_dir_all(&output_dir).unwrap();
         let report_output = temp.path().join("report.json");
 
-        let report = run(&json_path, "bevy_ecs", 5000, &output_dir, &report_output).unwrap();
+        let report = run_with_metadata(
+            &json_path,
+            "bevy_ecs",
+            5000,
+            &output_dir,
+            &report_output,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(report.passed_count, 1);
         assert_eq!(report.oversized_count, 0);
@@ -580,7 +627,15 @@ mod tests {
         std::fs::create_dir_all(&output_dir).unwrap();
         let report_output = temp.path().join("report.json");
 
-        let report = run(&json_path, "bevy_ecs", 5000, &output_dir, &report_output).unwrap();
+        let report = run_with_metadata(
+            &json_path,
+            "bevy_ecs",
+            5000,
+            &output_dir,
+            &report_output,
+            None,
+        )
+        .unwrap();
         assert_eq!(report.passed_count, 2);
 
         for entry in &report.passed {
@@ -607,7 +662,15 @@ mod tests {
         std::fs::create_dir_all(&output_dir).unwrap();
         let report_output = temp.path().join("report.json");
 
-        let report = run(&json_path, "mixed-target", 10, &output_dir, &report_output).unwrap();
+        let report = run_with_metadata(
+            &json_path,
+            "mixed-target",
+            10,
+            &output_dir,
+            &report_output,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(report.total_files_scanned, 2);
         assert_eq!(report.total_clusters_found, 2);
@@ -639,7 +702,15 @@ mod tests {
         std::fs::create_dir_all(&output_dir).unwrap();
         let report_output = temp.path().join("report.json");
 
-        let report = run(&json_path, "many-target", 5000, &output_dir, &report_output).unwrap();
+        let report = run_with_metadata(
+            &json_path,
+            "many-target",
+            5000,
+            &output_dir,
+            &report_output,
+            None,
+        )
+        .unwrap();
         assert_eq!(report.passed_count, 1);
         assert!(report.passed[0].evidence_truncated);
         assert_eq!(report.passed[0].file_count, 10);
@@ -655,27 +726,113 @@ mod tests {
         let temp = tempdir().unwrap();
         let json_path = write_specs_json(temp.path(), &[] as &[(String, String)]);
         let report_output = temp.path().join("report.json");
-        let err = run(
+        let err = run_with_metadata(
             &json_path,
             "target",
             5000,
             Path::new("relative/dir"),
             &report_output,
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("absolute"));
+    }
+
+    // M57: run_with_metadata records a "target_decomposition" pass entry per
+    // cluster (both passing and oversized), and omitting metadata_dir
+    // (plain `run`) leaves behavior exactly as before -- no metadata dir is
+    // touched or created.
+    #[test]
+    fn run_with_metadata_records_pass_entry_for_each_cluster() {
+        let temp = tempdir().unwrap();
+        let source_dir = temp.path().join("src");
+        let small = write_file(&source_dir, "small_mod/tiny.rs", 4);
+        let big = write_file(&source_dir, "big_mod/huge.rs", 20);
+        let json_path = write_specs_json(
+            temp.path(),
+            &[("tiny".to_string(), small), ("huge".to_string(), big)],
+        );
+
+        let output_dir = temp.path().join("worker-jobs");
+        std::fs::create_dir_all(&output_dir).unwrap();
+        let report_output = temp.path().join("report.json");
+        let metadata_dir = temp.path().join("metadata");
+
+        let report = run_with_metadata(
+            &json_path,
+            "mixed-target",
+            10,
+            &output_dir,
+            &report_output,
+            Some(&metadata_dir),
+        )
+        .unwrap();
+        assert_eq!(report.passed_count, 1);
+        assert_eq!(report.oversized_count, 1);
+
+        // cluster.dir is the cluster's real on-disk directory (see
+        // cluster_by_directory), so derive each candidate_id from the
+        // report's own entries rather than predicting the exact path.
+        let passed_dir = &report.passed[0].dir;
+        let oversized_dir = &report.oversized[0].dir;
+
+        let passed_record = crate::candidate_metadata::read_record(
+            &metadata_dir,
+            "cluster",
+            &format!("mixed-target/{passed_dir}"),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(passed_record.passes.len(), 1);
+        assert_eq!(passed_record.passes[0].pass_name, "target_decomposition");
+        assert_eq!(passed_record.passes[0].findings["passed_g5"], true);
+
+        let oversized_record = crate::candidate_metadata::read_record(
+            &metadata_dir,
+            "cluster",
+            &format!("mixed-target/{oversized_dir}"),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(oversized_record.passes[0].findings["passed_g5"], false);
+        assert_eq!(oversized_record.passes[0].findings["total_lines"], 20);
+    }
+
+    #[test]
+    fn run_without_metadata_dir_does_not_create_metadata_directory() {
+        let temp = tempdir().unwrap();
+        let source_dir = temp.path().join("src");
+        let small = write_file(&source_dir, "small_mod/tiny.rs", 4);
+        let json_path = write_specs_json(temp.path(), &[("tiny".to_string(), small)]);
+
+        let output_dir = temp.path().join("worker-jobs");
+        std::fs::create_dir_all(&output_dir).unwrap();
+        let report_output = temp.path().join("report.json");
+
+        let report = run_with_metadata(
+            &json_path,
+            "bevy_ecs",
+            5000,
+            &output_dir,
+            &report_output,
+            None,
+        )
+        .unwrap();
+        assert_eq!(report.passed_count, 1);
+        assert!(!temp.path().join("metadata").exists());
     }
 
     #[test]
     fn run_rejects_relative_report_output() {
         let temp = tempdir().unwrap();
         let json_path = write_specs_json(temp.path(), &[] as &[(String, String)]);
-        let err = run(
+        let err = run_with_metadata(
             &json_path,
             "target",
             5000,
             temp.path(),
             Path::new("relative/report.json"),
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("absolute"));

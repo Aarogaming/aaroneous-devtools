@@ -1,5 +1,6 @@
 mod agentic_registrar;
 mod batch_overlap;
+mod candidate_metadata;
 mod capability_composition;
 mod cloud_providers;
 mod component_inventory;
@@ -77,6 +78,11 @@ enum Command {
         limit: usize,
         #[arg(long, default_value = "d:\\aaroneous-devtools\\worker-jobs")]
         output_dir: PathBuf,
+        /// Optional absolute path to the M57 accumulating per-candidate
+        /// metadata directory. When omitted, behavior is exactly as before
+        /// this milestone -- purely additive.
+        #[arg(long)]
+        metadata_dir: Option<PathBuf>,
     },
     /// Run frontier discovery cycles on an interval until stopped (Ctrl+C).
     /// Reads an explicit, absolute queries file (one search term per line;
@@ -94,6 +100,11 @@ enum Command {
         limit: usize,
         #[arg(long, default_value_t = 30)]
         interval_minutes: u32,
+        /// Optional absolute path to the M57 accumulating per-candidate
+        /// metadata directory. When omitted, behavior is exactly as before
+        /// this milestone -- purely additive.
+        #[arg(long)]
+        metadata_dir: Option<PathBuf>,
     },
     /// Generate bounded cross-category capability composition candidate pairs from an
     /// Aaroneous capability registry JSON export and emit worker-jobs analysis packets
@@ -505,6 +516,11 @@ enum Command {
         /// to.
         #[arg(long)]
         report_output: PathBuf,
+        /// Optional absolute path to the M57 accumulating per-candidate
+        /// metadata directory. When omitted, behavior is exactly as before
+        /// this milestone -- purely additive.
+        #[arg(long)]
+        metadata_dir: Option<PathBuf>,
     },
 }
 
@@ -677,6 +693,7 @@ fn main() -> Result<()> {
             query,
             limit,
             output_dir,
+            metadata_dir,
         } => {
             println!(
                 "Searching crates.io for open-source frontier candidates: '{query}' (limit: {limit})..."
@@ -692,7 +709,11 @@ fn main() -> Result<()> {
                     c.description
                 );
 
-                let prefilter = frontier_discovery::mechanical_prefilter(&c.name, &c.version)?;
+                let prefilter = frontier_discovery::mechanical_prefilter_with_metadata(
+                    metadata_dir.as_deref(),
+                    &c.name,
+                    &c.version,
+                )?;
                 if !prefilter.license_gate {
                     println!(
                         "      -> Skipped: failed G1 license gate (license: '{}')",
@@ -760,17 +781,19 @@ fn main() -> Result<()> {
             max_lines,
             output_dir,
             report_output,
+            metadata_dir,
         } => {
             println!(
                 "Decomposing target '{target_name}' from {} (max {max_lines} lines/cluster)...",
                 crate_specs.display()
             );
-            let report = target_decomposition::run(
+            let report = target_decomposition::run_with_metadata(
                 &crate_specs,
                 &target_name,
                 max_lines,
                 &output_dir,
                 &report_output,
+                metadata_dir.as_deref(),
             )?;
             println!(
                 "Found {} cluster(s): {} passed (packets emitted), {} oversized (see {})",
@@ -822,7 +845,14 @@ fn main() -> Result<()> {
             output_dir,
             limit,
             interval_minutes,
-        } => frontier_discovery::serve(&queries, &output_dir, limit, interval_minutes),
+            metadata_dir,
+        } => frontier_discovery::serve(
+            &queries,
+            &output_dir,
+            limit,
+            interval_minutes,
+            metadata_dir.as_deref(),
+        ),
         Command::FirecrawlScrape {
             url,
             endpoint,
