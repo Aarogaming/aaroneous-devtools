@@ -348,7 +348,9 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
         std::collections::HashMap::new();
     let mut latest_completion_summary: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
-    for dir in candidate_dirs {
+    let mut latest_completion_id: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for dir in &candidate_dirs {
         if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -372,6 +374,7 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
                                     latest_completion_secs.entry(base.to_string()).or_insert(0);
                                 if submitted >= *entry {
                                     *entry = submitted;
+                                    latest_completion_id.insert(base.to_string(), upper.clone());
                                     if let Some(proposal) =
                                         value.get("proposal").and_then(|p| p.as_object())
                                     {
@@ -398,6 +401,26 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // Job ids with a real recorded `accept` verdict -- used below so a
+    // recurring-catalog item whose evidence hasn't changed and whose most
+    // recent pass was already accepted doesn't keep forcing out a fresh,
+    // near-identical pass every 15 minutes forever. Loaded from every
+    // candidate verdicts-file location the same way `candidate_dirs`
+    // guesses at results/archive locations above.
+    let mut accepted_ids = std::collections::HashSet::new();
+    for dir in &candidate_dirs {
+        if let Some(parent) = dir.parent() {
+            let candidate = parent.join("outbox_verdicts.jsonl");
+            if let Ok(entries) = crate::outbox::list_verdicts(&candidate) {
+                for entry in entries {
+                    if entry.verdict == "accept" {
+                        accepted_ids.insert(entry.job_id.to_uppercase());
                     }
                 }
             }
@@ -479,7 +502,15 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
         }
 
         // If at least one pass has already completed, check if evidence files
-        // have changed or if the 24h cooldown has elapsed. If neither, skip refilling.
+        // have changed or if the cooldown has elapsed. If neither, skip
+        // refilling. The cooldown is normally 15 minutes, but a pass that
+        // already has a real recorded `accept` verdict gets a 24h cooldown
+        // instead: unchanged evidence plus an already-accepted "no
+        // remediation required" conclusion means asking again in 15 minutes
+        // can only reproduce the same answer, wasting a generation cycle
+        // and a reviewer's attention on a job that's already settled. A
+        // pass that was rejected, needs-changes, or never reviewed keeps
+        // the short cooldown so retries and first reviews stay fast.
         if pass > 0 {
             if let Some(&last_submitted) = latest_completion_secs.get(item.id) {
                 let now_secs = std::time::SystemTime::now()
@@ -503,7 +534,11 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
                     false
                 });
 
-                let cooldown_elapsed = now_secs.saturating_sub(last_submitted) >= 900;
+                let latest_pass_was_accepted = latest_completion_id
+                    .get(item.id)
+                    .is_some_and(|id| accepted_ids.contains(id));
+                let cooldown_secs = if latest_pass_was_accepted { 86400 } else { 900 };
+                let cooldown_elapsed = now_secs.saturating_sub(last_submitted) >= cooldown_secs;
                 if !evidence_modified && !cooldown_elapsed {
                     continue;
                 }
@@ -940,6 +975,103 @@ mod tests {
         let refilled = refill_recurring_jobs(&checkout, temp.path()).expect("refill");
         assert_eq!(refilled.len(), 1);
         assert!(temp.path().join("audit-01-ast-safety.toml").exists());
+    }
+
+    /// Writes a fake completed pass-0 result for AUDIT-01-AST-SAFETY,
+    /// submitted `age_secs` ago, with evidence backdated further still so
+    /// `evidence_modified` is false. Returns the exact upper-cased job id
+    /// so the caller can attach a verdict to it.
+    fn write_fake_recurring_pass_result(
+        output_dir: &Path,
+        checkout: &Path,
+        evidence: &[&str],
+        age_secs: u64,
+    ) -> String {
+        let now = std::time::SystemTime::now();
+        let now_secs = now.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let submitted_at_secs = now_secs - age_secs;
+        let backdated = std::time::UNIX_EPOCH
+            + std::time::Duration::from_secs(submitted_at_secs.saturating_sub(60));
+        for relative in evidence {
+            let f = fs::OpenOptions::new()
+                .write(true)
+                .open(checkout.join(relative))
+                .expect("open evidence for write");
+            f.set_modified(backdated).expect("backdate evidence mtime");
+        }
+        let results_dir = output_dir.join("results");
+        fs::create_dir_all(&results_dir).expect("create results dir");
+        let job_id = "AUDIT-01-AST-SAFETY".to_string();
+        fs::write(
+            results_dir.join(format!("{}-0000.json", job_id.to_lowercase())),
+            format!(
+                r#"{{"job_id":"{job_id}","submitted_at_secs":{submitted_at_secs},"proposal":{{"observations":["seed obs"],"risks":[]}}}}"#
+            ),
+        )
+        .expect("write fake result");
+        job_id
+    }
+
+    #[test]
+    fn recurring_pass_regenerates_after_short_cooldown_when_unaccepted() {
+        let temp = tempfile::tempdir().expect("test dir");
+        let checkout = temp.path().join("checkout");
+        let evidence = [
+            "crates/ast_auditor/src/rules/text_encoding.rs",
+            "xtask/src/gate.rs",
+        ];
+        for e in evidence {
+            create_dummy_evidence(&checkout, e);
+        }
+        // 1000s ago clears the normal 900s cooldown but not the 24h one.
+        write_fake_recurring_pass_result(temp.path(), &checkout, &evidence, 1000);
+
+        let refilled = refill_recurring_jobs(&checkout, temp.path()).expect("refill");
+        assert!(
+            temp.path().join("audit-01-ast-safety-p0001.toml").exists(),
+            "no verdict recorded -- the short 900s cooldown must govern, and it has elapsed"
+        );
+        assert_eq!(refilled.len(), 1);
+    }
+
+    #[test]
+    fn recurring_pass_does_not_regenerate_after_short_cooldown_when_already_accepted() {
+        // Real gap found live: this recurring-catalog job regenerates every
+        // ~15 minutes even when evidence is byte-identical, feeding each
+        // pass's own prior output back in as "[PRIOR AUDIT CONTEXT]" --
+        // which a weak model tends to just echo back with a status tag
+        // appended, rather than doing fresh analysis. Reviewing this
+        // family live, a reviewer had to re-review the same
+        // already-accepted "no remediation required" conclusion pass after
+        // pass. An `accept` verdict plus unchanged evidence should extend
+        // the cooldown well past 15 minutes instead of forcing a
+        // near-identical regeneration (and review) every cycle.
+        let temp = tempfile::tempdir().expect("test dir");
+        let checkout = temp.path().join("checkout");
+        let evidence = [
+            "crates/ast_auditor/src/rules/text_encoding.rs",
+            "xtask/src/gate.rs",
+        ];
+        for e in evidence {
+            create_dummy_evidence(&checkout, e);
+        }
+        let job_id = write_fake_recurring_pass_result(temp.path(), &checkout, &evidence, 1000);
+
+        let verdicts_path = temp.path().join("outbox_verdicts.jsonl");
+        fs::write(
+            &verdicts_path,
+            format!(
+                "{{\"job_id\":\"{job_id}\",\"reviewer\":\"claude-host\",\"verdict\":\"accept\",\"notes\":\"\",\"recorded_at_secs\":1,\"promoted_branch\":null,\"promoted_commit\":null}}\n"
+            ),
+        )
+        .expect("write verdict");
+
+        let refilled = refill_recurring_jobs(&checkout, temp.path()).expect("refill");
+        assert!(
+            refilled.is_empty(),
+            "already-accepted pass with unchanged evidence must not regenerate on the short cooldown"
+        );
+        assert!(!temp.path().join("audit-01-ast-safety-p0001.toml").exists());
     }
 
     #[test]
