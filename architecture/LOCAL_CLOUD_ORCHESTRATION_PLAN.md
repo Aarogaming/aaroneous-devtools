@@ -2,7 +2,7 @@
 
 **Status:** Dormant/Roadmapped (per `governance/EVIDENCE_STANDARD.md`) — no code has
 been written against this plan yet. This document records scope, sequencing, and
-governance boundaries for milestones M40–M54 in `governance/MULTITHREAD_PROGRAM.md`.
+governance boundaries for milestones M40–M55 in `governance/MULTITHREAD_PROGRAM.md`.
 
 ## Goal
 
@@ -777,6 +777,66 @@ attempt (see the decisions log entry below).
   G5 and proceed through the rest of the pipeline — proving decomposition
   actually unblocks what wholesale discovery couldn't, not just that it runs.
 
+### M55 — Mechanical Stage 1 pre-filter: G1 (license) and G4 (ecosystem independence)
+
+**From planning discussion, 2026-09-20:** not every gate in
+`FRONTIER_FILTRATION_STANDARD_V1.md`'s Stage 1 needs judgment — some are pure
+fact-lookups. G5 (refactoring surface) is already fully mechanical (M54). G1
+(license) and G4 (ecosystem independence, no C/C++ build deps) are equally
+mechanical in principle — this milestone makes them real code instead of
+something a reviewer checks by hand, so a candidate clears three deterministic
+gates, with zero agent/LLM call anywhere in the path, before anyone spends
+judgment on it. This directly shrinks what "needs the local agent" means, per
+the owner's stated preference to accept agent-assist as a bridge, not a
+permanent dependency, and to grow independence as a byproduct of what gets
+built rather than as a separate goal.
+
+**Verified against the real crates.io API, 2026-09-20 (not assumed):**
+
+- `foundation/crates/foundation_cli/src/frontier_discovery.rs`'s existing
+  `search_crates_io` hits `GET /api/v1/crates?q=...` — **its per-crate summary
+  does not reliably carry a usable `license` field** (confirmed empty for both
+  `cranelift-codegen` and `serde` in live responses). G1 needs a *second* call
+  per candidate: `GET /api/v1/crates/{name}/{version}`, whose
+  `version.license` field is real and populated (confirmed:
+  `"Apache-2.0 WITH LLVM-exception"` for `cranelift-codegen`).
+- That license string is an SPDX expression, not a bare identifier — a naive
+  exact-match against `"Apache-2.0"` would wrongly reject that real,
+  clearly-permissive value, and would also mishandle dual-licensing
+  (`"MIT OR Apache-2.0"`). Scope the parser honestly: split on `" OR "`,
+  `" AND "`, `" WITH "` and check whether any resulting token is an allowed
+  license per G1's existing list (`MIT`, `Apache-2.0`, `BSD-2-Clause`,
+  `BSD-3-Clause`, `ISC`, `Unlicense`) — good enough for the common real-world
+  shapes seen so far, not a full SPDX grammar. If real usage later shows this
+  heuristic getting it wrong, reach for the actual `spdx` crate then, with
+  evidence, not speculatively now.
+- `GET /api/v1/crates/{name}/{version}/dependencies` is real and useful
+  (confirmed live: returns `crate_id`, `kind` [`normal`/`build`/`dev`],
+  `optional` per dependency). G4's mechanical proxy: flag a candidate whose
+  dependency list includes a `*-sys`-named crate or a `build`-kind dependency
+  matching known C/C++ toolchain wrappers (`cc`, `cmake`) as a signal, not a
+  hard fail — this is a heuristic, not a certainty, and should be reported as
+  such (a finding for the reviewer to weigh, mirroring G2/G3's own
+  judgment-call nature), while G1's license check is a hard, correct gate
+  (license compliance isn't a judgment call).
+
+**Design:** extend `frontier_discovery.rs` (or a small sibling module) with a
+`mechanical_prefilter(candidate, version) -> PrefilterResult` that makes the two
+additional API calls and returns a structured result: `license_gate: Pass |
+Fail(actual_license)`, `ecosystem_signal: Clean | Flagged(reasons)`. Wire this
+into the existing discovery flow (`create_frontier_job`/`cycle`) so a candidate
+failing G1 outright is never even turned into a `worker-jobs/` packet — the
+mechanical gate prevents wasted judgment-stage work, not just informs it after
+the fact.
+
+- **Dependency:** M41 (extends its existing `search_crates_io` call site)
+- **Preferred capability:** Rust systems review, HTTP/API integration
+- **Evidence:** committed prefilter with passing tests against recorded real API
+  response fixtures (not live network calls in tests); a real run showing at
+  least one real candidate correctly gated on G1 (a copyleft-licensed crate, if
+  one can be found for the test) and at least one correctly flagged by the G4
+  heuristic.
+
 ## Decisions log
 
 Dated decisions from planning discussion, kept so later sessions don't re-litigate
@@ -893,6 +953,23 @@ settled scope:
   Rust-specific, and machine-native reverse engineering into `.si` models is a
   real, legitimate, but research-grade direction, not a milestone to write up
   the way M40-M54 were. Recorded as a named future direction, not designed.
+- **2026-09-20 — Found and fixed a real packet-id collision by actually running
+  M54 against live Bevy ECS data**, not by code review alone: all 14 emitted
+  packets shared one truncated id, since front-truncating a long shared-prefix
+  absolute path discards exactly the part that would have distinguished them.
+  Fixed by keying on the path's last components plus a hash suffix; re-ran
+  against the same real data to confirm. Named directly by the owner as the
+  kind of thing "confident AI claims" and passing tests alone don't catch —
+  only actually executing against real, messy data does.
+- **2026-09-20 — Scoped M55 (mechanical Stage 1 pre-filter) from an explicit
+  sequencing decision:** agent-assist (local or cloud) is accepted as a bridge,
+  not a permanent dependency — independence should grow as a byproduct of what
+  gets built, not as a separate initiative. G1/G4 join G5 as fully mechanical
+  gates requiring no agent call at all, verified against the real crates.io API
+  rather than assumed (found the search endpoint doesn't carry license data at
+  all — a second per-candidate call to the version endpoint is required, and
+  the returned license is an SPDX expression needing real parsing, not an exact
+  string match).
 
 ## Sequencing
 
@@ -924,6 +1001,7 @@ else in this plan — it's the smallest milestone here, a named layer in front o
 a parameter `verify_draft` already accepts. M54 depends on M41/M46/M49 (all
 already built) and can proceed now — it's the real unblocking step for any
 wholesale-target discovery attempt, including the actual next target named in
-planning (Bevy ECS). No milestone in this plan authorizes paid cloud dispatch or
-local write/claim authority — those remain explicit future decisions, not
-defaults unlocked by completing M40–M54.
+planning (Bevy ECS). M55 depends on M41 (extends its existing search call site)
+and can proceed now, independent of M54. No milestone in this plan authorizes
+paid cloud dispatch or local write/claim authority — those remain explicit
+future decisions, not defaults unlocked by completing M40–M55.
