@@ -691,11 +691,30 @@ fn main() -> Result<()> {
                     c.version,
                     c.description
                 );
-                let job_path = frontier_discovery::create_frontier_job(
+
+                let prefilter = frontier_discovery::mechanical_prefilter(&c.name, &c.version)?;
+                if !prefilter.license_gate {
+                    println!(
+                        "      -> Skipped: failed G1 license gate (license: '{}')",
+                        prefilter.license
+                    );
+                    continue;
+                }
+
+                let ecosystem_notes = match &prefilter.ecosystem_signal {
+                    frontier_discovery::EcosystemSignal::Clean => None,
+                    frontier_discovery::EcosystemSignal::Flagged(reasons) => {
+                        println!("      -> G4 signal (advisory): {}", reasons.join("; "));
+                        Some(reasons.join("; "))
+                    }
+                };
+
+                let job_path = frontier_discovery::create_frontier_job_with_notes(
                     c,
                     &output_dir,
                     "docs/ARCHITECTURE.md",
                     &query,
+                    ecosystem_notes.as_deref(),
                 )?;
                 println!(
                     "      -> Created frontier audit job: {}",
