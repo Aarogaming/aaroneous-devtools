@@ -22,6 +22,7 @@ mod intake;
 mod intake_generator;
 mod job_converter;
 mod local_proposal;
+mod local_staging;
 mod local_worker;
 mod multithreader;
 mod outbox;
@@ -396,6 +397,44 @@ enum Command {
         /// Optional: append a `notice` row here on a successful push.
         #[arg(long)]
         ping: Option<PathBuf>,
+    },
+    /// Stage a draft as a real local git commit inside a dedicated,
+    /// never-pushed `local-staging/{id}` worktree (M62). Contains no path
+    /// to a shared remote anywhere -- reuses the same worktree across
+    /// repeated calls for the same `id` so iterations accumulate as real
+    /// local history. Refuses to force-commit an unchanged redraft.
+    StageDraft {
+        #[arg(long)]
+        checkout: PathBuf,
+        #[arg(long)]
+        worktrees_root: PathBuf,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        target_file: String,
+        /// Absolute path to a file containing the draft source; read as-is.
+        #[arg(long)]
+        draft_file: PathBuf,
+        #[arg(long)]
+        message: String,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// List every existing staging worktree under `worktrees_root`. Read-only.
+    ListStaged {
+        #[arg(long)]
+        worktrees_root: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Remove a staging worktree and its local-only branch.
+    PruneStaged {
+        #[arg(long)]
+        checkout: PathBuf,
+        #[arg(long)]
+        worktrees_root: PathBuf,
+        #[arg(long)]
+        id: String,
     },
     /// Evaluate a coordination queue and write a read-only scheduling report.
     ScheduleReview {
@@ -1256,6 +1295,36 @@ fn main() -> Result<()> {
             &justification,
             ping.as_deref(),
         ),
+        Command::StageDraft {
+            checkout,
+            worktrees_root,
+            id,
+            target_file,
+            draft_file,
+            message,
+            output,
+        } => {
+            let rust_source = fs::read_to_string(&draft_file)
+                .with_context(|| format!("reading draft file {}", draft_file.display()))?;
+            local_staging::run_stage_draft(
+                &checkout,
+                &worktrees_root,
+                &id,
+                &target_file,
+                &rust_source,
+                &message,
+                &output,
+            )
+        }
+        Command::ListStaged {
+            worktrees_root,
+            output,
+        } => local_staging::run_list_staged(&worktrees_root, &output),
+        Command::PruneStaged {
+            checkout,
+            worktrees_root,
+            id,
+        } => local_staging::prune_staged(&checkout, &worktrees_root, &id),
         Command::ScheduleReview {
             queue,
             program,
