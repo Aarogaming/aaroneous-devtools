@@ -4,6 +4,25 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+/// Builds the `FRONTIER-{NAME}` portion of a job id from a candidate/seed
+/// name, replacing every character that isn't ASCII alphanumeric or `_`
+/// with `_` -- not just `-`. Real bug found live: a seed literally named
+/// `mistral.rs` (from `RUST_DISCOVERY_SEED_CATALOG.md`'s own entry for the
+/// crate, which is genuinely how its name reads) produced
+/// `FRONTIER-MISTRAL.RS`, and local_worker.rs's job-id validation
+/// (`[A-Za-z0-9\-_]+` only) rejects any `.`, permanently skipping that
+/// packet. `.replace('-', "_")` alone only ever handled the one character
+/// class someone happened to test against; any crate name containing a
+/// dot, space, plus sign, or anything else outside that set would hit the
+/// same failure. This is used at both job-id construction sites in this
+/// module rather than duplicating an incomplete version at each.
+fn sanitize_job_id_component(name: &str) -> String {
+    name.to_uppercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NativeDiscoverySummary {
     pub checkout: String,
@@ -431,10 +450,7 @@ pub fn create_frontier_job_with_notes(
         bail!("output_dir must be an absolute path");
     }
 
-    let job_id = format!(
-        "FRONTIER-{}",
-        candidate.name.to_uppercase().replace('-', "_")
-    );
+    let job_id = format!("FRONTIER-{}", sanitize_job_id_component(&candidate.name));
     let filename = format!(
         "frontier-{}.toml",
         candidate.name.to_lowercase().replace('_', "-")
@@ -808,7 +824,7 @@ pub fn refill_frontier_discovery_jobs(
             break;
         }
 
-        let sanitized_id_name = seed.name.to_uppercase().replace('-', "_");
+        let sanitized_id_name = sanitize_job_id_component(&seed.name);
         let job_id = format!("FRONTIER-{sanitized_id_name}");
         let filename = format!(
             "frontier-{}.toml",
@@ -1133,6 +1149,26 @@ mod tests {
         let summary = discover_native(temp.path()).unwrap();
         assert_eq!(summary.tracked_files_count, 0);
         assert!(summary.remotes.is_empty());
+    }
+
+    #[test]
+    fn sanitize_job_id_component_replaces_every_non_alphanumeric_character() {
+        // Real bug found live: "mistral.rs" (a genuinely real crate name,
+        // and this project's own RUST_DISCOVERY_SEED_CATALOG.md entry for
+        // it) produced FRONTIER-MISTRAL.RS, which local_worker.rs's job-id
+        // validation ([A-Za-z0-9\-_]+ only) rejects -- the old
+        // `.replace('-', "_")` only ever handled the one character class
+        // someone happened to test against.
+        assert_eq!(sanitize_job_id_component("mistral.rs"), "MISTRAL_RS");
+        assert_eq!(
+            sanitize_job_id_component("crossbeam-queue"),
+            "CROSSBEAM_QUEUE"
+        );
+        assert_eq!(sanitize_job_id_component("a b+c/d"), "A_B_C_D");
+        assert_eq!(
+            sanitize_job_id_component("already_fine_123"),
+            "ALREADY_FINE_123"
+        );
     }
 
     #[test]
