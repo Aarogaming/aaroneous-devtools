@@ -141,10 +141,7 @@ pub(crate) fn recurring_catalog() -> &'static [CatalogItem] {
         CatalogItem {
             id: "FRONTIER-01-REPO-OUTSOURCING",
             mode: "analysis",
-            evidence: &[
-                "docs/ARCHITECTURE.md",
-                "governance/COORDINATION_QUEUE.md",
-            ],
+            evidence: &["docs/ARCHITECTURE.md", "governance/COORDINATION_QUEUE.md"],
             instruction: "Audit open-source repository opportunities and external crate outsourcing: identify mature ecosystem components (e.g. tracing, bytemuck, lock-free queues, SMT provers) that Aaroneous devtools or crates can leverage to accelerate development while adhering to zero-heap and zero-ambient authority rules.",
         },
     ]
@@ -281,15 +278,22 @@ pub(crate) fn refill_recurring_jobs(checkout: &Path, output_dir: &Path) -> Resul
         bail!("checkout and output_dir must be absolute paths");
     }
     let mut created = Vec::new();
-    let mut candidate_dirs = vec![
-        output_dir.join("results"),
-        output_dir.join("archive"),
-    ];
+    let mut candidate_dirs = vec![output_dir.join("results"), output_dir.join("archive")];
     if let Some(parent) = output_dir.parent() {
         candidate_dirs.push(parent.join("results"));
         candidate_dirs.push(parent.join("archive"));
-        candidate_dirs.push(parent.join("artifacts").join("local-worker-service").join("results"));
-        candidate_dirs.push(parent.join("artifacts").join("local-worker-service").join("archive"));
+        candidate_dirs.push(
+            parent
+                .join("artifacts")
+                .join("local-worker-service")
+                .join("results"),
+        );
+        candidate_dirs.push(
+            parent
+                .join("artifacts")
+                .join("local-worker-service")
+                .join("archive"),
+        );
     }
 
     let mut completed_ids = std::collections::HashSet::new();
