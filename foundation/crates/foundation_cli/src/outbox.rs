@@ -33,9 +33,9 @@ fn is_result_file(path: &Path) -> bool {
         && !name.ends_with("marker_retained.json")
 }
 
-fn result_files(results_dir: &Path) -> Result<Vec<std::path::PathBuf>> {
-    let mut entries: Vec<_> = fs::read_dir(results_dir)
-        .with_context(|| format!("reading results directory {}", results_dir.display()))?
+fn result_files_in(dir: &Path) -> Result<Vec<std::path::PathBuf>> {
+    let mut entries: Vec<_> = fs::read_dir(dir)
+        .with_context(|| format!("reading results directory {}", dir.display()))?
         .collect::<std::io::Result<Vec<_>>>()?;
     entries.sort_by_key(std::fs::DirEntry::path);
     let mut paths = Vec::new();
@@ -48,6 +48,32 @@ fn result_files(results_dir: &Path) -> Result<Vec<std::path::PathBuf>> {
             bail!("symlink result forbidden: {}", path.display());
         }
         paths.push(path);
+    }
+    Ok(paths)
+}
+
+/// `results_dir`'s sibling `archive` directory, if one exists --
+/// `artifacts/local-worker-service/{results,archive}` in the real
+/// deployment layout.
+fn sibling_archive_dir(results_dir: &Path) -> Option<std::path::PathBuf> {
+    let candidate = results_dir.parent()?.join("archive");
+    candidate.is_dir().then_some(candidate)
+}
+
+/// All result files reachable for review: `results_dir` plus its sibling
+/// `archive_dir` when one exists. `local_worker`'s rotation logic (and,
+/// before M71, an unreviewed-blind version of it) moves passes there on
+/// pending-count pressure -- a result being archived is not the same as it
+/// having been reviewed, and a real backlog audit found hundreds of
+/// genuinely unreviewed records sitting in `archive/`, invisible to every
+/// outbox command because they only ever looked at `results_dir`. Reviewed
+/// or not, once a verdict exists on a job id, it stays reachable here too:
+/// `list_outbox`/`show_entry` need to see the same record a verdict was
+/// recorded against regardless of which directory holds it now.
+fn result_files(results_dir: &Path) -> Result<Vec<std::path::PathBuf>> {
+    let mut paths = result_files_in(results_dir)?;
+    if let Some(archive_dir) = sibling_archive_dir(results_dir) {
+        paths.extend(result_files_in(&archive_dir)?);
     }
     Ok(paths)
 }
@@ -136,8 +162,16 @@ pub fn list_outbox(results_dir: &Path, verdicts_path: Option<&Path>) -> Result<V
         _ => std::collections::HashSet::new(),
     };
     let mut entries = Vec::new();
+    // `result_files` now also scans a sibling `archive/`, so the same
+    // job id can in principle appear twice (a results/ copy and a stale
+    // archive/ one from a transient race) -- keep only the first (newest,
+    // since results/ is listed before archive/) rather than double-listing
+    // one job as two rows.
+    let mut seen_ids = std::collections::HashSet::new();
     for path in result_files(results_dir)? {
-        if let Some(record) = load_record(&path)? {
+        if let Some(record) = load_record(&path)?
+            && seen_ids.insert(record.job_id.clone())
+        {
             entries.push(entry_from_record(&record, &reviewed_ids));
         }
     }
