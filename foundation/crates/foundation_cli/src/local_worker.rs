@@ -83,11 +83,21 @@ struct Job {
     priority: Option<String>,
 }
 
-/// Lower sorts first (selected sooner). Unrecognized or absent priority is
-/// deliberately the neutral middle tier, matching `P2` -- not the back of
-/// the line (that would starve every non-portfolio producer, which has no
-/// priority concept to report and shouldn't be penalized for that) and not
-/// the front (an unset priority is not the same claim as a verified `P0`).
+/// Maps job priority strings to PriorityTier. Unrecognized or absent
+/// priority is deliberately the neutral middle tier (Standard), matching
+/// P2 -- not the back of the line (that would starve every non-portfolio
+/// producer) and not the front (an unset priority is not the same claim
+/// as a verified P0).
+fn job_priority_tier(priority: Option<&str>) -> priority_scheduler::PriorityTier {
+    match priority {
+        Some("P0") => priority_scheduler::PriorityTier::Critical,
+        Some("P1") => priority_scheduler::PriorityTier::Critical,
+        Some("P3") => priority_scheduler::PriorityTier::Background,
+        _ => priority_scheduler::PriorityTier::Standard,
+    }
+}
+
+/// Legacy rank for backward compatibility with sort-based tests.
 fn priority_rank(priority: Option<&str>) -> u8 {
     match priority {
         Some("P0") => 0,
@@ -891,6 +901,8 @@ where
         input: String,
         last_attempt_secs: u64,
         priority_rank: u8,
+        priority_tier: priority_scheduler::PriorityTier,
+        attempt_count: u32,
     }
     let mut candidates: Vec<Candidate> = Vec::new();
     for path in files(&c.jobs_directory, "toml")? {
@@ -1035,11 +1047,18 @@ where
                 .copied()
                 .unwrap_or(0);
             let priority_rank = priority_rank(job.priority.as_deref());
+            let priority_tier = job_priority_tier(job.priority.as_deref());
+            let attempt_count = records
+                .iter()
+                .filter(|r| base_job_key(&r.job_id) == base_job_key(&job.id))
+                .count() as u32;
             Ok(Some(Candidate {
                 job,
                 input,
                 last_attempt_secs,
                 priority_rank,
+                priority_tier,
+                attempt_count,
             }))
         })();
         match outcome {
@@ -1062,10 +1081,48 @@ where
     // priority-less work just because that work happened to be queued
     // first -- but fairness still governs *within* a tier, so nothing
     // inside the same priority starves another same-priority job forever.
+    //
+    // Backoff-aware: uses PriorityScheduler's calculate_backoff to
+    // determine when a previously-attempted job becomes eligible again.
+    // Jobs that haven't been attempted are always eligible (backoff = 0).
+    let scheduler = priority_scheduler::PriorityScheduler::new();
+    let max_backoff_ms = 60_000; // 60s ceiling
+    let base_delay_ms = 5_000; // 5s base delay
     candidates.sort_by(|a, b| {
-        a.priority_rank
-            .cmp(&b.priority_rank)
-            .then_with(|| a.last_attempt_secs.cmp(&b.last_attempt_secs))
+        // Compute backoff eligibility time for each candidate
+        let a_backoff = if a.attempt_count > 0 {
+            let task = priority_scheduler::TaskMetadata {
+                task_id: uuid::Uuid::nil(),
+                priority_tier: a.priority_tier,
+                weight_multiplier: 1.0,
+                attempt_count: a.attempt_count,
+                max_attempts: 5,
+                base_delay_ms,
+                next_eligible_at: std::time::Instant::now(),
+            };
+            scheduler.calculate_backoff(&task, max_backoff_ms).as_secs()
+        } else {
+            0
+        };
+        let b_backoff = if b.attempt_count > 0 {
+            let task = priority_scheduler::TaskMetadata {
+                task_id: uuid::Uuid::nil(),
+                priority_tier: b.priority_tier,
+                weight_multiplier: 1.0,
+                attempt_count: b.attempt_count,
+                max_attempts: 5,
+                base_delay_ms,
+                next_eligible_at: std::time::Instant::now(),
+            };
+            scheduler.calculate_backoff(&task, max_backoff_ms).as_secs()
+        } else {
+            0
+        };
+        let a_eligible = a.last_attempt_secs.saturating_add(a_backoff);
+        let b_eligible = b.last_attempt_secs.saturating_add(b_backoff);
+        a_eligible
+            .cmp(&b_eligible)
+            .then_with(|| a.priority_rank.cmp(&b.priority_rank))
             .then_with(|| a.job.id.cmp(&b.job.id))
     });
 
