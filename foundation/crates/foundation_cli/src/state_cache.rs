@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 /// Lightweight summary of a record for in-memory indexing.
 /// Avoids re-reading and re-parsing the full Record JSON on every tick.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RecordSummary {
     pub job_id: String,
     pub base_key: String,
@@ -14,25 +14,66 @@ pub struct RecordSummary {
     pub outcome: String,
 }
 
-/// In-memory index of all known records, keyed by record file path.
+/// In-memory index of all known records with persistent sled backing.
 /// Eliminates the per-tick full archive scan (up to 65536 files).
+/// Sled provides crash recovery via WAL and faster startup via persistent index.
 pub struct StateCache {
-    /// path -> RecordSummary
+    /// path -> RecordSummary (hot cache)
     records: DashMap<PathBuf, RecordSummary>,
     /// base_job_key -> latest RecordSummary (most recent attempt)
     pub latest_by_base: DashMap<String, RecordSummary>,
     /// Directory mtimes for change detection
     results_dir_mtime: std::sync::atomic::AtomicU64,
     archive_dir_mtime: std::sync::atomic::AtomicU64,
+    /// Persistent sled database for crash recovery
+    db: sled::Db,
 }
 
 impl StateCache {
-    pub fn new() -> Self {
-        Self {
+    /// Create a new StateCache with a sled database at the given path.
+    /// The sled DB persists record summaries across process restarts.
+    pub fn new(db_path: &Path) -> Self {
+        let db = sled::open(db_path).expect("failed to open sled database");
+        let cache = Self {
             records: DashMap::new(),
             latest_by_base: DashMap::new(),
             results_dir_mtime: std::sync::atomic::AtomicU64::new(0),
             archive_dir_mtime: std::sync::atomic::AtomicU64::new(0),
+            db,
+        };
+        // Load persisted records from sled into memory
+        cache.load_from_db();
+        cache
+    }
+
+    /// Create a StateCache with an in-memory sled DB (for tests).
+    pub fn new_in_memory() -> Self {
+        let db = sled::Config::new().temporary(true).open().expect("failed to open temp sled");
+        let cache = Self {
+            records: DashMap::new(),
+            latest_by_base: DashMap::new(),
+            results_dir_mtime: std::sync::atomic::AtomicU64::new(0),
+            archive_dir_mtime: std::sync::atomic::AtomicU64::new(0),
+            db,
+        };
+        cache.load_from_db();
+        cache
+    }
+
+    /// Load persisted records from sled into the in-memory DashMap.
+    fn load_from_db(&self) {
+        for entry in self.db.iter() {
+            if let Ok((key, value)) = entry {
+                if let Ok(summary) = serde_json::from_slice::<RecordSummary>(&value) {
+                    let path = PathBuf::from(String::from_utf8_lossy(&key).to_string());
+                    let base_key = summary.base_key.clone();
+                    self.records.insert(path, summary.clone());
+                    let mut e = self.latest_by_base.entry(base_key).or_insert(summary.clone());
+                    if summary.submitted_at_secs > e.submitted_at_secs {
+                        *e = summary;
+                    }
+                }
+            }
         }
     }
 
@@ -71,11 +112,17 @@ impl StateCache {
             .and_then(|r| r.rejection_reason.clone())
     }
 
-    /// Insert or update a record summary.
+    /// Insert or update a record summary. Persists to sled for crash recovery.
     pub fn upsert(&self, summary: RecordSummary) {
+        let path_key = summary.job_id.clone();
         let base_key = summary.base_key.clone();
+        // Persist to sled
+        if let Ok(data) = serde_json::to_vec(&summary) {
+            let _ = self.db.insert(path_key.as_bytes(), data);
+        }
+        // Update in-memory index
         self.records.insert(
-            PathBuf::from(&summary.job_id), // placeholder key
+            PathBuf::from(&path_key),
             summary.clone(),
         );
         // Update latest_by_base if this is newer
@@ -183,11 +230,7 @@ pub fn hash_input(input: &str) -> u64 {
     hasher.finish()
 }
 
-impl Default for StateCache {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+
 
 #[cfg(test)]
 mod tests {
@@ -195,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_state_cache_basic() {
-        let cache = StateCache::new();
+        let cache = StateCache::new_in_memory();
         assert!(cache.is_empty());
 
         let summary = RecordSummary {
@@ -217,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_state_cache_dedup() {
-        let cache = StateCache::new();
+        let cache = StateCache::new_in_memory();
 
         // Two records with same base key
         cache.upsert(RecordSummary {
