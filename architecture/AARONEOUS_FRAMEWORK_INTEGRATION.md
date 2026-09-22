@@ -139,11 +139,20 @@ Per `governance/OPERATING_MODEL.md`: devtools follows the companion operating mo
 - **Solution**: Make compute optional with feature flag `adaptive-governance`
 - **Recommendation**: Add feature gate in Aaroneous, then import governance without the flag for devtools.
 
+### llm_gateway: TYPES EXTRACTABLE, RUNTIME NOT USABLE
+
+- **Types are fully sync** - all 20+ POD types in types.rs, LLMConfig, ModelInfo, ModelType, ModelRegistry, ModelEnvironment, AutoDiscoveryResult struct
+- **Runtime is async-only** - LLMClient, LLMProvider trait, providers, cache, rate_limiter all require tokio
+- **Clean separation already exists** - types/config/registry use only std+serde, runtime layer is behind async
+- **Extraction path**: Create `llm_types` crate with types.rs, config structs, registry, environment detection. No tokio, no moka, no reqwest.
+- **One trivial refactor needed**: ModelLoader::initialize() is declared async but body is sync
+- **Recommendation**: Extract types to separate crate. Use for model selection and configuration. Don't import the async runtime.
+
 ## Open Questions
 
 1. ~~Should we feature-gate the scheduler in orchestrator or extract to a new crate?~~ **EXTRACT** - trivial, 222 lines, 2 deps
 2. ~~Can governance be used without compute?~~ **YES** with feature gate on 2 modules
-3. Is there a clean async/sync boundary in llm_gateway for types-only import?
+3. ~~Is there a clean async/sync boundary in llm_gateway for types-only import?~~ **YES** - types are fully sync, runtime is async
 4. Should devtools pin a specific Aaroneous version or use path dependencies?
 
 ## Next Steps
@@ -151,8 +160,9 @@ Per `governance/OPERATING_MODEL.md`: devtools follows the companion operating mo
 - [x] Audit `compute` crate dependency tree
 - [x] Verify ast_auditor API compatibility with devtools' verification needs
 - [x] Check PriorityScheduler's exact dependency boundary in orchestrator
-- [ ] Investigate llm_gateway module structure for types extraction
+- [x] Investigate llm_gateway module structure for types extraction
 - [ ] Implement shared Reservation module
 - [ ] Integrate ast_auditor as library dependency
 - [ ] Extract PriorityScheduler to micro-crate
 - [ ] Add feature gate for compute in governance
+- [ ] Extract llm_gateway types to separate crate
