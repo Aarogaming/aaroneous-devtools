@@ -1037,9 +1037,26 @@ where
                 (None, None) => None,
             };
             if let Some(reason) = rejection_reason {
-                input.push_str(&format!(
-                    "\n[PRIOR REVIEWER FEEDBACK]: A previous attempt for this task was rejected with the following review feedback:\n\"{reason}\"\nYou MUST incorporate this feedback, rectify the deficiencies, and avoid repeating the cited errors.\n"
-                ));
+                // Prepend feedback at the TOP of input for maximum visibility.
+                // Structure it as explicit action items, not just a quote.
+                let feedback_block = format!(
+                    "=== REVIEWER FEEDBACK (ADDRESS THIS FIRST) ===\n\
+                     A previous attempt at this task was REJECTED. The reviewer found:\n\
+                     \"{reason}\"\n\n\
+                     ACTION REQUIRED:\n\
+                     1. Read the feedback above carefully\n\
+                     2. Identify exactly which findings are wrong or incomplete\n\
+                     3. Re-analyze the evidence from scratch -- do NOT copy prior observations\n\
+                     4. In your output, explicitly state what changed and why\n\
+                     5. If the previous finding was correct, explain what additional analysis you performed\n\n\
+                     DO NOT: echo the prior context, repeat the same findings, or acknowledge the feedback without acting on it.\n\
+                     === END FEEDBACK ===\n\n"
+                );
+                // Prepend to input (not append) so the model sees it first
+                let original_input = input.clone();
+                input.clear();
+                input.push_str(&feedback_block);
+                input.push_str(&original_input);
             }
             // Only a self-correction-exhaustion failure is excluded from
             // this dedup -- NOT every "failed" record. A transport/
@@ -1434,7 +1451,15 @@ fn build_system_prompt(is_code_generation: bool, is_retry: bool, has_feedback: b
     // Mode-specific instructions
     if is_code_generation {
         parts.push(
-            "Generate a complete, self-contained Rust implementation. Use pure reducers, constructor injection, bounded critical paths, and explicit wire geometry. Code must contain no todo!() or unimplemented!(), no .unwrap()/.expect() outside #[cfg(test)] modules, no ambient authority (std::env::*, canonicalize). All error paths must propagate Result.".into()
+            "CODE-DRAFT MODE: You MUST generate a complete, self-contained Rust implementation in the rust_draft field. Do NOT set rust_draft to null.\n\
+             Requirements:\n\
+             - Use pure reducers, constructor injection, bounded critical paths, and explicit wire geometry\n\
+             - No todo!() or unimplemented!()\n\
+             - No .unwrap()/.expect() outside #[cfg(test)] modules\n\
+             - No ambient authority (std::env::*, canonicalize)\n\
+             - All error paths must propagate Result\n\
+             - Include thorough unit tests proving determinism and contract compliance\n\
+             - The code must compile and pass the quality gates (ast_auditor checks)".into()
         );
     } else {
         parts.push(
@@ -1449,7 +1474,7 @@ fn build_system_prompt(is_code_generation: bool, is_retry: bool, has_feedback: b
 
     // Style
     parts.push(
-        "Be concise and direct. Do NOT repeat sentences, re-state arguments, or copy text from the evidence verbatim. Each observation and risk must be a distinct finding, not a paraphrase of the input.".into()
+        "Be concise and direct. Do NOT repeat sentences, re-state arguments, or copy text from the evidence verbatim. Each observation and risk must be a distinct finding, not a paraphrase of the input. Do NOT echo the [PRIOR AUDIT CONTEXT] or [PRIOR REVIEWER FEEDBACK] sections -- those are YOUR prior outputs, not new evidence. Re-analyze from scratch.".into()
     );
 
     // Feedback emphasis (this is the critical addition)
@@ -1460,7 +1485,14 @@ fn build_system_prompt(is_code_generation: bool, is_retry: bool, has_feedback: b
     }
     if has_feedback {
         parts.push(
-            "CRITICAL: The [PRIOR REVIEWER FEEDBACK] section contains specific deficiencies from a previous review. You MUST: (1) read the feedback, (2) address each cited deficiency in your response, (3) demonstrate the fix in your observations or rust_draft. Simply acknowledging the feedback without acting on it is NOT sufficient.".into()
+            "FEEDBACK INCORPORATION RULES:\n\
+             - The REVIEWER FEEDBACK section at the top of the input contains specific deficiencies\n\
+             - You MUST address EACH deficiency explicitly in your observations\n\
+             - Do NOT copy the prior context verbatim -- that was your previous failed output\n\
+             - Do NOT just acknowledge the feedback -- you must demonstrate the fix\n\
+             - If the reviewer said 'X is wrong', re-analyze X from scratch and explain what you found\n\
+             - If the reviewer said 'missing Y', ensure Y appears in your output\n\
+             - Each observation must be a NEW finding, not a repeat of prior output".into()
         );
     }
 
