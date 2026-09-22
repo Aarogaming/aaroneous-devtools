@@ -13,3 +13,4 @@ serde_json = "1.0"
 tempfile = "3.10"
 ast_auditor = { path = "../../Aaroneous/crates/ast_auditor" }
 governance = { path = "../../Aaroneous/crates/governance" }
+llm_gateway_types = { path = "../../Aaroneous/crates/llm_gateway_types" }
