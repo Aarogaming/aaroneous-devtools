@@ -1,0 +1,11 @@
+[package]
+name = "priority_scheduler"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "Priority-constrained binary heap scheduler with backpressure"
+
+[dependencies]
+uuid = { version = "1.0", features = ["v4", "serde"] }
+thiserror = "2.0"

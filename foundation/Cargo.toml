@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/foundation_cli", "crates/maintenance_ui"]
+members = ["crates/foundation_cli", "crates/maintenance_ui", "crates/priority_scheduler"]
 
 [workspace.package]
 version = "0.1.0"
