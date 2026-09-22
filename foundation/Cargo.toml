@@ -12,3 +12,4 @@ license = "MIT"
 serde_json = "1.0"
 tempfile = "3.10"
 ast_auditor = { path = "../../Aaroneous/crates/ast_auditor" }
+governance = { path = "../../Aaroneous/crates/governance" }
