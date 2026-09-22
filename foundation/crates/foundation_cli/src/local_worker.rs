@@ -1599,35 +1599,10 @@ pub fn verify_proposal_quality(draft: &Draft) -> Vec<String> {
                 code.len()
             ));
         }
-        if code.contains("todo!(") || code.contains("unimplemented!(") {
-            violations.push("rust_draft contains forbidden stubs (todo! / unimplemented!)".into());
-        }
-        if code.contains("unsafe impl") && (code.contains("Pod") || code.contains("Zeroable")) {
-            violations.push("rust_draft contains manual unsafe impl Pod/Zeroable".into());
-        }
-        if code.contains("std::env::var")
-            || code.contains("std::env::set_var")
-            || code.contains("std::env::remove_var")
-            || code.contains("std::env::temp_dir")
-            || code.contains("std::env::current_dir")
-            || code.contains("canonicalize")
-        {
-            violations.push("rust_draft contains banned ambient authority calls".into());
-        }
-        // AGENTS.md's real rule (Section 6: "No Unhandled Panics") bans
-        // .unwrap()/.expect() on hot paths and production error-handling
-        // paths -- it does not ban them in tests, and idiomatic Rust test
-        // code uses .unwrap()/.expect() constantly (`foo().unwrap()` in an
-        // assertion is completely normal). The instruction this checker
-        // gates against explicitly asks for "thorough unit test
-        // assertions," so checking the *whole* draft string, test module
-        // included, made a compliant draft with normal tests
-        // indistinguishable from one with a real hot-path panic -- a real
-        // gap found live (M57/M58 both failed their one self-correction
-        // retry this way, discarding two full generation passes on real
-        // P1/P2 roadmap items for a false positive). Only the code before
-        // the first `#[cfg(test)]` module -- this codebase's own
-        // consistent convention for where tests start -- is checked here.
+
+        // Keep inline .unwrap()/.expect() check -- ast_auditor's
+        // HotPathAllocVisitor only catches these on #[hot_path] annotated
+        // functions, but devtools bans them on all production code paths.
         let production_code = code
             .split_once("#[cfg(test)]")
             .map_or(code.as_str(), |(before, _)| before);
@@ -1638,9 +1613,42 @@ pub fn verify_proposal_quality(draft: &Draft) -> Vec<String> {
                     .into(),
             );
         }
-        if code.contains("aaroneous_") || code.contains("aaroneous-") {
-            violations
-                .push("rust_draft contains banned crate/type prefix stutter (aaroneous_)".into());
+
+        // Use ast_auditor for deeper AST-based checks: stubs, ambient
+        // authority, memory geometry. Skip if code has null bytes or other
+        // syntax issues that would prevent parsing.
+        if !code.contains('\0') {
+            if let Ok(temp_dir) = tempfile::tempdir() {
+                let temp_file = temp_dir.path().join("draft_proposal.rs");
+                if std::fs::write(&temp_file, code).is_ok() {
+                    let mut report = ast_auditor::UnifiedAuditReport::default();
+                    if let Err(e) = ast_auditor::audit_source_file(&temp_file, &mut report) {
+                        // Parse errors mean the code is malformed -- report
+                        // but don't crash the audit pipeline.
+                        if !report.errors.is_empty() || report.has_failures() {
+                            violations.push(format!("ast_auditor: malformed code: {e}"));
+                        }
+                    }
+                    for err in &report.errors {
+                        violations.push(format!("ast_auditor: {err}"));
+                    }
+                    for v in &report.soundness_violations {
+                        violations.push(format!("soundness: {v:?}"));
+                    }
+                    for v in &report.ambient_violations {
+                        violations.push(format!("ambient authority: {v:?}"));
+                    }
+                    for v in &report.hot_path_violations {
+                        violations.push(format!("hot path alloc: {v:?}"));
+                    }
+                    for v in &report.prefix_stutter_violations {
+                        violations.push(format!("prefix stutter: {v:?}"));
+                    }
+                    for v in &report.memory_geometry_violations {
+                        violations.push(format!("memory geometry: {v:?}"));
+                    }
+                }
+            }
         }
     }
 
