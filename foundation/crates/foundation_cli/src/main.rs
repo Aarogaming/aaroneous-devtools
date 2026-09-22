@@ -28,6 +28,7 @@ mod multithreader;
 mod outbox;
 mod portfolio_digest;
 mod portfolio_jobs;
+mod reservation;
 mod scheduler;
 mod target_decomposition;
 

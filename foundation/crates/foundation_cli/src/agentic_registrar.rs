@@ -142,12 +142,7 @@ struct ChatMessage {
 /// idiom as `local_worker.rs`'s `Reservation` / `multithreader.rs`'s
 /// `RunLock` — each module keeps its own copy rather than sharing one,
 /// which is this codebase's existing convention.
-struct Reservation(PathBuf);
-impl Drop for Reservation {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
-    }
-}
+use crate::reservation::Reservation;
 
 fn now_secs() -> Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())

@@ -159,12 +159,7 @@ pub(crate) struct Record {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) selection_rationale: Option<String>,
 }
-struct Reservation(PathBuf);
-impl Drop for Reservation {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
-    }
-}
+use crate::reservation::Reservation;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ProbationLedger {
