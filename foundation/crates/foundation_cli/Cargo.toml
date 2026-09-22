@@ -14,6 +14,7 @@ path = "src/main.rs"
 anyhow = "1.0"
 ast_auditor = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }
+dashmap = "6"
 governance = { workspace = true }
 llm_gateway_types = { workspace = true }
 priority_scheduler = { path = "../priority_scheduler" }

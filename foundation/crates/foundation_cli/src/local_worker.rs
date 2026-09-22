@@ -722,7 +722,7 @@ pub(crate) fn set_rejection_reason_from_review(
     Ok(())
 }
 
-fn tick_with<F>(config_path: &Path, minute: u32, now: u64, delegate: F) -> Result<()>
+fn tick_with<F>(config_path: &Path, minute: u32, now: u64, delegate: F, cache: &crate::state_cache::StateCache) -> Result<()>
 where
     F: Fn(&str, &str, &str, &str) -> Result<Draft>,
 {
@@ -741,6 +741,11 @@ where
         model_type.description(),
         model_type.recommended_score()
     );
+    // Populate cache from results and archive if empty (first tick or fresh cache)
+    if cache.is_empty() {
+        cache.scan_directory(&c.results_directory);
+        cache.scan_directory(&c.archive_directory);
+    }
     for (label, directory) in [
         ("checkout", &c.checkout),
         ("jobs", &c.jobs_directory),
@@ -868,13 +873,14 @@ where
         save_status(&c, now, "backpressure")?;
         return Ok(());
     }
+    // Use the in-memory cache for last_attempt and dedup instead of
+    // re-reading every record file from disk. The cache is maintained
+    // across ticks by the serve() loop and updated incrementally.
+    // We still need records for exploration group summaries and
+    // rejection_reason scanning, so load only pending (not archive).
     let mut records = Vec::new();
-    for path in pending.iter().cloned().chain(
-        files_bounded(&c.archive_directory, "json", 65536)?
-            .into_iter()
-            .filter(|p| is_result_file(p)),
-    ) {
-        if let Ok(text) = read_bounded(&path, 1048576) {
+    for path in &pending {
+        if let Ok(text) = read_bounded(path, 1048576) {
             if let Ok(rec) = serde_json::from_str::<Record>(&text) {
                 records.push(rec);
             }
@@ -888,16 +894,16 @@ where
     write_exploration_group_summaries(&c, now)?;
     let queue = read_bounded(&c.queue, 262144)?;
 
-    // Last-attempt time per job id, derived from records already on disk
-    // (no separate state file needed) — the newest submitted_at_secs across
-    // every pending/archived record for that id, or 0 if it has never been
-    // attempted. Selecting by this instead of `files()`'s alphabetical
-    // order below is what stops one job from permanently occupying the
-    // front of the queue: a job whose input keeps changing between ticks
-    // (so it never matches the unchanged-input dedup) sorts to the back
-    // the moment it's actually attempted once, giving every other eligible
-    // job a turn before it can be picked again.
+    // Last-attempt time per job id, derived from the in-memory cache
+    // (updated incrementally across ticks) and current pending records.
+    // The cache covers the full archive; pending records cover this tick's
+    // results. This eliminates the per-tick scan of up to 65536 archive files.
     let mut last_attempt: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    // Seed from cache (covers archive + prior results)
+    for entry in cache.latest_by_base.iter() {
+        last_attempt.insert(entry.key().clone(), entry.submitted_at_secs);
+    }
+    // Override with current pending records (may be newer)
     for record in &records {
         let key = base_job_key(&record.job_id).to_string();
         let entry = last_attempt.entry(key).or_insert(0);
@@ -1011,16 +1017,29 @@ where
                 bail!("job evidence exceeds 64 KiB");
             }
             let base_key = base_job_key(&job.id);
-            if let Some(prior_rejection) = records
+            // Check for rejection feedback from cache (covers full archive)
+            // or from pending records.
+            let cached_rejection = cache.latest_rejection(base_key);
+            let pending_rejection = records
                 .iter()
                 .filter(|r| base_job_key(&r.job_id) == base_key && r.rejection_reason.is_some())
                 .max_by_key(|r| r.submitted_at_secs)
-            {
-                if let Some(ref reason) = prior_rejection.rejection_reason {
-                    input.push_str(&format!(
-                        "\n[PRIOR REVIEWER FEEDBACK]: A previous attempt for this task was rejected with the following review feedback:\n\"{reason}\"\nYou MUST incorporate this feedback, rectify the deficiencies, and avoid repeating the cited errors.\n"
-                    ));
+                .and_then(|r| r.rejection_reason.clone());
+            // Use whichever is newer
+            let rejection_reason = match (cached_rejection, pending_rejection) {
+                (Some(cached), Some(pending)) => {
+                    // Both exist; the cache covers archive (older), pending is current
+                    // For simplicity, prefer the pending one if it exists
+                    Some(pending)
                 }
+                (Some(cached), None) => Some(cached),
+                (None, Some(pending)) => Some(pending),
+                (None, None) => None,
+            };
+            if let Some(reason) = rejection_reason {
+                input.push_str(&format!(
+                    "\n[PRIOR REVIEWER FEEDBACK]: A previous attempt for this task was rejected with the following review feedback:\n\"{reason}\"\nYou MUST incorporate this feedback, rectify the deficiencies, and avoid repeating the cited errors.\n"
+                ));
             }
             // Only a self-correction-exhaustion failure is excluded from
             // this dedup -- NOT every "failed" record. A transport/
@@ -1045,9 +1064,13 @@ where
                         .as_deref()
                         .is_some_and(|e| e.starts_with("Self-correction retry failed:"))
             };
-            if records.iter().any(|r| {
+            // Dedup check: use cache for archive records, pending records for current tick
+            let input_hash = crate::state_cache::hash_input(&input);
+            let cache_has_exact = cache.has_exact_input_non_failed(&job.id, input_hash);
+            let pending_has_exact = records.iter().any(|r| {
                 r.job_id == job.id && r.input == input && !is_self_correction_exhaustion(r)
-            }) {
+            });
+            if cache_has_exact || pending_has_exact {
                 return Ok(None);
             }
             let last_attempt_secs = last_attempt
@@ -1056,10 +1079,8 @@ where
                 .unwrap_or(0);
             let priority_rank = priority_rank(job.priority.as_deref());
             let priority_tier = job_priority_tier(job.priority.as_deref());
-            let attempt_count = records
-                .iter()
-                .filter(|r| base_job_key(&r.job_id) == base_job_key(&job.id))
-                .count() as u32;
+            // Use cache for attempt count (covers full archive)
+            let attempt_count = cache.attempt_count(base_job_key(&job.id));
             Ok(Some(Candidate {
                 job,
                 input,
@@ -1846,7 +1867,8 @@ pub(crate) fn print_probation_status(config_path: &Path) -> Result<()> {
     Ok(())
 }
 pub(crate) fn tick(config: &Path, minute: u32, now: u64) -> Result<()> {
-    tick_with(config, minute, now, delegate)
+    let cache = crate::state_cache::StateCache::new();
+    tick_with(config, minute, now, delegate, &cache)
 }
 
 /// Base and ceiling for `serve`'s adaptive delay: 5s when actively
@@ -2073,15 +2095,21 @@ fn run_pre_tick_maintenance(config_path: &Path) {
 pub(crate) fn serve(config_path: &Path) -> Result<()> {
     let config: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
     let status_path = config.results_directory.join("status.txt");
+    let cache = crate::state_cache::StateCache::new();
+    // Initial scan to populate cache
+    cache.rescan_if_needed(&config.results_directory, &config.archive_directory);
     println!(
-        "local-worker-serve: starting, delay {}s-{}s adaptive, config {}",
+        "local-worker-serve: starting, delay {}s-{}s adaptive, {} cached records, config {}",
         SERVE_MIN_DELAY.as_secs(),
         SERVE_MAX_DELAY.as_secs(),
+        cache.len(),
         config_path.display()
     );
     let mut delay = SERVE_MIN_DELAY;
     loop {
         run_pre_tick_maintenance(config_path);
+        // Incremental cache update before tick
+        cache.rescan_if_needed(&config.results_directory, &config.archive_directory);
         let mtime_before = fs::metadata(&status_path).and_then(|m| m.modified()).ok();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -2302,7 +2330,7 @@ mod tests {
             "interrupted",
         )
         .expect("partial");
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft())).expect("dispatch");
+        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new()).expect("dispatch");
         let result = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -2313,7 +2341,7 @@ mod tests {
                 .join(result.file_name().expect("filename")),
         )
         .expect("archive");
-        tick_with(&config, 10, 2, |_, _, _, _| panic!("archived input regenerated")).expect("skip");
+        tick_with(&config, 10, 2, |_, _, _, _| panic!("archived input regenerated"), &crate::state_cache::StateCache::new()).expect("skip");
         assert!(
             files(&c.results_directory, "json")
                 .expect("results")
@@ -2325,7 +2353,7 @@ mod tests {
     fn active_owner_prevents_dispatch_without_product_mutation() {
         let (_d, c, config) = fixture();
         fs::write(&c.queue, "| OWNER | `lib.rs` | Claimed | Gemini |\n").expect("claim");
-        tick_with(&config, 10, 1, |_, _, _, _| panic!("active scope dispatched")).expect("skip");
+        tick_with(&config, 10, 1, |_, _, _, _| panic!("active scope dispatched"), &crate::state_cache::StateCache::new()).expect("skip");
         assert_eq!(
             fs::read_to_string(c.checkout.join("lib.rs")).expect("source"),
             "fn reduce() {}"
@@ -2361,7 +2389,7 @@ mod tests {
         fs::write(&c.queue, "| OWNER | `lib.rs` | Claimed | Gemini |\n").expect("claim");
         tick_with(&config, 10, 1, |_, _, _, _| {
             panic!("range-suffixed evidence dispatched despite an active claim on the base file")
-        })
+        }, &crate::state_cache::StateCache::new())
         .expect("skip");
     }
     #[test]
@@ -2372,7 +2400,7 @@ mod tests {
             let mut proposal = draft();
             proposal.rust_draft = Some("\0".repeat(3000));
             Ok(proposal)
-        })
+        }, &crate::state_cache::StateCache::new())
         .expect("record");
         let record = files(&c.results_directory, "json")
             .expect("results")
@@ -2381,7 +2409,7 @@ mod tests {
         assert!(fs::metadata(record).expect("size").len() > 200000);
         tick_with(&config, 10, 2, |_, _, _, _| {
             panic!("unchanged escaped input dispatched")
-        })
+        }, &crate::state_cache::StateCache::new())
         .expect("read previous record");
     }
     fn draft() -> Draft {
@@ -2505,7 +2533,7 @@ pub fn add(a: i32, b: i32) -> i32 {
             code_draft.task = "JOB-CODE-1".into();
             code_draft.rust_draft = Some("fn reduce(value: u32) -> u32 { value }".into());
             Ok(code_draft)
-        })
+        }, &crate::state_cache::StateCache::new())
         .expect("dispatch");
         let result_path = files(&c.results_directory, "json")
             .expect("results")
@@ -2789,7 +2817,7 @@ exploration_group = "faster-reducer-group"
         // A "failed" outcome makes tick_with itself return Err (matching
         // failure_is_retained_and_not_retried_unchanged's own pattern
         // below) -- the record is still persisted regardless.
-        assert!(tick_with(&config, 10, 1, always_violates).is_err());
+        assert!(tick_with(&config, 10, 1, always_violates, &crate::state_cache::StateCache::new()).is_err());
         let after_first: Vec<_> = files(&c.results_directory, "json").expect("results");
         assert_eq!(after_first.len(), 1);
         let record: Record =
@@ -2805,7 +2833,7 @@ exploration_group = "faster-reducer-group"
         // Same job, same unchanged input, a later tick: must be retried,
         // not silently skipped as "already attempted" the way a
         // successful record would correctly cause.
-        assert!(tick_with(&config, 10, 2, always_violates).is_err());
+        assert!(tick_with(&config, 10, 2, always_violates, &crate::state_cache::StateCache::new()).is_err());
         assert_eq!(
             calls.get(),
             4,
@@ -2816,15 +2844,15 @@ exploration_group = "faster-reducer-group"
     #[test]
     fn unchanged_inputs_are_not_regenerated_and_changes_are() {
         let (_d, c, config) = fixture();
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft())).expect("first");
-        tick_with(&config, 10, 2, |_, _, _, _| panic!("unchanged input dispatched")).expect("unchanged");
+        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new()).expect("first");
+        tick_with(&config, 10, 2, |_, _, _, _| panic!("unchanged input dispatched"), &crate::state_cache::StateCache::new()).expect("unchanged");
         fs::write(c.checkout.join("lib.rs"), "fn changed() {}").expect("change");
-        tick_with(&config, 10, 3, |_, _, _, _| Ok(draft())).expect("changed");
+        tick_with(&config, 10, 3, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new()).expect("changed");
         assert_eq!(
             files(&c.results_directory, "json").expect("results").len(),
             2
         );
-        tick_with(&config, 10, 4, |_, _, _, _| panic!("backpressure ignored")).expect("throttled");
+        tick_with(&config, 10, 4, |_, _, _, _| panic!("backpressure ignored"), &crate::state_cache::StateCache::new()).expect("throttled");
     }
     #[test]
     fn read_status_outcome_parses_present_and_missing_files() {
@@ -2965,7 +2993,7 @@ exploration_group = "faster-reducer-group"
 
         // Tick 1: both jobs equally never-attempted (last_attempt_secs = 0
         // for both) — alphabetical tie-break picks AUDIT-A first.
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft())).expect("tick 1");
+        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new()).expect("tick 1");
         assert_eq!(last_dispatched(&c), "AUDIT-A");
 
         // Simulate AUDIT-A being a recurring job whose content changes
@@ -2978,7 +3006,7 @@ exploration_group = "faster-reducer-group"
         // AUDIT-B has never been attempted (last_attempt_secs = 0) — this
         // is exactly the case pure alphabetical order gets wrong.
         // AUDIT-B must get this turn.
-        tick_with(&config, 10, 2, |_, _, _, _| Ok(draft())).expect("tick 2");
+        tick_with(&config, 10, 2, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new()).expect("tick 2");
         assert_eq!(
             last_dispatched(&c),
             "AUDIT-B",
@@ -2991,7 +3019,7 @@ exploration_group = "faster-reducer-group"
         // Tick 3: AUDIT-A (last attempted at 1) is now older than AUDIT-B
         // (last attempted at 2), so it's A's turn again — proving this is
         // real rotation, not just "B always wins now".
-        tick_with(&config, 10, 3, |_, _, _, _| Ok(draft())).expect("tick 3");
+        tick_with(&config, 10, 3, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new()).expect("tick 3");
         assert_eq!(last_dispatched(&c), "AUDIT-A");
     }
 
@@ -3046,7 +3074,7 @@ exploration_group = "faster-reducer-group"
         )
         .expect("write job p0");
 
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft())).expect("tick");
+        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new()).expect("tick");
         let path = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -3115,7 +3143,7 @@ exploration_group = "faster-reducer-group"
         // sorts before "JOB-P2", proving unset priority competed on equal
         // footing rather than losing to the explicit P2 or winning
         // outright as if it were P0.
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft())).expect("tick");
+        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new()).expect("tick");
         let path = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -3234,7 +3262,7 @@ exploration_group = "faster-reducer-group"
                 "must contain only the requested window, not the whole file"
             );
             Ok(draft())
-        })
+        }, &crate::state_cache::StateCache::new())
         .expect("tick_with must succeed on a range-excerpted oversized file");
         let path = files(&c.results_directory, "json")
             .expect("results")
@@ -3295,7 +3323,7 @@ exploration_group = "faster-reducer-group"
         )
         .expect("write job good");
 
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft())).expect(
+        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new()).expect(
             "tick_with must succeed despite one unreadable/oversized job among the candidates",
         );
         let path = files(&c.results_directory, "json")
@@ -3312,7 +3340,7 @@ exploration_group = "faster-reducer-group"
     fn shared_lock_and_quiet_window_prevent_dispatch() {
         let (_d, c, config) = fixture();
         fs::write(c.reservation_directory.join("review.lock"), "owner").expect("reserve");
-        tick_with(&config, 10, 2, |_, _, _, _| panic!("lock ignored")).expect("reserved");
+        tick_with(&config, 10, 2, |_, _, _, _| panic!("lock ignored"), &crate::state_cache::StateCache::new()).expect("reserved");
         assert_eq!(
             fs::read_to_string(c.reservation_directory.join("review.lock")).expect("lock"),
             "owner"
@@ -3321,10 +3349,10 @@ exploration_group = "faster-reducer-group"
     #[test]
     fn failure_is_retained_and_not_retried_unchanged() {
         let (_d, c, config) = fixture();
-        assert!(tick_with(&config, 10, 1, |_, _, _, _| bail!("bad model response")).is_err());
+        assert!(tick_with(&config, 10, 1, |_, _, _, _| bail!("bad model response"), &crate::state_cache::StateCache::new()).is_err());
         tick_with(&config, 10, 2, |_, _, _, _| {
             panic!("failed unchanged job retried")
-        })
+        }, &crate::state_cache::StateCache::new())
         .expect("skip");
         let report: Record = serde_json::from_str(
             &read_bounded(
@@ -3350,7 +3378,7 @@ exploration_group = "faster-reducer-group"
         f.set_times(std::fs::FileTimes::new().set_modified(past))
             .expect("set_times");
         drop(f);
-        tick_with(&config, 10, 1000, |_, _, _, _| bail!("fail")).expect_err("job fail");
+        tick_with(&config, 10, 1000, |_, _, _, _| bail!("fail"), &crate::state_cache::StateCache::new()).expect_err("job fail");
         assert!(
             c.results_directory
                 .join("crash_marker_retained.json")

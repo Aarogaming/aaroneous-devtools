@@ -30,6 +30,7 @@ mod portfolio_digest;
 mod portfolio_jobs;
 mod reservation;
 mod scheduler;
+mod state_cache;
 mod target_decomposition;
 
 use anyhow::{Context, Result, bail};
