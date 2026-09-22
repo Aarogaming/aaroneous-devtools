@@ -733,6 +733,14 @@ where
     if c.schema_version != 1 || !(1..=64).contains(&c.max_pending) {
         bail!("version 1 and max_pending 1..64 required");
     }
+    // Classify the configured model using llm_gateway_types.
+    let model_type = llm_gateway_types::ModelType::from_name(&c.model);
+    println!(
+        "local worker: model '{}' classified as {} (score: {:.2})",
+        c.model,
+        model_type.description(),
+        model_type.recommended_score()
+    );
     for (label, directory) in [
         ("checkout", &c.checkout),
         ("jobs", &c.jobs_directory),
