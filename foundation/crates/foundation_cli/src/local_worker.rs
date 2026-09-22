@@ -2107,7 +2107,23 @@ pub(crate) fn serve(config_path: &Path) -> Result<()> {
         cache.len(),
         config_path.display()
     );
+
+    // Set up filesystem watcher for event-driven job pickup
+    use notify::Watcher;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut watcher = notify::recommended_watcher(tx)
+        .map_err(|e| anyhow::anyhow!("failed to create file watcher: {e}"))?;
+    watcher
+        .watch(&config.jobs_directory, notify::RecursiveMode::NonRecursive)
+        .map_err(|e| anyhow::anyhow!("failed to watch jobs directory: {e}"))?;
+    // Also watch results directory for new results
+    watcher
+        .watch(&config.results_directory, notify::RecursiveMode::NonRecursive)
+        .map_err(|e| anyhow::anyhow!("failed to watch results directory: {e}"))?;
+
     let mut delay = SERVE_MIN_DELAY;
+    let mut had_activity = false;
+
     loop {
         run_pre_tick_maintenance(config_path);
         // Incremental cache update before tick
@@ -2121,15 +2137,45 @@ pub(crate) fn serve(config_path: &Path) -> Result<()> {
         if let Err(ref e) = tick_res {
             eprintln!("local-worker-serve: tick failed: {e:#}");
         }
+
+        // Wait for filesystem events or timeout, whichever comes first
+        // This replaces the fixed-delay polling with event-driven triggers
+        had_activity = false;
+        let deadline = std::time::Instant::now() + delay;
+        while std::time::Instant::now() < deadline {
+            match rx.recv_timeout(deadline - std::time::Instant::now()) {
+                Ok(Ok(event)) => {
+                    // Any filesystem event in jobs or results directory triggers activity
+                    if let notify::EventKind::Create(_)
+                    | notify::EventKind::Modify(_)
+                    | notify::EventKind::Remove(_) = event.kind
+                    {
+                        had_activity = true;
+                        break;
+                    }
+                }
+                Ok(Err(e)) => {
+                    eprintln!("local-worker-serve: watcher error: {e}");
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    // Timeout reached, proceed with adaptive delay
+                    break;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    eprintln!("local-worker-serve: watcher disconnected");
+                    break;
+                }
+            }
+        }
+
         delay = if tick_res.is_err() {
             SERVE_MIN_DELAY
-        } else if tick_was_quiet(&status_path, mtime_before) {
-            (delay * 2).min(SERVE_MAX_DELAY)
-        } else {
+        } else if had_activity || !tick_was_quiet(&status_path, mtime_before) {
             SERVE_MIN_DELAY
+        } else {
+            (delay * 2).min(SERVE_MAX_DELAY)
         };
         println!("local-worker-serve: next tick in {}s", delay.as_secs());
-        std::thread::sleep(delay);
     }
 }
 
