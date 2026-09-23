@@ -20,9 +20,9 @@ Windows task: `Aaroneous-Devtools-LocalWorker`, limited privileges, logged-in se
 
 **Preferred mode:** `foundation local-worker-serve --config <path>` runs the adaptive loop in-process. This is faster (5s after activity, not 2min) and more responsive than the Windows task. Use this instead of the scheduled task when possible.
 
-Runtime root: `C:\Users\aarog\.codex\worktrees\aaroneous-devtools\artifacts\local-worker-service`. It contains a copied native executable, explicit `worker.toml`, `results/`, and `archive/`. The reservation directory is the existing native review inbox. Runtime files are ignored by Git and never placed in Aaroneous.
+Runtime root is an explicit owner-selected `worker.toml`, not a fixed machine path. The historical `C:\Users\aarog\.codex\worktrees\aaroneous-devtools\artifacts\local-worker-service` root must not be inferred as active simply because it contains a copied executable. For the current reconciliation evidence and selected runtime, see [LOCAL_WORKER_RUNTIME_RECONCILIATION.md](LOCAL_WORKER_RUNTIME_RECONCILIATION.md). Runtime files are ignored by Git and never placed in Aaroneous.
 
-Config fields: schema_version=1, absolute checkout, queue, jobs_directory, results_directory, archive_directory, reservation_directory; explicit loopback HTTP endpoint; max_pending from 1 to 16. Results/archive/reservation must be outside the product. Configured max_pending is 8. Bootstrap injects time into dispatch policy; the worker does not infer machine paths.
+Config fields: schema_version=1, absolute checkout, queue, jobs_directory, results_directory, archive_directory, reservation_directory; explicit loopback HTTP endpoint; max_pending from 1 to 64. Results/archive/reservation must be outside the product. The configured pending limit is runtime-specific and must be read from the selected `worker.toml`; it is not inferred from this document. Bootstrap injects time into dispatch policy; the worker does not infer machine paths.
 
 ## Submitting useful work
 
@@ -46,7 +46,7 @@ The worker uses [Ollama schema-constrained structured output](https://docs.ollam
 
 Results are versioned JSON containing job ID, submission time, complete input snapshot, proposed observations/risks/test plan, optional rust_draft, and outcome. No draft is executed, formatted, compiled, applied, merged or pushed automatically. A successful generation means pending-owner-review, not a successful product fix.
 
-Review pending records, then move reviewed records from results/ to archive/ while the task is paused; retain them so unchanged jobs are not regenerated. All complete JSON records in results/ count against the pending limit, including failures. When 8 records await review, dispatch pauses. This bounds review debt.
+Review pending records, then move reviewed records from results/ to archive/ while the task is paused; retain them so unchanged jobs are not regenerated. All complete JSON records in results/ count against the configured pending limit, including failures. When that limit is reached, dispatch pauses. This bounds review debt.
 
 Inputs and result directories are bounded to 256 files each. Archive older reviewed batches outside the active archive directory with an explicit retention decision; removing the active input history may allow an unchanged job to regenerate. Results publish through synced .partial staging files and rename; interrupted partial files are ignored and retained for inspection. Stale reservation locks (>3600s) are automatically recovered while retaining crash markers (`crash_marker_retained.json`) in the results directory. Active locks write owner/time/PID metadata and return reserved status (`status.txt`).
 

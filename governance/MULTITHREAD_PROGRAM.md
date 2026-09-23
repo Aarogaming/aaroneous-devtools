@@ -89,6 +89,8 @@ queue before claiming; portfolio entries are not Ready source reservations.
 | P2 | M57 | Accumulating per-candidate metadata record: every pass (M41/M47/M54/M55/M42) reads and appends to one growing, explainable record per candidate instead of producing independent output | M41, M47, M54, M55, M42 | Rust systems review, data/schema design |
 | P1 | M58 | Portfolio triage producer: convert MULTITHREAD_PROGRAM.md unclaimed rows into local-worker analysis packets, deduplicating against COORDINATION_QUEUE.md | MULTITHREAD_PROGRAM.md, COORDINATION_QUEUE.md | Systems automation, queue coordination |
 | P2 | M59 | Cross-candidate retrieval: explainable Jaccard similarity querying across accumulated M57 JSON metadata records | M57 | Systems review, data/retrieval architecture |
+| P2 | M73 | Define an evidence-labeled capability taxonomy and authority-model decision brief: separate component, capability, intent, and emergent system; specify authority grants, state ownership, lifecycle evidence, time boundaries, and dependency geometry | Existing component framework, capability-registry work M47, and class-note evidence | Architecture/governance design; no product API change |
+| P1 | M74 | Reconcile local-worker source, runtime configuration, and review throughput before further production: establish one explicit deployed configuration, current binary revision, liveness record, and bounded review/backpressure metrics | M63-M72 evidence; explicit runtime owner inputs | Foundation operations and local-worker verification |
 
 ## Intake rules
 
