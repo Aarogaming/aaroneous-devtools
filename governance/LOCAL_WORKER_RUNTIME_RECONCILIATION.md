@@ -30,9 +30,12 @@ had 108 files in `results/` and 678 in `archive/`, while its configured
 worker did run against this checkout before stopping.
 
 The retained verdict ledger contains 19 `accept`, 17 `needs-changes`, and 2
-`uncertain` verdicts. The review-batch snapshot lists 17
-`pending-owner-review` entries. These values demonstrate that review and
-disposition capacity, not job generation, is the immediate constraint.
+`uncertain` verdicts. A fresh read-only `outbox-list` scan of the selected
+runtime's results plus sibling archive found 731 retained records: 693 have no
+recorded verdict, 38 are reviewed, 726 are `pending-owner-review`, and 5 are
+failed. The older 17-entry review-batch snapshot is therefore a partial stale
+view, not a valid backlog measure. Review and disposition capacity, not job
+generation, is the immediate constraint.
 
 ## Operating decision
 
@@ -49,7 +52,9 @@ the Aaroneous checkout.
 
 ## Next bounded work
 
-1. Review the 17 surfaced pending records and record real verdicts.
+1. Produce a bounded, current review batch from the 693 unreviewed records,
+   ordered by risk, age, and duplicate-pass suppression; do not rely on the
+   stale 17-entry snapshot.
 2. Recompute results, archive, and unreviewed counts from the declared D
    runtime after each review batch.
 3. Reproduce any claim that the worker fails to recover after pending results
