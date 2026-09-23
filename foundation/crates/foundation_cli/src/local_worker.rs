@@ -11,22 +11,22 @@ use std::{
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Config {
-    schema_version: u32,
-    checkout: PathBuf,
+pub(crate) struct Config {
+    pub(crate) schema_version: u32,
+    pub(crate) checkout: std::path::PathBuf,
     queue: PathBuf,
-    jobs_directory: PathBuf,
-    results_directory: PathBuf,
-    archive_directory: PathBuf,
-    reservation_directory: PathBuf,
-    endpoint: String,
+    pub(crate) jobs_directory: std::path::PathBuf,
+    pub(crate) results_directory: std::path::PathBuf,
+    pub(crate) archive_directory: std::path::PathBuf,
+    pub(crate) reservation_directory: std::path::PathBuf,
+    pub(crate) endpoint: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hypervisor_mcp_endpoint: Option<String>,
-    max_pending: usize,
+    pub(crate) max_pending: usize,
     /// Model name to use for Ollama requests. Defaults to "qwen3.5:9b-q6"
     /// if not set, preserving backward compatibility with existing configs.
     #[serde(default = "default_model")]
-    model: String,
+    pub(crate) model: String,
     /// Optional local pre-proofing settings (M44). All three must be present
     /// for pre-proofing to run; when any is absent, behavior is unchanged from
     /// before pre-proofing existed. `pre_proof_checkout` must be an already-
@@ -42,7 +42,7 @@ struct Config {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Job {
-    schema_version: u32,
+    pub(crate) schema_version: u32,
     id: String,
     mode: Mode,
     evidence: Vec<String>,
@@ -134,6 +134,8 @@ pub(crate) struct Draft {
     pub(crate) test_plan: Vec<String>,
     pub(crate) recommended_next_step: String,
     pub(crate) rust_draft: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) implementation_plan: Option<Vec<crate::ledger::FileModification>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) solution_tree: Option<Vec<SolutionBranch>>,
 }
@@ -424,7 +426,7 @@ struct ExplorationGroupMember {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct ExplorationGroupSummary {
-    schema_version: u32,
+    pub(crate) schema_version: u32,
     artifact_kind: String,
     exploration_group: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1450,7 +1452,7 @@ fn default_model() -> String {
 /// Different jobs need different emphasis: analysis jobs should never
 /// generate code, code-draft jobs need strict style constraints, and
 /// retries need explicit acknowledgment of what went wrong.
-fn build_system_prompt(is_code_generation: bool, is_retry: bool, has_feedback: bool) -> String {
+pub(crate) fn build_system_prompt(is_code_generation: bool, is_retry: bool, has_feedback: bool) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     // Core role
@@ -1545,7 +1547,7 @@ fn delegate(endpoint: &str, model: &str, system_prompt: &str, input: &str) -> Re
     delegate_tuned(endpoint, model, system_prompt, input, false)
 }
 
-fn delegate_tuned(
+pub(crate) fn delegate_tuned(
     endpoint: &str,
     model: &str,
     system_prompt: &str,
@@ -1634,7 +1636,7 @@ fn delegate_tuned(
     Ok(draft)
 }
 
-fn verify_required_output(draft: &Draft, requires_code: bool) -> Vec<String> {
+pub(crate) fn verify_required_output(draft: &Draft, requires_code: bool) -> Vec<String> {
     let mut violations = verify_proposal_quality(draft);
     if requires_code
         && draft
@@ -3970,3 +3972,10 @@ mod windows_path_tests {
         ));
     }
 }
+
+
+
+
+
+
+

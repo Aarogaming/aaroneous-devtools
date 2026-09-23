@@ -1,3 +1,4 @@
+mod ledger;
 mod agentic_registrar;
 mod audit_rollup;
 mod batch_overlap;
@@ -24,6 +25,8 @@ mod job_converter;
 mod local_proposal;
 mod local_staging;
 mod local_worker;
+mod local_worker_db;
+mod actuator;
 mod multithreader;
 mod outbox;
 mod portfolio_digest;
@@ -233,6 +236,16 @@ enum Command {
     /// interval. Opt-in like multithreader-serve: "on" is running this
     /// command, "off" is not running it or stopping it.
     LocalWorkerServe {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Next-generation DB-backed local worker state machine daemon
+    LocalWorkerDbServe {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Actuate accepted jobs into the main repository
+    Actuate {
         #[arg(long)]
         config: PathBuf,
     },
@@ -1229,6 +1242,8 @@ fn main() -> Result<()> {
             local_worker::tick(&config, ((now / 60) % 60) as u32, now)
         }
         Command::LocalWorkerServe { config } => local_worker::serve(&config),
+        Command::LocalWorkerDbServe { config } => local_worker_db::serve_db(&config),
+        Command::Actuate { config } => actuator::run(&config),
         Command::LocalWorkerProbation { config } => local_worker::print_probation_status(&config),
         Command::CrossVerify {
             config,
@@ -1757,3 +1772,10 @@ mod tests {
         );
     }
 }
+
+
+
+
+
+
+
