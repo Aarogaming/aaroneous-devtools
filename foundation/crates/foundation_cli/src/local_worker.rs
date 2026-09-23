@@ -722,7 +722,13 @@ pub(crate) fn set_rejection_reason_from_review(
     Ok(())
 }
 
-fn tick_with<F>(config_path: &Path, minute: u32, now: u64, delegate: F, cache: &crate::state_cache::StateCache) -> Result<()>
+fn tick_with<F>(
+    config_path: &Path,
+    minute: u32,
+    now: u64,
+    delegate: F,
+    cache: &crate::state_cache::StateCache,
+) -> Result<()>
 where
     F: Fn(&str, &str, &str, &str) -> Result<Draft>,
 {
@@ -1179,6 +1185,7 @@ where
         let job_perspective = job.perspective.clone();
         let initial_prompt = prepare_prompt(&job, &input, false);
         let is_code_draft = matches!(job.mode, Mode::CodeDraft);
+        let requires_code = matches!(job.mode, Mode::CodeDraft | Mode::TestFixture);
         let mut record = Record {
             schema_version: 1,
             artifact_kind: "foundation.local-worker-result".into(),
@@ -1201,7 +1208,7 @@ where
         let roots = [&c.checkout, devtools_root];
         match delegate(&c.endpoint, &c.model, &initial_prompt, &record.input) {
             Ok(proposal) => {
-                let mut violations = verify_proposal_quality(&proposal);
+                let mut violations = verify_required_output(&proposal, requires_code);
                 violations.extend(verify_proposal_citations(&proposal, &roots));
                 if violations.is_empty() {
                     record.proposal = Some(proposal);
@@ -1218,6 +1225,9 @@ where
                         record.job_id,
                         violations.join("; ")
                     );
+                    // A correction request may fail in transport. Retain the
+                    // first response so recovery still has the actual artifact.
+                    record.proposal = Some(proposal);
                     let retry_input = format!(
                         "{}\n\n[SELF-CORRECTION REQUIRED]: Your previous proposal failed static audit with violations:\n- {}\nPlease generate a corrected response resolving all listed violations.",
                         record.input,
@@ -1225,7 +1235,7 @@ where
                     );
                     // Build a retry prompt from the saved job context.
                     let retry_prompt = {
-                        let is_code_generation = is_code_draft;
+                        let is_code_generation = requires_code;
                         let mut parts: Vec<String> = Vec::new();
                         parts.push("You are a senior Rust support worker.".into());
                         parts.push("Return valid JSON matching the schema: task (string), observations (array, max 3 items, max 512 bytes each), risks (array, max 6 items, max 512 bytes each), test_plan (array, 1-3 items, max 256 bytes each), recommended_next_step (string, max 512 bytes), rust_draft (string or null, max 24000 bytes).".into());
@@ -1238,7 +1248,10 @@ where
                         parts.push("Be concise and direct. Do NOT repeat sentences, re-state arguments, or copy text from the evidence verbatim. Each observation and risk must be a distinct finding, not a paraphrase of the input.".into());
                         parts.push("THIS IS A RETRY. Your previous attempt failed validation. Read the [SELF-CORRECTION REQUIRED] section carefully and address each listed violation specifically. Do not repeat the same findings.".into());
                         if let Some(ref perspective) = job_perspective {
-                            parts.push(format!("This attempt takes the '{}' perspective on the problem.", perspective));
+                            parts.push(format!(
+                                "This attempt takes the '{}' perspective on the problem.",
+                                perspective
+                            ));
                         }
                         if let Some(ref custom) = job_system_prompt {
                             // Custom prompt + retry annotation
@@ -1249,7 +1262,8 @@ where
                     };
                     match delegate(&c.endpoint, &c.model, &retry_prompt, &retry_input) {
                         Ok(retry_proposal) => {
-                            let mut retry_violations = verify_proposal_quality(&retry_proposal);
+                            let mut retry_violations =
+                                verify_required_output(&retry_proposal, requires_code);
                             retry_violations
                                 .extend(verify_proposal_citations(&retry_proposal, &roots));
                             if retry_violations.is_empty() {
@@ -1503,12 +1517,8 @@ fn build_system_prompt(is_code_generation: bool, is_retry: bool, has_feedback: b
 /// packet. If the job has a custom `system_prompt`, it's used as-is with
 /// feedback/retry annotations appended. Otherwise, the prompt is built
 /// from the job's mode, perspective, and context.
-fn prepare_prompt(
-    job: &Job,
-    input: &str,
-    is_retry: bool,
-) -> String {
-    let is_code_generation = matches!(job.mode, Mode::CodeDraft);
+fn prepare_prompt(job: &Job, input: &str, is_retry: bool) -> String {
+    let is_code_generation = matches!(job.mode, Mode::CodeDraft | Mode::TestFixture);
     let has_feedback = input.contains("[PRIOR REVIEWER FEEDBACK]");
 
     let mut prompt = if let Some(ref custom) = job.system_prompt {
@@ -1622,6 +1632,19 @@ fn delegate_tuned(
         bail!("incomplete proposal retained: {content}");
     }
     Ok(draft)
+}
+
+fn verify_required_output(draft: &Draft, requires_code: bool) -> Vec<String> {
+    let mut violations = verify_proposal_quality(draft);
+    if requires_code
+        && draft
+            .rust_draft
+            .as_deref()
+            .is_none_or(|code| code.trim().is_empty())
+    {
+        violations.push("code-draft and test-fixture jobs require a non-empty rust_draft; a plan is not the requested artifact".into());
+    }
+    violations
 }
 
 pub fn verify_proposal_quality(draft: &Draft) -> Vec<String> {
@@ -2150,7 +2173,10 @@ pub(crate) fn serve(config_path: &Path) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to watch jobs directory: {e}"))?;
     // Also watch results directory for new results
     watcher
-        .watch(&config.results_directory, notify::RecursiveMode::NonRecursive)
+        .watch(
+            &config.results_directory,
+            notify::RecursiveMode::NonRecursive,
+        )
         .map_err(|e| anyhow::anyhow!("failed to watch results directory: {e}"))?;
 
     let mut delay = SERVE_MIN_DELAY;
@@ -2410,7 +2436,14 @@ mod tests {
             "interrupted",
         )
         .expect("partial");
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new_in_memory()).expect("dispatch");
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| Ok(draft()),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("dispatch");
         let result = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -2421,7 +2454,14 @@ mod tests {
                 .join(result.file_name().expect("filename")),
         )
         .expect("archive");
-        tick_with(&config, 10, 2, |_, _, _, _| panic!("archived input regenerated"), &crate::state_cache::StateCache::new_in_memory()).expect("skip");
+        tick_with(
+            &config,
+            10,
+            2,
+            |_, _, _, _| panic!("archived input regenerated"),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("skip");
         assert!(
             files(&c.results_directory, "json")
                 .expect("results")
@@ -2433,7 +2473,14 @@ mod tests {
     fn active_owner_prevents_dispatch_without_product_mutation() {
         let (_d, c, config) = fixture();
         fs::write(&c.queue, "| OWNER | `lib.rs` | Claimed | Gemini |\n").expect("claim");
-        tick_with(&config, 10, 1, |_, _, _, _| panic!("active scope dispatched"), &crate::state_cache::StateCache::new_in_memory()).expect("skip");
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| panic!("active scope dispatched"),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("skip");
         assert_eq!(
             fs::read_to_string(c.checkout.join("lib.rs")).expect("source"),
             "fn reduce() {}"
@@ -2467,29 +2514,47 @@ mod tests {
         )
         .expect("write job");
         fs::write(&c.queue, "| OWNER | `lib.rs` | Claimed | Gemini |\n").expect("claim");
-        tick_with(&config, 10, 1, |_, _, _, _| {
-            panic!("range-suffixed evidence dispatched despite an active claim on the base file")
-        }, &crate::state_cache::StateCache::new_in_memory())
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| {
+                panic!(
+                    "range-suffixed evidence dispatched despite an active claim on the base file"
+                )
+            },
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
         .expect("skip");
     }
     #[test]
     fn escaped_input_records_remain_readable_at_the_storage_bound() {
         let (_d, c, config) = fixture();
         fs::write(c.checkout.join("lib.rs"), vec![0u8; 32700]).expect("bounded input");
-        tick_with(&config, 10, 1, |_, _, _, _| {
-            let mut proposal = draft();
-            proposal.rust_draft = Some("\0".repeat(3000));
-            Ok(proposal)
-        }, &crate::state_cache::StateCache::new_in_memory())
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| {
+                let mut proposal = draft();
+                proposal.rust_draft = Some("\0".repeat(3000));
+                Ok(proposal)
+            },
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
         .expect("record");
         let record = files(&c.results_directory, "json")
             .expect("results")
             .pop()
             .expect("file");
         assert!(fs::metadata(record).expect("size").len() > 200000);
-        tick_with(&config, 10, 2, |_, _, _, _| {
-            panic!("unchanged escaped input dispatched")
-        }, &crate::state_cache::StateCache::new_in_memory())
+        tick_with(
+            &config,
+            10,
+            2,
+            |_, _, _, _| panic!("unchanged escaped input dispatched"),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
         .expect("read previous record");
     }
     fn draft() -> Draft {
@@ -2608,12 +2673,18 @@ pub fn add(a: i32, b: i32) -> i32 {
             toml::to_string(&job).expect("job"),
         )
         .expect("write job");
-        tick_with(&config, 10, 1, |_, _, _, _| {
-            let mut code_draft = draft();
-            code_draft.task = "JOB-CODE-1".into();
-            code_draft.rust_draft = Some("fn reduce(value: u32) -> u32 { value }".into());
-            Ok(code_draft)
-        }, &crate::state_cache::StateCache::new_in_memory())
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| {
+                let mut code_draft = draft();
+                code_draft.task = "JOB-CODE-1".into();
+                code_draft.rust_draft = Some("fn reduce(value: u32) -> u32 { value }".into());
+                Ok(code_draft)
+            },
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
         .expect("dispatch");
         let result_path = files(&c.results_directory, "json")
             .expect("results")
@@ -2638,6 +2709,121 @@ pub fn add(a: i32, b: i32) -> i32 {
                     .and_then(|n| n.to_str())
                     .is_some_and(|n| n.contains("pre-proof")))
         );
+    }
+    #[test]
+    fn missing_required_artifact_is_retained_as_failed_after_one_correction() {
+        for mode in [Mode::CodeDraft, Mode::TestFixture] {
+            let (_d, c, config) = fixture();
+            let mut job = exploration_job("JOB-1", None, None, "correctness");
+            job.mode = mode;
+            fs::write(
+                c.jobs_directory.join("job.toml"),
+                toml::to_string(&job).unwrap(),
+            )
+            .unwrap();
+            let calls = std::cell::Cell::new(0);
+            let result = tick_with(
+                &config,
+                10,
+                1,
+                |_, _, _, _| {
+                    calls.set(calls.get() + 1);
+                    let mut proposal = draft();
+                    proposal.rust_draft = Some("  \n\t".into());
+                    Ok(proposal)
+                },
+                &crate::state_cache::StateCache::new_in_memory(),
+            );
+            assert!(result.is_err());
+            assert_eq!(calls.get(), 2);
+            let records = files(&c.results_directory, "json").unwrap();
+            let record: Record =
+                serde_json::from_str(&fs::read_to_string(&records[0]).unwrap()).unwrap();
+            assert_eq!(record.outcome, "failed");
+            assert!(
+                record
+                    .error
+                    .unwrap()
+                    .contains("require a non-empty rust_draft")
+            );
+            assert!(
+                record.proposal.is_some(),
+                "retain inadequate output for inspection"
+            );
+        }
+    }
+
+    #[test]
+    fn required_artifact_can_be_corrected_without_claiming_verification() {
+        let (_d, c, config) = fixture();
+        let job = exploration_job("JOB-1", None, None, "correctness");
+        fs::write(
+            c.jobs_directory.join("job.toml"),
+            toml::to_string(&job).unwrap(),
+        )
+        .unwrap();
+        let calls = std::cell::Cell::new(0);
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, input| {
+                calls.set(calls.get() + 1);
+                let mut proposal = draft();
+                if calls.get() == 2 {
+                    assert!(input.contains("require a non-empty rust_draft"));
+                    proposal.rust_draft = Some("fn reduce(value: u32) -> u32 { value }".into());
+                }
+                Ok(proposal)
+            },
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .unwrap();
+        assert_eq!(calls.get(), 2);
+        let entries = crate::outbox::list_outbox(&c.results_directory, None).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].has_rust_draft);
+        assert!(!entries[0].has_pre_proof_report);
+        assert_eq!(entries[0].outcome, "pending-owner-review");
+    }
+
+    #[test]
+    fn correction_transport_failure_preserves_first_output_and_source_job() {
+        let (_d, c, config) = fixture();
+        let job = exploration_job("JOB-1", None, None, "correctness");
+        let job_path = c.jobs_directory.join("job.toml");
+        fs::write(&job_path, toml::to_string(&job).unwrap()).unwrap();
+        let calls = std::cell::Cell::new(0);
+        let result = tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| {
+                calls.set(calls.get() + 1);
+                if calls.get() == 2 {
+                    bail!("simulated connection interruption");
+                }
+                Ok(draft())
+            },
+            &crate::state_cache::StateCache::new_in_memory(),
+        );
+        assert!(result.is_err());
+        assert!(
+            job_path.exists(),
+            "a failed attempt does not retire the task"
+        );
+        let records = files(&c.results_directory, "json").unwrap();
+        let record: Record =
+            serde_json::from_str(&fs::read_to_string(&records[0]).unwrap()).unwrap();
+        assert_eq!(record.outcome, "failed");
+        assert_eq!(record.proposal, Some(draft()));
+        assert!(
+            record
+                .error
+                .unwrap()
+                .contains("simulated connection interruption")
+        );
+        assert!(record.input.contains("JOB-1"));
     }
     #[test]
     fn packet_without_m46_fields_deserializes_exactly_as_before() {
@@ -2897,7 +3083,16 @@ exploration_group = "faster-reducer-group"
         // A "failed" outcome makes tick_with itself return Err (matching
         // failure_is_retained_and_not_retried_unchanged's own pattern
         // below) -- the record is still persisted regardless.
-        assert!(tick_with(&config, 10, 1, always_violates, &crate::state_cache::StateCache::new_in_memory()).is_err());
+        assert!(
+            tick_with(
+                &config,
+                10,
+                1,
+                always_violates,
+                &crate::state_cache::StateCache::new_in_memory()
+            )
+            .is_err()
+        );
         let after_first: Vec<_> = files(&c.results_directory, "json").expect("results");
         assert_eq!(after_first.len(), 1);
         let record: Record =
@@ -2913,7 +3108,16 @@ exploration_group = "faster-reducer-group"
         // Same job, same unchanged input, a later tick: must be retried,
         // not silently skipped as "already attempted" the way a
         // successful record would correctly cause.
-        assert!(tick_with(&config, 10, 2, always_violates, &crate::state_cache::StateCache::new_in_memory()).is_err());
+        assert!(
+            tick_with(
+                &config,
+                10,
+                2,
+                always_violates,
+                &crate::state_cache::StateCache::new_in_memory()
+            )
+            .is_err()
+        );
         assert_eq!(
             calls.get(),
             4,
@@ -2924,15 +3128,43 @@ exploration_group = "faster-reducer-group"
     #[test]
     fn unchanged_inputs_are_not_regenerated_and_changes_are() {
         let (_d, c, config) = fixture();
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new_in_memory()).expect("first");
-        tick_with(&config, 10, 2, |_, _, _, _| panic!("unchanged input dispatched"), &crate::state_cache::StateCache::new_in_memory()).expect("unchanged");
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| Ok(draft()),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("first");
+        tick_with(
+            &config,
+            10,
+            2,
+            |_, _, _, _| panic!("unchanged input dispatched"),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("unchanged");
         fs::write(c.checkout.join("lib.rs"), "fn changed() {}").expect("change");
-        tick_with(&config, 10, 3, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new_in_memory()).expect("changed");
+        tick_with(
+            &config,
+            10,
+            3,
+            |_, _, _, _| Ok(draft()),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("changed");
         assert_eq!(
             files(&c.results_directory, "json").expect("results").len(),
             2
         );
-        tick_with(&config, 10, 4, |_, _, _, _| panic!("backpressure ignored"), &crate::state_cache::StateCache::new_in_memory()).expect("throttled");
+        tick_with(
+            &config,
+            10,
+            4,
+            |_, _, _, _| panic!("backpressure ignored"),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("throttled");
     }
     #[test]
     fn read_status_outcome_parses_present_and_missing_files() {
@@ -3073,7 +3305,14 @@ exploration_group = "faster-reducer-group"
 
         // Tick 1: both jobs equally never-attempted (last_attempt_secs = 0
         // for both) — alphabetical tie-break picks AUDIT-A first.
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new_in_memory()).expect("tick 1");
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| Ok(draft()),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("tick 1");
         assert_eq!(last_dispatched(&c), "AUDIT-A");
 
         // Simulate AUDIT-A being a recurring job whose content changes
@@ -3086,7 +3325,14 @@ exploration_group = "faster-reducer-group"
         // AUDIT-B has never been attempted (last_attempt_secs = 0) — this
         // is exactly the case pure alphabetical order gets wrong.
         // AUDIT-B must get this turn.
-        tick_with(&config, 10, 2, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new_in_memory()).expect("tick 2");
+        tick_with(
+            &config,
+            10,
+            2,
+            |_, _, _, _| Ok(draft()),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("tick 2");
         assert_eq!(
             last_dispatched(&c),
             "AUDIT-B",
@@ -3099,7 +3345,14 @@ exploration_group = "faster-reducer-group"
         // Tick 3: AUDIT-A (last attempted at 1) is now older than AUDIT-B
         // (last attempted at 2), so it's A's turn again — proving this is
         // real rotation, not just "B always wins now".
-        tick_with(&config, 10, 3, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new_in_memory()).expect("tick 3");
+        tick_with(
+            &config,
+            10,
+            3,
+            |_, _, _, _| Ok(draft()),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("tick 3");
         assert_eq!(last_dispatched(&c), "AUDIT-A");
     }
 
@@ -3154,7 +3407,14 @@ exploration_group = "faster-reducer-group"
         )
         .expect("write job p0");
 
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new_in_memory()).expect("tick");
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| Ok(draft()),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("tick");
         let path = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -3223,7 +3483,14 @@ exploration_group = "faster-reducer-group"
         // sorts before "JOB-P2", proving unset priority competed on equal
         // footing rather than losing to the explicit P2 or winning
         // outright as if it were P0.
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new_in_memory()).expect("tick");
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| Ok(draft()),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("tick");
         let path = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -3334,15 +3601,21 @@ exploration_group = "faster-reducer-group"
         )
         .expect("write job");
 
-        tick_with(&config, 10, 1, |_, _, _, input| {
-            assert!(input.contains("line 1400"));
-            assert!(input.contains("line 1440"));
-            assert!(
-                !input.contains("line 1\n"),
-                "must contain only the requested window, not the whole file"
-            );
-            Ok(draft())
-        }, &crate::state_cache::StateCache::new_in_memory())
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, input| {
+                assert!(input.contains("line 1400"));
+                assert!(input.contains("line 1440"));
+                assert!(
+                    !input.contains("line 1\n"),
+                    "must contain only the requested window, not the whole file"
+                );
+                Ok(draft())
+            },
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
         .expect("tick_with must succeed on a range-excerpted oversized file");
         let path = files(&c.results_directory, "json")
             .expect("results")
@@ -3403,9 +3676,14 @@ exploration_group = "faster-reducer-group"
         )
         .expect("write job good");
 
-        tick_with(&config, 10, 1, |_, _, _, _| Ok(draft()), &crate::state_cache::StateCache::new_in_memory()).expect(
-            "tick_with must succeed despite one unreadable/oversized job among the candidates",
-        );
+        tick_with(
+            &config,
+            10,
+            1,
+            |_, _, _, _| Ok(draft()),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("tick_with must succeed despite one unreadable/oversized job among the candidates");
         let path = files(&c.results_directory, "json")
             .expect("results")
             .pop()
@@ -3420,7 +3698,14 @@ exploration_group = "faster-reducer-group"
     fn shared_lock_and_quiet_window_prevent_dispatch() {
         let (_d, c, config) = fixture();
         fs::write(c.reservation_directory.join("review.lock"), "owner").expect("reserve");
-        tick_with(&config, 10, 2, |_, _, _, _| panic!("lock ignored"), &crate::state_cache::StateCache::new_in_memory()).expect("reserved");
+        tick_with(
+            &config,
+            10,
+            2,
+            |_, _, _, _| panic!("lock ignored"),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect("reserved");
         assert_eq!(
             fs::read_to_string(c.reservation_directory.join("review.lock")).expect("lock"),
             "owner"
@@ -3429,10 +3714,23 @@ exploration_group = "faster-reducer-group"
     #[test]
     fn failure_is_retained_and_not_retried_unchanged() {
         let (_d, c, config) = fixture();
-        assert!(tick_with(&config, 10, 1, |_, _, _, _| bail!("bad model response"), &crate::state_cache::StateCache::new_in_memory()).is_err());
-        tick_with(&config, 10, 2, |_, _, _, _| {
-            panic!("failed unchanged job retried")
-        }, &crate::state_cache::StateCache::new_in_memory())
+        assert!(
+            tick_with(
+                &config,
+                10,
+                1,
+                |_, _, _, _| bail!("bad model response"),
+                &crate::state_cache::StateCache::new_in_memory()
+            )
+            .is_err()
+        );
+        tick_with(
+            &config,
+            10,
+            2,
+            |_, _, _, _| panic!("failed unchanged job retried"),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
         .expect("skip");
         let report: Record = serde_json::from_str(
             &read_bounded(
@@ -3458,7 +3756,14 @@ exploration_group = "faster-reducer-group"
         f.set_times(std::fs::FileTimes::new().set_modified(past))
             .expect("set_times");
         drop(f);
-        tick_with(&config, 10, 1000, |_, _, _, _| bail!("fail"), &crate::state_cache::StateCache::new_in_memory()).expect_err("job fail");
+        tick_with(
+            &config,
+            10,
+            1000,
+            |_, _, _, _| bail!("fail"),
+            &crate::state_cache::StateCache::new_in_memory(),
+        )
+        .expect_err("job fail");
         assert!(
             c.results_directory
                 .join("crash_marker_retained.json")
@@ -3616,7 +3921,13 @@ mod protocol_tests {
     fn worker_uses_complete_json_protocol() {
         let response=serde_json::json!({"task":"fixture","observations":[],"risks":[],"test_plan":["owner test"],"recommended_next_step":"review draft","rust_draft":"fn reduce(value: u32) -> u32 { value }"}).to_string();
         let (endpoint, server) = mock(&response, "stop");
-        let draft = delegate(&endpoint, "qwen3.5:9b-q6", "test system prompt", "approved fixture evidence").expect("draft");
+        let draft = delegate(
+            &endpoint,
+            "qwen3.5:9b-q6",
+            "test system prompt",
+            "approved fixture evidence",
+        )
+        .expect("draft");
         assert!(draft.rust_draft.expect("code").contains("fn reduce"));
         server.join().expect("server");
     }
@@ -3630,7 +3941,15 @@ mod protocol_tests {
     }
     #[test]
     fn worker_forbids_remote_endpoints_and_parent_traversal() {
-        assert!(delegate("http://example.com", "qwen3.5:9b-q6", "test prompt", "evidence").is_err());
+        assert!(
+            delegate(
+                "http://example.com",
+                "qwen3.5:9b-q6",
+                "test prompt",
+                "evidence"
+            )
+            .is_err()
+        );
         let d = tempfile::tempdir().expect("fixture");
         assert!(evidence_file(d.path(), "../outside.rs").is_err());
     }

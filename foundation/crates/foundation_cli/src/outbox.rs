@@ -112,6 +112,9 @@ pub struct OutboxEntry {
     pub outcome: String,
     pub submitted_at_secs: u64,
     pub has_proposal: bool,
+    /// Artifact presence only; this does not assert compilation or correctness.
+    #[serde(default)]
+    pub has_rust_draft: bool,
     /// `proposal.recommended_next_step` if there is a proposal, else
     /// `error` if the job failed, else a fixed placeholder. Never empty.
     pub gist: String,
@@ -145,6 +148,11 @@ fn entry_from_record(
         outcome: record.outcome.clone(),
         submitted_at_secs: record.submitted_at_secs,
         has_proposal: record.proposal.is_some(),
+        has_rust_draft: record
+            .proposal
+            .as_ref()
+            .and_then(|p| p.rust_draft.as_deref())
+            .is_some_and(|code| !code.trim().is_empty()),
         gist,
         risk_count,
         has_pre_proof_report: record.pre_proof_report.is_some(),
