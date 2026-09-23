@@ -114,3 +114,23 @@ This plan does not require clearing hundreds of records individually before a
 controlled useful pilot. Preserve the backlog, classify it, and admit new work
 only into a bounded experiment with an explicit result consumer. Continuous
 deployment remains separate from implementing these workflow improvements.
+
+## Shared context packages
+
+Store shared context as versioned, task-scoped evidence packages, not an
+undifferentiated conversation history. A packet should identify its goal,
+acceptance criteria, selected package version, applicable policy profile,
+output contract, and verification recipe. Package entries need repository
+identity, source revision/content digest, path/range, and provenance. Prior
+model claims and reviewer decisions remain separately labelled from source facts.
+
+Devtools resolves and validates the package before dispatch; the model may
+request missing context but cannot silently substitute a different source or
+treat another model's assertion as authoritative. Missing/stale evidence keeps
+the task open for repackaging. Shared storage does not imply shared authority.
+
+The C56 journal now retains exact prompt/input snapshots per dispatch and both
+responses through correction. That is traceability, not yet a reusable context
+registry: revision/digest validation, package selection, and structured requests
+for missing context remain to implement. Compare focused excerpts against
+whole-file evidence on existing tasks before adopting retrieval infrastructure.

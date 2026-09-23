@@ -27,6 +27,7 @@
 | **M37** | M37 Portfolio Triage | Await explicit ownership and deployment inputs from governance/COORDINATION_QUEUE.md before claiming M37. | Dependency on unresolved ownership and deployment inputs blocks immediate implementation. | `pending-owner-review` |
 | **M38** | PORTFOLIO-M38 | Await human reviewer capacity to claim the lane and define the exact workflow claim before proceeding with any CI configuration changes. | Ambiguity in 'exact workflow claim' without a reviewer present may lead to scope creep or misaligned CI changes. | `pending-owner-review` |
 | **M39** | M39 Portfolio Triage: Packet server lifecycle hardening proposal | Initiate isolated reproduction of C24 packet server lifecycle failure modes in a scratch space to validate bounded stalled/disconnected socket behavior before claiming the lane. | C24 scope may rely on unverified assumptions about socket state transitions. | `pending-owner-review` |
+| **M40** | Analyze M40 feasibility and propose a speculative approach for surfacing `ConcurrenceSnapshot` as an advisory confidence field on scheduler recommendations. | Request the `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` file to understand the scheduler's current data model and the specific definition of `ConcurrenceSnapshot` before proposing implementation details. | Speculative approach without the architecture plan may lead to proposing an interface that conflicts with existing scheduler constraints. | `pending-owner-review` |
 | **M41** | M41 portfolio triage | Review `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` to understand existing packet server lifecycle and scheduler interfaces before proposing implementation approach. | Self-scheduling logic may conflict with existing manual invocation patterns or scheduler constraints. | `pending-owner-review` |
 | **M42** | M42 | Human session required to validate architectural fit and governance alignment before any code drafting. | Design-only scope may lack concrete acceptance criteria without human review. | `pending-owner-review` |
 | **M43** | M43 portfolio triage | Wait for M41 completion or claim M41 first to enable M43's dependency graph analysis. | M41 dependency blocks M43 execution. | `pending-owner-review` |
@@ -700,6 +701,38 @@ Initiate isolated reproduction of C24 packet server lifecycle failure modes in a
 - Verify isolated reproduction of C24 failure modes in scratch space.
 - Validate bounded stalled/disconnected socket behavior.
 - Confirm responsive status/shutdown mechanisms.
+
+---
+
+### Milestone M40
+
+- **Job ID**: `PORTFOLIO-M40`
+- **Review Outcome**: `pending-owner-review`
+- **Submitted**: unix timestamp `1790184012`
+
+#### Task Formulation
+Analyze M40 feasibility and propose a speculative approach for surfacing `ConcurrenceSnapshot` as an advisory confidence field on scheduler recommendations.
+
+#### Recommended Approach
+Request the `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` file to understand the scheduler's current data model and the specific definition of `ConcurrenceSnapshot` before proposing implementation details.
+
+#### Observations
+- M40 depends on `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` which is not provided in the evidence set, creating a critical information gap for defining the scheduler interface.
+- The work requires modifying scheduler recommendation logic to include `ConcurrenceSnapshot` data, implying changes to core orchestration state structures not visible in the current evidence.
+- M40 is listed as a P2 priority item in the portfolio table, yet it has no explicit dependency on other P2 items (like M41 or M47) that also reference the same architecture plan, suggesting potential parallelization or isolation issues.
+
+#### Identified Risks
+- Speculative approach without the architecture plan may lead to proposing an interface that conflicts with existing scheduler constraints.
+- Adding `ConcurrenceSnapshot` as an advisory field might introduce performance overhead if the snapshot calculation is not bounded or cached.
+- The term 'advisory confidence' is ambiguous; without a clear definition of how the snapshot maps to confidence scores, the implementation could be misaligned with user expectations.
+- Cross-repo analysis requires understanding the relationship between the scheduler and the `ConcurrenceSnapshot` source, which is currently unknown.
+- If `ConcurrenceSnapshot` is a complex data structure, surfacing it as a simple field might require serialization or abstraction layers that increase code complexity.
+- The lack of explicit acceptance criteria in the evidence makes it difficult to determine if the proposed approach meets the 'Rust systems review' capability requirement.
+
+#### Proposed Test Plan
+- Verify that the proposed approach aligns with the scheduler's current data model once the architecture plan is obtained.
+- Ensure the `ConcurrenceSnapshot` calculation does not introduce unacceptable latency or resource usage.
+- Validate that the advisory confidence field is correctly interpreted by downstream consumers of scheduler recommendations.
 
 ---
 
