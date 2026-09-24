@@ -157,6 +157,24 @@ when the previous outcome tells you something about the next one.
   judgment** — that escalation path already exists in the PR-babysitting
   protocol those agents run under; this policy doesn't change it.
 
+## Write-path inventory (verified 2026-09-23)
+
+Every mechanism that can write to a Git checkout, and the fence around it. A mechanism not listed
+here has no write authority. Add a row before adding a write path.
+
+| Mechanism | Writes to | Fence | Status |
+| --- | --- | --- | --- |
+| `agentic_registrar::promote` | Isolated `local-agent/{task_id}` branch | High-risk allowlist, circuit breaker, mod-reachability, scoped pre-flight; no PR, no merge | The sanctioned write path |
+| `local_staging` (M62) | Linked worktrees on local disk | No `git push` in source; never the owner's checkout | Allowed |
+| `foundation actuate` (`actuator.rs`) | Configured `checkout` | Refuses unless `checkout` is a linked worktree with a clean status (commit `60bee27`); rejects absolute/`..` paths | **Violates the guardrail below** (a second write path that skips the allowlist and circuit breaker and trusts a local gate). Must not run until it routes through `promote`'s gates or the owner amends this policy |
+| `scripts/auto_actuator.ps1.disabled` | Would `git add .`/`commit`/`reset --hard` the Aaroneous checkout | Disabled (renamed); script is syntactically broken | **Do not re-enable** |
+| `dispatch` / `local_worker` / `multithreader-review` | Result JSON and artifacts only | No checkout writes | Allowed |
+
+Before the fence landed, the live worker config (`artifacts/local-worker-service/worker.toml`) pointed
+`actuate` at the owner's primary Aaroneous checkout, where a red gate would have triggered
+`git reset --hard HEAD` over uncommitted work. The scheduled task `Aaroneous-Devtools-LocalWorker`
+referenced below was **not installed** on the owner's machine as of this date.
+
 ## Guardrails this policy does not relax
 
 - `promote` stays the only write path. `dispatch`/`local_worker`/

@@ -27,6 +27,22 @@ decide and log in the queue; that's what the queue is for. If it's a
 decision only the owner can make, ask the owner — a session isn't a way to
 avoid asking.
 
+## External planning sources (Google Drive and similar)
+
+The owner drafts ideas outside the repositories, often as model-generated documents in Google Drive.
+Those documents are **inputs, not specifications**: they contain confident claims about files,
+crates, and mechanisms that may not exist. To adopt one:
+
+1. Open a brainstorm session (below) citing the source document by title and date.
+2. Verify every concrete claim (paths, crate names, mechanisms, numbers) against the code and record
+   what held and what did not.
+3. Promote only the verified, owner-approved result into a canonical home: an Aaroneous spec
+   (`docs/`), a devtools decision (`governance/DECISIONS.md`), or a portfolio row.
+4. Record the source title in the promoted document so its provenance is traceable.
+
+Cratify v2 (2026-09-23) is the reference example: its reasoning came from Drive documents on
+compliance distance, operating envelopes, the invariant ratchet, and component graduation.
+
 ## Opening a session
 
 1. Pick a short topic slug (e.g. `plugin-abi-v2`, `worker-scaling`).
