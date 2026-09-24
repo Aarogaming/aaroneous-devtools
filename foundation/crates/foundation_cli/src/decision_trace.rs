@@ -263,6 +263,7 @@ mod tests {
             outcome: "pending-owner-review".to_string(),
             input: "Task: Implement Bounded Reducer Reference Path".to_string(),
             proposal: Some(Draft {
+                implementation_plan: None,
                 task: "PORTFOLIO-M8-P0002".to_string(),
                 observations: vec!["Reducer needs bounded execution".to_string()],
                 risks: vec!["Interference with hypervisor loop".to_string()],
@@ -349,6 +350,7 @@ mod tests {
             outcome: "pending-owner-review".to_string(),
             input: "Task: Converge active branch".to_string(),
             proposal: Some(Draft {
+                implementation_plan: None,
                 task: "PORTFOLIO-M1-P0002".to_string(),
                 observations: vec![],
                 risks: vec![],

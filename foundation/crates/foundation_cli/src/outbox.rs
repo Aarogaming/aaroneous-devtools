@@ -597,6 +597,7 @@ mod tests {
             outcome: "pending-owner-review".to_string(),
             input: "Approved job specification (data):\nid = \"x\"\n".to_string(),
             proposal: error.is_none().then(|| Draft {
+                implementation_plan: None,
                 task: job_id.to_string(),
                 observations: vec!["obs".to_string()],
                 risks: (0..risks).map(|i| format!("risk {i}")).collect(),
@@ -628,6 +629,7 @@ mod tests {
             outcome: "pending-owner-review".to_string(),
             input: "Approved job specification (data):\nid = \"x\"\n".to_string(),
             proposal: Some(Draft {
+                implementation_plan: None,
                 task: job_id.to_string(),
                 observations: vec!["obs".to_string()],
                 risks: vec![],

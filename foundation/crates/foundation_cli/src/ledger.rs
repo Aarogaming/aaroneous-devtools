@@ -1,6 +1,6 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-use anyhow::{Result, Context, bail};
+use std::path::Path;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum JobState {
@@ -37,6 +37,7 @@ pub struct JobRecord {
     pub state: JobState,
     pub input_packet: String,
     pub current_draft: Option<Vec<FileModification>>,
+    pub rust_draft: Option<String>,
     pub iteration_history: Vec<IterationAttempt>,
     pub created_at_secs: u64,
     pub updated_at_secs: u64,
@@ -69,6 +70,7 @@ impl Ledger {
         }
     }
 
+    #[allow(dead_code)] // consumed by the ledger iteration flow still being wired (C56)
     pub fn update_state(&self, job_id: &str, new_state: JobState) -> Result<()> {
         if let Some(mut job) = self.get_job(job_id)? {
             job.state = new_state;
@@ -93,6 +95,7 @@ impl Ledger {
         Ok(results)
     }
 
+    #[allow(dead_code)] // consumed by the ledger iteration flow still being wired (C56)
     pub fn add_iteration(&self, job_id: &str, attempt: IterationAttempt) -> Result<()> {
         if let Some(mut job) = self.get_job(job_id)? {
             job.iteration_history.push(attempt);
@@ -105,5 +108,3 @@ impl Ledger {
         Ok(())
     }
 }
-
-

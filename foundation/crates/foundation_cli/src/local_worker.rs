@@ -38,6 +38,23 @@ pub(crate) struct Config {
     pre_proof_target_file: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pre_proof_command: Option<Vec<String>>,
+    /// Verification targets for the ledger-based pipeline (Gate2).
+    /// Each entry defines a named target with its own checkout and gate
+    /// command. Jobs can specify `target = "name"` to select one.
+    /// If empty, falls back to `checkout` + `["cargo", "check", "--workspace"]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) gate_targets: Vec<GateTarget>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct GateTarget {
+    /// Identifier jobs use to select this target (e.g. "aaroneous", "devtools").
+    pub(crate) name: String,
+    /// Path to the Git checkout to clone into the shadow sandbox.
+    pub(crate) checkout: std::path::PathBuf,
+    /// The verification command to run in the sandbox, split into args.
+    /// e.g. ["cargo", "xtask", "gate"] or ["cargo", "check", "--workspace"].
+    pub(crate) gate_command: Vec<String>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -1035,7 +1052,7 @@ where
                 .and_then(|r| r.rejection_reason.clone());
             // Use whichever is newer
             let rejection_reason = match (cached_rejection, pending_rejection) {
-                (Some(cached), Some(pending)) => {
+                (Some(_cached), Some(pending)) => {
                     // Both exist; the cache covers archive (older), pending is current
                     // For simplicity, prefer the pending one if it exists
                     Some(pending)
@@ -1425,6 +1442,18 @@ fn draft_schema() -> serde_json::Value {
             "test_plan":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string","maxLength":256}},
             "recommended_next_step":{"type":"string","minLength":1,"maxLength":512},
             "rust_draft":{"type":["string","null"],"maxLength":24000},
+            "implementation_plan":{
+                "type":["array","null"],
+                "items":{
+                    "type":"object",
+                    "required":["file_path","search_block","replace_block"],
+                    "properties":{
+                        "file_path":{"type":"string","maxLength":256},
+                        "search_block":{"type":"string","maxLength":8192},
+                        "replace_block":{"type":"string","maxLength":8192}
+                    }
+                }
+            },
             "solution_tree":{
                 "type":["array","null"],
                 "items":{
@@ -1452,23 +1481,35 @@ fn default_model() -> String {
 /// Different jobs need different emphasis: analysis jobs should never
 /// generate code, code-draft jobs need strict style constraints, and
 /// retries need explicit acknowledgment of what went wrong.
-pub(crate) fn build_system_prompt(is_code_generation: bool, is_retry: bool, has_feedback: bool) -> String {
+pub(crate) fn build_system_prompt(
+    is_code_generation: bool,
+    is_retry: bool,
+    has_feedback: bool,
+) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     // Core role
     parts.push("You are a senior Rust support worker.".into());
 
-    // Output structure (always the same JSON schema)
+    // Output structure
     parts.push(
-        "Return valid JSON matching the schema: task (string), observations (array, max 3 items, max 512 bytes each), risks (array, max 6 items, max 512 bytes each), test_plan (array, 1-3 items, max 256 bytes each), recommended_next_step (string, max 512 bytes), rust_draft (string or null, max 24000 bytes)."
+        "Return valid JSON matching the schema:\n\
+         - task (string)\n\
+         - observations (array)\n\
+         - risks (array)\n\
+         - test_plan (array)\n\
+         - recommended_next_step (string)\n\
+         - rust_draft (string or null)\n\
+         - implementation_plan (array or null): structured file modifications. Each item requires 'file_path', 'search_block' (exact existing code to replace), and 'replace_block' (new code)."
             .into(),
     );
 
     // Mode-specific instructions
     if is_code_generation {
         parts.push(
-            "CODE-DRAFT MODE: You MUST generate a complete, self-contained Rust implementation in the rust_draft field. Do NOT set rust_draft to null.\n\
+            "CODE-DRAFT MODE: You MUST generate file modifications in the implementation_plan field. Do NOT set implementation_plan to null.\n\
              Requirements:\n\
+             - Target specific files and provide EXACT existing code in 'search_block' and your new code in 'replace_block'.\n\
              - Use pure reducers, constructor injection, bounded critical paths, and explicit wire geometry\n\
              - No todo!() or unimplemented!()\n\
              - No .unwrap()/.expect() outside #[cfg(test)] modules\n\
@@ -1479,7 +1520,7 @@ pub(crate) fn build_system_prompt(is_code_generation: bool, is_retry: bool, has_
         );
     } else {
         parts.push(
-            "Analyze the provided evidence and produce a structured assessment. Set rust_draft to null -- analysis jobs do not generate code.".into()
+            "Analyze the provided evidence and produce a structured assessment. Set rust_draft and implementation_plan to null -- analysis jobs do not generate code.".into()
         );
     }
 
@@ -1638,13 +1679,14 @@ pub(crate) fn delegate_tuned(
 
 pub(crate) fn verify_required_output(draft: &Draft, requires_code: bool) -> Vec<String> {
     let mut violations = verify_proposal_quality(draft);
-    if requires_code
-        && draft
-            .rust_draft
-            .as_deref()
-            .is_none_or(|code| code.trim().is_empty())
-    {
-        violations.push("code-draft and test-fixture jobs require a non-empty rust_draft; a plan is not the requested artifact".into());
+    if requires_code {
+        let has_plan = draft
+            .implementation_plan
+            .as_ref()
+            .is_some_and(|p| !p.is_empty());
+        if !has_plan {
+            violations.push("error[E-FMT01]: missing implementation_plan\n  --> draft\n  |\n  = note: Code-draft jobs REQUIRE a non-empty `implementation_plan` array.\n  = help: Do NOT just output `rust_draft`. You MUST define exactly how to apply your code using an array of {\"file_path\", \"search_block\", \"replace_block\"} JSON objects.".into());
+        }
     }
     violations
 }
@@ -2182,7 +2224,7 @@ pub(crate) fn serve(config_path: &Path) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to watch results directory: {e}"))?;
 
     let mut delay = SERVE_MIN_DELAY;
-    let mut had_activity = false;
+    let mut had_activity;
 
     loop {
         run_pre_tick_maintenance(config_path);
@@ -2228,9 +2270,8 @@ pub(crate) fn serve(config_path: &Path) -> Result<()> {
             }
         }
 
-        delay = if tick_res.is_err() {
-            SERVE_MIN_DELAY
-        } else if had_activity || !tick_was_quiet(&status_path, mtime_before) {
+        delay = if tick_res.is_err() || had_activity || !tick_was_quiet(&status_path, mtime_before)
+        {
             SERVE_MIN_DELAY
         } else {
             (delay * 2).min(SERVE_MAX_DELAY)
@@ -2266,6 +2307,7 @@ mod tests {
     fn fixture() -> (tempfile::TempDir, Config, PathBuf) {
         let d = tempfile::tempdir().expect("fixture");
         let c = Config {
+            gate_targets: Vec::new(),
             schema_version: 1,
             checkout: d.path().join("product"),
             queue: d.path().join("queue.md"),
@@ -2561,6 +2603,7 @@ mod tests {
     }
     fn draft() -> Draft {
         Draft {
+            implementation_plan: None,
             task: "JOB-1".into(),
             observations: vec!["valid test observation".into()],
             risks: vec!["valid test risk".into()],
@@ -2683,6 +2726,11 @@ pub fn add(a: i32, b: i32) -> i32 {
                 let mut code_draft = draft();
                 code_draft.task = "JOB-CODE-1".into();
                 code_draft.rust_draft = Some("fn reduce(value: u32) -> u32 { value }".into());
+                code_draft.implementation_plan = Some(vec![crate::ledger::FileModification {
+                    file_path: "lib.rs".into(),
+                    search_block: "fn reduce".into(),
+                    replace_block: "fn reduce".into(),
+                }]);
                 Ok(code_draft)
             },
             &crate::state_cache::StateCache::new_in_memory(),
@@ -2746,7 +2794,7 @@ pub fn add(a: i32, b: i32) -> i32 {
                 record
                     .error
                     .unwrap()
-                    .contains("require a non-empty rust_draft")
+                    .contains("missing implementation_plan")
             );
             assert!(
                 record.proposal.is_some(),
@@ -2773,8 +2821,13 @@ pub fn add(a: i32, b: i32) -> i32 {
                 calls.set(calls.get() + 1);
                 let mut proposal = draft();
                 if calls.get() == 2 {
-                    assert!(input.contains("require a non-empty rust_draft"));
+                    assert!(input.contains("missing implementation_plan"));
                     proposal.rust_draft = Some("fn reduce(value: u32) -> u32 { value }".into());
+                    proposal.implementation_plan = Some(vec![crate::ledger::FileModification {
+                        file_path: "lib.rs".into(),
+                        search_block: "fn reduce".into(),
+                        replace_block: "fn reduce".into(),
+                    }]);
                 }
                 Ok(proposal)
             },
@@ -3225,6 +3278,7 @@ exploration_group = "faster-reducer-group"
         // perfectly eligible job would never run.
         let d = tempfile::tempdir().expect("fixture");
         let c = Config {
+            gate_targets: Vec::new(),
             schema_version: 1,
             checkout: d.path().join("product"),
             queue: d.path().join("queue.md"),
@@ -3972,10 +4026,3 @@ mod windows_path_tests {
         ));
     }
 }
-
-
-
-
-
-
-

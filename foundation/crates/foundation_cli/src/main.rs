@@ -1,4 +1,4 @@
-mod ledger;
+mod actuator;
 mod agentic_registrar;
 mod audit_rollup;
 mod batch_overlap;
@@ -22,11 +22,11 @@ mod hypervisor_mcp;
 mod intake;
 mod intake_generator;
 mod job_converter;
+mod ledger;
 mod local_proposal;
 mod local_staging;
 mod local_worker;
 mod local_worker_db;
-mod actuator;
 mod multithreader;
 mod outbox;
 mod portfolio_digest;
@@ -1772,10 +1772,3 @@ mod tests {
         );
     }
 }
-
-
-
-
-
-
-

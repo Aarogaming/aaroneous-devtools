@@ -116,6 +116,7 @@ mod tests {
         fn generate_proposal(&self, _input: &str) -> Result<Draft> {
             if self.should_reject {
                 Ok(Draft {
+                    implementation_plan: None,
                     task: "CROSS-AUDIT:JOB-1".into(),
                     observations: vec!["Audited proposal".into()],
                     risks: vec!["Found security violation in FFI boundary".into()],
@@ -126,6 +127,7 @@ mod tests {
                 })
             } else {
                 Ok(Draft {
+                    implementation_plan: None,
                     task: "CROSS-AUDIT:JOB-1".into(),
                     observations: vec!["Proposal verified safe".into()],
                     risks: vec!["No critical risks detected".into()],
@@ -146,6 +148,7 @@ mod tests {
             should_reject: false,
         };
         let proposal = Draft {
+            implementation_plan: None,
             task: "JOB-1".into(),
             observations: vec!["obs".into()],
             risks: vec!["risk".into()],
@@ -175,6 +178,7 @@ mod tests {
             should_reject: true,
         };
         let proposal = Draft {
+            implementation_plan: None,
             task: "JOB-1".into(),
             observations: vec!["obs".into()],
             risks: vec!["risk".into()],

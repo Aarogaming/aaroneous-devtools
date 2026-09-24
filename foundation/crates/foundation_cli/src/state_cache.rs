@@ -1,6 +1,5 @@
 use dashmap::DashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 /// Lightweight summary of a record for in-memory indexing.
 /// Avoids re-reading and re-parsing the full Record JSON on every tick.
@@ -48,7 +47,10 @@ impl StateCache {
 
     /// Create a StateCache with an in-memory sled DB (for tests).
     pub fn new_in_memory() -> Self {
-        let db = sled::Config::new().temporary(true).open().expect("failed to open temp sled");
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("failed to open temp sled");
         let cache = Self {
             records: DashMap::new(),
             latest_by_base: DashMap::new(),
@@ -62,13 +64,16 @@ impl StateCache {
 
     /// Load persisted records from sled into the in-memory DashMap.
     fn load_from_db(&self) {
-        for entry in self.db.iter() {
-            if let Ok((key, value)) = entry {
+        for (key, value) in self.db.iter().flatten() {
+            {
                 if let Ok(summary) = serde_json::from_slice::<RecordSummary>(&value) {
                     let path = PathBuf::from(String::from_utf8_lossy(&key).to_string());
                     let base_key = summary.base_key.clone();
                     self.records.insert(path, summary.clone());
-                    let mut e = self.latest_by_base.entry(base_key).or_insert(summary.clone());
+                    let mut e = self
+                        .latest_by_base
+                        .entry(base_key)
+                        .or_insert(summary.clone());
                     if summary.submitted_at_secs > e.submitted_at_secs {
                         *e = summary;
                     }
@@ -78,6 +83,7 @@ impl StateCache {
     }
 
     /// Get the last attempt time for a base job key.
+    #[allow(dead_code)] // retry-timing hook for the ledger pipeline (C56)
     pub fn last_attempt_secs(&self, base_key: &str) -> u64 {
         self.latest_by_base
             .get(base_key)
@@ -98,11 +104,7 @@ impl StateCache {
     pub fn has_exact_input_non_failed(&self, job_id: &str, input_hash: u64) -> bool {
         self.records
             .iter()
-            .any(|r| {
-                r.job_id == job_id
-                    && r.input_hash == input_hash
-                    && r.outcome != "failed"
-            })
+            .any(|r| r.job_id == job_id && r.input_hash == input_hash && r.outcome != "failed")
     }
 
     /// Check if a job has any rejection reason and return the most recent one.
@@ -121,12 +123,13 @@ impl StateCache {
             let _ = self.db.insert(path_key.as_bytes(), data);
         }
         // Update in-memory index
-        self.records.insert(
-            PathBuf::from(&path_key),
-            summary.clone(),
-        );
+        self.records
+            .insert(PathBuf::from(&path_key), summary.clone());
         // Update latest_by_base if this is newer
-        let mut entry = self.latest_by_base.entry(base_key).or_insert(summary.clone());
+        let mut entry = self
+            .latest_by_base
+            .entry(base_key)
+            .or_insert(summary.clone());
         if summary.submitted_at_secs > entry.submitted_at_secs {
             *entry = summary;
         }
@@ -229,8 +232,6 @@ pub fn hash_input(input: &str) -> u64 {
     input.hash(&mut hasher);
     hasher.finish()
 }
-
-
 
 #[cfg(test)]
 mod tests {
