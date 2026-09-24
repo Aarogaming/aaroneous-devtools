@@ -226,4 +226,41 @@ Verification:
   debug unit tests should move to benches or gain tolerance). Full re-run: **ALL REQUIRED GATES
   PASSED**.
 
-Not pushed. Publishing `fix/c40-si-loader` is the owner's decision.
+Pushed 2026-09-24 after the owner granted Git permissions: `fix/c40-si-loader` at `cfdf584`.
+
+## Published narrow branches (2026-09-24)
+
+Owner granted Git actions and stopped Google Drive sync; `.git` re-checked: no `desktop.ini`,
+`git fsck --connectivity-only` clean (dangling commits only). Every branch below is stacked on
+`fix/c40-si-loader` (the gate-passing base) and none carries the unpublished integration
+commits `5b104fc`, `633e2fa`, `6321a63`, `342c4d0`.
+
+| Branch | Tip | Content | Verification |
+| --- | --- | --- | --- |
+| `fix/c40-si-loader` | `cfdf584` | C40 loader validation (see above) | Full gate passed |
+| `fix/compute-timing-asserts` | `f02f8a2` | Removes eight wall-clock assertions from debug unit tests (compute, platform_bridge, hypervisor); functional assertions kept | Full gate passed |
+| `fix/hypervisor-concurrence-reader` | `c2ae420` | Cherry-pick of `5e958f9` (accept-narrow disposition above) | Full gate passed |
+| `chore/remove-nested-hypervisor-lockfile` | `4dc861b` | Deletes `core/hypervisor/Cargo.lock`, which Cargo ignores for a workspace member | `cargo check --locked -p hypervisor` exit 0 (file removal only; no full gate) |
+
+Remaining integration commits: `5b104fc` (Cratify v2 policy: owner sign-off), `633e2fa` (Gemini:
+needs rework), `6321a63` (script transfer: product side is a pure deletion, can travel with docs),
+`342c4d0` (doc corrections: depends on `5b104fc` wording).
+
+## Dependabot triage (2026-09-24)
+
+GitHub reported 63 open alerts on `main` (4 critical, 8 high). Compared against the root
+`Cargo.lock`, which is what the workspace builds:
+
+- **Live, integration only:** `hickory-proto 0.26.0-beta.4` (via optional `p2p-iroh`) is inside
+  the vulnerable range for the encoding CPU-exhaustion advisory (fixed 0.26.1). Requires moving
+  the `iroh` pin. Open item.
+- **Patched in the root lock:** `quinn-proto 0.11.17`, `rustls-webpki 0.103.15`,
+  `ring 0.17.14`, `tar 0.4.46`, `time 0.3.55`, `lru 0.18.4` (main) / `0.16.4` (integration).
+  `wasmtime`, `wasmtime-wasi`, `openssl`, `jsonwebtoken` are not in the root lock.
+- **False positives from non-built lockfiles:** 148 `data/fabrication/*/Cargo.lock` files (source of
+  the critical `wasmtime` alert and most others); `core/hypervisor/Cargo.lock` (removed on the
+  branch above); `shards/.../uv.lock` (directory already absent from `main`; alerts should close on
+  rescan).
+- **Owner decision:** remove or relocate `data/fabrication/` (generated template crates, previously
+  audited as dead). That single change would clear most remaining alerts.
+
