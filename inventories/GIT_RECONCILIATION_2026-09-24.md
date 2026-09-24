@@ -240,11 +240,11 @@ commits `5b104fc`, `633e2fa`, `6321a63`, `342c4d0`.
 | `fix/c40-si-loader` | `cfdf584` | C40 loader validation (see above) | Full gate passed |
 | `fix/compute-timing-asserts` | `f02f8a2` | Removes eight wall-clock assertions from debug unit tests (compute, platform_bridge, hypervisor); functional assertions kept | Full gate passed |
 | `fix/hypervisor-concurrence-reader` | `c2ae420` | Cherry-pick of `5e958f9` (accept-narrow disposition above) | Full gate passed |
+| `docs/cratify-v2` | `aa9936c` | Cherry-picks of `5b104fc`, `6321a63`, `342c4d0`, plus a baseline correction: CRATIFY_SPEC section 2.3 now lists all 16 measured dependency-direction violations (previously 2) and AGENTS.md states the rule is unenforced | Docs-only (no `.rs`/`.toml`): encoding gate passed; 115 relative links resolve with exact case; profile table covers 33/33 workspace packages and matches AGENTS.md |
 | `chore/remove-nested-hypervisor-lockfile` | `4dc861b` | Deletes `core/hypervisor/Cargo.lock`, which Cargo ignores for a workspace member | `cargo check --locked -p hypervisor` exit 0 (file removal only; no full gate) |
 
-Remaining integration commits: `5b104fc` (Cratify v2 policy: owner sign-off), `633e2fa` (Gemini:
-needs rework), `6321a63` (script transfer: product side is a pure deletion, can travel with docs),
-`342c4d0` (doc corrections: depends on `5b104fc` wording).
+Remaining integration commit: `633e2fa` (Gemini provider: needs rework). The other five are now on
+narrow branches. Owner confirmed Cratify v2 as a priority on 2026-09-24.
 
 ## Dependabot triage (2026-09-24)
 
@@ -263,4 +263,3 @@ GitHub reported 63 open alerts on `main` (4 critical, 8 high). Compared against 
   rescan).
 - **Owner decision:** remove or relocate `data/fabrication/` (generated template crates, previously
   audited as dead). That single change would clear most remaining alerts.
-
