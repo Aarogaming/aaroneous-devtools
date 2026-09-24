@@ -1,0 +1,23 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m40"
+goal = "M40"
+id = "PORTFOLIO-M40-P0004"
+instruction = """
+Portfolio progressive verification request for M40 (priority P2, Pass 4: Isolated Prototype Implementation & AST Invariant Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Surface `ConcurrenceSnapshot` as an advisory confidence field on scheduler recommendations"
+Dependency: "none — see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`"
+Preferred capability: "Rust systems review / read-only cross-repo analysis"
+
+[PRIOR TRIAGE CONTEXT - Pass 3]:
+Recommendation: Request the `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` file to understand the scheduler's current data model and the specific definition of `ConcurrenceSnapshot` before proposing implementation details. | Obs: M40 lacks the `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` file required to define the `ConcurrenceSnapshot` data model and scheduler interface boundaries. | Obs: The dependency on `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` creates a critical information gap for determining zero-heap invariants and ambient authority constraints. | Obs: M40 is listed as a P2 priority item with no explicit dependency on other P2 items, suggesting potential parallelization opportunities once the architecture plan is available.
+
+Synthesize a self-contained, complete Rust draft implementation for this milestone's selected architecture.
+CONSTRAINTS:
+- Strictly zero heap allocations on hot paths (no String, Vec, Box, format!, or unbounded collections).
+- Strictly zero ambient authority (no std::env::*, no direct clock reads outside inputs, explicit constructor injection).
+- Zero stubs (no todo! or unimplemented!). All error paths must propagate Result.
+- Include thorough unit test assertions proving determinism and contract compliance in test_plan and code."""
+mode = "code-draft"
+perspective = "portfolio-triage"
+priority = "P2"
+schema_version = 1

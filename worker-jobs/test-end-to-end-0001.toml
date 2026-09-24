@@ -1,0 +1,11 @@
+schema_version = 1
+id = "TEST-END-TO-END-0001"
+mode = "code-draft"
+evidence = []
+perspective = "senior rust developer"
+requires_code = true
+input = '''
+We need to add a simple health check function to crates/foundation_cli/src/actuator.rs.
+Please create a public function pub fn health_check() -> i32 that simply returns 42.
+However, you MUST intentionally make a syntax error in your first draft (e.g., forget a semicolon or mismatched brace) so we can test our auto-healing verification gates.
+'''

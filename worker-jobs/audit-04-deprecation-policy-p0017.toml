@@ -1,0 +1,14 @@
+schema_version = 1
+id = "AUDIT-04-DEPRECATION-POLICY-P0017"
+mode = "analysis"
+evidence = [
+    "crates/adaptation_plane/src/capability_spec.rs",
+    "docs/DEPRECATION_POLICY.md",
+]
+instruction = """
+Audit deprecated biological/mythological type aliases against docs/DEPRECATION_POLICY.md. Verify zero production call sites remain and migration equivalence tests pass.
+
+[PRIOR AUDIT CONTEXT - Pass 17]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: Deprecated type aliases in capability_spec.rs are defined with #[deprecated(since = "0.3.3", note = "...")] attributes matching policy requirements. | Obs: Migration test test_legacy_terminology_aliases_equivalence exists at line 590-621 using TypeId assertions to verify deprecated aliases resolve to canonical types. | Obs: No production call sites found in capability_spec.rs using deprecated aliases; all usage is limited to definition sites and the migration test block itself. | Risk: If the migration test fails, it indicates a mismatch between deprecated aliases and their canonical replacements, which would break the removal process. | Risk: If any production code in other crates references these deprecated aliases, the removal will fail with compilation errors. | Risk: The removal PR must be standalone and not mixed with feature work per policy section 4.1. | Risk: Missing documentation updates in DEPRECATION_POLICY.md section 3 regarding current status of aliases. | Risk: Potential confusion if developers attempt to use deprecated aliases in new code without noticing the deprecation warnings. | Risk: Incomplete migration if any internal consumers were missed during the M7 and M22 migrations.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

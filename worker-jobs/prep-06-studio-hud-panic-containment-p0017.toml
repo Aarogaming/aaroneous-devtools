@@ -1,0 +1,14 @@
+schema_version = 1
+id = "PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0017"
+mode = "analysis"
+evidence = [
+    "crates/studio_hud/src/plugin_api.rs",
+    "docs/rfcs/RFC-0006-PLUGIN_LIFECYCLE_AND_STABLE_UI_CARTRIDGE_ABI.md",
+]
+instruction = """
+Research and investigate studio_hud FFI boundary panic containment, catch_unwind wrappers, and TickResult fault handling.
+
+[PRIOR AUDIT CONTEXT - Pass 17]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: The `replay_commands` function in `plugin_api.rs` executes `ui.label` and `ui.button` directly without `catch_unwind` wrappers, violating RFC-0006 Section 7's mandate for panic containment at the FFI boundary. | Obs: The `PluginManager` lacks a mechanism to handle `TickResult::PluginFaulted`, leaving no path to signal plugin failure to the host or trigger automatic unloading per RFC-0006 Section 7. | Obs: The current implementation does not enforce rate-limiting on plugin faults, creating a potential DoS vector where repeated plugin panics could exhaust host resources. | Risk: Uncaught panics in `replay_commands` could corrupt host state or crash the application if a plugin panics during command execution. | Risk: Missing `TickResult::PluginFaulted` handling prevents the host from detecting and recovering from plugin failures. | Risk: Absence of rate-limiting allows malicious or buggy plugins to trigger repeated panics, potentially causing a Denial of Service. | Risk: Direct calls to `egui::Ui` methods without isolation violate the RFC's requirement that the host must replay commands, not execute plugin code directly. | Risk: The current code structure does not support the future requirement of automatic plugin unloading after three consecutive faults. | Risk: Lack of panic isolation contradicts the security revalidation findings that removed dynamic loading due to ABI unsoundness.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

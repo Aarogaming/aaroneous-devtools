@@ -8,17 +8,17 @@
 
 | Invariant Family | Latest Pass | Status | Submitted | Executive Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| **AUDIT-01-AST-SAFETY** | `AUDIT-01-AST-SAFETY-P0190` | `pending-owner-review` | unix `1790023264` | Remediate text_encoding.rs to include --others --exclude-standard in git ls-files and add magic b... |
-| **AUDIT-02-HOT-PATH-ALLOC** | `AUDIT-02-HOT-PATH-ALLOC-P0013` | `pending-owner-review` | unix `1790023276` | Refactor PluginManager to use fixed-size arrays or slab-based allocation for PluginDescriptor and... |
-| **AUDIT-03-ZERO-AMBIENT-AUTH** | `AUDIT-03-ZERO-AMBIENT-AUTH-P0013` | `pending-owner-review` | unix `1790023288` | No remediation required. All ambient authority patterns are controlled and documented. The codeba... |
-| **AUDIT-04-DEPRECATION-POLICY** | `AUDIT-04-DEPRECATION-POLICY-P0012` | `pending-owner-review` | unix `1790023178` | Verify that no production code in other crates references these deprecated aliases by running git... |
-| **AUDIT-09-HOT-PATH-REDUCERS** | `AUDIT-09-HOT-PATH-REDUCERS-P0013` | `pending-owner-review` | unix `1790023300` | Inspect dev/emulator_harness/src/reducer.rs to verify implementation of address filtering, zero-a... |
-| **AUDIT-10-ORCHESTRATOR-BOUNDS** | `AUDIT-10-ORCHESTRATOR-BOUNDS-P0013` | `pending-owner-review` | unix `1790023315` | Remediate static counter race condition by introducing per-instance unique identifiers or removin... |
-| **AUDIT-11-GIT-DISCOVERY** | `AUDIT-11-GIT-DISCOVERY-P0003` | `pending-owner-review` | unix `1790183800` | Correct the invalid edition in Cargo.toml to '2021' or '2024' (if nightly) and verify that new me... |
-| **PREP-02-COMPUTE-ENGINE-CONTAINER** | `PREP-02-COMPUTE-ENGINE-CONTAINER-P0019` | `pending-owner-review` | unix `1790184024` | Implement dynamic configuration for memory allocation limits and input validation bounds to preve... |
-| **PREP-03-GOVERNANCE-SMT-INTERLOCKS** | `PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0019` | `pending-owner-review` | unix `1790184031` | Review LatticeVerifier default spatial bounds (7680x4320) and memory limit (64MB) against hardwar... |
-| **PREP-04-ORCHESTRATOR-TASK-SCHEDULER** | `PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0019` | `pending-owner-review` | unix `1790184040` | Refactor IntelligenceEngine to use a concrete error enum for initialization and analysis, and imp... |
-| **PREP-06-STUDIO-HUD-PANIC-CONTAINMENT** | `PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0019` | `pending-owner-review` | unix `1790184050` | Implement `catch_unwind` wrappers around `replay_commands` and add fault tracking logic to `Plugi... |
+| **AUDIT-01-AST-SAFETY** | `AUDIT-01-AST-SAFETY-P0194` | `pending-owner-review` | unix `1790187867` | Update text_encoding.rs to include --others --exclude-standard in git ls-files and implement magi... |
+| **AUDIT-02-HOT-PATH-ALLOC** | `AUDIT-02-HOT-PATH-ALLOC-P0017` | `pending-owner-review` | unix `1790187874` | Refactor `PluginManager` to use a bounded ring buffer or slab allocator for loaded libraries, and... |
+| **AUDIT-03-ZERO-AMBIENT-AUTH** | `AUDIT-03-ZERO-AMBIENT-AUTH-P0017` | `pending-owner-review` | unix `1790187881` | Refactor discover_root_from_system() to require explicit root injection via WorkspacePathsConfig:... |
+| **AUDIT-04-DEPRECATION-POLICY** | `AUDIT-04-DEPRECATION-POLICY-P0016` | `pending-owner-review` | unix `1790187858` | Verify that no other crates (core/hypervisor, crates/paths) contain production call sites for the... |
+| **AUDIT-09-HOT-PATH-REDUCERS** | `AUDIT-09-HOT-PATH-REDUCERS-P0016` | `pending-owner-review` | unix `1790186991` | Refactor `extract_state_delta` and `reduce_trace_bounded` to be inline or provide internal visibi... |
+| **AUDIT-10-ORCHESTRATOR-BOUNDS** | `AUDIT-10-ORCHESTRATOR-BOUNDS-P0016` | `pending-owner-review` | unix `1790187002` | Implement thread-local counters for fallback key generation and add explicit size validation in S... |
+| **AUDIT-11-GIT-DISCOVERY** | `AUDIT-11-GIT-DISCOVERY-P0004` | `pending-owner-review` | unix `1790187008` | Verify if the 'firmware' exclusion is intentional or a gap in hardware abstraction, and assess if... |
+| **PREP-02-COMPUTE-ENGINE-CONTAINER** | `PREP-02-COMPUTE-ENGINE-CONTAINER-P0016` | `pending-owner-review` | unix `1790187742` | Implement dynamic configuration for memory allocation limits and input validation bounds to preve... |
+| **PREP-03-GOVERNANCE-SMT-INTERLOCKS** | `PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0016` | `pending-owner-review` | unix `1790187823` | Review LatticeVerifier default spatial bounds (7680x4320) and memory limit (64MB) against hardwar... |
+| **PREP-04-ORCHESTRATOR-TASK-SCHEDULER** | `PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0016` | `pending-owner-review` | unix `1790187833` | Refactor IntelligenceEngine to use a custom error enum and implement error propagation in analyze... |
+| **PREP-06-STUDIO-HUD-PANIC-CONTAINMENT** | `PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0016` | `pending-owner-review` | unix `1790187842` | Implement `catch_unwind` wrappers around `replay_commands` and add fault tracking logic to `Plugi... |
 
 ---
 
@@ -26,120 +26,138 @@
 
 ### AUDIT-01-AST-SAFETY
 
-- **Task Description**: AUDIT-01-AST-SAFETY-P0190
-- **Latest Job Pass**: `AUDIT-01-AST-SAFETY-P0190`
+- **Task Description**: Audit AST auditor rules, UTF-8/LF line ending enforcement, and gate command alignment between xtask/src/gate.rs and AGENTS.md Section 6.
+- **Latest Job Pass**: `AUDIT-01-AST-SAFETY-P0194`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790023264`
+- **Timestamp**: unix `1790187867`
 
 #### Recommended Next Step
-Remediate text_encoding.rs to include --others --exclude-standard in git ls-files and add magic bytes detection for binary classification. Update xtask/src/gate.rs Gate 6 to audit all Git-tracked files without hardcoded path restrictions.
+Update text_encoding.rs to include --others --exclude-standard in git ls-files and implement magic byte detection. Modify xtask/src/gate.rs to remove hardcoded directory arguments and pass the repository root to ast_auditor.
 
 #### Key Observations
-- text_encoding.rs: audit_tracked_encodings uses git ls-files without --others --exclude-standard flag. Untracked files are not audited. | Status: ACTIVE | No remediation detected in current code.
-- text_encoding.rs: is_binary_extension uses static BINARY_EXTENSIONS list only. No magic bytes fallback for unknown extensions. | Status: ACTIVE | No remediation detected in current code.
-- xtask/src/gate.rs: Gate 6 runs ast_auditor with hardcoded paths 'core/', 'crates/', 'dev/emulator_harness/'. This does not match AGENTS.md Section 6 requirement to audit 'all Git-tracked text files'. | Status: ACTIVE | No remediation detected in current code.
+- text_encoding.rs: audit_tracked_encodings invokes git ls-files without --others --exclude-standard, failing to audit untracked files.
+- text_encoding.rs: is_binary_extension relies solely on a static BINARY_EXTENSIONS list, lacking magic byte detection for unknown binary formats.
+- xtask/src/gate.rs: Gate 6 restricts ast_auditor to hardcoded directories (core/, crates/, dev/emulator_harness/), violating the requirement to audit all Git-tracked text files.
 
 #### Identified Risks
-- Untracked files with binary content or invalid encoding may bypass audit.
-- Text files with non-standard extensions may be misclassified as binary.
-- Gate 6 may miss files outside hardcoded directories (core/, crates/, dev/emulator_harness/).
-- Inconsistent audit coverage between CI (gate.rs) and manual audits.
+- Untracked files containing binary content or invalid encodings may bypass the audit entirely.
+- Text files with non-standard extensions may be incorrectly classified as binary and skipped.
+- Gate 6 may miss files located outside the hardcoded directories, allowing invariant violations to persist.
+- Static extension lists may become outdated as new file types are introduced to the repository.
+- Magic byte detection is absent, reducing the robustness of binary file classification.
+- Hardcoded paths in gate.rs create a maintenance burden and potential for drift from actual repository structure.
 
 ---
 
 ### AUDIT-02-HOT-PATH-ALLOC
 
-- **Task Description**: AUDIT-02-HOT-PATH-ALLOC-P0013
-- **Latest Job Pass**: `AUDIT-02-HOT-PATH-ALLOC-P0013`
+- **Task Description**: AUDIT-02-HOT-PATH-ALLOC-P0017
+- **Latest Job Pass**: `AUDIT-02-HOT-PATH-ALLOC-P0017`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790023276`
+- **Timestamp**: unix `1790187874`
 
 #### Recommended Next Step
-Refactor PluginManager to use fixed-size arrays or slab-based allocation for PluginDescriptor and Library handles, replacing HashMap and Vec with zero-copy alternatives. Consider using `rkyv` for serialization and `slab` crate for fixed-size storage. Remove dynamic heap allocations from PluginManager struct.
+Refactor `PluginManager` to use a bounded ring buffer or slab allocator for loaded libraries, and replace the global static singleton with a thread-safe, zero-copy message-passing interface or `Arc`-wrapped immutable registry protected by fine-grained locking.
 
 #### Key Observations
-- Forbidden dynamic heap allocations detected: `std::collections::HashMap` in `PluginManager` struct.
-- Forbidden dynamic heap allocations detected: `Vec<Library>` in `PluginManager` struct.
-- Forbidden dynamic heap allocations detected: `std::sync::Mutex` in `PLUGIN_MANAGER` static initialization (Lazy<Mutex<PluginManager>>). While Mutex is often necessary for synchronization, the audit flags it as a potential violation of zero-copy/lock-free invariants in a hypervisor core context unless strictly bounded and justified. However, the primary violations are the HashMap and Vec storing dynamic objects (PluginDescriptor, Library). The Mutex wrapping a Lazy static is a common pattern for singletons, 
+- Global static `PLUGIN_MANAGER` re-introduces `Lazy<Mutex<PluginManager>>`, violating zero-copy invariant for static initialization.
+- Global `PluginManager` struct contains `HashMap` and `Vec<Library>` fields enforcing dynamic heap allocation.
+- Dynamic plugin loading via `hotload::load_module` pushes `Library` handles into a `Vec`, creating unbounded memory growth.
 
 #### Identified Risks
-- Use of `HashMap` and `Vec` in `PluginManager` violates the zero-copy and bounded memory allocation invariants required for a hypervisor core.
-- Use of `Mutex` in `PLUGIN_MANAGER` static initialization may introduce contention and potential deadlocks in a high-concurrency hypervisor environment.
+- Unbounded memory consumption from `Vec<Library>` accumulation during runtime.
+- Potential deadlock or panic if `Mutex` in static initialization is poisoned or contended.
+- Violation of hypervisor memory safety invariants due to heap allocations in core modules.
+- Unpredictable memory footprint growth from dynamic plugin loading.
+- Performance degradation from heap fragmentation and allocation overhead in hot paths.
+- Security risk from dynamic loading of untrusted plugins without memory isolation.
 
 ---
 
 ### AUDIT-03-ZERO-AMBIENT-AUTH
 
-- **Task Description**: AUDIT-03-ZERO-AMBIENT-AUTH-P0013
-- **Latest Job Pass**: `AUDIT-03-ZERO-AMBIENT-AUTH-P0013`
+- **Task Description**: Audit paths crate for ambient authority violations (banned functions std::env::var, temp_dir, canonicalize). Verify path normalization via paths::normalize_path and constructor injection.
+- **Latest Job Pass**: `AUDIT-03-ZERO-AMBIENT-AUTH-P0017`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790023288`
+- **Timestamp**: unix `1790187881`
 
 #### Recommended Next Step
-No remediation required. All ambient authority patterns are controlled and documented. The codebase adheres to the zero-hardcoded-path invariant.
+Refactor discover_root_from_system() to require explicit root injection via WorkspacePathsConfig::with_explicit_root() before any environment variable fallbacks. Remove std::env::current_exe usage entirely. Update from_root() to accept a temp_dir parameter or require explicit configuration.
 
 #### Key Observations
-- std::env::var used in discover_root_from_system for CARGO_MANIFEST_DIR. This is a controlled ambient authority pattern for workspace discovery, not a hardcoded path. No violation.
-- std::env::current_dir used in discover_root_from_system for current_dir traversal. This is a controlled ambient authority pattern for workspace discovery. No violation.
-- std::env::current_exe used in discover_root_from_system for executable parent traversal. This is a controlled ambient authority pattern for workspace discovery. No violation.
+- WorkspacePaths::discover() retains ambient authority via std::env::var for CARGO_MANIFEST_DIR and std::env::current_dir, allowing upward traversal from potentially compromised directories.
+- WorkspacePaths::discover_root_from_system() uses std::env::current_exe to locate the executable parent directory, enabling path resolution attacks if the process is launched from an untrusted location.
+- WorkspacePaths::from_root() defaults temp_dir to dirs::cache_dir() if not explicitly configured, potentially resolving to a user-writable location outside the intended workspace boundary.
+
+#### Identified Risks
+- Ambient authority via std::env::var could be exploited if CARGO_MANIFEST_DIR is manipulated to point to an arbitrary directory.
+- Traversing upward from current_dir or current_exe allows path traversal attacks if the initial directory is compromised.
+- dirs::cache_dir() fallback in from_root() may resolve to a user-writable location outside the intended workspace boundary.
+- Environment variable fallbacks in discover() bypass the principle of least privilege by accepting untrusted system state as authoritative.
+- Executable-based path resolution (current_exe) introduces supply chain attack surface if the binary is executed from a malicious location.
+- Default temp_dir resolution in from_root() creates a writable boundary that may be accessible to unprivileged users or processes.
 
 ---
 
 ### AUDIT-04-DEPRECATION-POLICY
 
-- **Task Description**: AUDIT-04-DEPRECATION-POLICY-P0012
-- **Latest Job Pass**: `AUDIT-04-DEPRECATION-POLICY-P0012`
+- **Task Description**: Audit deprecated biological/mythological type aliases against docs/DEPRECATION_POLICY.md. Verify zero production call sites remain and migration equivalence tests pass.
+- **Latest Job Pass**: `AUDIT-04-DEPRECATION-POLICY-P0016`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790023178`
+- **Timestamp**: unix `1790187858`
 
 #### Recommended Next Step
-Verify that no production code in other crates references these deprecated aliases by running git grep across the workspace. Confirm that the migration test passes. Prepare a standalone removal PR for v0.4.0 that deletes the deprecated type aliases, re-export entries, and migration test assertions.
+Verify that no other crates (core/hypervisor, crates/paths) contain production call sites for their respective deprecated aliases before proceeding with v0.4.0 removal PR.
 
 #### Key Observations
-- Deprecated type aliases in capability_spec.rs (ParameterLocus, AgentConfigProfile, ParameterProfile, SpecialistGenome, ParameterGenome, GeneticLocus, GeneticCategory, EpigeneticState, GeneticRelationship, GeneticAnalyzer) are defined with #[deprecated(since = "0.3.3", note = "...")].
-- Migration test test_legacy_terminology_aliases_equivalence exists at line 590-621 and uses TypeId assertions to verify deprecated aliases resolve to canonical types.
-- No production call sites found in capability_spec.rs using deprecated aliases; all usage is limited to definition sites and the migration test block itself (as documented in DEPRECATION_POLICY.md section 3). Re-export blocks in lib.rs are not present in this file, only in lib.rs per policy documentation. The file contains only the deprecated type definitions and the migration test, which is expected for a definition-site-only file per policy section 3.3.1 (definition sites are to be deleted on removal, but 
+- Deprecated type aliases in capability_spec.rs are defined with #[deprecated(since = "0.3.3", note = "...")] attributes matching policy requirements.
+- Migration test test_legacy_terminology_aliases_equivalence exists at line 590-621 using TypeId assertions to verify deprecated aliases resolve to canonical types.
+- No production call sites found in capability_spec.rs using deprecated aliases; all usage is limited to definition sites and the migration test block itself.
 
 #### Identified Risks
 - If the migration test fails, it indicates a mismatch between deprecated aliases and their canonical replacements, which would break the removal process.
 - If any production code in other crates references these deprecated aliases, the removal will fail with compilation errors.
 - The removal PR must be standalone and not mixed with feature work per policy section 4.1.
+- Missing documentation updates in DEPRECATION_POLICY.md section 3 regarding current status of aliases.
+- Potential confusion if developers attempt to use deprecated aliases in new code without noticing the deprecation warnings.
+- Incomplete migration if any internal consumers were missed during the M7 and M22 migrations.
 
 ---
 
 ### AUDIT-09-HOT-PATH-REDUCERS
 
-- **Task Description**: AUDIT-09-HOT-PATH-REDUCERS-P0013
-- **Latest Job Pass**: `AUDIT-09-HOT-PATH-REDUCERS-P0013`
+- **Task Description**: Audit compute engine and emulator harness for zero-allocation trace reduction, bounded execution budgets, and deterministic trace replay guarantees.
+- **Latest Job Pass**: `AUDIT-09-HOT-PATH-REDUCERS-P0016`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790023300`
+- **Timestamp**: unix `1790186991`
 
 #### Recommended Next Step
-Inspect dev/emulator_harness/src/reducer.rs to verify implementation of address filtering, zero-allocation guarantees, and deterministic replay logic.
+Refactor `extract_state_delta` and `reduce_trace_bounded` to be inline or provide internal visibility to verify zero-allocation claims, and add assertions to `test_bounded_reducer_budget_and_replay` to explicitly validate the filtering of unrelated `0xDEAD` address events.
 
 #### Key Observations
-- Evidence file dev/emulator_harness/src/lib.rs contains only public API declarations and test cases; no implementation of reduce_trace_bounded or extract_state_delta is present in the provided snippet.
-- Test expectations in test_bounded_reducer_budget_and_replay implicitly filter events by memory_addr (0xBEEF) without explicit code enforcement visible in the provided evidence.
-- No explicit address filtering logic is observable in the provided code to validate or remediate the implicit filtering risk identified in prior audit passes.
+- The `extract_state_delta` and `reduce_trace_bounded` functions remain external imports from the `reducer` module, preventing direct inspection of their allocation behavior within `lib.rs`.
+- The test `test_bounded_reducer_budget_and_replay` includes a `0xDEAD` address event in the input but lacks an explicit assertion verifying that this event was filtered out by the reduction logic.
+- The `TraceEvent` struct uses `bytemuck` for zero-cost POD layout verification, confirming memory safety constraints for trace replay.
 
 #### Identified Risks
-- Implicit address filtering in production code may hide address-mismatch bugs if not explicitly documented and tested.
-- Lack of visible implementation in provided evidence prevents verification of zero-allocation and deterministic replay guarantees.
+- Deferred implementation prevents immediate verification of zero-allocation claims for `extract_state_delta` and `reduce_trace_bounded`.
+- Test assertions rely on expected outputs without validating that the `0xDEAD` address event was correctly filtered out by the implementation.
+- Lack of inline implementation obscures potential non-deterministic behavior in state delta extraction.
 
 ---
 
 ### AUDIT-10-ORCHESTRATOR-BOUNDS
 
-- **Task Description**: AUDIT-10-ORCHESTRATOR-BOUNDS-P0013
-- **Latest Job Pass**: `AUDIT-10-ORCHESTRATOR-BOUNDS-P0013`
+- **Task Description**: Audit orchestrator crate for ambient authority violations, task routing bounds, and supervisor budget enforcement.
+- **Latest Job Pass**: `AUDIT-10-ORCHESTRATOR-BOUNDS-P0016`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790023315`
+- **Timestamp**: unix `1790187002`
 
 #### Recommended Next Step
-Remediate static counter race condition by introducing per-instance unique identifiers or removing static state. Add explicit size validation in SharedMemorySynapse constructors. Implement supervisor budget enforcement in TaskRoutingEngine.
+Implement thread-local counters for fallback key generation and add explicit size validation in SharedMemorySynapse. Define and enforce supervisor budget limits in TaskRoutingEngine.
 
 #### Key Observations
-- Static AtomicUsize counter in IntelligenceEngine::new and new_async remains present, creating race conditions in multi-instance deployments.
+- Static AtomicUsize counter in IntelligenceEngine::new and new_async creates race conditions in multi-instance deployments.
 - SharedMemorySynapse::new_sync and new lack explicit size validation or bounds checking before allocation.
 - TaskRoutingEngine::new and update_specialist_performance lack documented or enforced supervisor budget limits per task type or agent class.
 
@@ -152,35 +170,35 @@ Remediate static counter race condition by introducing per-instance unique ident
 
 ### AUDIT-11-GIT-DISCOVERY
 
-- **Task Description**: Audit workspace structure and architectural invariants
-- **Latest Job Pass**: `AUDIT-11-GIT-DISCOVERY-P0003`
+- **Task Description**: Analyze workspace structure, discover open-source Rust patterns and candidate crates for dogfooding, and evaluate architectural influences without circular dependencies or ambient authority violations.
+- **Latest Job Pass**: `AUDIT-11-GIT-DISCOVERY-P0004`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790183800`
+- **Timestamp**: unix `1790187008`
 
 #### Recommended Next Step
-Correct the invalid edition in Cargo.toml to '2021' or '2024' (if nightly) and verify that new members do not violate the 'Zero ambient authority' invariant.
+Verify if the 'firmware' exclusion is intentional or a gap in hardware abstraction, and assess if the 3-phase scan model is strictly enforced in the 'core/hypervisor' crate.
 
 #### Key Observations
-- Workspace edition set to '2024' which is invalid; Rust editions are 2015, 2018, 2021, or 2024 (unstable), but '2024' is not a stable release yet, risking compilation failures.
-- Workspace contains 34 members including 'core/hypervisor' and 'crates/orchestrator', exceeding the previously noted 28, indicating significant scope expansion or new crate additions.
-- Architecture mandates 'Zero ambient authority' and explicit constructor injection, yet 'xtask' and 'benches' members exist which often rely on implicit environment access or global state.
+- Workspace edition is set to '2024' with rust-version '1.85', confirming reliance on unstable nightly features that may break on standard stable toolchains.
+- The 'firmware' directory remains excluded from the workspace, maintaining the deliberate separation of hardware abstraction layers noted in prior audits.
+- Profile configuration enforces 'fat' LTO and 'codegen-units = 1', which will significantly increase build times and obscure debugging for the 34-member workspace.
 
 #### Identified Risks
-- Invalid edition '2024' will cause immediate build failure on stable toolchains.
-- Expansion to 34 crates increases the attack surface for circular dependency violations in the 5-ring model.
-- Presence of 'xtask' and 'benches' may introduce implicit global state access, violating the strict constructor injection rule.
-- High `codegen-units = 1` with 34 crates will drastically increase compile times, hindering iteration.
-- Strict 'panic = abort' combined with complex state machines increases risk of undefined behavior if unwinding is needed for safety checks.
-- Architecture document references non-existent or future-dated files (e.g., '2026-09-14'), suggesting potential version drift or hallucination in documentation.
+- Rust 2024 edition instability poses a high risk of compilation failures on standard toolchains lacking nightly support.
+- Fat LTO and codegen-units=1 significantly increase build times and obscure debugging information for a 34-member workspace.
+- Prohibition of Mutexes in hot paths complicates debugging and risks subtle race conditions if not rigorously enforced.
+- The 5-ring layered protection model increases cognitive load and potential for integration errors across 34 crates.
+- Exclusion of 'firmware' may indicate incomplete hardware abstraction or security boundary gaps.
+- Strict separation of concerns via Pure State Transition Machines may complicate handling of real-world non-deterministic inputs.
 
 ---
 
 ### PREP-02-COMPUTE-ENGINE-CONTAINER
 
 - **Task Description**: Analyze ComputeEngine for invariant violations regarding memory allocation, input validation, and JIT execution bounds.
-- **Latest Job Pass**: `PREP-02-COMPUTE-ENGINE-CONTAINER-P0019`
+- **Latest Job Pass**: `PREP-02-COMPUTE-ENGINE-CONTAINER-P0016`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790184024`
+- **Timestamp**: unix `1790187742`
 
 #### Recommended Next Step
 Implement dynamic configuration for memory allocation limits and input validation bounds to prevent OOM errors and malformed input handling.
@@ -203,12 +221,12 @@ Implement dynamic configuration for memory allocation limits and input validatio
 ### PREP-03-GOVERNANCE-SMT-INTERLOCKS
 
 - **Task Description**: Governance SMT verification rules and safety interlocks audit
-- **Latest Job Pass**: `PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0019`
+- **Latest Job Pass**: `PREP-03-GOVERNANCE-SMT-INTERLOCKS-P0016`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790184031`
+- **Timestamp**: unix `1790187823`
 
 #### Recommended Next Step
-Review LatticeVerifier default spatial bounds (7680x4320) and memory limit (64MB) against hardware specifications to determine if dynamic configuration is required.
+Review LatticeVerifier default spatial bounds (7680x4320) and memory limit (64MB) against hardware specifications to ensure they do not exceed intended physical limits.
 
 #### Key Observations
 - LatticeVerifier default spatial bounds (7680x4320) and memory limit (64MB) are hardcoded in Default impl, creating potential resource constraint mismatches.
@@ -228,12 +246,12 @@ Review LatticeVerifier default spatial bounds (7680x4320) and memory limit (64MB
 ### PREP-04-ORCHESTRATOR-TASK-SCHEDULER
 
 - **Task Description**: Verify IntelligenceEngine error handling and routing safety invariants.
-- **Latest Job Pass**: `PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0019`
+- **Latest Job Pass**: `PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0016`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790184040`
+- **Timestamp**: unix `1790187833`
 
 #### Recommended Next Step
-Refactor IntelligenceEngine to use a concrete error enum for initialization and analysis, and implement error handling in route_task to prevent silent failures.
+Refactor IntelligenceEngine to use a custom error enum and implement error propagation in analyze_task and route_task.
 
 #### Key Observations
 - IntelligenceEngine::new and new_async return anyhow::Result, violating the requirement for a concrete error enum.
@@ -249,13 +267,13 @@ Refactor IntelligenceEngine to use a concrete error enum for initialization and 
 
 ### PREP-06-STUDIO-HUD-PANIC-CONTAINMENT
 
-- **Task Description**: PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0019
-- **Latest Job Pass**: `PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0019`
+- **Task Description**: Analyze studio_hud FFI boundary panic containment and RFC-0006 compliance
+- **Latest Job Pass**: `PREP-06-STUDIO-HUD-PANIC-CONTAINMENT-P0016`
 - **Review Status**: `pending-owner-review`
-- **Timestamp**: unix `1790184050`
+- **Timestamp**: unix `1790187842`
 
 #### Recommended Next Step
-Implement `catch_unwind` wrappers around `replay_commands` and add fault tracking logic to `PluginManager` to handle `TickResult::PluginFaulted` and enforce rate-limiting.
+Implement `catch_unwind` wrappers around `replay_commands` and add fault tracking logic to `PluginManager` to handle `TickResult::PluginFaulted` and enforce rate-limiting for automatic unloading.
 
 #### Key Observations
 - The `replay_commands` function in `plugin_api.rs` executes `ui.label` and `ui.button` directly without `catch_unwind` wrappers, violating RFC-0006 Section 7's mandate for panic containment at the FFI boundary.

@@ -1,0 +1,55 @@
+param(
+    [string] = "D:\aaroneous-devtools\worker-jobs-archive",
+    [string] = "D:\aaroneous-devtools\artifacts\local-worker-service\results",
+    [string] = "D:\Aaroneous"
+)
+
+Write-Host "Actuator Daemon starting..."
+while (True) {
+    # Find all JSONs in results/ that are marked 'accepted'
+     = Get-ChildItem -Path  -Filter "*.json"
+    foreach ( in ) {
+         = Get-Content .FullName -Raw | ConvertFrom-Json
+        if (.outcome -eq "accepted" -and .proposal.implementation_plan) {
+            Write-Host "Actuating job: "
+            
+            # Create a branch
+            Set-Location 
+             = "auto-actuate/"
+            git checkout -b 
+            
+            # Apply edits
+            foreach ( in .proposal.implementation_plan) {
+                 = Join-Path  .file_path
+                if (Test-Path ) {
+                     = Get-Content  -Raw
+                     = .Replace(.search_block, .replace_block)
+                    Set-Content -Path  -Value 
+                }
+            }
+            
+            # Gate check
+            Write-Host "Running CI gates..."
+             = cargo xtask gate
+            if (0 -eq 0) {
+                git add .
+                git commit -m "Auto-actuate: "
+                Write-Host "Successfully actuated and verified !"
+                
+                # Move the json out so we don't process it again
+                Move-Item -Path .FullName -Destination 
+            } else {
+                Write-Host "Gate failed for . Rejecting."
+                git reset --hard
+                git checkout main
+                git branch -D 
+                
+                # Update json to needs-changes
+                .outcome = "needs-changes"
+                .rejection_reason = "Automated Actuation Failed: CI Gates rejected the code. Fix compiler/linter errors."
+                 | ConvertTo-Json -Depth 10 | Set-Content .FullName
+            }
+        }
+    }
+    Start-Sleep -Seconds 10
+}

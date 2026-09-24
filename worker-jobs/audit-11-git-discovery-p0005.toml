@@ -1,0 +1,14 @@
+schema_version = 1
+id = "AUDIT-11-GIT-DISCOVERY-P0005"
+mode = "analysis"
+evidence = [
+    "Cargo.toml",
+    "docs/ARCHITECTURE.md",
+]
+instruction = """
+Perform Git discovery and architectural frontier audit: analyze workspace structure, discover open-source Rust patterns and candidate crates for dogfooding, and evaluate architectural influences without circular dependencies or ambient authority violations.
+
+[PRIOR AUDIT CONTEXT - Pass 5]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: Workspace edition is set to '2024' with rust-version '1.85', confirming reliance on unstable nightly features that may break on standard stable toolchains. | Obs: The 'firmware' directory remains excluded from the workspace, maintaining the deliberate separation of hardware abstraction layers noted in prior audits. | Obs: Profile configuration enforces 'fat' LTO and 'codegen-units = 1', which will significantly increase build times and obscure debugging for the 34-member workspace. | Risk: Rust 2024 edition instability poses a high risk of compilation failures on standard toolchains lacking nightly support. | Risk: Fat LTO and codegen-units=1 significantly increase build times and obscure debugging information for a 34-member workspace. | Risk: Prohibition of Mutexes in hot paths complicates debugging and risks subtle race conditions if not rigorously enforced. | Risk: The 5-ring layered protection model increases cognitive load and potential for integration errors across 34 crates. | Risk: Exclusion of 'firmware' may indicate incomplete hardware abstraction or security boundary gaps. | Risk: Strict separation of concerns via Pure State Transition Machines may complicate handling of real-world non-deterministic inputs.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

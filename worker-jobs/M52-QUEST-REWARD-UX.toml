@@ -1,0 +1,5 @@
+schema_version = 1
+id = "M52-QUEST-REWARD-UX"
+mode = "drafting"
+evidence = ["architecture/MULTITHREAD_PROGRAM.md", "crates/foundation_cli/src/ledger.rs", "crates/foundation_cli/src/main.rs"]
+instruction = "Design and implement the curated offer/accept UX ('quest reward' framing) on top of the admission pipeline. Present finished, fully-gated patches to human reviewers as 'Quests' with clear objectives, blast radius, and one-click acceptance mechanisms."

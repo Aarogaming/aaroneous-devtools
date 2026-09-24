@@ -1,0 +1,11 @@
+schema_version = 1
+id = "PREP-02-COMPUTE-ENGINE-CONTAINER-P0017"
+mode = "analysis"
+evidence = ["crates/compute/src/lib.rs"]
+instruction = """
+Research and investigate compute engine JIT and .si container engine interfaces, execution bounds, and allocation limits.
+
+[PRIOR AUDIT CONTEXT - Pass 17]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: ComputeEngine::default() enforces a hardcoded 1MB (1024 * 1024) allocation for SharedMemorySynapse in both test and production paths. | Obs: The execute method performs only basic length checks for specific tasks (free_energy, mutual_info) but lacks general input validation or bounds checking for the input slice. | Obs: No explicit execution bounds, memory protection state enforcement, or JIT compilation limits are exposed in the ComputeEngine public API despite available modules. | Risk: Fixed 1MB synapse allocation may cause Out-Of-Memory (OOM) errors under high concurrency or large-scale deployments. | Risk: Absence of explicit JIT execution bounds allows unbounded resource consumption by delegated CraneliftJitEngine operations. | Risk: Lack of input validation beyond specific task length checks leaves the engine vulnerable to malformed or oversized inputs. | Risk: MemoryProtectionState defined in si_jit is not utilized in the ComputeEngine, leaving JIT execution unprotected. | Risk: No external configuration mechanism exists to adjust allocation limits or execution bounds dynamically. | Risk: Hardcoded fallback names in production may lead to shared memory conflicts if multiple instances run simultaneously.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

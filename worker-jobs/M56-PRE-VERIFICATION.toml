@@ -1,0 +1,5 @@
+schema_version = 1
+id = "M56-PRE-VERIFICATION"
+mode = "drafting"
+evidence = ["architecture/MULTITHREAD_PROGRAM.md", "crates/foundation_cli/src/fact_checker.rs", "crates/foundation_cli/src/cross_verifier.rs"]
+instruction = "Implement Ground-truth pre-verification (M56). Mechanically re-check a milestone's cited claims and dependencies before allowing the LLM to draft implementation. If claims fail validation, output early warnings."

@@ -1,0 +1,14 @@
+schema_version = 1
+id = "AUDIT-01-AST-SAFETY-P0195"
+mode = "analysis"
+evidence = [
+    "crates/ast_auditor/src/rules/text_encoding.rs",
+    "xtask/src/gate.rs",
+]
+instruction = """
+Audit AST auditor rules, UTF-8/LF line ending enforcement, and gate command alignment between xtask/src/gate.rs and AGENTS.md Section 6.
+
+[PRIOR AUDIT CONTEXT - Pass 195]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: text_encoding.rs: audit_tracked_encodings invokes git ls-files without --others --exclude-standard, failing to audit untracked files. | Obs: text_encoding.rs: is_binary_extension relies solely on a static BINARY_EXTENSIONS list, lacking magic byte detection for unknown binary formats. | Obs: xtask/src/gate.rs: Gate 6 restricts ast_auditor to hardcoded directories (core/, crates/, dev/emulator_harness/), violating the requirement to audit all Git-tracked text files. | Risk: Untracked files containing binary content or invalid encodings may bypass the audit entirely. | Risk: Text files with non-standard extensions may be incorrectly classified as binary and skipped. | Risk: Gate 6 may miss files located outside the hardcoded directories, allowing invariant violations to persist. | Risk: Static extension lists may become outdated as new file types are introduced to the repository. | Risk: Magic byte detection is absent, reducing the robustness of binary file classification. | Risk: Hardcoded paths in gate.rs create a maintenance burden and potential for drift from actual repository structure.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

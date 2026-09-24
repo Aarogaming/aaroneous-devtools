@@ -1,0 +1,5 @@
+schema_version = 1
+id = "M59-CROSS-CANDIDATE-RETRIEVAL"
+mode = "drafting"
+evidence = ["architecture/MULTITHREAD_PROGRAM.md", "crates/foundation_cli/src/candidate_metadata.rs"]
+instruction = "Implement Cross-candidate retrieval (M59). Add explainable Jaccard similarity querying across the accumulated JSON metadata records so agents can query past attempts and candidates for similarity."

@@ -1,0 +1,11 @@
+schema_version = 1
+id = "PREP-04-ORCHESTRATOR-TASK-SCHEDULER-P0017"
+mode = "analysis"
+evidence = ["crates/orchestrator/src/lib.rs"]
+instruction = """
+Research and investigate task scheduler core affinity, execution budgets, and supervisor tick boundaries.
+
+[PRIOR AUDIT CONTEXT - Pass 17]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: IntelligenceEngine::new and new_async return anyhow::Result, violating the requirement for a concrete error enum. | Obs: IntelligenceEngine::analyze_task returns anyhow::Result, violating the requirement for structured error propagation. | Obs: IntelligenceEngine::route_task returns RoutingDecision directly without error handling, masking potential routing failures. | Risk: Silent failures in task routing if the router encounters an error state. | Risk: Lack of deterministic core affinity pinning may lead to cache thrashing. | Risk: Undefined execution budgets may cause supervisor tick overflow.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

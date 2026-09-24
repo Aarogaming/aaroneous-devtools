@@ -1,0 +1,5 @@
+schema_version = 1
+id = "M51-END-TO-END-AUTONOMY"
+mode = "drafting"
+evidence = ["architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md", "governance/MULTITHREAD_PROGRAM.md", "crates/foundation_cli/src/local_worker_db.rs", "crates/foundation_cli/src/actuator.rs"]
+instruction = "Draft the necessary scaffolding and control-flow loops to run the full discovery -> research -> filter -> translate -> recreate -> review -> repeat autonomous loop end-to-end, integrating existing components into a single continuous chain."

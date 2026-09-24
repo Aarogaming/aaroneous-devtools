@@ -1,0 +1,11 @@
+schema_version = 1
+id = "AUDIT-03-ZERO-AMBIENT-AUTH-P0018"
+mode = "analysis"
+evidence = ["crates/paths/src/lib.rs"]
+instruction = """
+Audit paths crate for ambient authority violations (banned functions std::env::var, temp_dir, canonicalize). Verify path normalization via paths::normalize_path and constructor injection.
+
+[PRIOR AUDIT CONTEXT - Pass 18]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: WorkspacePaths::discover() retains ambient authority via std::env::var for CARGO_MANIFEST_DIR and std::env::current_dir, allowing upward traversal from potentially compromised directories. | Obs: WorkspacePaths::discover_root_from_system() uses std::env::current_exe to locate the executable parent directory, enabling path resolution attacks if the process is launched from an untrusted location. | Obs: WorkspacePaths::from_root() defaults temp_dir to dirs::cache_dir() if not explicitly configured, potentially resolving to a user-writable location outside the intended workspace boundary. | Risk: Ambient authority via std::env::var could be exploited if CARGO_MANIFEST_DIR is manipulated to point to an arbitrary directory. | Risk: Traversing upward from current_dir or current_exe allows path traversal attacks if the initial directory is compromised. | Risk: dirs::cache_dir() fallback in from_root() may resolve to a user-writable location outside the intended workspace boundary. | Risk: Environment variable fallbacks in discover() bypass the principle of least privilege by accepting untrusted system state as authoritative. | Risk: Executable-based path resolution (current_exe) introduces supply chain attack surface if the binary is executed from a malicious location. | Risk: Default temp_dir resolution in from_root() creates a writable boundary that may be accessible to unprivileged users or processes.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

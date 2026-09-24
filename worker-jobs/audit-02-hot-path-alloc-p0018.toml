@@ -1,0 +1,11 @@
+schema_version = 1
+id = "AUDIT-02-HOT-PATH-ALLOC-P0018"
+mode = "analysis"
+evidence = ["core/hypervisor/src/lib.rs"]
+instruction = """
+Audit hypervisor core module for forbidden dynamic heap allocations (String, Vec, Box, HashMap), unwraps/panics, and missing zero-copy/#[repr(C)] memory alignment invariants.
+
+[PRIOR AUDIT CONTEXT - Pass 18]:
+In previous invariant audit pass(es), the following observations were noted:
+Obs: Global static `PLUGIN_MANAGER` re-introduces `Lazy<Mutex<PluginManager>>`, violating zero-copy invariant for static initialization. | Obs: Global `PluginManager` struct contains `HashMap` and `Vec<Library>` fields enforcing dynamic heap allocation. | Obs: Dynamic plugin loading via `hotload::load_module` pushes `Library` handles into a `Vec`, creating unbounded memory growth. | Risk: Unbounded memory consumption from `Vec<Library>` accumulation during runtime. | Risk: Potential deadlock or panic if `Mutex` in static initialization is poisoned or contended. | Risk: Violation of hypervisor memory safety invariants due to heap allocations in core modules. | Risk: Unpredictable memory footprint growth from dynamic plugin loading. | Risk: Performance degradation from heap fragmentation and allocation overhead in hot paths. | Risk: Security risk from dynamic loading of untrusted plugins without memory isolation.
+Verify whether these conditions remain active, have been remediated in the codebase, or if any new invariant violations have emerged since."""

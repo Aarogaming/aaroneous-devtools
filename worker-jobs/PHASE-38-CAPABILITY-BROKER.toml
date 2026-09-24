@@ -1,0 +1,5 @@
+schema_version = 1
+id = "PHASE-38-CAPABILITY-BROKER"
+mode = "drafting"
+evidence = ["crates/mcp_server/src/capability_broker.rs", "core/hypervisor/src/consensus_engine.rs"]
+instruction = "Finalize the Phase 38 CapabilityBroker (the Crucible sandbox) and the EngineStatePublisher. Integrate the dirty-flag pacing and thermal backpressure systems securely with the capability broker boundaries."

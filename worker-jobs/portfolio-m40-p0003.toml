@@ -1,0 +1,23 @@
+evidence = ["governance/MULTITHREAD_PROGRAM.md"]
+exploration_group = "m40"
+goal = "M40"
+id = "PORTFOLIO-M40-P0003"
+instruction = """
+Portfolio progressive verification request for M40 (priority P2, Pass 3: Reference Architecture & Contract Proofs) from governance/MULTITHREAD_PROGRAM.md's Priority portfolio table.
+Work: "Surface `ConcurrenceSnapshot` as an advisory confidence field on scheduler recommendations"
+Dependency: "none — see `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md`"
+Preferred capability: "Rust systems review / read-only cross-repo analysis"
+
+[PRIOR TRIAGE CONTEXT - Pass 2]:
+Recommendation: Request the `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` file to understand the scheduler's current data model and the specific definition of `ConcurrenceSnapshot` before proposing implementation details. | Obs: M40 lacks the `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` file required to define the `ConcurrenceSnapshot` data model and scheduler interface boundaries. | Obs: The dependency on `architecture/LOCAL_CLOUD_ORCHESTRATION_PLAN.md` creates a critical information gap for determining zero-heap invariants and ambient authority constraints. | Obs: M40 is listed as a P2 priority item with no explicit dependency on other P2 items, suggesting potential parallelization opportunities once the architecture plan is available.
+
+This is a request for speculative reference modeling only. It is NOT a claim on M40, does not authorize writing product code, and does not authorize touching the row's actual scope.
+
+Please propose:
+(1) A draft reference implementation sketch (in rust_draft or solution_tree) or mock interface;
+(2) Proof that the design satisfies sequential verification gates and AST invariants (zero-heap, zero ambient authority);
+(3) Isolated test fixture scenarios and failure reproduction cases."""
+mode = "analysis"
+perspective = "portfolio-triage"
+priority = "P2"
+schema_version = 1
