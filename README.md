@@ -1,11 +1,12 @@
 # Aaroneous Devtools
 
-Aaroneous's private development companion: reusable Rust maintenance tools, a guided user interface, and local automation for tasks Git does not perform. Devtools uses practical, lighter implementation standards while preserving Aaroneous's independent build and runtime.
+Aaroneous's private foundry and functional organizer: reusable Rust maintenance tools, a guided user interface, and local automation for tasks Git does not perform. Devtools drives Aaroneous as its capability matrix and execution substrate, grows and proves new capabilities under practical, lighter standards, and graduates the general ones into Aaroneous under Cratify v2. Aaroneous never depends on devtools.
 
 ## Start here
 
 - [Companion operating model](governance/OPERATING_MODEL.md): organization, standards and everyday use.
-- [Foundation boundary](FOUNDATION_BOUNDARY.md): what belongs here and what stays in Aaroneous.
+- [Foundation boundary](FOUNDATION_BOUNDARY.md): roles, dependency direction, and what graduates into Aaroneous.
+- [Graduation map](architecture/AARONEOUS_FRAMEWORK_INTEGRATION.md): which devtools capabilities move into which Aaroneous crates, and in what order.
 - [Agent guide](AGENTS.md) and [contributing](CONTRIBUTING.md): ownership, verification and handoffs.
 - [Framework primer](governance/AARONEOUS_COMPONENT_FRAMEWORK_PRIMER.md) and [component playbook](governance/COMPONENT_DEVELOPMENT_PLAYBOOK.md): context for helping Aaroneous.
 

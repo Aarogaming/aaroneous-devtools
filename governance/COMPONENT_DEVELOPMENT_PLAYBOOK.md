@@ -46,8 +46,11 @@ versioned report:
 
 1. **Component inventory:** crate dependencies, public symbols, configuration files, generated
    interfaces, and test coverage map.
-2. **Invariant profile:** static hot-path, ambient-authority, memory-geometry, unsafe, and
-   compatibility findings, reusing Aaroneous's native audit semantics where possible.
+2. **Invariant profile:** the component's declared Cratify compliance profile (`kernel` / `control` /
+   `presentation` / `tooling`) plus static hot-path, ambient-authority, memory-geometry, unsafe, and
+   compatibility findings against that profile, reusing Aaroneous's native audit semantics where
+   possible. For a graduation candidate, also report its compliance-distance scores and target
+   profile (`Aaroneous/docs/CRATIFY_SPEC.md` sections 2, 5, 6).
 3. **Measurement harness:** reproducible benchmark metadata and result capture; it reports actual
    measurements and never treats design targets as results.
 4. **Change impact report:** compares a selected revision or branch, mapping modified product files

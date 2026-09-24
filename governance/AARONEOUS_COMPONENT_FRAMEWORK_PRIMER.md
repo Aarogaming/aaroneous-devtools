@@ -13,7 +13,7 @@ acquire explicit input -> reduce state -> emit bounded output
                          S(next) = reduce(S(current), input)
 ```
 
-Acquisition may interact with I/O. Reduction is pure: no filesystem, network, clock, environment, hidden task launch, or allocation. Output performs telemetry or actuation through declared, bounded interfaces.
+Acquisition may interact with I/O. Reduction is pure: no filesystem, network, clock, environment, or hidden task launch, and in `kernel`-profile crates no allocation. Output performs telemetry or actuation through declared, bounded interfaces.
 
 ## Design laws
 
@@ -21,7 +21,11 @@ Acquisition may interact with I/O. Reduction is pure: no filesystem, network, cl
 | --- | --- |
 | Explicit authority | Pass paths, buffers, handles, endpoints, and configuration through constructors or tick inputs. Do not perform ambient reads in components. |
 | Deterministic reduction | Keep state transitions reproducible from supplied state and input. Put side effects in acquisition/output phases. |
-| Bounded memory | Hot paths use preallocated buffers and bounded structures. Avoid heap allocation, locks, and unbounded collections there. |
+| Compliance profiles | Every crate declares `kernel`, `control`, `presentation`, or `tooling` in `[package.metadata.cratify]`. A universal floor (no ambient env/clock reads, no self-spawned threads, no panics on runtime input) applies to all; the profile adds the rest (`Aaroneous/docs/CRATIFY_SPEC.md`). |
+| Bounded memory | `kernel`-profile hot paths (`#[hot_path]`) use preallocated buffers and bounded structures. Avoid heap allocation, locks, and unbounded collections there. `control` crates may allocate off the scan loop. |
+| Fault tolerance | A violated runtime precondition takes a degraded path or safe-hold, not a panic. Mode changes use deadband thresholds. |
+| Admission and graduation | New dependencies are scored on compliance distance and admitted, conditioned, pattern-extracted, or rejected. Outside code graduates behind an Aaroneous trait, inert or in shadow mode, with its origin copy deleted. |
+| Ratchet | Rules only tighten; fixed defect classes become types, assertions, or `ast_auditor` rules. |
 | Stable boundaries | IPC and external binary messages use deliberate geometry: `repr(C)`, derive-based `Pod`/`Zeroable`, and explicit padding where needed. |
 | Component isolation | A crate owns one role behind narrow traits. Do not create global services or hidden dependencies inside subcomponents. |
 | Evidence before retirement | Remove interfaces, config, WIT, or compatibility shims only after runtime, package, consumer, and migration evidence proves they are unused or superseded. |

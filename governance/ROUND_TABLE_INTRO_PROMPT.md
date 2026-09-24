@@ -42,9 +42,11 @@ Before touching either repository, read in this order:
    own last-seen hash back into any shared/tracked file — that would look
    like a change to every other agent's check and trigger false re-reads.
 5. If you're about to work in Aaroneous specifically, also read
-   Aaroneous/AGENTS.md — its component-framework rules (zero-allocation
-   hot paths, no ambient authority, the 11-gate verification protocol)
-   apply regardless of which agent is editing.
+   Aaroneous/AGENTS.md and Aaroneous/docs/CRATIFY_SPEC.md — Cratify v2
+   (a universal floor plus a per-crate compliance profile, dependency
+   admission, the graduation gate for devtools code moving into
+   Aaroneous, and the 11-gate verification protocol) applies regardless
+   of which agent is editing.
 
 Rules while you're here:
 - Claim an unowned row in COORDINATION_QUEUE.md before editing any file,

@@ -4,7 +4,7 @@ This is the operational entrypoint for a contributor joining Aaroneous work. Aar
 
 ## Repository standards
 
-Read [the companion operating model](governance/OPERATING_MODEL.md). Devtools permits ordinary heap allocation, async I/O and synchronization; Aaroneous hot-path restrictions do not apply to companion implementation. Rust owns durable maintenance policy, TypeScript may own presentation, and experiments stay isolated. Changes to Aaroneous still obey its own constitution. Local and paid models share the same evidence and authority boundaries; paid escalation does not bypass ownership or verification.
+Read [the companion operating model](governance/OPERATING_MODEL.md) and [the foundation boundary](FOUNDATION_BOUNDARY.md). Devtools is the foundry and functional organizer; Aaroneous is the capability matrix and execution substrate it drives. Devtools permits ordinary heap allocation, async I/O, synchronization, and non-Cratify-compliant code; Aaroneous's Cratify v2 rules (`Aaroneous/docs/CRATIFY_SPEC.md`) do not apply to companion implementation. Proven, general capabilities graduate into Aaroneous under Cratify section 6 and are then deleted here ([graduation map](architecture/AARONEOUS_FRAMEWORK_INTEGRATION.md)). Rust owns durable maintenance policy, TypeScript may own presentation, and experiments stay isolated. Changes to Aaroneous still obey its own constitution. Local and paid models share the same evidence and authority boundaries; paid escalation does not bypass ownership or verification.
 
 ## Before selecting work
 
@@ -22,7 +22,7 @@ Choose an independent task. Do not open overlapping inventory, terminology, inte
 ## Working rules
 
 - Aaroneous product code follows its own `AGENTS.md` and native verification gates.
-- Devtools must never become a product build, CI, release, runtime, or crate dependency.
+- Devtools must never become a product build, CI, release, runtime, or crate dependency. The reverse is allowed: devtools may depend on Aaroneous crates, and should prefer them over re-implementing a capability.
 - Use explicit checkout, endpoint, output, and support-directory inputs. Do not infer machine paths or read ambient configuration.
 - Keep generated artifacts, experiments, model outputs, and incomplete patches out of shared product paths.
 - Make small commits with clear evidence; do not rewrite or discard another contributor's work.

@@ -14,7 +14,9 @@
 - They use `.unwrap()` / `.expect()` for error handling.
 - Their memory geometry lacks explicit padding or `#[repr(C)]` / `Pod` / `Zeroable` derives.
 
-**The Golden Rule of Ingestion**: A candidate crate must **never** be rejected simply because it is not yet compliant. Instead, the autonomous evaluation engine assesses **Refactoring Feasibility** — how easily and mechanically the local model and devtools can isolate the core algorithmic kernel ("the needle") and "Cratify" it into a compliant, zero-allocation Aaroneous component per [docs/FORENSICS_RFC0005.md](docs/FORENSICS_RFC0005.md) and [docs/CRATIFY_SPEC.md](docs/CRATIFY_SPEC.md).
+> **Cratify v2 mapping (2026-09-23):** this standard is devtools' discovery-side front end to Aaroneous's dependency admission (`Aaroneous/docs/CRATIFY_SPEC.md` section 5). Refactoring Feasibility corresponds to compliance distance; a feasible candidate is normally an **Extract pattern** verdict (clean-room the kernel behind an Aaroneous trait), not a Cargo dependency. Candidates that pass then enter the graduation gate (section 6). Compliance targets depend on the destination crate's profile: zero-allocation applies only to `kernel`-profile hot paths.
+
+**The Golden Rule of Ingestion**: A candidate crate must **never** be rejected simply because it is not yet compliant. Instead, the autonomous evaluation engine assesses **Refactoring Feasibility** — how easily and mechanically the local model and devtools can isolate the core algorithmic kernel ("the needle") and "Cratify" it into a compliant, zero-allocation Aaroneous component per `Aaroneous/docs/FORENSICS_RFC0005.md` and `Aaroneous/docs/CRATIFY_SPEC.md`.
 
 ---
 

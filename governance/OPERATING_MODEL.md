@@ -1,20 +1,26 @@
 # Companion operating model
 
-Devtools is Aaroneous's practical development companion: a user-facing maintenance program and local automation workspace. It is allowed to be more flexible than the framework. It helps contributors build Aaroneous; Aaroneous must never need devtools to build, test, release or run.
+Devtools is Aaroneous's foundry and functional organizer: a user-facing maintenance program, local automation workspace, and experiment space. It uses Aaroneous as its capability matrix and execution substrate, pulls the strings, and is allowed to be more flexible than the framework, including code that is not Cratify-compliant. It helps contributors build Aaroneous; Aaroneous must never need devtools to build, test, release or run. See [FOUNDATION_BOUNDARY.md](../FOUNDATION_BOUNDARY.md) for the binding roles and dependency direction.
 
 ## Standards proportional to the job
 
 | Concern | Devtools standard |
 | --- | --- |
 | Rust execution | Ordinary heap allocation, collections, async I/O, synchronization and service tasks are allowed. No framework-wide zero-allocation or PLC scan requirement applies. |
-| Dependencies | Prefer maintained libraries and standard tools. Add a dependency for a concrete need, with its license, platform support and maintenance cost considered. |
+| Dependencies | Prefer an existing Aaroneous crate over re-implementing a capability. Otherwise prefer maintained libraries and standard tools, added for a concrete need with license, platform support and maintenance cost considered. Cratify dependency admission does not apply here, but code intended to graduate should avoid dependencies Aaroneous would reject, or keep them behind a trait boundary. |
 | Languages | Rust owns durable maintenance logic. TypeScript/React may provide the user interface. Thin OS adapters and declarative provider formats are allowed; research stays isolated. |
 | Configuration | The user selects repositories, providers and storage. A bootstrap/UI may explicitly discover candidates and ask the user to select them; core tools receive typed, explicit inputs. No silent home-directory or credential discovery. |
 | Errors and safety | Useful errors, bounded retries, safe path handling and reviewed unsafe code. No generated code is trusted or declared verified just because a model returned it. |
 | Verification | Foundation Rust changes: formatting, meaningful tests and strict Clippy. GUI changes: its build/type check plus relevant behavior checks. Documentation: links, encoding and diff checks. Product changes: Aaroneous's full native gates. |
 | Experiments | Quick prototypes are welcome outside maintained paths. Label demonstration state and promotion criteria; do not run prototypes as production services. |
 
-The lighter standard relaxes implementation constraints, not evidence, ownership, credentials or spending boundaries. Product rules apply whenever a task changes Aaroneous. A reusable block can later be ported into Aaroneous under its own contracts and gates; do not create a reverse dependency for dogfooding.
+The lighter standard relaxes implementation constraints, not evidence, ownership, credentials or spending boundaries. Product rules apply whenever a task changes Aaroneous.
+
+## Foundry and graduation
+
+Devtools is where capabilities are grown and proven; Aaroneous is where proven patterns end up. A block that proves generally useful graduates into Aaroneous under Cratify v2's graduation gate (`Aaroneous/docs/CRATIFY_SPEC.md` section 6): rewritten behind an Aaroneous-defined trait, landed inert or in shadow mode, and then **deleted from devtools**, which consumes the Aaroneous crate from then on. Devtools keeps only the operational parts: configuration, job content, schedules, and backend choices behind Aaroneous traits. The active map and sequence are in [architecture/AARONEOUS_FRAMEWORK_INTEGRATION.md](../architecture/AARONEOUS_FRAMEWORK_INTEGRATION.md).
+
+When building something new here, ask whether it describes *how an agent, job, model or verdict works* (a graduation candidate: keep its core free of ambient reads and panics so graduation is cheap) or *how this owner runs their operation* (stays here). Aaroneous never depends on devtools.
 
 ## Repository map
 
@@ -65,7 +71,7 @@ Prefer deterministic software for inventories, checks, parsing, deduplication, s
 
 Start by checking repository state, running-service health and pending review debt. Review existing results before adding more jobs. Schedule only useful evidence-backed work; idle is a valid healthy state. Pause on missing tools, unavailable local models or spending limits rather than spinning indefinitely.
 
-Weekly, reconcile expired claims, stale plans, service failures and retained artifacts. Monthly, review dependencies and promote or retire one prototype. Every maintained tool needs documented inputs, output contract, failure behavior, owner and install/pause/uninstall procedure. Measure completed reviewed work, repeated failures, queue age and cost rather than generated-token volume.
+Weekly, reconcile expired claims, stale plans, service failures and retained artifacts. Monthly, review dependencies, promote or retire one prototype, and review graduation candidates against the map in `architecture/AARONEOUS_FRAMEWORK_INTEGRATION.md`. Every maintained tool needs documented inputs, output contract, failure behavior, owner and install/pause/uninstall procedure. Measure completed reviewed work, repeated failures, queue age and cost rather than generated-token volume.
 
 Retention must preserve dispositions and retry/idempotency history. The present local worker suppresses unchanged archived inputs, so indiscriminate archive deletion can rerun old jobs. Introduce explicit compaction/retention support before automated cleanup; never recursively prune product checkouts.
 

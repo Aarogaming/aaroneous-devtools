@@ -14,6 +14,18 @@ Devtools becomes a user-facing local maintenance companion. It keeps Rust-first 
 
 The operating model owns organization; the multithread portfolio owns priorities; the coordination queue owns live claims; the application design owns delivery milestones. Old worklist briefs retain context without competing as current status. No prototype relocation or service-path change is authorized by a documentation cleanup alone.
 
+## 2026-09-23 — Devtools is the foundry; growth is Aaroneous-centric
+
+Owner-approved alongside Cratify compliance v2 (`Aaroneous/docs/CRATIFY_SPEC.md`). Devtools is the
+functional organizer and software foundry; Aaroneous is the capability matrix and execution
+substrate. Devtools may depend on Aaroneous crates and may contain non-Cratify-compliant code;
+Aaroneous never depends on devtools. Capabilities describing how agents, jobs, models, or verdicts
+work graduate into Aaroneous under the Cratify graduation gate and are then deleted from devtools.
+This supersedes the 2026-09-21 research direction of importing Aaroneous into devtools as a
+replacement for graduation, and corrects older wording (for example in `REVIEW_CONDITIONS.md`) that
+forbade any devtools dependency on Aaroneous product code. `sled` is rejected as an Aaroneous
+dependency under Cratify admission; devtools may keep it behind an Aaroneous storage trait.
+
 ## 2026-09-17 — Cloud routine as interim primary-lane capacity
 
 Until a maintained local or GUI equivalent exists (`gui/` is uncommitted prototype work; see

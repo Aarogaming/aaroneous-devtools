@@ -1,168 +1,80 @@
-# Aaroneous Framework Integration Plan
+# Aaroneous Graduation Map
 
-**Status**: Research & Discovery  
-**Author**: mimo (opencode)  
-**Date**: 2026-09-21  
-**Branch**: integration/local-cloud-orchestration
+**Status**: Active plan (supersedes the 2026-09-21 "integrate Aaroneous into devtools" research draft)  
+**Policy**: `Aaroneous/docs/CRATIFY_SPEC.md` v2, sections 5-6; [FOUNDATION_BOUNDARY.md](../FOUNDATION_BOUNDARY.md)  
+**Updated**: 2026-09-23
 
-## Context
+## Direction
 
-devtools currently operates as an independent toolchain with **zero Aaroneous dependencies**. It reimplements several capabilities that Aaroneous already provides as proper crate APIs. This document plans the integration of Aaroneous crates into devtools to reduce duplication and leverage the framework we built.
+Growth is Aaroneous-centric. Devtools is the foundry: capabilities are grown and proven here, then
+distilled into Aaroneous under the Cratify graduation gate, after which devtools consumes the
+Aaroneous crate and deletes its own copy. The sorting rule:
 
-### Dependency Direction
+> Code describing **how an agent, job, model, or verdict works** belongs in Aaroneous.
+> Code describing **how this owner runs their development operation** stays in devtools.
 
-- **devtools → Aaroneous**: Allowed. devtools is the workspace management system that sits on top of the framework.
-- **Aaroneous → devtools**: Forbidden. Aaroneous is the pristine component framework and must never depend on devtools.
+## Already landed
 
-### Operating Model
+| Item | Where | Notes |
+|---|---|---|
+| `ast_auditor` used as a library | `local_worker.rs` (`audit_source_file`) | Complete. |
+| `governance` without `compute` | Aaroneous `f965955` (`adaptive-governance` feature) | Complete; devtools imports without the feature. |
+| `llm_gateway_types` extracted | Aaroneous `e2224a0` | Complete; `LLMConfig` still duplicated in Aaroneous (see Phase 0). |
+| `llm_gateway` Gemini provider | Aaroneous `crates/llm_gateway/src/providers/gemini.rs` (uncommitted) | In progress; devtools `local_worker_db.rs` and `overseer_snippet.rs` already call it. |
+| Shared `Reservation` guard | `foundation_cli/src/reservation.rs` | Partial: `multithreader::RunLock` and `maintenance_ui::Lock` remain separate copies. |
+| `PriorityScheduler` | `foundation/crates/priority_scheduler` | **Defect:** byte-for-byte copy of `Aaroneous/crates/orchestrator/src/priority_scheduler.rs`. Two maintained copies; resolved in Phase 2. |
 
-Per `governance/OPERATING_MODEL.md`: devtools follows the companion operating model, not Aaroneous's zero-allocation execution-plane constraints. Ordinary Rust services, heap allocation, async I/O are acceptable. Dependencies should be added for concrete needs with license, platform support, and maintenance cost considered.
+## Graduation map
 
-## Current Duplication
-
-| Capability | devtools Implementation | Aaroneous Equivalent | Gap |
+| Devtools today | Aaroneous destination | Classification | Devtools keeps |
 |---|---|---|---|
-| Ollama HTTP calls | Hardcoded `reqwest` to `localhost:11434` | `llm_gateway::LocalLLMProvider` | No model discovery, no rate limiting |
-| Priority sorting | Manual `(rank, timestamp, id)` sort | `orchestrator::PriorityScheduler` | No backpressure, no admission control |
-| AST safety checks | Inline `verify_proposal_quality()` | `ast_auditor::audit_source_file()` | Subset of checks, not a proper audit |
-| Reservation locking | 3 identical `Reservation(PathBuf)` structs | `ipc_bus` primitives | Deduplication needed |
-| Circuit breaker | Boolean `tripped` flag | `governance::GenerationalJournal` | No history, no rollback |
+| `priority_scheduler` crate | New `crates/scheduler` extracted from `orchestrator`, consumed by the new `llm_manager` | Upgrade (dedupe) | Nothing; delete crate |
+| Ollama `/api/chat` clients in `local_worker`, `agentic_registrar`, `local_proposal`, `intake_generator`, `frontier_discovery`, plus `cloud_providers.rs` (Anthropic/Gemini/OpenAI) | `llm_gateway` providers: add `ollama`, `anthropic`; reuse `gemini`, `openai`. Credentials injected, never `std::env::var` | Upgrade | Provider selection and endpoint config |
+| `local_worker` dispatch loop core: prompt assembly, retry/backoff, audit logging | New `crates/llm_manager` (stateful control plane over the stateless `llm_gateway`), per the LLM Manager & Priority-Constrained Scheduler spec | New component | Service wrapper, TOML configs, quiet windows |
+| `Draft`, `JobRecord`, `JobState`, `IterationAttempt`, draft schema | New `crates/job_contracts` or `core-contracts` (types only, no async) | New component | Job manifests (`worker-jobs/`) |
+| `ledger.rs`, `state_cache.rs`, `local_worker_db.rs` | New `crates/ledger`: storage trait + compliant backend over the `ipc_bus` WAL | New component | `sled` backend behind the trait (sled is rejected as an Aaroneous dependency; consider redb for devtools) |
+| `cross_verifier`, `consensus_engine`, `fact_checker` | `compliance_auditor` as the evaluator role (strict findings schema, model diversity vs. the generator) | Upgrade | Choice of reviewer providers |
+| `verify_proposal_quality`, `verify_proposal_citations` | `ast_auditor` proposal rules module | Upgrade | - |
+| Job pipeline stages (`frontier_discovery` -> intake -> draft -> verify -> promote) | Pure assimilation state machine (IDLE -> QUARANTINED -> AUDITING -> SYNTHESIZING -> CERTIFYING -> COMMITTED/REJECTED) in `orchestrator/src/assimilation.rs` | Upgrade | Driving the machine: source discovery, quarantine mounts, model calls |
+| `cratification_intake`, `target_decomposition` | `cratify` subcommands (`intake`, `decompose`) | Upgrade | - |
+| `candidate_metadata`, `candidate_retrieval` | `capabilities` or new `crates/retrieval` | New component | Accumulated records |
+| `decision_trace` (SFT samples) | `adaptation_plane` | Upgrade | Trace corpus |
+| `reservation.rs`, `RunLock`, `maintenance_ui::Lock` | `paths` file-lock guard | Upgrade | - |
+| `batch_overlap`, `scope_reserved` | `governance::interference_checker` | Upgrade | Queue-row inputs |
+| `hypervisor_mcp.rs` | Delete; use `mcp_server` | - | - |
 
-## Integration Candidates
+**Stays in devtools** (operational, not general): `portfolio_jobs`, `portfolio_digest`,
+`scheduler.rs`, `consensus_readiness`, `audit_rollup`, `discovery_digest`, `frontier_discovery`'s
+web crawling, `dogfood`, `dependency_review`, `local_staging`, `maintenance_ui`, `gui/`, PowerShell
+scripts, `worker-jobs/`, and all governance markdown.
 
-### Tier 1: Low Friction (No Async Runtime)
+## Sequence
 
-#### 1. ast_auditor - Proposal Quality Audit Library
+Portfolio IDs are in [governance/MULTITHREAD_PROGRAM.md](../governance/MULTITHREAD_PROGRAM.md).
 
-**What**: Import `ast_auditor` as a library dependency to replace inline proposal quality checks.
+| Phase | Portfolio | Work |
+|---|---|---|
+| 0 | M75 | Aaroneous plane consolidation: fold `orchestration_plane` into `orchestrator`, merge `adaptation_plane`/`adaptation_engine`, dedupe `action_executor`/`decision_engine`/`mcp_bridge`/`mcp_service`, collapse four `LLMConfig` definitions into `llm_gateway_types`, fold `orchestrator/src/lmstudio_client.rs` and `orchestrator/src/llm/` into `llm_gateway` |
+| 1 | M76 | Provider consolidation into `llm_gateway` with injected credentials; devtools deletes its six HTTP clients |
+| 2 | M77 | Extract `crates/scheduler`; delete devtools `priority_scheduler`; `paths` file-lock guard |
+| 3 | M78 | `job_contracts` shared types; `ledger` storage trait with WAL backend and devtools sled backend |
+| 4 | M79 | Verification graduation: proposal rules into `ast_auditor`, evaluator role into `compliance_auditor` |
+| 5 | M80 | `llm_manager` + assimilation state machine; split `local_worker.rs` / `agentic_registrar.rs` into Aaroneous reducers and thin devtools service wrappers |
 
-**Why**: devtools reimplements a subset of ast_auditor's checks in `verify_proposal_quality()`. The proper audit library does more thorough analysis with syn-based visitors.
+Every phase follows the graduation gate: behind an Aaroneous trait, landed inert or in shadow mode,
+origin copy deleted in the same cycle, violations ratcheted into `ast_auditor`.
 
-**Friction**: LOW. Fully synchronous, no tokio, no reqwest. Dependencies: syn, walkdir, sha2, serde.
+## Open decisions
 
-**Integration Path**:
-1. Add `ast_auditor = { path = "../../Aaroneous/crates/ast_auditor" }` to foundation_cli Cargo.toml
-2. Replace inline checks in `verify_proposal_quality()` with `audit_source_file()` calls
-3. Keep the existing checks as a fast first-pass; ast_auditor as the deep audit
+- **Pinning:** foundation crates use `../../Aaroneous` path dependencies. As devtools leans harder on
+  Aaroneous crates, pin to a git revision so an in-progress Aaroneous branch cannot break the foundry.
+- **Devtools storage:** stay on `sled` 0.34 (last stable; 1.0 still alpha) or move to `redb` when the
+  `ledger` trait lands.
 
-**Risk**: syn with full features adds compile time (~30s first build). No runtime risk.
+## History
 
-#### 2. Shared Reservation Module
-
-**What**: Deduplicate the 3 identical `Reservation(PathBuf)` structs into one devtools-internal module.
-
-**Why**: `local_worker.rs`, `multithreader.rs`, and `agentic_registrar.rs` each define the same struct with the same `Drop` implementation. This is pure duplication.
-
-**Friction**: NONE. Internal refactoring, no new dependencies.
-
-**Integration Path**:
-1. Create `foundation/crates/foundation_cli/src/reservation.rs`
-2. Move `Reservation` struct and `Drop` impl there
-3. Update all three files to import from the shared module
-
-### Tier 2: Medium Friction (Dependency Audit Needed)
-
-#### 3. governance - Resource Governors & Rollback Journal
-
-**What**: Import `governance` crate for `GenerationalJournal`, `ResourceGovernor`, and `InterferenceChecker`.
-
-**Why**: devtools' circuit breaker is a boolean flag. `GenerationalJournal` maintains promotion attempt history with rollback capability. `ResourceGovernor` could manage GPU memory budgets.
-
-**Friction**: MEDIUM. governance depends on `compute` (unknown weight). Need to audit whether `compute` brings in tokio.
-
-**Investigation Needed**:
-- Audit `compute` crate's dependency tree
-- Check if governance types can be used without `compute` features
-- Consider feature flags to exclude heavy transitive deps
-
-#### 4. llm_gateway - Types-Only Import
-
-**What**: Import `llm_gateway` types for model configuration and discovery, but not the async runtime.
-
-**Why**: devtools hardcodes `qwen3.5:9b-q6` and `http://localhost:11434`. The gateway has `ModelRegistry`, `AutoDiscoveryResult`, and `LLMConfig` types that could inform model selection.
-
-**Friction**: HIGH for full integration (async-only). LOW for types-only import.
-
-**Investigation Needed**:
-- Check if types are in a separate module without async deps
-- Consider extracting types to a shared `llm_types` crate
-- Alternative: copy the type definitions we need
-
-### Tier 3: High Friction (Extraction Required)
-
-#### 5. PriorityScheduler - Extract from Orchestrator Monolith
-
-**What**: Extract `PriorityScheduler`, `PriorityTier`, `TaskMetadata`, and `SchedulerBackpressureError` from the orchestrator crate into a standalone micro-crate.
-
-**Why**: The orchestrator is a monolith with tokio-full, reqwest, llama-gguf (default-on), and the entire agent runtime. The scheduler itself is 354 lines of pure sync code with only `uuid` and `thiserror` dependencies.
-
-**Friction**: VERY HIGH for direct import. LOW for extraction.
-
-**Investigation Needed**:
-- Verify the scheduler's exact dependency boundary
-- Check if it can be feature-gated in orchestrator
-- Alternative: reimplement the scheduler logic in devtools (354 lines)
-
-## Implementation Order
-
-1. **Shared Reservation Module** (0 deps, pure deduplication)
-2. **ast_auditor Integration** (low friction, high value)
-3. **PriorityScheduler Extraction** (medium effort, high value)
-4. **governance Audit** (investigate compute weight)
-5. **llm_gateway Types** (investigate async boundary)
-
-## Research Findings
-
-### ast_auditor: CONFIRMED FEASIBLE
-
-- **Zero async dependencies** - fully synchronous, no tokio
-- **Zero workspace-internal dependencies** - all deps are crates.io crates
-- **Can audit any .rs file** - no hardcoded path assumptions about Aaroneous checkout
-- **5 audit visitors**: AmbientAuthority, HotPathAlloc, PrefixStutter, Soundness (todo!/unimplemented!), MemoryGeometry
-- **Blockers**: Two `workspace = true` references (serde_json, tempfile) need resolution
-- **Recommendation**: Import directly. Replace inline `verify_proposal_quality()` checks with `audit_source_file()`.
-
-### PriorityScheduler: CONFIRMED TRIVIAL EXTRACTION
-
-- **222 lines of production code** (354 total with tests)
-- **Only 2 external deps**: `uuid` and `thiserror`
-- **Zero coupling** to orchestrator internals (zero `use crate::` imports)
-- **Fully synchronous** - stdlib timing, no tokio
-- **4 existing unit tests** covering ordering, capacity, backoff, and failure escalation
-- **Recommendation**: Extract to micro-crate. Copy file, create 3-line Cargo.toml, done.
-
-### governance: BLOCKED BY COMPUTE, BUT 9/11 MODULES LIGHTWEIGHT
-
-- **`compute` is a hard dependency** - pulls in tokio (full), candle-core, cranelift, hnsw_rs, rustfft
-- **9 of 11 modules have zero compute dependency** - GenerationalJournal, ResourceGovernor, InterferenceChecker, LatticeVerifier, SmtActionInterlock, ConstraintInspector, SystemHealthGovernor, UniversalMetricsExporter, JitAudit
-- **2 modules use compute**: throughput_governor (kalman, mpc, thermodynamics) and load_governor (monte carlo)
-- **Solution**: Make compute optional with feature flag `adaptive-governance`
-- **Recommendation**: Add feature gate in Aaroneous, then import governance without the flag for devtools.
-
-### llm_gateway: TYPES EXTRACTABLE, RUNTIME NOT USABLE
-
-- **Types are fully sync** - all 20+ POD types in types.rs, LLMConfig, ModelInfo, ModelType, ModelRegistry, ModelEnvironment, AutoDiscoveryResult struct
-- **Runtime is async-only** - LLMClient, LLMProvider trait, providers, cache, rate_limiter all require tokio
-- **Clean separation already exists** - types/config/registry use only std+serde, runtime layer is behind async
-- **Extraction path**: Create `llm_types` crate with types.rs, config structs, registry, environment detection. No tokio, no moka, no reqwest.
-- **One trivial refactor needed**: ModelLoader::initialize() is declared async but body is sync
-- **Recommendation**: Extract types to separate crate. Use for model selection and configuration. Don't import the async runtime.
-
-## Open Questions
-
-1. ~~Should we feature-gate the scheduler in orchestrator or extract to a new crate?~~ **EXTRACT** - trivial, 222 lines, 2 deps
-2. ~~Can governance be used without compute?~~ **YES** with feature gate on 2 modules
-3. ~~Is there a clean async/sync boundary in llm_gateway for types-only import?~~ **YES** - types are fully sync, runtime is async
-4. Should devtools pin a specific Aaroneous version or use path dependencies?
-
-## Next Steps
-
-- [x] Audit `compute` crate dependency tree
-- [x] Verify ast_auditor API compatibility with devtools' verification needs
-- [x] Check PriorityScheduler's exact dependency boundary in orchestrator
-- [x] Investigate llm_gateway module structure for types extraction
-- [ ] Implement shared Reservation module
-- [ ] Integrate ast_auditor as library dependency
-- [ ] Extract PriorityScheduler to micro-crate
-- [ ] Add feature gate for compute in governance
-- [ ] Extract llm_gateway types to separate crate
+The 2026-09-21 draft (author: mimo/opencode) planned the reverse direction (importing Aaroneous into
+devtools) and produced findings that remain accurate and were acted on: `ast_auditor` is synchronous
+and importable; `PriorityScheduler` is ~222 lines with only `uuid`/`thiserror` dependencies and zero
+coupling to orchestrator internals; 9 of 11 `governance` modules do not need `compute`; `llm_gateway`
+types are synchronous while its runtime is async. See Git history for the full text.
