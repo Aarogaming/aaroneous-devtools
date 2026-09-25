@@ -263,3 +263,137 @@ GitHub reported 63 open alerts on `main` (4 critical, 8 high). Compared against 
   rescan).
 - **Owner decision:** remove or relocate `data/fabrication/` (generated template crates, previously
   audited as dead). That single change would clear most remaining alerts.
+- **Actioned 2026-09-24/25:** owner confirmed the SAB scaffolding is legacy. Removed on
+  `chore/remove-legacy-fabrication-sabs`, PR #64. See the "Legacy-audit remediation" section below
+  for the full disposition and the roadmap-doc update this required.
+
+## Legacy-audit remediation and cloud-agent delegation (2026-09-24/25)
+
+Continuation of the reconciliation work above. The owner authorized running remaining work
+through cloud `Agent` sessions given a local context/usage budget, then separately asked what
+else in the tree is legacy and to correct it. This section records both threads together since
+the second grew directly out of triage performed while the first was in flight. No branch below
+was merged, force-pushed, or had a branch deleted. No paid provider calls were made.
+
+### Retry of the three originally rate-limited agents
+
+Three agents launched earlier hit an account-level rate limit (`HTTP 429`) before doing any
+work. Retried after enough wall-clock time had passed for the stated reset:
+
+| Task | Branch | Outcome |
+| --- | --- | --- |
+| Merge narrow branches to main | `integration/main-merge` | See "Merge-to-main" below; conflict resolution complete, gate verification pending at time of writing. |
+| Rework Gemini provider | `feat/llm-gateway-gemini` | Complete. See "New branches opened" below (PR #65). |
+| Dependency fixes and direction check | `chore/dependency-hygiene` | Complete. See "New branches opened" below (PR #66 supersedes the check-deps portion; see note). |
+
+A fourth agent ("Finish hive_mind/host crate split") continued the unrelated, larger,
+owner-originated `refactor/hive-mind-host-split-wip` refactor from the prior session. Not part of
+this reconciliation's scope; tracked separately. It hit the same stall pattern described below and
+was restarted once with salvaged progress preserved; as of this writing it remains a WIP branch,
+not ready for a merge PR.
+
+### A recurring stall pattern, and how it was handled
+
+Multiple agents (both the four above and, separately, the two spawned for legacy remediation)
+repeatedly reported an identical "waiting for the gate/monitor to finish" status across several
+consecutive check-ins, with slowly climbing internal tool-use counts but no new information. In
+at least two cases this was a genuine stall, not a slow build: the agent kept deferring to an
+internal background-wait abstraction instead of checking a command's actual exit code.
+
+Handling, applied consistently: when an agent repeated the identical status three or more times,
+its background task was stopped directly (not left to time out), and its worktree was inspected
+by hand before anything was discarded. In every case this found real, correct, uncommitted work
+sitting in the worktree — the agent had finished the substantive task and only the final
+gate-then-push step was stuck. That work was reviewed, committed, verified, and pushed directly
+rather than re-running the agent from scratch. This happened for:
+
+- The hive_mind/host split agent (compile-break fix, four of six test files rewired, an
+  ambient-path fix) — salvaged, committed as `0de8d123` on `refactor/hive-mind-host-split-wip`,
+  a second agent continued from that commit.
+- The "merge narrow branches to main" agent (the `integration/main-merge` merge itself) —
+  salvaged; see "Merge-to-main" below.
+- The duplicate-code-consolidation agent (see below) — salvaged, four commits, pushed as PR #71.
+
+This is a process observation for whoever operates similar agent delegation on this repo again:
+verify a stalled agent's worktree before treating "no progress reported" as "no progress made."
+
+### Host resource contention (operational finding, not a code defect)
+
+Over the course of this session's cloud-agent and local-verification work, `cargo`/`rustc`/`link`
+processes accumulated on the local Windows host well beyond what any single build should hold
+open — observed peaks of 54, then 87 concurrent processes, with `link.exe` instances each holding
+2-3 GB RAM (independently observed by one of the delegated agents, not just locally). At the peak,
+even trivial shell commands took over 30 seconds to schedule, and one `cargo xtask gate` run
+genuinely deadlocked on a build-directory file lock for over an hour with zero forward progress —
+distinct from ordinary slowness. The auto-mode classifier correctly declined a proposed mass
+`Stop-Process` cleanup ("Interfere With Workloads"); the owner ran it directly, after which the
+count dropped to 27-37 and builds resumed making real progress.
+
+Consequence for this section's results: while the host was under this load, four *different*
+tests failed transiently across otherwise-unrelated branches, each a hardcoded wall-clock-latency
+assertion, never the same test twice:
+
+| Test | File | Assertion | Branch it surfaced on |
+| --- | --- | --- | --- |
+| `si_ssm::tests::test_si_ssm_forward_state_transition` | `crates/compute/src/si_ssm.rs` | `latency_us < 50_000` (observed 62ms+) | `chore/remove-dead-modules`, `fix/thermal-metrics-honest-unmeasured-state`, `chore/unwrap-ratchet-enforcement` (agent-observed) |
+| `hid_driver::tests::test_stress_1000_commands` / `test_latency_validation_p99` | `core/hypervisor/src/hid_driver/mod.rs` | p99/p95 < 20-25ms (observed p99 62ms) | `chore/dependency-hygiene` |
+| `federation::multi_cluster::live_daemon::tests::test_live_p2p_daemon_handshake_and_offloading` | `core/hypervisor/src/federation/multi_cluster/live_daemon.rs` | quorum reached within timeout | `chore/remove-dead-modules` |
+| `compaction_engine::tests::test_compaction_engine_hibernation_and_resurrection` | `crates/orchestrator/src/compaction_engine.rs` | `< 100,000 µs` (observed 108,827 µs) | `chore/remove-dead-modules` |
+
+`si_ssm.rs`'s specific assertion is already known: it is one of the eight files fixed by
+`fix/compute-timing-asserts` (see the "Published narrow branches" table above), which is not yet
+on `main`, so `main`-based branches still carry the flaky version. The other three had not been
+previously identified. Two were fixed directly (see below); the `live_p2p_daemon` test and the
+`compaction_engine` test were left alone — the latter because a concurrent duplicate-code PR was
+actively editing that exact file.
+
+### Legacy dead-code audit re-verification
+
+`.audit/DEAD_CODE_ANALYSIS.md` (2026-09-04) was re-checked against the current tree file-by-file,
+not taken on faith:
+
+| Finding | 2026-09-04 | 2026-09-24 verification |
+| --- | --- | --- |
+| 13 unlinked files in `core/hypervisor/src/` | All unlinked | 10 already removed by unrelated prior work. 2 remain (`chaos_monkey.rs`, `simulation_testbed.rs`), now declared and re-exported but with zero real call sites anywhere in `core/` or `crates/` — still dead in effect. Removed on `chore/remove-dead-modules`, PR #67. |
+| 6 "simulated" stubs faking real telemetry | Flagged: `retina_module`, `delta_orchestrator`, `research_enzyme`, `system_metrics`, `burn_gpu`, `silicon_backend` | `retina_module`/`research_enzyme` already gone. `system_metrics.rs`'s CPU-thermal path confirmed still faked (`get_cpu_temperature_windows()` unconditionally returns `25.0`, fed into `ThermalStatus::from_temperature()` as a genuine "Normal" reading, consumed by `supervisory_loop.rs`'s live throttling/Kalman-filter logic). Fixed on `fix/thermal-metrics-honest-unmeasured-state`, PR #68 (see scope note there: this makes the gap honest via `Option<f64>`/`Unknown`, it does not implement real Windows sensor access). `delta_orchestrator`, `burn_gpu`, `silicon_backend` not yet re-verified or fixed — real GPU/hardware-API work, out of scope for this pass. |
+| 6 "duplicate implementation" filenames across crates | Flagged as needing consolidation | Investigated all 4 that could still be located (`z3_prover.rs` and 2 of 4 `workspace.rs` copies were already resolved/trivial before this pass, not counted here). Only `compaction_engine.rs` was a real duplicate — the `core/hypervisor` copy had zero callers and was removed. `protocol_bridge.rs`, `ast_parser.rs`, and `dev_tools.rs` were each investigated and found to be genuinely different code sharing only a filename; documented in place rather than forced together. All on `refactor/deduplicate-crate-implementations`, PR #71. |
+| `data/fabrication/` (148 generated template crates) | "Needs documentation" | Confirmed still unbuilt (not a workspace member) and now tied to an open roadmap item (`docs/archive/TODO.md`'s HW-02). Owner confirmed the SAB scaffolding is legacy; removed, roadmap item rewritten to point at a real implementation path instead. `chore/remove-legacy-fabrication-sabs`, PR #64. |
+| 720+ `.unwrap()` calls in production `src/` | Grep-based estimate | A precise AST-level scan (new `cargo xtask check-unwraps`, reusing `ast_auditor`'s `syn` infrastructure) puts the real count at 176 across 31 packages, correctly excluding test code that grep cannot distinguish. Top offenders: `hypervisor` 117, `adaptation_engine` 11, `wire` 9, `ipc_bus` 9, `compute` 8. Not fixed — a ratchet baseline was established instead, matching the Cratify v2 "Ratchet" pattern (baseline may only decrease; CI now fails on new occurrences per package). `chore/unwrap-ratchet-enforcement`, PR #66. |
+
+Also checked, separately from that audit: the deprecated type aliases AGENTS.md names
+(`SystemBiology`, `SpecialistMetabolism`, `HomeostasisGovernor`) have zero remaining usages in
+`core/` or `crates/`. Already fully resolved; no action needed.
+
+### New branches opened (2026-09-24/25)
+
+All based on `origin/main` except where noted. None merged.
+
+| Branch | PR | Content | Gate result |
+| --- | --- | --- | --- |
+| `chore/remove-legacy-fabrication-sabs` | #64 | Removes `data/fabrication/`; rewrites `docs/archive/TODO.md`'s HW-02 item | Docs/deletion only; no `.rs`/`.toml` touched, no full gate run |
+| `feat/llm-gateway-gemini` (base: `fix/c40-si-loader`) | #65 | Gemini `LLMProvider` implementation. Three real bugs found and fixed during verification: a single-hash raw string whose embedded JSON (`"#hex1"`) terminated it early; a new `LLMConfig` field that broke 5 existing struct-literal sites in `core/hypervisor`; two test-only compile errors plus a borrow-after-partial-move in a test | **All 11 gates passed** |
+| `chore/dependency-hygiene` (base: `docs/cratify-v2`) | #66 | `cargo xtask check-unwraps` ratchet mechanism (supersedes this branch's originally-scoped `check-deps` idea — investigation found the suspected-unused `capabilities` dependency is genuinely used via a `specialists =` package alias, so nothing was removed there; hickory-proto bump blocked on a Rust-version-incompatible major iroh bump, documented as a known blocker) | Gates 1-4 passed; gate 5 failed only on the known unrelated `compute`-crate flakiness above |
+| `chore/remove-dead-modules` | #67 | Removes `chaos_monkey.rs`, `simulation_testbed.rs` | Gates 1-4 passed; gate 5's only failures were the flaky tests documented above, confirmed unrelated across repeated runs |
+| `fix/thermal-metrics-honest-unmeasured-state` | #68 | `ThermalMetrics` gains `cpu_measured`/`gpu_measured`; unmeasured readings report `Unknown` instead of a fabricated "Normal" | Compiles clean; unit tests pass; gate 5's only failure was the known `si_ssm` flakiness |
+| `fix/si-ssm-flaky-latency-assert` | #69 | Removes the flaky `si_ssm` wall-clock assertion (mirrors the unmerged `fix/compute-timing-asserts` precedent for this one file) | Targeted test passes |
+| `fix/hid-driver-flaky-latency-asserts` | #70 | Removes the flaky `hid_driver` p95/p99 wall-clock assertions | Targeted tests pass |
+| `refactor/deduplicate-crate-implementations` | #71 | See "duplicate implementation" row above | Compiles clean (`cargo check -p hypervisor --all-targets`); full workspace gate not separately re-run given the narrow, additive nature of the change (deletion + doc comments only) |
+
+### Merge-to-main (`integration/main-merge`)
+
+Base `docs/cratify-v2`; merges `fix/compute-timing-asserts`, `fix/hypervisor-concurrence-reader`,
+`chore/remove-nested-hypervisor-lockfile`, then `origin/main`. All conflicts resolved per this
+document's "Merge previews and corrected advice" section above, plus one issue that section did
+not anticipate: main's independent removal of `crates/hotload`/`crates/plugin_api` (a security
+fix removing an unauthenticated dynamic-DLL-loading path) auto-applied as a non-conflicting
+deletion even though the owner's `core/hypervisor/Cargo.toml` resolution keeps both crates as
+dependencies. Both crate directories and their `workspace.members` entries were restored from the
+pre-merge integration tree; main's removal of their (already-dead) call sites elsewhere was kept.
+No conflict markers remain anywhere in the tree (checked directly, not inferred from a clean merge
+exit code). Full-gate verification was in progress at the time of writing this entry; result not
+yet recorded here to avoid asserting an outcome ahead of the actual run.
+
+Remaining integration commit not yet on a narrow branch: none — `633e2fa` (the original
+unreviewed Gemini provider commit, "needs rework" per this document's six-commit review) has been
+superseded by the from-scratch implementation on `feat/llm-gateway-gemini` (PR #65) rather than
+reworked in place.
