@@ -44,4 +44,6 @@ Main C25/C26/C27 are not integration C25/C26/C27. The integration transcript vis
 
 ## Completion
 
+C63 handoff: documentation commit `c5047e3` contains the five verified files. Its staged `git diff --cached --check` passed before commit. Independent acceptance remains pending; C64/C65/C66 are Ready, not running. The branch is local and unpushed. No implementation branch, stash, runtime or untracked scratch material was changed.
+
 Record exact base/head, changed files, actual commands/results, independent reviewer, unresolved decisions and next owner; then request Review. Done requires reviewer acceptance. Product work follows its own constitution/native gates; Foundation changes require relevant tests, strict Clippy and formatting. No product dependency on devtools is permitted.
