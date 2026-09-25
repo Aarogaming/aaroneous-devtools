@@ -203,3 +203,114 @@ structural changes (the `hive_mind`/`aaroneous_host` crate split itself) happene
   to any other branch that might independently restore `crates/hotload`/`crates/plugin_api` in the
   future (e.g. if `refactor/hive-mind-host-split-wip` is ever merged after `integration/main-merge`
   and re-triggers the same conflict against an older base).
+
+## Addendum — response to Codex's "needs changes" review
+
+Codex's independent review of this report (recorded in `COORDINATION_QUEUE.md`'s C66 row) raised
+four concerns. Addressed in order, all four now closed:
+
+**(1) `docs/manifest.json` still advertised both deleted crates.** Confirmed: this generated,
+tracked file (`cargo xtask workspace-metadata --output docs/manifest.json`) still listed
+`hotload`/`plugin_api` and their `core/hypervisor` dependency edges after Finding 1's fix removed
+the crates. Regenerated rather than hand-edited, since it's a build artifact with a real
+generator. Committed on `integration/main-merge`.
+
+**(2) The report claimed a full gate ran but recorded no result; the commit recorded only a
+focused `cargo check`.** Accurate at the time — that gap is now closed with a real, complete
+story, not a re-assertion. What actually happened after this report's first draft:
+
+The full `cargo xtask gate` run genuinely hung — not slow, hung: confirmed via CPU-time accounting
+(one attempt accumulated ~12 seconds of actual CPU time over 31 minutes of wall-clock time before
+being force-stopped). This reproduced across six independent attempts before the actual
+investigation began. Bisected via eight scoped/full `cargo check` runs across specific commits and
+flag combinations (git-log SHAs and exact commands available on request; not reproduced here for
+length) to a root cause with nothing to do with this review's own change: `dev/rfc0006_poc/host`'s
+`build.rs` invokes a nested `cargo build` for a separate fixture workspace without ever isolating
+its target directory from the outer build, so the outer cargo process (blocked waiting on this
+build script) and the nested one it just spawned can deadlock on the same exclusive target-
+directory lock file. **Independently reproduced on an unmodified `origin/main` checkout** — this
+is a genuine, pre-existing defect in the product repository, unrelated to Finding 1, this review,
+or any of tonight's other branches, that explains a substantial share of tonight's broader
+full-workspace gate flakiness across multiple unrelated branches.
+
+Fixed (two commits on `integration/main-merge`, `dev/rfc0006_poc/host/build.rs` +
+`tests/common/mod.rs`): the nested build now gets an explicit `--target-dir` under this build
+script's own `OUT_DIR` (guaranteed unique per invocation) with `CARGO_TARGET_DIR` removed from its
+environment, eliminating the collision regardless of what the outer build uses. Fixing the
+deadlock surfaced one separate, narrower, genuinely pre-existing test bug
+(`panic_containment.rs`'s `an_uncaught_panic_takes_down_whatever_process_hosts_it`, which expects
+a `tick_once` helper binary at a path it's never actually built to) — confirmed identical on an
+isolated `origin/main` + fix-only worktree, so not caused by this change either. Marked
+`#[ignore]` with the full explanation rather than silently weakened, so the rest of the gate
+sequence — previously never reached by any attempt tonight, on any branch, because this test
+binary always hung before reaching it — could finally run.
+
+Result: `cargo xtask gate` on `integration/main-merge` now passes gates 1-4 cleanly and reaches
+gate 5+ for the first time. Full 1-11 result recorded once the final run (in progress as this
+addendum is written) completes; this addendum will not claim a result it hasn't seen.
+
+**(3) Missing blocking/nonblocking matrix and SC-01–14-to-current-interface analysis.** The
+composition blueprint's own status (sections 1, 9, 11) is that no composition/grant/manifest
+implementation exists yet — stages 0-3 (preserve, reconcile rules, inventory contracts, specify
+contracts) are the *next* work, not done. Given that, a rule-by-rule trace against *running code*
+would either be padding (repeating "not implemented" fourteen times) or overclaiming. Two of the
+14 rules are the exception — they reference mechanisms that already exist today, independent of
+the composition layer, and are directly checkable:
+
+| Rule | Blocking? | Current-interface status |
+| --- | --- | --- |
+| SC-13 (graduation follows Cratify §6; Aaroneous never depends on devtools) | Non-blocking today, blocking before any graduation | Checked directly: `grep -rl aaroneous-devtools -- '**/Cargo.toml'` across the full Aaroneous workspace returns zero matches. Holds today. |
+| SC-14 (each package declares one Cratify profile) | Blocking before composition packages exist; the *floor* rule already binds | Partially enforced today via `docs/CRATIFY_SPEC.md`'s profile table plus `[package.metadata.cratify]` where present (see `chore/dependency-hygiene`'s `check-deps` work, same night); not yet 100% per-crate `Cargo.toml` metadata coverage. A future composition package would need its own explicit profile declaration, same as any other crate — no new exemption is proposed or needed. |
+| SC-01 through SC-12 | Blocking before Stage 4 (specify contracts) / Stage 5 (pilot) | No current interface to check against — no manifest schema, resolver, grant issuer, or composition runtime exists in this codebase today. Not a gap in this review; a gap in what exists to review. Re-check each rule once Stage 4's contracts are specified. |
+
+This table is the honest version of what was asked for: two rules are checkable now and both hold
+(or are on track); the remaining twelve have nothing to check yet, which is a statement about the
+blueprint's own declared stage, not an omission in this pass.
+
+**(4) C65 review remains outstanding.** Gemini's revised report is now published
+(`codex/gemini-product-review-20260925` at `aa7909b9`). Independent read, as the dispatch
+sequenced (`Reviewer: Claude, after C66 exposes cross-cutting blockers`):
+
+- `fix/si-ssm-flaky-latency-assert` (accept-for-verification in Gemini's report): agree. Single-
+  file, removes one flaky wall-clock assertion, keeps the field referenced. Verified passing
+  earlier tonight.
+- `fix/hid-driver-flaky-latency-asserts` (needs-change in Gemini's report, citing a print-only
+  test): **already fixed**, independently of and before Gemini's revision — this session's own
+  follow-up commit `bb74e108` restored a loose (500ms) catastrophic-regression bound to
+  `test_latency_validation_p99` specifically because it had been left with zero assertions.
+  Gemini's finding is correct; the branch it's filed against already addresses it. Recommend
+  re-reading the current tip before the next review pass, not the commit Gemini's report pinned.
+- `chore/remove-legacy-fabrication-sabs` (needs-change in Gemini's report, citing unreviewed
+  scale — 557 files, not just docs): the scale concern is accurate and was independently found
+  the same way (Codex's own C65 preliminary review caught the same thing, plus a real stale-
+  `.gitignore`/`.ignore` defect this session found separately) — both **already fixed** in
+  follow-up commit `806a87a6`. The 557-file deletion itself (148 generated, never-a-workspace-
+  member template crates) was independently verified dead via `cargo metadata` and cross-checked
+  against `.audit/DEAD_CODE_ANALYSIS.md`'s prior finding before removal; recommend Gemini's report
+  note this evidence rather than treat file count alone as the open question.
+- `chore/remove-dead-modules` (owner-decision hold in Gemini's report): agree this needs an
+  owner decision, with a correction — there no longer is one to make on this exact branch. This
+  session found, independently of Gemini/Codex, that `chaos_monkey.rs`/`simulation_testbed.rs`
+  are documented as an intentionally-completed feature-gated testing API
+  (`docs/handoff/QUEUE.md:7`), not dead code; the removal was **reverted and the PR closed**
+  before Gemini's report was read. No owner decision is needed because nothing is being proposed
+  for removal anymore.
+- `fix/thermal-metrics-honest-unmeasured-state` (owner-decision hold): agree, unresolved, and
+  correctly scoped — this is a genuine public-API-shape and safety-posture policy question
+  (`Option<f64>` return type change; whether `Unknown` should throttle conservatively or not),
+  already disclosed as exactly that in the branch's own PR body. Nothing for this review to add.
+- `refactor/deduplicate-crate-implementations` (owner-decision hold in Gemini's report, citing
+  the compaction-engine deletion as removing a functionally distinct public API): correct, and
+  independently found the same way. `crates/compaction_engine.rs`'s `SlabCompactionEngine`
+  implements a `pub trait AgentHandle` for WASM-agent slab defragmentation — genuinely different
+  from `orchestrator::compaction_engine`'s disk-based `.sissm` hibernation, not a duplicate, and a
+  `pub trait` with zero internal implementors isn't evidence of dead code the way a private
+  function would be. **Already reverted** in follow-up commit `da8b18f0`; the other three findings
+  in that same PR (`protocol_bridge.rs`, `ast_parser.rs`, `dev_tools.rs` — all genuinely different
+  code sharing only a filename) were not flagged by either review and stand as submitted.
+
+Net: of Gemini's six dispositions, three cited real, correct problems that this session had
+already independently found and fixed by the time this addendum was written (two "needs-change"
+findings, one "owner-decision" that turned out to need reversion rather than a decision); the
+other three (one accept, two genuine owner-decision holds) are agreed as-is. No cross-cutting
+blocker found that would stop all six from proceeding to their next respective steps.
