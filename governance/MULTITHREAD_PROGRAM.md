@@ -1,5 +1,13 @@
 # Multithread Program
 
+## Current execution priority - 2026-09-25
+
+The owner requested cross-agent reconciliation before further integration. The [current queue](COORDINATION_QUEUE.md) and [parallel dispatch](PARALLEL_RECONCILIATION_2026-09-25.md) govern this round: C64 Codex devtools/history review, C65 Gemini narrow product-candidate review, C66 Claude security/policy review, and C67 blocked proposal-only Qwen support pending backlog checks. These are three primary lanes, not permission for three simultaneous workspace builds. The queue serializes heavy verification and records acknowledgements before claims.
+
+The portfolio below is the older main-branch snapshot, not current completion evidence. The preserved integration portfolio at `d89b0e1226b783b7f594c6cd16b813f701364162:governance/MULTITHREAD_PROGRAM.md` extends through M80; C64 will reconcile it by source-qualified task and commit. Do not regenerate work because a row here is missing or still says P1/P2. In particular, C23/C24 have later completion reports, and C25-C27 were reassigned between historical ledgers. New composition/Core runtime construction and M75-M80 graduation stay on hold pending policy and baseline review. No accepted product rule is changed by this dispatch.
+
+No external agent session or worker was launched by this update. Preferred assignees must acknowledge their handoffs. Keep policy, implementation, verification, independent acceptance, merge and deployment as separate facts.
+
 This program expands the available roadmap without expanding active work beyond review capacity.
 It coordinates any number of contributors through one queue, while normally allowing three primary
 implementation lanes at once.
