@@ -43,8 +43,12 @@ process lifecycle and the served API remain an external trust dependency.
 Aaroneous already contains a better candidate path: `llm_gateway` optionally
 uses `llama-gguf 0.14` with `default-features = false` and only `cpu`. The cached
 package contains no C/C++/assembly/CUDA source files, and its build script does
-no external compilation for the CPU-only feature. That candidate still needs
-correctness, bounds and performance verification before it replaces Ollama.
+no external compilation for the CPU-only feature. That configuration is useful
+as a deterministic reference backend and CI baseline, but it is not the
+production hosting target. The replacement target is a Rust-owned inference
+host with explicit GPU backend adapters and no silent downgrade to CPU. It
+still needs correctness, bounds, accelerator provenance and performance
+verification before it replaces Ollama.
 
 ## Evidence and method
 
@@ -129,14 +133,18 @@ update policy and verification gate.
   inference component. Its ordinary dependency graph also reaches AWS-LC via
   `reqwest` and Oniguruma via `transpiler -> compute -> candle-core`, even when
   the CPU-only `llama-gguf` engine itself does not.
+- `llama-gguf 0.14` exposes `cuda`, `dx12`, `vulkan` and `metal` feature paths
+  in addition to `cpu`. Those features make GPU execution possible, but each
+  crosses a native driver/API boundary and therefore needs its own isolated
+  adapter, provenance record and verification profile.
 
 ### Required replacement shape
 
-1. Extract a minimal local-inference component containing typed generation and
-   embedding contracts, GGUF parsing/inference through CPU-only
-   `llama-gguf`, explicit model path/config inputs, bounded context/output and
-   deterministic test fixtures. It must not depend on HTTP, Candle,
-   HuggingFace tokenizers, RocksDB, SQLite, dynamic loading or GPU APIs.
+1. Extract a minimal Rust-owned local-inference core containing typed generation
+   and embedding contracts, GGUF parsing, model/scheduler/KV-cache ownership,
+   explicit model path/config inputs, bounded context/output and deterministic
+   fixtures. The core must not depend on HTTP, Candle, HuggingFace tokenizers,
+   RocksDB, SQLite, dynamic loading or a concrete GPU API.
 2. Make Aaroneous `GGUFProvider` use that component and correct all llama.cpp
    claims. Keep HTTP/Ollama as an optional compatibility adapter during measured
    migration, never as the compliant default.
@@ -144,20 +152,32 @@ update policy and verification gate.
    and the existing proposal schemas. Do not make Aaroneous depend on devtools
    or devtools source. The thin adapters remain repository-local; inference
    behavior is checked against shared versioned fixtures and exact model hashes.
-4. Run parity trials on the actual Qwen GGUF used by C67: schema conformance,
-   stop conditions, context limits, deterministic temperature-zero output,
-   malformed-model rejection, bounded memory, cancellation and crash recovery.
-5. Switch the local worker only after the Rust backend passes those gates.
+4. Define an inference-backend trait and ship a CPU reference adapter plus
+   explicit production GPU adapters. On Windows, DX12 or Vulkan can provide a
+   vendor-neutral profile; CUDA can provide an NVIDIA-specific performance
+   profile. Metal is the corresponding macOS profile. Driver/API calls and
+   backend-specific unsafe code terminate inside those adapters.
+5. Run CPU-versus-GPU parity trials on the actual Qwen GGUF used by C67: schema
+   conformance, tensor shapes, numerical tolerances, stop conditions, context
+   limits, deterministic temperature-zero output, malformed-model rejection,
+   bounded host/device memory, cancellation, device loss and crash recovery.
+6. Switch the local worker only after at least one supported GPU production
+   profile passes those gates. Production configuration must select a backend
+   explicitly and fail clearly if it is unavailable; it must not silently fall
+   back to CPU or Ollama.
    Retain Ollama as an explicitly noncompliant fallback until retired; do not
    silently route to it when the Rust backend fails.
-6. Keep acceleration separate. CUDA, DX12, Vulkan, Metal or vendor runtimes are
-   native adapter profiles and cannot be used to certify the CPU pure-Rust
-   baseline.
+7. Retain the CPU adapter for deterministic tests, portability, diagnostics and
+   an explicitly requested degraded mode. It certifies the native-free core
+   path, not production performance. CUDA, DX12, Vulkan, Metal and vendor
+   runtimes are separately certified production adapter profiles.
 
-This avoids replacing one opaque dependency with another. “Written in Rust” is
-necessary for this baseline but not sufficient: GGUF bounds checking, tensor
-shape validation, numerical parity, resource limits and adversarial model-file
-handling still require direct evidence.
+This avoids replacing one opaque dependency with another. The host can own
+model parsing, scheduling, KV cache, limits and public API in Rust while still
+using an isolated native GPU driver boundary. Such a profile is Rust-owned, not
+wholly pure Rust; GGUF bounds checking, tensor-shape validation, numerical
+parity, resource limits and adversarial model-file handling still require
+direct evidence.
 
 ## Architectural findings
 
@@ -213,10 +233,11 @@ compilation:
    crypto/network and GPU choices out of Hypervisor's default dependency set
    into explicit adapter crates/features. Establish a native-free `pure-core`
    build that exercises reducers and contracts.
-4. **P1 security decisions:** review the SDK loader ABI and select explicit
-   cryptographic provider policy. Build and verify the CPU-only Rust GGUF
-   inference component, then migrate Aaroneous and Foundation off their default
-   Ollama dependency. These require independent security review.
+4. **P1 security and inference decisions:** review the SDK loader ABI and select
+   explicit cryptographic provider policy. Build the Rust-owned GGUF inference
+   core, retain its CPU reference adapter, and verify at least one explicit GPU
+   production adapter before migrating Aaroneous and Foundation off their
+   default Ollama dependency. These require independent security review.
 5. **P2 migrations:** evaluate pure-Rust storage, regex/tokenizer and compression
    implementations against actual schemas, artifacts and performance. No
    candidate is accepted merely for being implemented in Rust.
