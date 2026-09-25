@@ -35,6 +35,17 @@ The compliant shape is a pure-Rust default core plus explicit, narrow,
 target/feature-gated adapter crates whose unsafe and native provenance is
 reviewed independently.
 
+The local-model workflow has the same provenance problem at a process boundary.
+Aaroneous and Foundation currently call Ollama over loopback. That keeps
+Ollama's implementation outside the Rust address space, but it does not make
+the runtime part of a Rust-assured base: model parsing, inference, GPU drivers,
+process lifecycle and the served API remain an external trust dependency.
+Aaroneous already contains a better candidate path: `llm_gateway` optionally
+uses `llama-gguf 0.14` with `default-features = false` and only `cpu`. The cached
+package contains no C/C++/assembly/CUDA source files, and its build script does
+no external compilation for the CPU-only feature. That candidate still needs
+correctness, bounds and performance verification before it replaces Ollama.
+
 ## Evidence and method
 
 The inspected checkout's `Cargo.toml` files and `Cargo.lock` have no diff from
@@ -100,6 +111,54 @@ are isolated by target/feature, excluded from pure-core profiles, and backed by
 an allowlist naming owner, purpose, implementation language, unsafe surface,
 update policy and verification gate.
 
+## Local inference runtime boundary
+
+### Current state
+
+- Aaroneous `llm_gateway::providers::local` sends Ollama-specific
+  `/api/generate` and `/api/embeddings` requests to an injected endpoint.
+- Foundation's `local-proposal`, intake generator, worker and registrar also
+  speak Ollama-specific loopback HTTP and name Ollama in their error contracts.
+- Operational policy pins Qwen through Ollama. The model weights may be local,
+  but the inference implementation is not governed by the Rust workspace.
+- Aaroneous's `GGUFProvider` already executes `llama_gguf::engine::Engine`
+  in-process when `llama-gguf` is enabled. Its comments incorrectly describe
+  this as “direct integration with llama.cpp”; the selected crate is a separate
+  Rust implementation.
+- The current `llm_gateway` crate is not yet a clean proof of a pure-Rust
+  inference component. Its ordinary dependency graph also reaches AWS-LC via
+  `reqwest` and Oniguruma via `transpiler -> compute -> candle-core`, even when
+  the CPU-only `llama-gguf` engine itself does not.
+
+### Required replacement shape
+
+1. Extract a minimal local-inference component containing typed generation and
+   embedding contracts, GGUF parsing/inference through CPU-only
+   `llama-gguf`, explicit model path/config inputs, bounded context/output and
+   deterministic test fixtures. It must not depend on HTTP, Candle,
+   HuggingFace tokenizers, RocksDB, SQLite, dynamic loading or GPU APIs.
+2. Make Aaroneous `GGUFProvider` use that component and correct all llama.cpp
+   claims. Keep HTTP/Ollama as an optional compatibility adapter during measured
+   migration, never as the compliant default.
+3. Add an independent Foundation adapter using the same upstream Rust engine
+   and the existing proposal schemas. Do not make Aaroneous depend on devtools
+   or devtools source. The thin adapters remain repository-local; inference
+   behavior is checked against shared versioned fixtures and exact model hashes.
+4. Run parity trials on the actual Qwen GGUF used by C67: schema conformance,
+   stop conditions, context limits, deterministic temperature-zero output,
+   malformed-model rejection, bounded memory, cancellation and crash recovery.
+5. Switch the local worker only after the Rust backend passes those gates.
+   Retain Ollama as an explicitly noncompliant fallback until retired; do not
+   silently route to it when the Rust backend fails.
+6. Keep acceleration separate. CUDA, DX12, Vulkan, Metal or vendor runtimes are
+   native adapter profiles and cannot be used to certify the CPU pure-Rust
+   baseline.
+
+This avoids replacing one opaque dependency with another. “Written in Rust” is
+necessary for this baseline but not sufficient: GGUF bounds checking, tensor
+shape validation, numerical parity, resource limits and adversarial model-file
+handling still require direct evidence.
+
 ## Architectural findings
 
 1. **Default profile is not a compliance profile.** `default = []` on
@@ -155,7 +214,9 @@ compilation:
    into explicit adapter crates/features. Establish a native-free `pure-core`
    build that exercises reducers and contracts.
 4. **P1 security decisions:** review the SDK loader ABI and select explicit
-   cryptographic provider policy. These require independent security review.
+   cryptographic provider policy. Build and verify the CPU-only Rust GGUF
+   inference component, then migrate Aaroneous and Foundation off their default
+   Ollama dependency. These require independent security review.
 5. **P2 migrations:** evaluate pure-Rust storage, regex/tokenizer and compression
    implementations against actual schemas, artifacts and performance. No
    candidate is accepted merely for being implemented in Rust.
