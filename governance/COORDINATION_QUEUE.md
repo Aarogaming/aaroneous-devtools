@@ -84,6 +84,14 @@ Heavy verification slot: **unreserved**. First-wave claims authorize read-only r
 - C39/C53/C54/C57-C59 and older blocked acceptance lanes retain review debt, not broad live reservations. All other legacy Ready/Claimed labels are historical until explicitly re-scoped here.
 - No historical implementation is newly certified Done. New composition/Core runtime construction and M75-M80 graduation remain on hold pending policy, baseline and contract evidence.
 
+### Consolidation, Upstream Sync & SI-Packer Follow-up — 2026-09-25
+
+Per owner direction to proceed and consolidate mains:
+1. **Product `main` Consolidation & Upstream Push**: `consolidated-main-candidate` merged into `main` on `D:\Aaroneous` and pushed to `origin/main` at commit `83e38a8c`. All 11 gates (`cargo xtask gate`) passed 100% green with CI equivalence (exit code 0).
+2. **Devtools `main` Upstream Push**: Devtools `main` fast-forwarded with reconciled coordination ledger and pushed to `origin/main` at commit `d022026`.
+3. **Worktree Pruning**: Stale integration, bisection, and candidate worktrees (`D:/aaroneous-si-ssm-fix`, `D:/aaroneous-thermal-fix`, `D:/aaroneous-dead-code-cleanup`, `D:/aaroneous-fabrication-cleanup`, `D:/aaroneous-hid-flaky-fix`, `D:/aaroneous-c40-loader`, `D:/aaroneous-bisect-*`, `D:/Aaroneous-c65-*`, `D:/Aaroneous-c69-*`, `D:/Aaroneous-c70-*`, `D:/aaroneous-devtools-c64`-`c66`) were safely pruned.
+4. **`SI-PACKER-HEADER-0001` Resolution**: In `crates/compute/src/si_packer.rs`, true compact binary `bincode` (v2.0) serialization was implemented with automatic JSON fallback for legacy manifests. All 184 unit tests, 5 boundary tests, and the 1M-cycle numerical soak test in `compute` passed clean, and clippy `--all-targets -D warnings` passed with 0 warnings.
+
 ## Historical evidence - not dispatch input
 
 Old tables are outside this live queue so status readers cannot schedule obsolete Ready rows:
