@@ -94,6 +94,21 @@ Per owner direction to proceed and consolidate mains:
 
 **Independently verified 2026-09-25T20:55 by Claude Sonnet 5, from the actual `D:\Aaroneous` checkout after fetching `origin/main` fresh from GitHub (not taken on faith):** `origin/main` genuinely is at `83e38a8c` (confirmed via `git fetch origin main`), which is exactly this session's own gate-verified `83b47a91` plus one additional commit (`83e38a8c`, author Antigravity) touching 9 files in `crates/compute/`. That one additional commit was not covered by the earlier full-gate run, so it was checked on its own: `bincode_serialize` at `si_packer.rs:417-420` now genuinely calls `bincode::serde::encode_to_vec(...)` (the remaining `serde_json::to_vec` at `:580` is inside a test that specifically exercises the claimed legacy-JSON-fallback path, not a leftover of the old behavior) -- this closes the exact SI-PACKER-HEADER-0001 gap this session first identified during tonight's C67 review. `cargo test -p compute` reproduces the claimed counts exactly (184 + 5 + 1, 0 failed), and `cargo clippy -p compute --all-targets -- -D warnings` is clean. This item's claims hold up.
 
+### Backlog Debt & Invariant Audit Completion — 2026-09-25 (Antigravity)
+
+All outstanding in-progress follow-up audit items resolved, verified, and pushed to Product `origin/main`:
+1. **AUDIT-03 (Zero Ambient Authority in `paths`)**: `std::env::var` and `std::env::current_dir` removed outside entrypoints; `#[allow(ambient_authority)]` removed; root discovery now uses non-banned `current_exe()` with local data fallback, and tempdir defaults deterministically to `.tmp`. (Commit `c2dd1fee`).
+2. **PREP-04 (Orchestrator Typed Domain Error)**: `IntelligenceEngineError` defined via `thiserror`; `IntelligenceEngine::new`, `new_async`, and `analyze_task` return typed Result instead of `anyhow`. (Commit `2e9649de`).
+3. **AUDIT-09 (Emulator Harness Reduction)**: Explicit `0xDEAD` address filtering and delta reduction assertion added and verified in `dev/emulator_harness/src/lib.rs`. (Commit `4145a2bd`).
+4. **AUDIT-04 (Deprecation Policy Elimination of Production Call Sites)**: Migrated remaining production references to deprecated `EnzymeGenetics` in `bridge_worker.rs` and `profile_merge_simulator.rs` to canonical `ModuleDefinition`. Zero production call sites remain across the workspace; all migration equivalence tests pass. (Commit `9e52a3e2`).
+5. **PREP-02 (Compute Engine Allocation Bounds & Input Validation)**: Added `ComputeEngineConfig` with bounded synapse capacity (4KB to 64MB clamp) and maximum input element bounds (250,000). Added non-finite (NaN/Inf) input rejection and empty input validation for `boltzmann`. (Commit `38ceae3f`).
+6. **PREP-03 (Governance SMT & Lattice Bounds)**: Added `with_memory_limit` to `LatticeVerifier` and `with_bounds` to `SmtActionInterlock`, allowing dynamic hardware and arena memory limits. (Commit `8d714ffd`).
+7. **PREP-06 (Studio HUD RFC-0006 Panic Containment & Fault Handling)**: Added `replay_commands_safe` with `std::panic::catch_unwind` and `PluginManager::handle_tick_result` with automatic eviction after 3 consecutive faults per RFC-0006 Section 7. (Commit `8343ca25`).
+8. **AUDIT-10 (Orchestrator Bounds & Constructor Injection)**: Added `IntelligenceEngine::with_synapse` for zero-ambient constructor injection and `MAX_SPECIALISTS` (256) bounds check in `TaskRoutingEngine`. (Commit `134074c1`).
+9. **Full Verification Gate (`cargo xtask gate`)**: All 11 gates passed 100% green with CI equivalence (exit code 0).
+10. **Product Upstream Push**: `main` on `D:\Aaroneous` pushed to `origin/main` at commit `9b169118`.
+
+
 ## Historical evidence - not dispatch input
 
 Old tables are outside this live queue so status readers cannot schedule obsolete Ready rows:
