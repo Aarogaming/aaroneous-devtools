@@ -122,6 +122,17 @@ Executed standalone removal for all v0.3.3 deprecated type aliases and legacy pa
 5. **Documentation & Policy Updated**: Updated remaining internal doc comments to canonical `AgentProfile` terminology and marked all checklist items complete in `docs/DEPRECATION_POLICY.md`.
 6. **Verification & Push**: All 11 gates (`cargo xtask gate`) passed 100% green with CI equivalence (exit code 0). Committed as `5b9dada1` and pushed to Product `origin/main`.
 
+### Phase 38 / Milestone M32: Capability Broker, Crucible Sandbox & Pacing Governance — 2026-09-25 (Antigravity)
+
+Finalized the Phase 38 capability broker boundaries, sealed Crucible sandbox pacing, and thermodynamic backpressure governance per `PHASE-38-CAPABILITY-BROKER.toml`:
+1. **Flaky RDTSC Test Hardened**: In `crates/platform_bridge/src/observability/rdtsc.rs`, replaced the hardcoded sub-millisecond cycle threshold with preemption-tolerant monotonicity assertions matching the established pattern in `si_ssm` and `hid_driver`.
+2. **Signed Capability Token Sandboxing**: In `crates/mcp_server/src/capability_broker.rs` and `core/hypervisor/src/capability_broker.rs`, implemented HMAC-SHA256 signed `CapabilityToken` issuance, validation, and expiration, with `SandboxPolicy` (`Airgapped`, `ReadConstrained`, `FullPrivilege`).
+3. **Thermal Backpressure & Dirty-Flag Pacing**: Integrated dynamic `ThermalBackpressureLevel` (`Nominal`, `Throttled`, `Critical`) and atomic `dirty_generation` tracking in both capability brokers and `crates/compute/src/crucible.rs`'s `CrucibleSandbox`.
+4. **State Publisher & Consensus Engine Synchronization**: Connected `EngineStatePublisher`'s `GovernorPacing` to the capability broker, and added `propose_thermal_response` and `ratified_thermal_tier` to `core/hypervisor/src/consensus_engine.rs` for multi-node consensus-driven thermal throttling.
+5. **Roadmap & Evidence Alignment**: Updated `docs/roadmap.md` Section 3.2 marking Phase 38 / M32 complete with cited evidence.
+6. **Verification & Push**: Full 11-gate sequential verification gate protocol (`cargo xtask gate`) passed 100% green with CI equivalence (exit code 0). Committed as `e02f4b1f` and pushed to Product `origin/main`.
+
+
 
 ## Historical evidence - not dispatch input
 
