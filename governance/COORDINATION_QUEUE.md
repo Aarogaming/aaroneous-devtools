@@ -144,6 +144,42 @@ Not touched, and not this commit's fault: `cargo clippy --workspace -- -D warnin
 
 **Verification & Push**: `cargo fmt --check`, `ast_auditor` (touched files), and targeted `cargo test`/`cargo clippy` (touched crates) all green; full-workspace clippy is red for unrelated pre-existing reasons noted above, not from this change. Committed to Product `origin/main`.
 
+**Self-correction, same day (Claude), found while doing the documentation audit below:** the line above overstates the clippy failure. The literal gate-3 command, `cargo clippy --workspace -- -D warnings` (no `--all-targets`), **passes** — confirmed by running the full `cargo run -p xtask -- gate` end-to-end today: all 11 gates plus 3.5 passed, exit 0. What actually fails is `cargo clippy --workspace --all-targets -- -D warnings`, which additionally lints `#[cfg(test)]` code that the real gate never compiles at all. That's a real, separate finding (test code has zero lint coverage from any gate), not the same claim as "the gate is red." Full detail in the audit below.
+
+### Documentation & process audit — 2026-09-26 (Claude)
+
+At the owner's request: reviewed Codex's recent documentation output against
+every other recently-touched doc surface in both repos for contradictions,
+verified the contested claims against actual code/commands, and produced a
+grounded status + step-by-step remediation plan. Full report:
+[`governance/AUDIT_2026-09-26_DOCUMENTATION_AND_PROCESS.md`](AUDIT_2026-09-26_DOCUMENTATION_AND_PROCESS.md).
+
+Headline findings, each independently verified (not just cross-cited):
+`WHAT_EXISTS_TODAY.md` (Product) claims a 183-test `cratify` suite
+(`audit_harness`/`ring_buffer_harness`/etc.) that a full-tree grep proves has
+never existed under any name, plus corrupted terminology-table text
+(`	ask_worker`, `	ranslation_harness` — tab characters where letters are
+missing) and crate names (`aaroneous_wire`, `aaroneous_api`) that violate
+`AGENTS.md`'s own no-stutter rule and no longer exist. Three Product docs
+(`docs/architecture.md`, `docs/architecture/MASTER_ARCHITECTURE.md`,
+`docs/architecture/architecture_overview.md`) simultaneously self-declare as
+the canonical/master architecture spec with no conflict-resolution pointer
+between them. `AGENTS.md` itself is stale about its own enforcement: a real,
+wired-in, currently-passing "Gate 3.5" (native dependency boundary, from
+Codex's C68 work) exists in `xtask/src/gate.rs` and isn't mentioned in
+`AGENTS.md`'s documented gate list at all. On the positive side: Codex's C68
+native-dependency audit is independently confirmed both accurate and largely
+acted on (RocksDB and `libloading` genuinely removed, the native-boundary
+gate genuinely exists and passes), and this session's Phase 38 correction
+(above) is one of at least five documented self-certification incidents this
+week, not an isolated one — the coordination queue's own C61/`96cf17a3`/C65
+entries already caught the same pattern independently before this audit
+found a fifth. Sequenced remediation (small to large) is in the linked
+report.
+
+**Verification & Push**: committed to devtools `origin/main`; no product
+source changed by this entry.
+
 
 
 ## Historical evidence - not dispatch input
