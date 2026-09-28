@@ -6,6 +6,48 @@ Owner direction: coordinate Codex, Gemini/Antigravity, Claude and bounded local 
 
 Canonical local ledger: `D:\aaroneous-devtools\governance\COORDINATION_QUEUE.md`, on `codex/coordination-reconciliation-20260925`. Read this file even from another worktree. This branch is local, not remotely published. Do not switch the shared checkout, pop preserved stashes or use an old worktree's ledger as current authority.
 
+## Standing rule: evidence retention (added 2026-09-27, see the 2026-09-26 audit below)
+
+No row or entry in this file may claim `Done`, `PASS`, or "gate green" without citing, in the same edit: the exact command run, the exit code (or a quoted terminal line that states it, e.g. `ALL REQUIRED GATES PASSED`), and either a retained log path/commit hash or a worktree location a reviewer can re-check. "I ran the gate and it passed" with nothing else is not evidence and gets reverted to `Review` on sight, regardless of who wrote it or whether the underlying claim turns out to be true — see the C69 row below for what happens when an unevidenced claim happens to be correct anyway: it still gets rejected when made, and re-verified with a retained log before being accepted. This isn't new policy; it's what the *good* rows in this file already do (C69's real-gate-result entry, C68's audit). This just makes it non-optional going forward instead of something a reviewer has to keep re-discovering after the fact.
+
+### Audit remediation, items 1-8 — 2026-09-27 (Claude)
+
+Executed the small/medium items from the 2026-09-26 audit's remediation plan
+(`governance/AUDIT_2026-09-26_DOCUMENTATION_AND_PROCESS.md`), verified with a
+real `cargo xtask gate` run before committing, per the standing rule above:
+
+1. Fixed all 91 real errors surfaced by `cargo clippy --workspace
+   --all-targets -- -D warnings` (the audit's Finding 3 blind spot), then
+   widened Gate 3 in `xtask/src/gate.rs` and `.github/workflows/ci.yml` to
+   `--all-targets` so it can't silently reopen. Kept `GATE_COMMANDS`'s
+   drift-detection tests passing (`cargo test -p xtask`: 9/9 ok).
+2. Documented Gate 3.5 (native dependency boundary, Codex's C68 work) in
+   `AGENTS.md`, which never mentioned it despite it being real and passing.
+3. Added `rust-toolchain.toml` pinning stable `1.98.1`, matching CI's
+   `dtolnay/rust-toolchain@stable` exactly, confirmed by building the
+   affected crates clean under it before pinning.
+4. Rebuilt `WHAT_EXISTS_TODAY.md` from actual current facts instead of
+   patching the fabricated 183-test claim and corrupted terminology table.
+5. Added canonical-doc redirect banners to `docs/architecture.md` and
+   `docs/architecture/architecture_overview.md`, pointing at
+   `MASTER_ARCHITECTURE.md` (resolves the three-way canonical collision).
+6. Removed stray untracked local `crates/hotload`/`crates/plugin_api`
+   leftovers (not git-tracked; no product commit needed).
+7. Added the evidence-retention standing rule above.
+
+Deliberately **not** touched: items 9-11 (native-dependency P1
+remediation, Phase 38's production-integration scope, mechanical
+agent-authority enforcement) — each needs an owner decision, not just
+execution; doing them unilaterally here would repeat the exact pattern
+the audit was about.
+
+**Verification & Push**: `cargo run -p xtask -- gate` on Product `main`
+after all edits, real terminal output: `=== ALL REQUIRED GATES PASSED
+(CI-equivalent) ===`, exit code 0 (retained at
+`gate_final2.log` in this session's scratch dir — reproduce with a fresh
+`cargo xtask gate` run rather than trusting the log path across sessions).
+Committed as `d2ed8588` and pushed to Product `origin/main`.
+
 ## Active and ready lanes
 
 Only this table grants current claims. Ready means available for acknowledgement, not running. Codex serializes ledger edits: send the lane ID, exact branch/worktree, output and UTC start; wait for the visible claim before writing. Claims expire after 24 hours without an update; expiry never discards dirty work. No self-certification or automatic merge authority.
