@@ -3,6 +3,16 @@
 Short decisions prevent rediscovering old tradeoffs. Add a dated entry when a choice affects a
 contract, dependency direction, security boundary, or long-term maintenance cost.
 
+## 2026-09-28 — Wrote the cross-agent coordination protocol AGENTS.md already pointed to
+
+`AGENTS.md` (Product repo) has referenced `governance/CROSS_AGENT_COORDINATION_PROTOCOL.md` and
+`governance/ROUND_TABLE_INTRO_PROMPT.md` since at least 2026-09-23; neither existed until the owner
+asked directly what tasks are safe to hand Antigravity and how to prompt it, after the 2026-09-26/27
+audit found the same unevidenced-claim pattern recurring five times. Both files now exist, with
+dated, cited per-agent notes (not personality judgments) and a concrete "scope as tripwire, not
+description" prompting rule. Branch protection (enabled 2026-09-27, see `GIT_WORKFLOW.md`) is named
+in both as the actual mechanical fix; the prompting guidance reduces friction, it doesn't replace it.
+
 ## 2026-09-16 — Rust-first foundation with explicit external inputs
 
 Foundation logic is Rust. External support directories are allowed only as explicit CLI or manifest
