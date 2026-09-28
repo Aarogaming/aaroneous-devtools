@@ -48,6 +48,45 @@ after all edits, real terminal output: `=== ALL REQUIRED GATES PASSED
 `cargo xtask gate` run rather than trusting the log path across sessions).
 Committed as `d2ed8588` and pushed to Product `origin/main`.
 
+### Audit items 10-11 executed, item 9 scoped (not started) — 2026-09-27 (Claude)
+
+Owner decisions on the three remaining audit items (all three questions
+asked directly, all three answered same session):
+
+- **Item 10 (Phase 38 integration scope) — "wire it into one real dispatch
+  path."** Done: `mcp_server`'s `tools/call` JSON-RPC handler now dispatches
+  through `execute_tool_with_token` instead of the ungated `execute_tool`.
+  Self-issued service-level token, not per-caller auth — scope documented in
+  `docs/roadmap.md`. New test (`test_tools_call_is_actually_gated_by_thermal_backpressure`)
+  proves thermal backpressure now actually rejects a live tool call.
+  `cargo test -p mcp_server`: 28/28 pass. Full `cargo run -p xtask -- gate`:
+  `=== ALL REQUIRED GATES PASSED (CI-equivalent) ===`, exit 0, before
+  opening the PR. Product PR: Aarogaming/aaroneous#75 (branch
+  `feat/phase38-mcp-token-dispatch`), pending required CI checks per the
+  branch protection below before merge.
+- **Item 11 (agent authority enforcement) — both options selected.**
+  GitHub branch protection enabled on `main` for both this repo and Product
+  `aaroneous` (`enforce_admins: true`, PR required to merge,
+  `required_approving_review_count: 0`; Product additionally requires its
+  `Check & Test` CI job on both OS legs). Devtools PR
+  Aarogaming/aaroneous-devtools#4 (merged) also added
+  `scripts/check_coordination_evidence.py` and
+  `.github/workflows/coordination-evidence.yml`, which fails a PR that adds
+  an unevidenced Done/PASS/"gate green" claim to this file. Tested against
+  real history (passes) and a synthetic bad entry (correctly fails, then
+  reverted). Documented in `governance/GIT_WORKFLOW.md`.
+- **Item 9 (native-dependency P1 remediation) — "scope it into a concrete
+  phased plan first."** Done, no code changed: six ordered, independently-
+  shippable slices (allocator, crypto provider, SQLite, tokenizer/Candle,
+  GPU isolation, Rust-owned inference core) with effort/risk estimates and
+  acceptance criteria each, building directly on Codex's C68 report without
+  adding new findings. Full plan:
+  [`inventories/C68_P1_PHASED_REMEDIATION_PLAN_2026-09-27.md`](../inventories/C68_P1_PHASED_REMEDIATION_PLAN_2026-09-27.md).
+  Nothing in it is claimed started; each slice needs its own queue claim.
+
+**Verification & Push**: this entry itself + the phased-plan doc, via PR
+(branch protection). No product source changed by this entry.
+
 ## Active and ready lanes
 
 Only this table grants current claims. Ready means available for acknowledgement, not running. Codex serializes ledger edits: send the lane ID, exact branch/worktree, output and UTC start; wait for the visible claim before writing. Claims expire after 24 hours without an update; expiry never discards dirty work. No self-certification or automatic merge authority.
