@@ -161,7 +161,7 @@ Heavy verification slot: **unreserved**. First-wave claims authorize read-only r
 
 - Saved-integration C55/C56/C60 have expired. Their reservations are released by this handoff; C64 carries evidence and outstanding acceptance work. Check every dirty worktree before any later source edit.
 - C61 was not expired at this update. Codex explicitly releases its broad product reservation under the owner's construction hold. Work remains preserved at `refactor/hive-mind-host-split-wip` / `cd9f7952`; C66 is review-only.
-- C62 remains a proposal, not adopted policy. Its two architecture documents remain in `0bf9b6ff7cd16bbe1c776ed10e872d1895fab736^3:architecture/`. C66 reviews them without popping the stash.
+- C62 remains a proposal, not adopted policy. Its two architecture documents were recovered 2026-09-27 from the stash reference below (they had been sitting untracked and unfindable) to [`architecture/SYSTEM_COMPOSITION_BLUEPRINT.md`](../architecture/SYSTEM_COMPOSITION_BLUEPRINT.md) and [`architecture/SYSTEM_COMPOSITION_REVIEW.md`](../architecture/SYSTEM_COMPOSITION_REVIEW.md), verbatim, still marked as a proposal. C66 originally reviewed them from the stash directly.
 - C39/C53/C54/C57-C59 and older blocked acceptance lanes retain review debt, not broad live reservations. All other legacy Ready/Claimed labels are historical until explicitly re-scoped here.
 - No historical implementation is newly certified Done. New composition/Core runtime construction and M75-M80 graduation remain on hold pending policy, baseline and contract evidence.
 
@@ -268,7 +268,7 @@ source changed by this entry.
 Old tables are outside this live queue so status readers cannot schedule obsolete Ready rows:
 
 - [Main transcript](archive/COORDINATION_QUEUE_MAIN_2026-09-25.md): `e2d9ff62b947122404ee27b83ccf7a2a5c4a7b46`.
-- [Saved integration transcript](archive/COORDINATION_QUEUE_INTEGRATION_2026-09-25.md): stash `0bf9b6ff7cd16bbe1c776ed10e872d1895fab736`, including C61/C62.
+- [Saved integration transcript](archive/COORDINATION_QUEUE_INTEGRATION_2026-09-25.md): stash `0bf9b6ff7cd16bbe1c776ed10e872d1895fab736`, including C61/C62. C62's two architecture documents were recovered from this stash's untracked-files parent (`^3`) to `architecture/SYSTEM_COMPOSITION_BLUEPRINT.md`/`SYSTEM_COMPOSITION_REVIEW.md` on 2026-09-27 — the stash itself is retained for the rest of its contents (C61), not just for those two files.
 - [Audit findings, source-qualified ID map and handoffs](PARALLEL_RECONCILIATION_2026-09-25.md).
 
 Main C25/C26/C27 are not integration C25/C26/C27. The integration transcript visibly escapes 26 existing control characters; C22/C35/C42-C52 lack intact rows and require history-based reconstruction. Exact originals remain in Git. Do not guess missing IDs, overwrite old evidence or manufacture acceptance.
