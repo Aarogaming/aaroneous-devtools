@@ -1,0 +1,19 @@
+name: Coordination Evidence Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "governance/COORDINATION_QUEUE.md"
+
+jobs:
+  evidence-check:
+    name: Evidence Retention Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check COORDINATION_QUEUE.md for unevidenced Done/PASS claims
+        run: python3 scripts/check_coordination_evidence.py "origin/${{ github.base_ref }}" "HEAD"
