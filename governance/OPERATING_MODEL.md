@@ -73,6 +73,10 @@ Until a transition increment is independently accepted, existing worker and
 scheduler components remain the maintained behavior; no new looping service is
 introduced merely by this documentation.
 
+Active coordination conflicts use the bounded
+[round-table decision board](ROUND_TABLE_DECISIONS.md), not an unstructured
+chat transcript or a second work queue.
+
 ## Daily operation and maintenance
 
 Start by checking repository state, running-service health and pending review debt. Review existing results before adding more jobs. Schedule only useful evidence-backed work; idle is a valid healthy state. Pause on missing tools, unavailable local models or spending limits rather than spinning indefinitely.
