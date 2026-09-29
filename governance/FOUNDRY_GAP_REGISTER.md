@@ -60,15 +60,17 @@ second queue; `COORDINATION_QUEUE.md` remains the sole claim authority.
   those two state domains.
 - Risk: devtools can recreate a product registry or infer gate semantics from
   prose rather than consuming a revision-bound product record.
-- Disposition: **C82 Ready** — specify the Foundry adapter-manifest contract
-  and its read-only status surface, consuming C79's export.
+- Disposition: **C82 Blocked on C79** — specify the Foundry adapter-manifest
+  contract and its read-only status surface only after C79's export is
+  accepted.
 
 ## G-2026-05 — gap tracking is documented but not mechanically checked
 
 - Boundary: governance freshness.
-- Evidence: the companion operating model previously required reviewed
-  findings to enter an inbox, but did not require a verified architectural or
-  service gap to retain a corrective disposition.
+- Evidence: `governance/OPERATING_MODEL.md:45-48` requires reviewed findings
+  to enter an inbox and receive a portfolio ID/acceptance criterion, but did
+  not require a verified architectural or service gap to retain a corrective
+  disposition.
 - Risk: reviews discover defects that remain chat-only and drift away from the
   queue before design or implementation begins.
 - Disposition: **C83 Ready** — add a deterministic register-to-queue policy
