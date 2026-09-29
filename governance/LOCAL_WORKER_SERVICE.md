@@ -2,6 +2,10 @@
 
 This service makes the PC an unattended Rust support-work processor. It polls a directory of approved TOML jobs every two minutes and processes at most one new job per poll with local `qwen3.5:9b-q6`. It uses no cloud-model API and does not spend Codex credits. It is a support lane, not an autonomous product committer.
 
+> **Status note (2026-09-29):** the "Installed runtime" section below describes 2026-09-16. No matching Windows scheduled task was found on 2026-09-29, and the
+> copied `foundation.exe` in the runtime root predates current `main`. Current operating procedure, delegation choice and inbox/outbox handling are in
+> [LOCAL_WORKER_OPERATIONS.md](LOCAL_WORKER_OPERATIONS.md); prefer `local-worker-serve` over an OS scheduled task.
+
 ## Scheduling and isolation
 
 | Service | Schedule | Role |
