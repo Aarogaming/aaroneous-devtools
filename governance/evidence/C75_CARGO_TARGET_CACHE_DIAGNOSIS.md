@@ -10,16 +10,19 @@ All six runs used worktree
 working directory `foundation`, and command `cargo test --all-targets`.
 
 Runs `default-environment-{1,2,3}.log` had no per-command
-`CARGO_TARGET_DIR`/`CARGO_INCREMENTAL` override. The user Cargo config then
-contained `[build] target-dir = "C:\\CargoTargetCache"`; output used that
-shared cache. Exit results: run 1: 0 (76 CLI tests); run 2: 101, with the
-named rollback test failing because broken source unexpectedly passed Cargo
-check (75 passed, 1 failed); run 3: 0 (76 CLI tests).
+`CARGO_TARGET_DIR`/`CARGO_INCREMENTAL` override. Before those runs, effective
+process, user, and machine values for both variables were empty. The exact
+Cargo config path `C:\\Users\\aarog\\.cargo\\config.toml` then contained
+`[build] target-dir = "C:\\CargoTargetCache"`; output used that shared cache.
+Exit results: run 1: 0 (76 CLI tests); run 2: 101, with the named rollback
+test failing because broken source unexpectedly passed Cargo check (75 passed,
+1 failed); run 3: 0 (76 CLI tests).
 
-At owner direction that `build.target-dir` entry was removed. The same command
-then produced `post-default-{1,2,3}.log`, used normal worktree `target\`
-output, and exited 0 each time (76 CLI tests plus 12 maintenance-UI and 4 UI
-tests).
+At owner direction that `build.target-dir` entry was removed. After removal,
+the same process, user, and machine environment values remained empty and the
+same config file was zero bytes. The same command then produced
+`post-default-{1,2,3}.log`, used normal worktree `target\` output, and exited
+0 each time (76 CLI tests plus 12 maintenance-UI and 4 UI tests).
 
 ## SHA-256 retained-log references
 
