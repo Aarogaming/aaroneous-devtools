@@ -212,6 +212,65 @@ fn backtick_quotes(text: &str) -> Vec<&str> {
         .collect()
 }
 
+/// Parses the first `line N` / `lines A-B` citation in `text` as an inclusive 1-based range.
+fn cited_line_range(text: &str) -> Option<(usize, usize)> {
+    let lower = text.to_ascii_lowercase();
+    let at = lower.find("line")?;
+    let rest = &lower[at + 4..];
+    let rest = rest.strip_prefix('s').unwrap_or(rest).trim_start();
+    let digits = |s: &str| -> (usize, usize) {
+        let end = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+        (s[..end].parse().unwrap_or(0), end)
+    };
+    let (start, used) = digits(rest);
+    if used == 0 || start == 0 {
+        return None;
+    }
+    let tail = rest[used..].trim_start();
+    let tail = tail
+        .strip_prefix('-')
+        .or_else(|| tail.strip_prefix('\u{2013}'));
+    let end = match tail {
+        Some(t) => {
+            let (n, used_end) = digits(t.trim_start());
+            if used_end == 0 { start } else { n.max(start) }
+        }
+        None => start,
+    };
+    Some((start, end))
+}
+
+/// Returns indices of observations whose cited line range does not contain their quoted text.
+///
+/// An observation that cites `line N` or `lines A-B` and quotes `backticked` text (8+ chars)
+/// is rejected when any quote is absent from those lines of `evidence` (whitespace
+/// normalised). Observations without a citation or without a quote are not reported here:
+/// they are unverifiable, not wrong (use [`unanchored_observations`] for quote presence).
+pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str) -> Vec<usize> {
+    let lines: Vec<&str> = evidence.lines().collect();
+    observations
+        .iter()
+        .enumerate()
+        .filter(|(_, observation)| {
+            let Some((a, b)) = cited_line_range(observation) else {
+                return false;
+            };
+            let quotes = backtick_quotes(observation);
+            if quotes.is_empty() {
+                return false;
+            }
+            let end = b.min(lines.len());
+            let window = if a > end {
+                String::new()
+            } else {
+                normalize(&lines[a - 1..end].join("\n"))
+            };
+            quotes.iter().any(|q| !window.contains(&normalize(q)))
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -353,5 +412,39 @@ mod tests {
     #[test]
     fn a_real_trailing_comment_is_still_stripped() {
         assert!(scan_draft("fn f() {} // x.unwrap() here is only a comment\n").is_empty());
+    }
+
+    #[test]
+    fn range_check_accepts_a_quote_inside_the_cited_lines() {
+        let evidence = "fn a() {}\nfn walk(depth: u32) {\n    if max_depth == 0 { return; }\n}\n";
+        let obs = vec!["Guard at lines 2-3: `if max_depth == 0 { return; }`".to_string()];
+        assert!(out_of_range_observations(&obs, evidence).is_empty());
+    }
+
+    #[test]
+    fn range_check_rejects_a_real_quote_at_the_wrong_lines() {
+        let evidence =
+            "fn a() {}\nfn b() {}\nfn walk(depth: u32) { if max_depth == 0 { return; } }\n";
+        let obs = vec!["See lines 1-2: `if max_depth == 0 { return; }`".to_string()];
+        assert_eq!(out_of_range_observations(&obs, evidence), vec![0]);
+    }
+
+    #[test]
+    fn range_check_ignores_unverifiable_observations() {
+        let evidence = "fn a() {}\n";
+        let obs = vec![
+            "No citation but a quote: `fn a() {}` here".to_string(),
+            "Cites lines 1-1 but quotes nothing".to_string(),
+        ];
+        assert!(out_of_range_observations(&obs, evidence).is_empty());
+    }
+
+    #[test]
+    fn range_check_handles_single_line_and_out_of_file_ranges() {
+        let evidence = "one\ntwo_two_two\nthree\n";
+        let ok = vec!["At line 2: `two_two_two`".to_string()];
+        let past_end = vec!["At lines 40-50: `two_two_two`".to_string()];
+        assert!(out_of_range_observations(&ok, evidence).is_empty());
+        assert_eq!(out_of_range_observations(&past_end, evidence), vec![0]);
     }
 }
