@@ -48,4 +48,4 @@ It is not another backlog, implementation queue, or conversation transcript.
   the Foundry documentation lane a new identifier.
 - Owner decision: 2026-09-29 — C77 remains conformance wiring; the Foundry
   transition is C78.
-- Applied by: pending C78 queue amendment in PR #20.
+- Applied by: C78 allocation and queue amendment, commit `7d6a1ef` in devtools PR #20.

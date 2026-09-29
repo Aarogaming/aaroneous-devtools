@@ -13,6 +13,17 @@ Devtools does not become an Aaroneous dependency, duplicate product policy, or
 replace Git. A virtual patch set is pre-staging history; a materialized Git
 branch and its PR remain the integration record.
 
+This is an integration boundary, not a claim that Aaroneous lacks
+orchestration. The selected product revision already supplies the runtime
+control components: `crates/orchestrator` schedules stateful work,
+`crates/orchestration_plane` coordinates high-level execution, `crates/llm_gateway`
+is the stateless model transport, and `OrchestrationDaemon` is the execution
+host. The product's own `AGENTS.md` separately assigns *cross-agent development*
+coordination to this companion repository. Foundry must describe and invoke
+those product contracts through a pinned capability manifest; it must not copy
+their runtime logic into devtools or treat runtime scheduling as a second
+development ledger.
+
 ```text
 explicit Aaroneous revision + capability manifest
                     |
@@ -35,6 +46,7 @@ devtools Foundry: matrix -> reservation -> proposal -> virtual patch -> gates
 | Change representation | Product diff and final Git history | C73 virtual patch-set schema, digest, parent/proposal lineage | A patch set cannot silently mutate a checkout. |
 | Verification | Native commands and their meaning | Explicit revision/worktree selection and retained command results | Gates are declared by the selected revision, not guessed from the host. |
 | Coordination | None required for product runtime | Queue, reservations, reviewer capacity, handoffs and review debt | Open claim PRs are advisory reservations; making that rule authoritative requires an accepted protocol amendment. |
+| Runtime orchestration | `orchestrator`, `orchestration_plane`, `llm_gateway` and `OrchestrationDaemon` contracts | Pinned-revision capability manifest, explicit adapter inputs and retained invocation evidence | Devtools may orchestrate development work around these contracts; it does not fork, link, or duplicate their runtime control plane. |
 | Local-model assistance | No runtime dependency | Bounded evidence bundles, proposal artifacts, validator and disposition | Models draft or classify; they never claim, execute, accept, or merge. |
 | Versioning | Git branches, commits, PRs and tags | Immutable virtual patch revisions and evidence digest links | Do not reimplement Git. |
 
@@ -46,7 +58,7 @@ devtools Foundry: matrix -> reservation -> proposal -> virtual patch -> gates
 | `local_proposal` and its schema | Keep and wrap | Target canonical explicit proposal adapter; it is not yet the only direct local-model boundary. |
 | `local_worker` and approved `worker-jobs/` inbox | Merge operationally | One deterministic support-worker service, shadow-only until restart, cancellation and disposition evidence is proven. |
 | `multithreader` / `scheduler` | Merge, do not multiply | Supply reservation, quiet-window and capacity policy to the Foundry matrix; retire duplicate loops only after a replacement passes replay tests. |
-| Direct Ollama clients (`local_worker`, `multithreader-review`, registrar `invoke_ollama`) | Consolidate deliberately | Each remains maintained until a named lane routes it through the explicit proposal adapter or retires it, with a test proving no bypass remains. |
+| Direct Ollama clients | Consolidate deliberately | The current inventory is `local_proposal.rs:106-118`, `intake_generator.rs:44-89` (also reached through `multithreader.rs:129`), `local_worker.rs:395-412`, and `agentic_registrar.rs:993,2099-2154`. Each remains maintained until a named lane routes it through the explicit proposal adapter or retires it; the consolidation gate must mechanically inventory the whole declared source set and prove no unapproved bypass remains. |
 | `agentic_registrar::promote` | Constrain then replace at the seam | Current policy wins during transition: `promote` remains the sole write path until reviewer-approved C73 materialization passes the graduation assertions below. The replacement increment changes code and policy together; no parallel writer is introduced. |
 | C76 `conformance` module | Wrap as a rejector | A pure Drafted-to-Reviewable filter beside compile checks; never a conformance authority and not automatically wired until its claim and review land. |
 | `apply_snippet.rs`, `dump.rs`, `overseer_snippet.rs`, `db_reader/` | Retire or adopt by separate handoff | They remain untracked prototypes, not Foundry inputs; no silent adoption. |
