@@ -2,11 +2,13 @@
 
 ## Status
 
-This is the Aaroneous operations standard for keeping governance, product
-contracts, documentation and automation aligned with demonstrated behavior.
-It applies the useful parts of Knowledge-Centered Service, docs-as-code,
-living/executable documentation and test-driven bug fixing to both product and
-companion work.
+This is the Aaroneous program-wide operations standard for keeping governance,
+product contracts, documentation and automation aligned with demonstrated
+behavior. It applies the useful parts of Knowledge-Centered Service,
+docs-as-code, living/executable documentation and test-driven bug fixing to
+both the Aaroneous product and its devtools companion. Devtools establishes
+the shared record and control surface; product-local directives adopt the same
+standard through C84 without creating a reverse dependency or a second queue.
 
 Its rule is simple: **a discovered discrepancy is not complete work until its
 evidence and disposition are durable.** “Documentation first” means record the
