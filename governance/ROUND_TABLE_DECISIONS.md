@@ -36,6 +36,28 @@ It is not another backlog, implementation queue, or conversation transcript.
 
 ## Decisions
 
+## D-2026-02 — Foundry adoption precedence and missing lifecycle contracts
+
+- Status: Decided
+- Affected: C79-C88, `governance/COORDINATION_QUEUE.md`,
+  `governance/FOUNDRY_GAP_REGISTER.md`, devtools PR #20
+- Question: how should the program add computational-cost ordering, crate
+  lifecycle records and portable notation without presenting existing Cratify
+  classification as a completed lifecycle system?
+- Evidence: owner direction on 2026-09-29 requires computation-weighted,
+  priority-weighted and precedence-ordered operation; source review found
+  Cratify profiles/graduation/ratchets but no complete crate build sheet, and
+  no product Base36 encoding contract.
+- Options: leave agents to select unordered Ready lanes; build a devtools-only
+  shadow inventory; or make product contracts precede product-derived sheets
+  and devtools consumption.
+- Positions: Codex recommends product-owned P0 contracts first, followed by
+  deterministic input/governance/notation, then product-derived lifecycle
+  sheets and finally devtools consumption.
+- Owner decision: 2026-09-29 — apply the precedence order and record missing
+  crate-lifecycle/Base36 work as durable gaps, not as assumed capabilities.
+- Applied by: pending this C78 documentation commit and its independent review.
+
 ## D-2026-01 — C77 lane-ID collision
 
 - Status: Applied

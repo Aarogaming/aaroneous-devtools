@@ -90,3 +90,31 @@ second queue; `COORDINATION_QUEUE.md` remains the sole claim authority.
   preflight pass as product verification.
 - Disposition: **C85 Ready** creates the product contract; **C86 Blocked on
   C79 and C85** consumes it without duplicating product checks.
+
+## G-2026-07 — Cratify classifies crates but does not yet provide a complete lifecycle sheet
+
+- Boundary: Aaroneous crate declaration, verification and retirement lifecycle.
+- Evidence: `AGENTS.md:67-85` and `docs/CRATIFY_SPEC.md` require a compliance
+  profile, dependency direction, graduation and a ratchet. The current
+  `xtask/src/workspace_metadata.rs` output only contains name, version, ring,
+  capability metadata and direct dependencies; it has no revision-bound
+  lifecycle state, required gate/result set, compatibility/retirement record,
+  or per-crate generated build sheet.
+- Risk: a crate can be classified without a mechanically inspectable record of
+  what it is allowed to do, what must verify it, or how it advances, retires or
+  is superseded.
+- Disposition: **C87 Blocked on C79, C85 and C88** — derive a build sheet from
+  accepted product facts; do not introduce a parallel handwritten inventory.
+
+## G-2026-08 — Base36 notation is a stated design intent, not an implemented contract
+
+- Boundary: portable component/version/lifecycle identifiers.
+- Evidence: product-wide source search on 2026-09-29 found no `base36`,
+  `base_36`, `base-36` or radix-36 encoding contract in tracked Rust, TOML,
+  JSON or documentation sources. Current workspace metadata exports a free
+  string version and Cratify defines profiles, but neither defines an encoding
+  alphabet, canonical form, ordering or schema revision.
+- Risk: different tools can produce visually similar but incomparable IDs,
+  making lifecycle records and cross-host artifacts ambiguous.
+- Disposition: **C88 Ready** — define and test the product-owned Base36
+  contract before C87 consumes it.
