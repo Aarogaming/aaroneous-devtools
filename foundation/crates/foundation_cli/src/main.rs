@@ -1,5 +1,8 @@
 mod agentic_registrar;
+// C76: not yet wired into local_worker (separate handoff); dead outside tests until then.
 mod component_inventory;
+#[cfg_attr(not(test), allow(dead_code))]
+mod conformance;
 mod dependency_review;
 mod dogfood;
 mod intake;
