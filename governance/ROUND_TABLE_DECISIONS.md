@@ -38,7 +38,7 @@ It is not another backlog, implementation queue, or conversation transcript.
 
 ## D-2026-02 — Foundry adoption precedence and missing lifecycle contracts
 
-- Status: Decided
+- Status: Applied
 - Affected: C79-C88, `governance/COORDINATION_QUEUE.md`,
   `governance/FOUNDRY_GAP_REGISTER.md`, devtools PR #20
 - Question: how should the program add computational-cost ordering, crate
@@ -56,7 +56,7 @@ It is not another backlog, implementation queue, or conversation transcript.
   sheets and finally devtools consumption.
 - Owner decision: 2026-09-29 — apply the precedence order and record missing
   crate-lifecycle/Base36 work as durable gaps, not as assumed capabilities.
-- Applied by: pending this C78 documentation commit and its independent review.
+- Applied by: C78 precedence/gap-record commit `27e312f`; independent review pending.
 
 ## D-2026-01 — C77 lane-ID collision
 
