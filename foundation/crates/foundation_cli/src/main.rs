@@ -1,6 +1,6 @@
 mod agentic_registrar;
 mod component_inventory;
-pub mod conformance;
+mod conformance;
 mod dependency_review;
 mod dogfood;
 mod feeder;
@@ -195,12 +195,12 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
-    /// Verify cryptographic integrity and schema of an immutable virtual patch set
+    /// Verify cryptographic integrity, schema, and static rule conformance of an immutable virtual patch set (reports warnings; hard gating occurs at materialization)
     VerifyVirtualPatch {
         #[arg(long)]
         patch_set: PathBuf,
     },
-    /// Materialize reviewer-selected virtual patches into an explicit target directory
+    /// Materialize reviewer-selected virtual patches into an explicit target directory (hard-blocks on static rule conformance)
     MaterializeVirtualPatch {
         #[arg(long)]
         patch_set: PathBuf,
