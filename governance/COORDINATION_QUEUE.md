@@ -261,6 +261,60 @@ report.
 **Verification & Push**: committed to devtools `origin/main`; no product
 source changed by this entry.
 
+### `core/hypervisor/src/federation/cluster_db.rs` dead-code investigation — 2026-09-28 (Claude)
+
+Owner asked me to determine whether `cluster_db.rs`'s 1438-line `PersistenceManager`
+(a second, older SQLite-backed persistence type distinct from the newer
+`persistence.rs::PersistenceManager` that just got a trait seam in PR #82) is
+dead code, since a first-pass `grep -rn "cluster_db::"` across the workspace
+found zero external references.
+
+**Corrected finding: it is live production code, not dead.** The grep missed
+a module alias — `core/hypervisor/src/federation/mod.rs:36`:
+`pub use cluster_db as hive_db;` — confirmed by temporarily removing the
+`pub mod cluster_db;` line and observing `cargo check` fail on the
+`hive_db` re-export instead of succeeding. Re-searching for `hive_db`
+(not `cluster_db::`) found real construction and real use:
+
+- `core/hypervisor/bin/hypervisor.rs:466-474` — the actual `hypervisor`
+  binary's `Start` CLI command constructs `SupervisoryDaemon::new(...,
+  Some("hive.db"))`, a real path, not a test fixture.
+- `core/hypervisor/src/supervisory_loop.rs:525-529` — that path becomes
+  `hive_db: Option<Arc<Mutex<HivePersistence>>>` on `SupervisoryDaemon`,
+  constructed via `HivePersistence::new(p)` (i.e. `cluster_db::PersistenceManager::new`).
+- Same file, line 533: daemon startup loads existing embeddings from it
+  (`db.load_all_embeddings()`) into the in-memory semantic index.
+- Same file, lines 1314-1335: the autonomic tick loop's intent-execution
+  path writes back to it (`db.save_embedding(...)`) after every approved
+  intent. This is a real read-then-write cycle, not a constructed-and-ignored
+  handle.
+
+Separately, `core/hypervisor/src/task_routing.rs:103` holds a `_hive_db`
+field (underscore-prefixed, i.e. genuinely never read in that file) fed the
+same handle type — but `supervisory_loop.rs:597` shows the one real
+construction path currently passes `None` into that particular constructor
+argument ("No hive_db in autonomic loop"), so that specific plumbing is
+inert today independent of whether `cluster_db.rs` itself is alive.
+
+**Action taken:** none — restored the file after the empirical test,
+deleted the branch created to explore removal (`chore/remove-dead-cluster-db-persistence-manager`,
+zero commits, safe to discard). Did not delete or modify `cluster_db.rs`.
+The file's ambient-clock violation (`chrono::Utc::now()`, a real Cratify
+floor violation) is still real and still unaddressed, but that's a
+"fix in place," not a "delete as dead" situation — separate, smaller task
+if the owner wants it picked up.
+
+**Lesson for future dead-code checks in this codebase:** `federation/mod.rs`
+re-exports several modules under aliases (`cluster as hive`, `cluster_db as
+hive_db`, `multi_cluster as multi_hive`, `profiles as dna`, `telemetry_signals
+as biometric`). A plain grep for the literal module path under-counts
+references; check for `pub use X as Y` aliases first, or verify by
+temporarily removing the `pub mod` line and letting the compiler name the
+real reference, as done here.
+
+**Verification & Push**: read-only investigation in the product repo (no
+commit there); this entry committed to devtools `origin/main`.
+
 
 
 ## Historical evidence - not dispatch input
