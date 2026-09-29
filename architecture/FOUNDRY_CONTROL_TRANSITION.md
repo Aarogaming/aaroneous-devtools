@@ -13,6 +13,14 @@ Devtools does not become an Aaroneous dependency, duplicate product policy, or
 replace Git. A virtual patch set is pre-staging history; a materialized Git
 branch and its PR remain the integration record.
 
+Aaroneous may be exposed as a broad API/MCP capability surface, but never as
+one undifferentiated authority. The Foundry treats product capabilities as
+explicitly versioned classes: read-only inspection, bounded proposal,
+verification, and separately authorized mutation. Each call binds a selected
+revision, declared inputs, output schema and evidence record. The transition
+gaps and corrective lanes that make this enforceable are maintained in the
+[Foundry gap register](../governance/FOUNDRY_GAP_REGISTER.md).
+
 This is an integration boundary, not a claim that Aaroneous lacks
 orchestration. The selected product revision already supplies the runtime
 control components: `crates/orchestrator` schedules stateful work,

@@ -77,6 +77,18 @@ Active coordination conflicts use the bounded
 [round-table decision board](ROUND_TABLE_DECISIONS.md), not an unstructured
 chat transcript or a second work queue.
 
+## Gap-to-lane rule
+
+Perception precedes design. A verified gap in a maintained boundary, service,
+policy, gate, or implementation is not a loose observation: before proposing
+replacement architecture or calling the work complete, record it in the
+[Foundry gap register](FOUNDRY_GAP_REGISTER.md) with source evidence and one
+of these dispositions: a bounded Ready corrective lane, an active claimed
+lane, a blocked dependency with its owner decision, or an explicit rejection.
+The register points to the queue; it never grants a claim itself. A lane that
+changes a reviewed boundary updates the register and its evidence in the same
+handoff. The required policy check for this loop is C83.
+
 ## Daily operation and maintenance
 
 Start by checking repository state, running-service health and pending review debt. Review existing results before adding more jobs. Schedule only useful evidence-backed work; idle is a valid healthy state. Pause on missing tools, unavailable local models or spending limits rather than spinning indefinitely.
