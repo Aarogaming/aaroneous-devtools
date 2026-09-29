@@ -43,8 +43,9 @@ observation
    The queue remains the only source of claims.
 6. **Rectify under normal authority.** The owner of an exact-path lane changes
    only its declared scope, runs the selected native gate, and records actual
-   evidence. Models may draft evidence or tests but cannot classify, claim,
-   accept, or merge.
+   evidence. Models may draft evidence, tests, or a clearly labeled provisional
+   report classification for owner review; they cannot authoritatively classify
+   a finding, set its disposition, claim, accept, or merge.
 7. **Independently accept and close the loop.** A different reviewer verifies
    scope, proof and gates. The corresponding register entry and user-facing
    documentation state what changed, what remains blocked, and what evidence
@@ -76,8 +77,9 @@ substitutes for a test, schema or retained command when one is available.
   acceptance evidence and dependency state.
 - Do not let a passing check erase a design gap. If the check cannot express
   the requirement, create the contract/test/checker lane first.
-- Do not use a model verdict as evidence. It may identify a hypothesis; only
-  source, fixture, gate or independently reviewed result advances the record.
+- Do not use a model verdict as evidence. It may identify a hypothesis or
+  propose a provisional report classification; only an owner-reviewed source,
+  fixture, gate or independently reviewed result advances the record.
 
 ## Mechanical enforcement and review
 
