@@ -68,11 +68,19 @@ Not implemented: no `status`, `list`, `archive`, or `reset` command for the work
   contains `foundation.exe` dated 2026-09-16, `worker.toml`, `results/` (4 records) and
   `archive/` (4 records), last written 2026-09-17. That binary predates every change on
   `main` since; rebuild before reuse.
-- Local model: the configured tag `qwen3.5:9b-q6` is present only in the LM Studio model
-  store (`...\.lmstudio\models\lmstudio-community`). Ollama started with the default
-  model directory does not list it. Start Ollama with `OLLAMA_MODELS` pointing at that
-  directory (process environment only) and confirm with `GET /api/tags` before a tick.
-  An unavailable model is a `Blocked` condition, not a retry loop.
+- Local model: `qwen3.5:9b-q6` lives in the LM Studio model store
+  (`...\.lmstudio\models\lmstudio-community`). The Ollama desktop app is already configured for it: its
+  settings database records that directory as the model location and the model as selected, and its server
+  logs show that directory as `OLLAMA_MODELS`. A separate `ollama serve` started from a shell does NOT inherit
+  the app's setting and, with the default model directory, lists only models pulled there; set `OLLAMA_MODELS`
+  in that process's environment (process-level only) or let the app start the server. Confirm with
+  `GET /api/tags` before a tick. An unavailable model is a `Blocked` condition, not a retry loop.
+- Context: the worker's requests set no `num_ctx`; on 2026-09-29 a 6,355-token prompt sent without it was
+  processed in full and the first evidence line was quoted back correctly, so silent truncation was not
+  observed with this model. Re-check if the model or server configuration changes.
+- Known model failure mode: on the paths-review job the model can loop inside one JSON string until the token
+  budget is spent (one phrase repeated 117 times), which the worker rejects as truncated. The worker's
+  `draft_schema` has no `maxLength` on observation strings; see the C92 row.
 
 ## 5. Change control for this page
 
