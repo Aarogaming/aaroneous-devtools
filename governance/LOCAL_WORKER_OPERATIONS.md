@@ -39,6 +39,12 @@ Fields: `schema_version = 1`, unique `id`, `mode` (`analysis`, `test-fixture`,
 A job whose evidence is referenced by a Claimed/Review queue row is skipped (a textual
 scope check, not a glob parser). Selection is oldest-last-attempted-first.
 
+Limits checked against `local_worker.rs` on `main` (`8c14ec0`): 1-8 evidence files, each read up to
+32768 bytes, total input at most 65536 bytes, instruction at most 8192 bytes, job id at most 64 characters,
+symlink evidence refused. **Dispatch happens only during minutes 6-20 and 41-50 of the hour**
+(`dispatch_window`); a tick at any other minute does nothing, so "the worker did not run my job" is
+usually the window, the `max_pending` cap, or a scope reservation, not a fault.
+
 Not implemented: no command to list, validate, or lint manifests before a tick;
 validation happens when a tick runs. (Gap: see the C92 row in the queue.)
 
