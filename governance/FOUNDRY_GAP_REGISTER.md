@@ -75,3 +75,18 @@ second queue; `COORDINATION_QUEUE.md` remains the sole claim authority.
   queue before design or implementation begins.
 - Disposition: **C83 Ready** — add a deterministic register-to-queue policy
   checker and fixtures; no agent may self-certify that a finding is closed.
+
+## G-2026-06 — verification is comprehensive but lacks a cost-layered contract
+
+- Boundary: Aaroneous native verification and Foundry gate selection.
+- Evidence: `xtask/src/gate.rs:5-147` provides a comprehensive, CI-parity
+  sequence, including encoding, formatting, workspace Clippy, native audit,
+  compilation, tests, AST audit, ratchets and feature checks. It runs
+  whole-workspace Clippy before several cheaper metadata/ratchet/structural
+  checks and exposes no revision-bound, machine-readable preflight tier
+  contract for an external controller.
+- Risk: a Foundry either pays full compilation cost before cheap decisive
+  failures are known, or invents its own gate meaning and risks treating a
+  preflight pass as product verification.
+- Disposition: **C85 Ready** creates the product contract; **C86 Blocked on
+  C79 and C85** consumes it without duplicating product checks.
