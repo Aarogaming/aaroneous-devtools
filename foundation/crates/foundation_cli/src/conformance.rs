@@ -9,9 +9,11 @@
 //! * [`unanchored_observations`] - rejects model claims that do not quote a
 //!   line that actually occurs in the supplied evidence.
 //!
-//! The scan is a line/brace heuristic, not a parser. It over-reports rather
-//! than under-reports, and Tier 0 (`xtask gate`, `ast_auditor`) stays the
-//! authority. A clean scan is never evidence of conformance.
+//! The scan is a line/brace heuristic, not a parser. It ignores comments and
+//! braces inside string/char literals, but still reports banned patterns that
+//! appear inside literals, and it does not track raw strings or literals that span
+//! lines. Tier 0 (`xtask gate`, `ast_auditor`) stays the authority. A clean scan is
+//! never evidence of conformance.
 
 /// Rules for the worker system prompt. Source: AGENTS.md sections 2 and 5.
 pub(crate) const RULE_PACK: &str = "\
@@ -82,7 +84,7 @@ pub(crate) fn scan_draft(source: &str) -> Vec<Violation> {
                 test_attr_pending = true;
             }
             let in_test = test_region_from.is_some() || test_attr_pending;
-            let code = strip_line_comment(line);
+            let (code, structure) = split_code(line);
             for (rule, needle) in BANNED_EVERYWHERE {
                 if code.contains(needle) {
                     found.push(Violation {
@@ -103,7 +105,7 @@ pub(crate) fn scan_draft(source: &str) -> Vec<Violation> {
                     }
                 }
             }
-            for ch in code.chars() {
+            for ch in structure.chars() {
                 match ch {
                     '{' => {
                         if test_attr_pending && test_region_from.is_none() {
@@ -129,11 +131,50 @@ pub(crate) fn scan_draft(source: &str) -> Vec<Violation> {
     found
 }
 
-fn strip_line_comment(line: &str) -> &str {
-    match line.find("//") {
-        Some(at) => &line[..at],
-        None => line,
+/// Splits one line into (`code`, `structure`).
+///
+/// `code` is the line with any trailing `//` comment removed, where a `//` inside a
+/// string literal does not start a comment; string contents are kept, so patterns
+/// inside literals are still reported (over-report). `structure` is the same text
+/// with string and char literal contents removed, so braces inside literals do not
+/// move the test-region depth. Raw strings and literals spanning lines are not
+/// tracked; that is a documented limit of this heuristic.
+fn split_code(line: &str) -> (String, String) {
+    let chars: Vec<char> = line.chars().collect();
+    let mut code = String::new();
+    let mut structure = String::new();
+    let mut in_str = false;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if in_str {
+            code.push(c);
+            if c == '\\' && i + 1 < chars.len() {
+                code.push(chars[i + 1]);
+                i += 1;
+            } else if c == '"' {
+                in_str = false;
+            }
+        } else if c == '"' {
+            in_str = true;
+            code.push(c);
+        } else if c == '/' && chars.get(i + 1) == Some(&'/') {
+            break;
+        } else if c == '\'' && chars.get(i + 2) == Some(&'\'') {
+            // char literal such as '{'
+            code.extend(&chars[i..i + 3]);
+            i += 2;
+        } else if c == '\'' && chars.get(i + 1) == Some(&'\\') && chars.get(i + 3) == Some(&'\'') {
+            // escaped char literal such as '\n'
+            code.extend(&chars[i..i + 4]);
+            i += 3;
+        } else {
+            code.push(c);
+            structure.push(c);
+        }
+        i += 1;
     }
+    (code, structure)
 }
 
 fn normalize(text: &str) -> String {
@@ -289,5 +330,28 @@ mod tests {
         let evidence = "Component::CurDir => continue,";
         let obs = vec!["CurDir handling is missing: `Component::CurDir => Err(())`".to_string()];
         assert_eq!(unanchored_observations(&obs, evidence), vec![0]);
+    }
+
+    #[test]
+    fn double_slash_inside_a_string_does_not_hide_a_later_violation() {
+        let src = "fn f(x: Option<u8>) -> u8 { let _u = \"https://example\"; x.unwrap() }\n";
+        assert_eq!(rules(src), vec!["panic-on-input"]);
+    }
+
+    #[test]
+    fn braces_inside_literals_do_not_keep_a_test_region_open() {
+        let src = "#[test]\nfn t() { let _s = \"}\"; let _c = '{'; }\nfn after(x: Option<u8>) -> u8 { x.unwrap() }\n";
+        let hits = scan_draft(src);
+        assert_eq!(
+            hits.len(),
+            1,
+            "region must close at the real brace: {hits:?}"
+        );
+        assert_eq!(hits[0].line, 3);
+    }
+
+    #[test]
+    fn a_real_trailing_comment_is_still_stripped() {
+        assert!(scan_draft("fn f() {} // x.unwrap() here is only a comment\n").is_empty());
     }
 }
