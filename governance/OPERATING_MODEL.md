@@ -61,6 +61,18 @@ Generated findings enter an inbox first. A reviewed finding gets a canonical por
 
 Prefer deterministic software for inventories, checks, parsing, deduplication, scheduling and bookkeeping. Use models for bounded interpretation and drafting. Reuse Git for branches, worktrees, diffs and history; do not implement competing version control. Local services do not automatically reproduce cloud CI or web research.
 
+## Foundry transition boundary
+
+The Foundry is the controlled devtools operator around a selected Aaroneous
+revision, not a second product runtime. It coordinates reservations, evidence,
+virtual patch sets, isolated worktrees, declared gates and review handoffs.
+Aaroneous continues to own product contracts, policy and native verification.
+The binding component map, state model and staged transition are in
+[the Foundry control transition](../architecture/FOUNDRY_CONTROL_TRANSITION.md).
+Until a transition increment is independently accepted, existing worker and
+scheduler components remain the maintained behavior; no new looping service is
+introduced merely by this documentation.
+
 ## Daily operation and maintenance
 
 Start by checking repository state, running-service health and pending review debt. Review existing results before adding more jobs. Schedule only useful evidence-backed work; idle is a valid healthy state. Pause on missing tools, unavailable local models or spending limits rather than spinning indefinitely.
