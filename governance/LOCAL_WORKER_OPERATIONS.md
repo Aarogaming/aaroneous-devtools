@@ -46,7 +46,7 @@ symlink evidence refused. **Dispatch happens only during minutes 6-20 and 41-50 
 usually the window, the `max_pending` cap, or a scope reservation, not a fault.
 
 Not implemented: no command to list, validate, or lint manifests before a tick;
-validation happens when a tick runs. (Gap: see the C92 row in the queue.)
+validation happens when a tick runs. (Gap: see the C91 row in the queue.)
 
 ## 3. The outbox: reviewing and clearing
 
@@ -63,7 +63,7 @@ validation happens when a tick runs. (Gap: see the C92 row in the queue.)
 
 Not implemented: no `status`, `list`, `archive`, or `reset` command for the worker.
 `reset-circuit-breaker` exists for the registrar only. The only runtime status signal is
-`status.txt`. (Gap: C92.)
+`status.txt`. (Gap: C91.)
 
 ## 4. Recorded host state (2026-09-29)
 
@@ -86,7 +86,7 @@ Not implemented: no `status`, `list`, `archive`, or `reset` command for the work
   observed with this model. Re-check if the model or server configuration changes.
 - Known model failure mode: on the paths-review job the model can loop inside one JSON string until the token
   budget is spent (one phrase repeated 117 times), which the worker rejects as truncated. The worker's
-  `draft_schema` has no `maxLength` on observation strings; see the C92 row.
+  `draft_schema` has no `maxLength` on observation strings; see the C91 row.
 
 ## 5. Change control for this page
 
