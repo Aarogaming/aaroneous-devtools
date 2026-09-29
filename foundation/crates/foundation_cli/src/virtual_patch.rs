@@ -439,6 +439,24 @@ pub fn render_unified_diff(file_path: &str, original: &str, modified: &str) -> S
     diff
 }
 
+/// Scans all Rust patches in the patch set for Aaroneous floor rule violations.
+///
+/// Returns a list of (file path, violations) found in the replacement blocks.
+pub fn check_patch_set_conformance(
+    patch_set: &VirtualPatchSet,
+) -> Vec<(String, Vec<crate::conformance::Violation>)> {
+    let mut violations = Vec::new();
+    for patch in &patch_set.patches {
+        if patch.file_path.ends_with(".rs") {
+            let hits = crate::conformance::scan_draft(&patch.replace_block);
+            if !hits.is_empty() {
+                violations.push((patch.file_path.clone(), hits));
+            }
+        }
+    }
+    violations
+}
+
 // ============================================================================
 // Reviewer-Selected Materialization (No Git Mutation)
 // ============================================================================
@@ -457,6 +475,25 @@ pub fn materialize(
     selection: &ReviewSelection,
 ) -> Result<MaterializationResult> {
     verify_patch_set(patch_set)?;
+
+    let conformance_violations = check_patch_set_conformance(patch_set);
+    if !conformance_violations.is_empty() {
+        let summary = conformance_violations
+            .iter()
+            .map(|(path, hits)| {
+                format!(
+                    "{path}: {} violation(s) [{}]",
+                    hits.len(),
+                    hits.iter()
+                        .map(|h| format!("line {}: {}", h.line, h.rule))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        bail!("materialization blocked: patch set contains conformance violation(s): {summary}");
+    }
 
     if selection.disposition != ReviewDisposition::Approved {
         bail!(
@@ -842,5 +879,51 @@ mod tests {
         let head_after = fs::read(&head_file).expect("read HEAD after");
         assert_eq!(head_before, head_after);
         assert!(!git_dir.join("index").exists());
+    }
+
+    #[test]
+    fn test_conformance_violations_block_materialization() {
+        let dir = tempdir().expect("tempdir");
+        let f1 = dir.path().join("dirty.rs");
+        fs::write(&f1, "fn ok() {}\n").expect("write f1");
+
+        let ps = create_patch_set(
+            "PS-NONCONFORMING",
+            "TASK-VIOLATION",
+            "commit-1",
+            1000,
+            PatchProvenance {
+                generator_model: "qwen".into(),
+                endpoint: None,
+                instruction: "add bad unwrap".into(),
+                rationale: None,
+            },
+            vec![RawPatchInput {
+                file_path: "dirty.rs".into(),
+                base_digest: Some(sha256_digest(b"fn ok() {}\n")),
+                search_block: "fn ok() {}\n".into(),
+                replace_block: "fn ok() { let x: Option<u8> = None; x.unwrap(); }\n".into(),
+            }],
+        )
+        .expect("patch set");
+
+        let violations = check_patch_set_conformance(&ps);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].0, "dirty.rs");
+        assert_eq!(violations[0].1[0].rule, "panic-on-input");
+
+        let selection = ReviewSelection {
+            selected_patch_indices: vec![0],
+            reviewer: "reviewer".into(),
+            disposition: ReviewDisposition::Approved,
+            rationale: "attempting bad materialization".into(),
+        };
+
+        let err =
+            materialize(dir.path(), &ps, &selection).expect_err("must block nonconforming patch");
+        assert!(
+            err.to_string()
+                .contains("materialization blocked: patch set contains conformance violation(s)")
+        );
     }
 }
