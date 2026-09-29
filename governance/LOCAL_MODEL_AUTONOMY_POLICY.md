@@ -98,6 +98,23 @@ get that benefit. For each one found:
 4. **Never auto-merge**, even on green CI plus a clean review, for now. See
    below for why and when that might change.
 
+## Pre-Git virtual patch sets and reviewer-selected materialization (C73)
+
+As of C73, local model proposals are decoupled from premature branch creation and Git mutation:
+
+1. **Immutable Virtual Patch Sets**: Local generation produces revision- and digest-bound virtual patch sets (`contracts/virtual-patch-set-v1.schema.json`, artifact kind `foundation.virtual-patch-set`) stored completely outside Git. Each patch set binds:
+   - `base_revision`: The exact Git commit hash of the checkout at generation time.
+   - `file_path`: Relative target path, strictly validated against path traversal (`..`), absolute paths, and framework/workflow boundaries (`.git/`, `.cargo/`, `.github/`, `xtask/`, `build.rs`).
+   - `base_digest`: Expected SHA-256 hash of the target file before modification (or `None` for new file creation), enforcing **stale-base rejection** if concurrent edits modified the target.
+   - `hunk_digest`: SHA-256 over `search_block \0 replace_block`.
+   - `patch_set_digest`: Cryptographic seal over all canonical fields, detecting tampering or partial corruption.
+
+2. **Reviewer Selection & Materialization**: Rather than jumping directly from model output to pushed branches, reviewers (cloud agents or human contributors) inspect the generated unified diff and provide an explicit `ReviewSelection`:
+   - Whole or partial patch selection (`selected_patch_indices`).
+   - Independent disposition (`Approved`, `Rejected`, `NeedsChanges`).
+   - Materialization (`virtual_patch::materialize`) verifies patch set integrity, checks all base digests, and performs an atomic dry-run before writing into an explicitly supplied clean target directory.
+   - **Zero Git mutations**: Materialization never creates branches, commits, pushes, or alters `.git` refs or index. It leaves Git state untouched until explicit later publication.
+
 ## Why no auto-merge yet, and what would justify it
 
 Dependabot-style auto-merge is safe because a version bump is narrow and

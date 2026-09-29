@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Foundation Virtual Patch Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_kind",
+    "patch_set_id",
+    "task_id",
+    "base_revision",
+    "created_at_secs",
+    "patches",
+    "patch_set_digest",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "artifact_kind": { "const": "foundation.virtual-patch-set" },
+    "patch_set_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "task_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "base_revision": { "type": "string", "pattern": "^[0-9a-fA-F]{7,64}$" },
+    "created_at_secs": { "type": "integer", "minimum": 0 },
+    "patch_set_digest": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+    "patches": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "patch_index",
+          "file_path",
+          "base_digest",
+          "search_block",
+          "replace_block",
+          "hunk_digest"
+        ],
+        "properties": {
+          "patch_index": { "type": "integer", "minimum": 0 },
+          "file_path": { "$ref": "#/$defs/relative_file" },
+          "base_digest": { "type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$" },
+          "search_block": { "type": "string" },
+          "replace_block": { "type": "string" },
+          "hunk_digest": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generator_model", "instruction"],
+      "properties": {
+        "generator_model": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "instruction": { "type": "string" },
+        "rationale": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "relative_file": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(/|$))[^\\\\:*?\"<>|]+$"
+    }
+  }
+}

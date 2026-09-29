@@ -8,6 +8,7 @@ mod local_proposal;
 mod local_worker;
 mod multithreader;
 mod scheduler;
+pub mod virtual_patch;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
@@ -163,6 +164,26 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Verify cryptographic integrity and schema of an immutable virtual patch set
+    VerifyVirtualPatch {
+        #[arg(long)]
+        patch_set: PathBuf,
+    },
+    /// Materialize reviewer-selected virtual patches into an explicit target directory
+    MaterializeVirtualPatch {
+        #[arg(long)]
+        patch_set: PathBuf,
+        #[arg(long)]
+        target_root: PathBuf,
+        #[arg(long = "select")]
+        selected_indices: Option<Vec<usize>>,
+        #[arg(long)]
+        reviewer: String,
+        #[arg(long, default_value = "approved")]
+        disposition: String,
+        #[arg(long, default_value = "")]
+        rationale: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -231,6 +252,32 @@ enum RegistrarAction {
         #[arg(long, default_value_t = 8080)]
         port: u16,
     },
+    /// Export or inspect an immutable virtual patch set for a task
+    VirtualPatch {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        task_id: String,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Materialize reviewer-approved virtual patch set into an explicit target directory
+    Materialize {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        task_id: String,
+        #[arg(long)]
+        target_root: PathBuf,
+        #[arg(long)]
+        reviewer: String,
+        #[arg(long = "select")]
+        selected_indices: Option<Vec<usize>>,
+        #[arg(long, default_value = "approved")]
+        disposition: String,
+        #[arg(long, default_value = "")]
+        rationale: String,
+    },
 }
 
 const INPUT_REPORT_KIND: &str = "foundation.input-report";
@@ -284,6 +331,42 @@ fn main() -> Result<()> {
                 }
                 println!("MCP server auto-configuration complete for port {port}.");
                 Ok(())
+            }
+            RegistrarAction::VirtualPatch {
+                config,
+                task_id,
+                output,
+            } => agentic_registrar::export_virtual_patch(&config, &task_id, output.as_deref())
+                .map(|_| ()),
+            RegistrarAction::Materialize {
+                config,
+                task_id,
+                target_root,
+                reviewer,
+                selected_indices,
+                disposition,
+                rationale,
+            } => {
+                let disp = match disposition.to_lowercase().as_str() {
+                    "approved" => virtual_patch::ReviewDisposition::Approved,
+                    "rejected" => virtual_patch::ReviewDisposition::Rejected,
+                    "needs-changes" | "needs_changes" => {
+                        virtual_patch::ReviewDisposition::NeedsChanges
+                    }
+                    other => bail!(
+                        "invalid disposition '{other}'; must be approved, rejected, or needs-changes"
+                    ),
+                };
+                agentic_registrar::materialize_task_patch(
+                    &config,
+                    &task_id,
+                    &target_root,
+                    &reviewer,
+                    selected_indices,
+                    disp,
+                    &rationale,
+                )
+                .map(|_| ())
             }
         },
         Command::DiscoverGit { checkout } => {
@@ -341,6 +424,67 @@ fn main() -> Result<()> {
             evidence,
             output,
         } => intake_generator::run(&endpoint, &evidence, &output),
+        Command::VerifyVirtualPatch { patch_set } => {
+            let data = fs::read_to_string(&patch_set)
+                .with_context(|| format!("failed to read patch set: {}", patch_set.display()))?;
+            let ps: virtual_patch::VirtualPatchSet =
+                serde_json::from_str(&data).with_context(|| {
+                    format!("invalid virtual patch set JSON in {}", patch_set.display())
+                })?;
+            virtual_patch::verify_patch_set(&ps)?;
+            println!(
+                "Virtual patch set {} integrity verified successfully ({} patches, base rev {}).",
+                ps.patch_set_id,
+                ps.patches.len(),
+                ps.base_revision
+            );
+            Ok(())
+        }
+        Command::MaterializeVirtualPatch {
+            patch_set,
+            target_root,
+            selected_indices,
+            reviewer,
+            disposition,
+            rationale,
+        } => {
+            let data = fs::read_to_string(&patch_set)
+                .with_context(|| format!("failed to read patch set: {}", patch_set.display()))?;
+            let ps: virtual_patch::VirtualPatchSet =
+                serde_json::from_str(&data).with_context(|| {
+                    format!("invalid virtual patch set JSON in {}", patch_set.display())
+                })?;
+            let disp = match disposition.to_lowercase().as_str() {
+                "approved" => virtual_patch::ReviewDisposition::Approved,
+                "rejected" => virtual_patch::ReviewDisposition::Rejected,
+                "needs-changes" | "needs_changes" => virtual_patch::ReviewDisposition::NeedsChanges,
+                other => bail!(
+                    "invalid disposition '{other}'; must be approved, rejected, or needs-changes"
+                ),
+            };
+            let indices = selected_indices.unwrap_or_else(|| (0..ps.patches.len()).collect());
+            let selection = virtual_patch::ReviewSelection {
+                selected_patch_indices: indices,
+                reviewer,
+                disposition: disp,
+                rationale,
+            };
+            let res = virtual_patch::materialize(&target_root, &ps, &selection)?;
+            println!(
+                "Materialized {} patches from {} into {}.",
+                res.applied_patches.len(),
+                res.patch_set_id,
+                target_root.display()
+            );
+            if !res.files_created.is_empty() {
+                println!("Created: {:?}", res.files_created);
+            }
+            if !res.files_modified.is_empty() {
+                println!("Modified: {:?}", res.files_modified);
+            }
+            println!("\n--- Unified Diff ---\n{}", res.unified_diff);
+            Ok(())
+        }
     }
 }
 
