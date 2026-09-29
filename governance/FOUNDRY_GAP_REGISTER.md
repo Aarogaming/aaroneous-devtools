@@ -103,8 +103,10 @@ second queue; `COORDINATION_QUEUE.md` remains the sole claim authority.
 - Risk: a crate can be classified without a mechanically inspectable record of
   what it is allowed to do, what must verify it, or how it advances, retires or
   is superseded.
-- Disposition: **C87 Blocked on C79, C85 and C88** — derive a build sheet from
-  accepted product facts; do not introduce a parallel handwritten inventory.
+- Disposition: **C87 Blocked on C79, C85, C88 and C89** — C89 must first move
+  Cratify profile assignments from the specification-table fallback into each
+  crate manifest; then derive a build sheet from accepted product facts rather
+  than introducing a parallel handwritten inventory.
 
 ## G-2026-08 — Base36 notation is a stated design intent, not an implemented contract
 
