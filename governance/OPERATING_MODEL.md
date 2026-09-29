@@ -89,6 +89,11 @@ The register points to the queue; it never grants a claim itself. A lane that
 changes a reviewed boundary updates the register and its evidence in the same
 handoff. The required policy check for this loop is C83.
 
+The operational form of this rule is the
+[Evidence-First Living Operations standard](EVIDENCE_FIRST_LIVING_OPERATIONS.md).
+It applies to product code, capability/API contracts, verification gates,
+local-model operations, service procedures and governance itself.
+
 ## Daily operation and maintenance
 
 Start by checking repository state, running-service health and pending review debt. Review existing results before adding more jobs. Schedule only useful evidence-backed work; idle is a valid healthy state. Pause on missing tools, unavailable local models or spending limits rather than spinning indefinitely.

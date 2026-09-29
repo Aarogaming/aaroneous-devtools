@@ -20,6 +20,10 @@ verification, and separately authorized mutation. Each call binds a selected
 revision, declared inputs, output schema and evidence record. The transition
 gaps and corrective lanes that make this enforceable are maintained in the
 [Foundry gap register](../governance/FOUNDRY_GAP_REGISTER.md).
+The operating loop for maintaining those facts is
+[Evidence-First Living Operations](../governance/EVIDENCE_FIRST_LIVING_OPERATIONS.md):
+an observation becomes a recorded hypothesis, reproducible evidence, and a
+linked corrective disposition before it becomes design or authority.
 
 This is an integration boundary, not a claim that Aaroneous lacks
 orchestration. The selected product revision already supplies the runtime
