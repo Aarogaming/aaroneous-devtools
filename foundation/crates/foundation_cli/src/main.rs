@@ -80,6 +80,11 @@ enum Command {
         #[arg(long)]
         write: bool,
     },
+    /// Read-only local-worker status: heartbeat age, pending jobs, results, flagged results.
+    LocalWorkerStatus {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Adaptive persistent local-worker loop: tick, look at what actually
     /// happened, and decide the next tick's delay from that -- backing off
     /// when there's nothing to do rather than re-firing on a blind fixed
@@ -414,6 +419,12 @@ fn main() -> Result<()> {
             limit,
             write,
         } => feeder::run_feed(&checkout, &jobs_dir, &history_dirs, limit, write),
+        Command::LocalWorkerStatus { config } => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs();
+            local_worker::status(&config, now)
+        }
         Command::LocalWorkerServe { config } => local_worker::serve(&config),
         Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::MultithreaderServe {
