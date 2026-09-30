@@ -2360,9 +2360,9 @@ fn git_push_branch(checkout: &Path, branch: &str) -> Result<()> {
 }
 
 fn check_crate_compilation(checkout: &Path, crate_name: &str) -> Result<(), String> {
-    let output = Command::new("cargo")
+    let mut command = cargo_verification_command(checkout);
+    let output = command
         .args(["check", "-p", crate_name, "--all-targets"])
-        .current_dir(checkout)
         .output()
         .map_err(|e| format!("Failed to spawn cargo check: {e}"))?;
 
@@ -2376,7 +2376,8 @@ fn check_crate_compilation(checkout: &Path, crate_name: &str) -> Result<(), Stri
 }
 
 fn check_crate_clippy(checkout: &Path, crate_name: &str) -> Result<(), String> {
-    let output = Command::new("cargo")
+    let mut command = cargo_verification_command(checkout);
+    let output = command
         .args([
             "clippy",
             "-p",
@@ -2386,7 +2387,6 @@ fn check_crate_clippy(checkout: &Path, crate_name: &str) -> Result<(), String> {
             "-D",
             "warnings",
         ])
-        .current_dir(checkout)
         .output()
         .map_err(|e| format!("Failed to spawn cargo clippy: {e}"))?;
 
@@ -2397,6 +2397,20 @@ fn check_crate_clippy(checkout: &Path, crate_name: &str) -> Result<(), String> {
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         Err(format!("cargo clippy stderr:\n{stderr}\nstdout:\n{stdout}"))
     }
+}
+
+fn cargo_verification_command(checkout: &Path) -> Command {
+    let mut command = Command::new("cargo");
+    command.current_dir(checkout);
+
+    // Promotion tests create same-named throwaway crates concurrently. Keep their
+    // nested Cargo artifacts in the checkout rather than inheriting one shared
+    // outer target directory. Production promotion deliberately preserves the
+    // operator's Cargo cache choice.
+    #[cfg(test)]
+    command.env("CARGO_TARGET_DIR", checkout.join("target"));
+
+    command
 }
 
 fn append_progress_log(
