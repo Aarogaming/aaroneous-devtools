@@ -286,6 +286,19 @@ fn first_line_of(evidence: &str, quote: &str) -> Option<usize> {
         .map(|index| index + 1)
 }
 
+/// Maximum number of draft flags recorded per result, to keep records bounded.
+const MAX_DRAFT_FLAGS: usize = 20;
+
+/// Shadow-mode flags for the draft source itself: one entry per scan violation, for example
+/// `draft line 23: panic-on-input`. Empty means "nothing detected", never "conforms".
+pub(crate) fn draft_flags(rust_draft: &str) -> Vec<String> {
+    scan_draft(rust_draft)
+        .into_iter()
+        .take(MAX_DRAFT_FLAGS)
+        .map(|violation| format!("draft line {}: {}", violation.line, violation.rule))
+        .collect()
+}
+
 /// Shadow-mode claim checks for a worker draft against every declared evidence file.
 ///
 /// Returns one human-readable flag per suspicious observation; an empty vector means
@@ -560,5 +573,17 @@ mod tests {
     fn claim_flags_with_no_evidence_flags_nothing() {
         let obs = vec!["anything `quoted text`".to_string()];
         assert!(claim_flags(&obs, &[]).is_empty());
+    }
+
+    #[test]
+    fn draft_flags_reports_scan_hits_with_lines_and_is_bounded() {
+        let src = "pub fn a(x: Option<u8>) -> u8 {\n    x.unwrap()\n}\n";
+        assert_eq!(
+            draft_flags(src),
+            vec!["draft line 2: panic-on-input".to_string()]
+        );
+        assert!(draft_flags("pub fn ok() {}\n").is_empty());
+        let many = "fn f(x: Option<u8>) { x.unwrap(); }\n".repeat(50);
+        assert_eq!(draft_flags(&many).len(), MAX_DRAFT_FLAGS);
     }
 }

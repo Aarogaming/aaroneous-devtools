@@ -394,8 +394,12 @@ where
         };
         match delegate(&c.endpoint, &record.input) {
             Ok(proposal) => {
-                record.conformance_flags =
+                let mut flags =
                     crate::conformance::claim_flags(&proposal.observations, &evidence_files);
+                if let Some(code) = &proposal.rust_draft {
+                    flags.extend(crate::conformance::draft_flags(code));
+                }
+                record.conformance_flags = flags;
                 record.proposal = Some(proposal);
             }
             Err(e) => {
@@ -408,7 +412,7 @@ where
         println!("local worker: {} {}", record.job_id, record.outcome);
         if !record.conformance_flags.is_empty() {
             println!(
-                "local worker: {} claim check flagged {} observation(s) (shadow mode, draft kept)",
+                "local worker: {} validators flagged {} item(s) (shadow mode, draft kept)",
                 record.job_id,
                 record.conformance_flags.len()
             );
@@ -747,6 +751,45 @@ mod tests {
         assert!(flags[1].as_str().expect("s").starts_with("observation 2:"));
     }
 
+    #[test]
+    fn a_draft_with_a_banned_pattern_is_flagged_and_a_test_region_is_exempt() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| {
+            let mut d = draft();
+            d.rust_draft = Some(
+                "pub fn a(x: Option<u8>) -> u8 {\n    x.unwrap()\n}\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() {\n        Some(1).unwrap();\n    }\n}\n"
+                    .into(),
+            );
+            Ok(d)
+        })
+        .expect("tick");
+        let results = files(&c.results_directory, "json").expect("results");
+        let record: serde_json::Value =
+            serde_json::from_slice(&fs::read(&results[0]).expect("read")).expect("json");
+        assert_eq!(record["outcome"], "pending-owner-review");
+        let flags = record["conformance_flags"].as_array().expect("flags");
+        assert_eq!(flags.len(), 1, "{flags:?}");
+        assert_eq!(flags[0], "draft line 2: panic-on-input");
+    }
+
+    #[test]
+    fn claim_flags_come_before_draft_flags() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| {
+            let mut d = draft();
+            d.observations = vec!["Invented: `fn does_not_exist() {}` is unguarded".into()];
+            d.rust_draft = Some("pub fn a(x: Option<u8>) -> u8 { x.unwrap() }\n".into());
+            Ok(d)
+        })
+        .expect("tick");
+        let results = files(&c.results_directory, "json").expect("results");
+        let record: serde_json::Value =
+            serde_json::from_slice(&fs::read(&results[0]).expect("read")).expect("json");
+        let flags = record["conformance_flags"].as_array().expect("flags");
+        assert_eq!(flags.len(), 2, "{flags:?}");
+        assert!(flags[0].as_str().expect("s").starts_with("observation 0:"));
+        assert!(flags[1].as_str().expect("s").starts_with("draft line 1:"));
+    }
     #[test]
     fn clean_observations_add_no_flags_field() {
         let (_d, c, config) = fixture();
