@@ -20,6 +20,11 @@ struct Config {
     reservation_directory: PathBuf,
     endpoint: String,
     max_pending: usize,
+    /// Minute-of-hour windows in which a tick may dispatch, as inclusive `[start, end]` pairs
+    /// (C96 slice 1). Absent means the historical default, minutes 6-20 and 41-50, so an
+    /// existing worker.toml behaves exactly as before. `[[0, 59]]` allows continuous dispatch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dispatch_windows: Option<Vec<(u32, u32)>>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -69,8 +74,22 @@ impl Drop for Reservation {
 }
 
 // The CLI injects the current minute. A two-minute request finishes before the next reservation.
-fn dispatch_window(minute: u32) -> bool {
-    matches!(minute,6..=20|41..=50)
+const DEFAULT_DISPATCH_WINDOWS: [(u32, u32); 2] = [(6, 20), (41, 50)];
+fn dispatch_window(minute: u32, configured: Option<&[(u32, u32)]>) -> bool {
+    let windows: &[(u32, u32)] = configured.unwrap_or(&DEFAULT_DISPATCH_WINDOWS);
+    windows
+        .iter()
+        .any(|(start, end)| (*start..=*end).contains(&minute))
+}
+/// Rejects an empty, oversized or malformed window list instead of silently never dispatching.
+fn validate_dispatch_windows(windows: &[(u32, u32)]) -> Result<()> {
+    if windows.is_empty() || windows.len() > 8 {
+        bail!("dispatch_windows needs 1 to 8 [start, end] pairs");
+    }
+    if windows.iter().any(|(start, end)| start > end || *end > 59) {
+        bail!("each dispatch window must satisfy start <= end <= 59");
+    }
+    Ok(())
 }
 fn within(path: &Path, root: &Path) -> bool {
     #[cfg(windows)]
@@ -193,6 +212,9 @@ where
     if c.schema_version != 1 || !(1..=16).contains(&c.max_pending) {
         bail!("version 1 and max_pending 1..16 required");
     }
+    if let Some(windows) = &c.dispatch_windows {
+        validate_dispatch_windows(windows)?;
+    }
     for (label, directory) in [
         ("checkout", &c.checkout),
         ("jobs", &c.jobs_directory),
@@ -234,7 +256,7 @@ where
     if c.results_directory == c.archive_directory || !c.queue.is_absolute() {
         bail!("separate result/archive directories and absolute queue required");
     }
-    if !dispatch_window(minute) {
+    if !dispatch_window(minute, c.dispatch_windows.as_deref()) {
         println!("local worker: scheduled quiet window");
         return Ok(());
     }
@@ -547,11 +569,32 @@ mod tests {
     #[test]
     fn quiet_windows_cover_both_hourly_tasks() {
         for minute in [0, 5, 21, 25, 30, 40, 51, 55, 59] {
-            assert!(!dispatch_window(minute));
+            assert!(!dispatch_window(minute, None));
         }
         for minute in [6, 20, 41, 50] {
-            assert!(dispatch_window(minute));
+            assert!(dispatch_window(minute, None));
         }
+    }
+    #[test]
+    fn configured_windows_replace_the_defaults() {
+        let windows = [(0, 4), (30, 30)];
+        for minute in [0, 4, 30] {
+            assert!(dispatch_window(minute, Some(&windows)));
+        }
+        for minute in [5, 6, 29, 31, 41] {
+            assert!(!dispatch_window(minute, Some(&windows)));
+        }
+        let continuous = [(0, 59)];
+        assert!((0..=59).all(|minute| dispatch_window(minute, Some(&continuous))));
+    }
+    #[test]
+    fn window_lists_are_validated() {
+        assert!(validate_dispatch_windows(&[(6, 20), (41, 50)]).is_ok());
+        assert!(validate_dispatch_windows(&[(0, 59)]).is_ok());
+        assert!(validate_dispatch_windows(&[]).is_err());
+        assert!(validate_dispatch_windows(&[(30, 20)]).is_err());
+        assert!(validate_dispatch_windows(&[(0, 60)]).is_err());
+        assert!(validate_dispatch_windows(&[(0, 1); 9]).is_err());
     }
     #[test]
     fn active_exact_and_directory_scopes_are_reserved() {
@@ -580,6 +623,7 @@ mod tests {
             reservation_directory: d.path().join("reservation"),
             endpoint: "http://127.0.0.1:1".into(),
             max_pending: 2,
+            dispatch_windows: None,
         };
         for path in [
             &c.checkout,
@@ -727,6 +771,37 @@ mod tests {
         assert!(props["recommended_next_step"]["maxLength"].is_number());
     }
     #[test]
+    fn a_configured_window_enables_dispatch_outside_the_default_minutes() {
+        let (_d, mut c, config) = fixture();
+        c.dispatch_windows = Some(vec![(0, 59)]);
+        fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
+        tick_with(&config, 30, 1, |_, _| Ok(draft())).expect("tick");
+        assert_eq!(
+            files(&c.results_directory, "json").expect("results").len(),
+            1
+        );
+    }
+    #[test]
+    fn the_default_config_still_skips_minute_30() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 30, 1, |_, _| {
+            panic!("dispatched outside the default window")
+        })
+        .expect("quiet window");
+        assert!(
+            files(&c.results_directory, "json")
+                .expect("results")
+                .is_empty()
+        );
+    }
+    #[test]
+    fn an_invalid_window_list_fails_the_tick() {
+        let (_d, mut c, config) = fixture();
+        c.dispatch_windows = Some(vec![(30, 20)]);
+        fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
+        assert!(tick_with(&config, 10, 1, |_, _| Ok(draft())).is_err());
+    }
+    #[test]
     fn unchanged_inputs_are_not_regenerated_and_changes_are() {
         let (_d, c, config) = fixture();
         tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("first");
@@ -805,6 +880,7 @@ mod tests {
             reservation_directory: d.path().join("reservation"),
             endpoint: "http://127.0.0.1:1".into(),
             max_pending: 4,
+            dispatch_windows: None,
         };
         for path in [
             &c.checkout,
