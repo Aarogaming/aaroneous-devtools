@@ -271,6 +271,53 @@ pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str)
         .collect()
 }
 
+/// Shadow-mode claim checks for a worker draft against every declared evidence file.
+///
+/// Returns one human-readable flag per suspicious observation; an empty vector means
+/// "nothing detected", never "correct". An observation is flagged
+/// - `not anchored` when a backtick quote of 8+ characters appears in none of the files,
+///   or it has no such quote at all (see [`unanchored_observations`]);
+/// - `line range` when it cites `line N` / `lines A-B` and, in every file where its quotes
+///   do occur, they are outside the cited lines (see [`out_of_range_observations`]).
+///
+/// Observations without a citation are never range-flagged: they are unverifiable.
+pub(crate) fn claim_flags(observations: &[String], evidence_files: &[String]) -> Vec<String> {
+    let mut flags = Vec::new();
+    let per_file_unanchored: Vec<Vec<usize>> = evidence_files
+        .iter()
+        .map(|file| unanchored_observations(observations, file))
+        .collect();
+    let per_file_out_of_range: Vec<Vec<usize>> = evidence_files
+        .iter()
+        .map(|file| out_of_range_observations(observations, file))
+        .collect();
+    for index in 0..observations.len() {
+        let unanchored_everywhere = !evidence_files.is_empty()
+            && per_file_unanchored
+                .iter()
+                .all(|missing| missing.contains(&index));
+        if unanchored_everywhere {
+            flags.push(format!(
+                "observation {index}: not anchored in any declared evidence file"
+            ));
+            continue;
+        }
+        let anchored_files: Vec<usize> = (0..evidence_files.len())
+            .filter(|file| !per_file_unanchored[*file].contains(&index))
+            .collect();
+        if !anchored_files.is_empty()
+            && anchored_files
+                .iter()
+                .all(|file| per_file_out_of_range[*file].contains(&index))
+        {
+            flags.push(format!(
+                "observation {index}: cited line range does not contain its quoted text"
+            ));
+        }
+    }
+    flags
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -446,5 +493,36 @@ mod tests {
         let past_end = vec!["At lines 40-50: `two_two_two`".to_string()];
         assert!(out_of_range_observations(&ok, evidence).is_empty());
         assert_eq!(out_of_range_observations(&past_end, evidence), vec![0]);
+    }
+
+    #[test]
+    fn claim_flags_reports_unanchored_and_wrong_range_but_not_good_claims() {
+        let file = "one\nfn walk() {}\nlet guard = `x`;\nfn normalize_path() {}\n".to_string();
+        let obs = vec![
+            "Good, line 4: `fn normalize_path() {}`".to_string(),
+            "Invented: `fn invented_thing() {}` exists".to_string(),
+            "Wrong place, lines 1-2: `fn normalize_path() {}`".to_string(),
+            "No citation, quote `fn walk() {}` only".to_string(),
+        ];
+        let flags = claim_flags(&obs, &[file]);
+        assert_eq!(flags.len(), 2, "{flags:?}");
+        assert!(flags[0].starts_with("observation 1:"), "{flags:?}");
+        assert!(flags[0].contains("not anchored"), "{flags:?}");
+        assert!(flags[1].starts_with("observation 2:"), "{flags:?}");
+        assert!(flags[1].contains("line range"), "{flags:?}");
+    }
+
+    #[test]
+    fn claim_flags_accepts_a_quote_that_is_right_in_at_least_one_file() {
+        let a = "alpha\nbeta\n".to_string();
+        let b = "gamma\nfn target_fn() {}\n".to_string();
+        let obs = vec!["See line 2: `fn target_fn() {}`".to_string()];
+        assert!(claim_flags(&obs, &[a, b]).is_empty());
+    }
+
+    #[test]
+    fn claim_flags_with_no_evidence_flags_nothing() {
+        let obs = vec!["anything `quoted text`".to_string()];
+        assert!(claim_flags(&obs, &[]).is_empty());
     }
 }
