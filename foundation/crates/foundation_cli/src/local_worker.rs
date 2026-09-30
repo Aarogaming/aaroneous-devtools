@@ -320,18 +320,7 @@ where
     let mut candidates: Vec<Candidate> = Vec::new();
     for path in files(&c.jobs_directory, "toml")? {
         let job: Job = toml::from_str(&read_bounded(&path, 16384)?)?;
-        if job.schema_version != 1
-            || job.id.is_empty()
-            || job.id.len() > 64
-            || !job
-                .id
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
-            || job.evidence.is_empty()
-            || job.evidence.len() > 8
-            || job.instruction.trim().is_empty()
-            || job.instruction.len() > 8192
-        {
+        if job_problem(&job).is_some() {
             bail!("invalid approved job: {}", path.display());
         }
         if scope_reserved(&queue, &job.evidence) {
@@ -494,6 +483,76 @@ pub(crate) fn tick(config: &Path, minute: u32, now: u64) -> Result<()> {
 /// minutes even after a long idle streak, so a real backlog that shows up
 /// later is never starved for more than half an hour by an over-eager
 /// backoff.
+/// Why a parsed job manifest is unusable, or `None` when it is valid. Shared by the tick (which
+/// refuses the whole batch on the first bad manifest) and `local-worker-lint-jobs`.
+fn job_problem(job: &Job) -> Option<&'static str> {
+    if job.schema_version != 1 {
+        Some("schema_version must be 1")
+    } else if job.id.is_empty() || job.id.len() > 64 {
+        Some("id must be 1..=64 characters")
+    } else if !job
+        .id
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        Some("id may contain only letters, digits and '-'")
+    } else if job.evidence.is_empty() || job.evidence.len() > 8 {
+        Some("evidence must list 1..=8 files")
+    } else if job.instruction.trim().is_empty() || job.instruction.len() > 8192 {
+        Some("instruction must be 1..=8192 characters")
+    } else {
+        None
+    }
+}
+
+/// Read-only check of every job manifest in the worker's jobs directory: parse errors, the tick's
+/// validity rules, duplicate ids, and evidence files that do not exist. Writes nothing; fails if
+/// any problem is found, so one bad manifest is caught before it blocks a tick.
+pub(crate) fn lint_jobs(config_path: &Path) -> Result<()> {
+    if !config_path.is_absolute() {
+        bail!("absolute config required");
+    }
+    let c: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
+    let mut seen = std::collections::HashSet::new();
+    let mut problems = 0usize;
+    let paths = files(&c.jobs_directory, "toml")?;
+    for path in &paths {
+        let name = path.display();
+        let job: Job = match read_bounded(path, 16384)
+            .and_then(|text| toml::from_str(&text).map_err(Into::into))
+        {
+            Ok(job) => job,
+            Err(error) => {
+                println!("{name}: unreadable manifest: {error}");
+                problems += 1;
+                continue;
+            }
+        };
+        if let Some(reason) = job_problem(&job) {
+            println!("{name}: {reason}");
+            problems += 1;
+        }
+        if !seen.insert(job.id.clone()) {
+            println!("{name}: duplicate job id {}", job.id);
+            problems += 1;
+        }
+        for relative in &job.evidence {
+            if let Err(error) = evidence_file(&c.checkout, relative) {
+                println!("{name}: evidence {relative}: {error}");
+                problems += 1;
+            }
+        }
+    }
+    println!(
+        "local worker: linted {} job(s), {problems} problem(s)",
+        paths.len()
+    );
+    if problems > 0 {
+        bail!("{problems} job manifest problem(s)");
+    }
+    Ok(())
+}
+
 /// Pure summary of worker state for `local-worker-status` (C96 slice 4). Inputs are explicit, so
 /// it needs no clock: `now` is supplied by the caller.
 fn render_status(
@@ -894,6 +953,42 @@ last_outcome: unknown"
             files(&c.results_directory, "json").expect("r").len(),
             before
         );
+    }
+
+    #[test]
+    fn lint_passes_a_good_job_and_reports_bad_ones_without_writing() {
+        let (_d, c, config) = fixture();
+        lint_jobs(&config).expect("fixture jobs lint clean");
+        let bad = c.jobs_directory.join("bad.toml");
+        fs::write(
+            &bad,
+            "schema_version = 1
+id = \"bad id\"
+mode = \"analysis\"
+evidence = [\"missing/file.rs\"]
+instruction = \"x\"
+",
+        )
+        .expect("write");
+        assert!(lint_jobs(&config).is_err());
+        assert!(files(&c.results_directory, "json").expect("r").is_empty());
+    }
+
+    #[test]
+    fn job_problem_names_each_rule() {
+        let mut job = Job {
+            schema_version: 1,
+            id: "ok-1".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["a.rs".into()],
+            instruction: "do".into(),
+        };
+        assert_eq!(job_problem(&job), None);
+        job.id = "no spaces".into();
+        assert!(job_problem(&job).is_some());
+        job.id = "ok".into();
+        job.evidence.clear();
+        assert!(job_problem(&job).is_some());
     }
 
     #[test]
