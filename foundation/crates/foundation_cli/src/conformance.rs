@@ -184,6 +184,11 @@ fn normalize(text: &str) -> String {
 /// Quoted segments shorter than this carry too little information to anchor a claim.
 const MIN_ANCHOR_LEN: usize = 8;
 
+/// Lines of slack either side of a cited range before a quote counts as out of range.
+/// A live run of the worker showed near misses (cited 104, real line 98) that are citation
+/// noise, not wrong claims; larger distances are the ones worth a reviewer's attention.
+const LINE_SLACK: usize = 10;
+
 /// Returns the indices of observations that are not anchored in `evidence`.
 ///
 /// An observation is anchored when it contains at least one backtick-quoted
@@ -243,8 +248,8 @@ fn cited_line_range(text: &str) -> Option<(usize, usize)> {
 /// Returns indices of observations whose cited line range does not contain their quoted text.
 ///
 /// An observation that cites `line N` or `lines A-B` and quotes `backticked` text (8+ chars)
-/// is rejected when any quote is absent from those lines of `evidence` (whitespace
-/// normalised). Observations without a citation or without a quote are not reported here:
+/// is rejected when any quote is absent from those lines of `evidence`, widened by
+/// `LINE_SLACK` lines either side (whitespace normalised). Observations without a citation or without a quote are not reported here:
 /// they are unverifiable, not wrong (use [`unanchored_observations`] for quote presence).
 pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str) -> Vec<usize> {
     let lines: Vec<&str> = evidence.lines().collect();
@@ -259,16 +264,26 @@ pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str)
             if quotes.is_empty() {
                 return false;
             }
-            let end = b.min(lines.len());
-            let window = if a > end {
+            let start = a.saturating_sub(LINE_SLACK).max(1);
+            let end = b.saturating_add(LINE_SLACK).min(lines.len());
+            let window = if start > end {
                 String::new()
             } else {
-                normalize(&lines[a - 1..end].join("\n"))
+                normalize(&lines[start - 1..end].join("\n"))
             };
             quotes.iter().any(|q| !window.contains(&normalize(q)))
         })
         .map(|(index, _)| index)
         .collect()
+}
+
+/// First 1-based line of `evidence` whose normalised text contains the normalised `quote`.
+fn first_line_of(evidence: &str, quote: &str) -> Option<usize> {
+    let needle = normalize(quote);
+    evidence
+        .lines()
+        .position(|line| normalize(line).contains(&needle))
+        .map(|index| index + 1)
 }
 
 /// Shadow-mode claim checks for a worker draft against every declared evidence file.
@@ -291,7 +306,7 @@ pub(crate) fn claim_flags(observations: &[String], evidence_files: &[String]) ->
         .iter()
         .map(|file| out_of_range_observations(observations, file))
         .collect();
-    for index in 0..observations.len() {
+    for (index, observation) in observations.iter().enumerate() {
         let unanchored_everywhere = !evidence_files.is_empty()
             && per_file_unanchored
                 .iter()
@@ -310,8 +325,16 @@ pub(crate) fn claim_flags(observations: &[String], evidence_files: &[String]) ->
                 .iter()
                 .all(|file| per_file_out_of_range[*file].contains(&index))
         {
+            let found = backtick_quotes(observation).first().and_then(|quote| {
+                anchored_files
+                    .iter()
+                    .find_map(|file| first_line_of(&evidence_files[*file], quote))
+            });
+            let found = found.map_or(String::new(), |line| {
+                format!("; first found at line {line}")
+            });
             flags.push(format!(
-                "observation {index}: cited line range does not contain its quoted text"
+                "observation {index}: cited line range (+/-{LINE_SLACK} lines) does not contain its quoted text{found}"
             ));
         }
     }
@@ -470,10 +493,18 @@ mod tests {
 
     #[test]
     fn range_check_rejects_a_real_quote_at_the_wrong_lines() {
-        let evidence =
-            "fn a() {}\nfn b() {}\nfn walk(depth: u32) { if max_depth == 0 { return; } }\n";
+        let mut evidence = String::new();
+        for _ in 0..30 {
+            evidence.push_str("fn filler() {}\n");
+        }
+        evidence.push_str("fn walk(depth: u32) { if max_depth == 0 { return; } }\n");
         let obs = vec!["See lines 1-2: `if max_depth == 0 { return; }`".to_string()];
-        assert_eq!(out_of_range_observations(&obs, evidence), vec![0]);
+        assert_eq!(out_of_range_observations(&obs, &evidence), vec![0]);
+        let near = vec!["See line 25: `if max_depth == 0 { return; }`".to_string()];
+        assert!(
+            out_of_range_observations(&near, &evidence).is_empty(),
+            "within slack"
+        );
     }
 
     #[test]
@@ -497,9 +528,13 @@ mod tests {
 
     #[test]
     fn claim_flags_reports_unanchored_and_wrong_range_but_not_good_claims() {
-        let file = "one\nfn walk() {}\nlet guard = `x`;\nfn normalize_path() {}\n".to_string();
+        let mut file = "one\nfn walk() {}\nlet guard = `x`;\n".to_string();
+        for _ in 0..20 {
+            file.push_str("fn filler() {}\n");
+        }
+        file.push_str("fn normalize_path() {}\n");
         let obs = vec![
-            "Good, line 4: `fn normalize_path() {}`".to_string(),
+            "Good, line 24: `fn normalize_path() {}`".to_string(),
             "Invented: `fn invented_thing() {}` exists".to_string(),
             "Wrong place, lines 1-2: `fn normalize_path() {}`".to_string(),
             "No citation, quote `fn walk() {}` only".to_string(),
@@ -510,6 +545,7 @@ mod tests {
         assert!(flags[0].contains("not anchored"), "{flags:?}");
         assert!(flags[1].starts_with("observation 2:"), "{flags:?}");
         assert!(flags[1].contains("line range"), "{flags:?}");
+        assert!(flags[1].contains("first found at line 24"), "{flags:?}");
     }
 
     #[test]
