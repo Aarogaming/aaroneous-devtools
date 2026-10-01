@@ -211,13 +211,15 @@ fn unanchored_with_paths(
         .enumerate()
         .filter(|(_, observation)| {
             let quotes = backtick_quotes(observation);
-            if is_negative_claim(observation) && !quotes.is_empty() {
+            if quotes.is_empty() {
+                return true;
+            }
+            if is_negative_claim(observation) {
                 return false;
             }
-            quotes.is_empty()
-                || quotes
-                    .iter()
-                    .any(|q| !quote_present(&haystack, q, known_paths))
+            asserted_quotes(observation)
+                .iter()
+                .any(|q| !quote_present(&haystack, q, known_paths))
         })
         .map(|(index, _)| index)
         .collect()
@@ -263,6 +265,35 @@ fn backtick_quotes(text: &str) -> Vec<&str> {
         .filter(|(i, part)| i % 2 == 1 && part.trim().len() >= MIN_ANCHOR_LEN)
         .map(|(_, part)| part)
         .collect()
+}
+
+/// Words that, just before a backtick quote, mean the quote names something that is absent
+/// ("but no `#[cfg(test)]` module"), so it cannot be anchored in the evidence.
+const NEGATIONS: [&str; 6] = ["no ", "not ", "without ", "lacks ", "lack ", "never "];
+
+/// How many characters before a quote are searched for a negation word.
+const NEGATION_WINDOW: usize = 16;
+
+/// Like [`backtick_quotes`], but drops quotes that a negation word directly precedes.
+fn asserted_quotes(text: &str) -> Vec<&str> {
+    let mut offset: usize = 0;
+    let mut kept = Vec::new();
+    for (index, part) in text.split('`').enumerate() {
+        if index % 2 == 1 && part.trim().len() >= MIN_ANCHOR_LEN {
+            let before = &text[..offset.saturating_sub(1)];
+            let tail_start = before
+                .char_indices()
+                .rev()
+                .nth(NEGATION_WINDOW)
+                .map_or(0, |(at, _)| at);
+            let tail = before[tail_start..].to_ascii_lowercase();
+            if !NEGATIONS.iter().any(|word| tail.contains(word)) {
+                kept.push(part);
+            }
+        }
+        offset += part.len() + 1;
+    }
+    kept
 }
 
 /// Parses the first `line N` / `lines A-B` citation in `text` as an inclusive 1-based range.
@@ -319,7 +350,7 @@ fn out_of_range_with_paths(
             let Some((a, b)) = cited_line_range(observation) else {
                 return false;
             };
-            let quotes = backtick_quotes(observation);
+            let quotes = asserted_quotes(observation);
             if quotes.is_empty() {
                 return false;
             }
@@ -611,6 +642,18 @@ impl<P: LLMProvider> LlmGateway<P> {
             "`LlmGateway::shutdown` returns `Result<()>`".to_string(),
         ];
         assert_eq!(claim_flags(&mutated, &files, &paths).len(), 3);
+    }
+
+    #[test]
+    fn a_quote_after_a_mid_sentence_negation_is_not_anchored_against_the_source() {
+        let evidence = "pub struct LlmConfig { pub a: u32 }
+";
+        let obs = vec![
+            "Defines `LlmConfig` struct with one field, but no `#[cfg(test)]` module found"
+                .to_string(),
+            "Defines `LlmConfig` struct, plus `fn invented_helper() {}` here".to_string(),
+        ];
+        assert_eq!(unanchored_observations(&obs, evidence), vec![1]);
     }
 
     #[test]
