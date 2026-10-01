@@ -556,6 +556,57 @@ pub(crate) fn lint_jobs(config_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Moves the reviewed results of one job from the results directory to the archive directory,
+/// which is what frees backpressure after the owner has read them. Never overwrites: an existing
+/// archive file with the same name is an error. Matches `<job-id>-<n>.json` exactly, so one
+/// job id cannot sweep up another whose id merely starts with the same text.
+pub(crate) fn archive(config_path: &Path, job_id: &str) -> Result<()> {
+    if !config_path.is_absolute() {
+        bail!("absolute config required");
+    }
+    if job_id.is_empty()
+        || job_id.len() > 64
+        || !job_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        bail!("job id must be 1..=64 letters, digits or '-'");
+    }
+    let c: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
+    let prefix = format!("{job_id}-");
+    let matches: Vec<PathBuf> = files(&c.results_directory, "json")?
+        .into_iter()
+        .filter(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .and_then(|stem| stem.strip_prefix(&prefix))
+                .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .collect();
+    if matches.is_empty() {
+        bail!("no pending result for job {job_id}");
+    }
+    for path in &matches {
+        let Some(name) = path.file_name() else {
+            bail!("result without a file name");
+        };
+        let destination = c.archive_directory.join(name);
+        if destination.exists() {
+            bail!("archive already holds {}", destination.display());
+        }
+    }
+    for path in &matches {
+        if let Some(name) = path.file_name() {
+            fs::rename(path, c.archive_directory.join(name))?;
+        }
+    }
+    println!(
+        "local worker: archived {} result(s) for {job_id}",
+        matches.len()
+    );
+    Ok(())
+}
+
 /// Pure summary of worker state for `local-worker-status` (C96 slice 4). Inputs are explicit, so
 /// it needs no clock: `now` is supplied by the caller.
 fn render_status(
@@ -992,6 +1043,25 @@ instruction = \"x\"
         job.id = "ok".into();
         job.evidence.clear();
         assert!(job_problem(&job).is_some());
+    }
+
+    #[test]
+    fn archive_moves_one_jobs_results_and_refuses_overwrite_or_unknown_ids() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        let results = files(&c.results_directory, "json").expect("results");
+        let stem = results[0]
+            .file_stem()
+            .expect("stem")
+            .to_string_lossy()
+            .to_string();
+        let job_id = stem.rsplit_once('-').expect("id-n").0.to_string();
+        assert!(archive(&config, "other-job").is_err());
+        assert!(archive(&config, "bad id").is_err());
+        archive(&config, &job_id).expect("archive");
+        assert!(files(&c.results_directory, "json").expect("r").is_empty());
+        assert_eq!(files(&c.archive_directory, "json").expect("a").len(), 1);
+        assert!(archive(&config, &job_id).is_err());
     }
 
     #[test]
