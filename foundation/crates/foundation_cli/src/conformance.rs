@@ -587,6 +587,33 @@ impl ToolRegistry {}
     }
 
     #[test]
+    fn real_observations_pass_and_mutated_ones_are_caught() {
+        // Modelled on the hand-graded gateway.rs job: three true observations, then the same
+        // observations with one fact changed each.
+        let source = "pub struct LlmGateway<P> { provider: P }
+impl<P: LLMProvider> LlmGateway<P> {
+    pub async fn chat(&self, system_prompt: &str) -> Result<String> { todo_free() }
+    pub async fn embed(&self, text: &str) -> Result<Vec<f32>> { todo_free() }
+}
+";
+        let paths = vec!["crates/llm_gateway/src/gateway.rs".to_string()];
+        let files = [source.to_string()];
+        let real = vec![
+            "Defines `LlmGateway` with `pub async fn chat(&self, system_prompt: &str)` at line 3"
+                .to_string(),
+            "No `#[cfg(test)]` module found in `crates/llm_gateway/src/gateway.rs`".to_string(),
+            "`LlmGateway::embed` returns `Result<Vec<f32>>`".to_string(),
+        ];
+        assert!(claim_flags(&real, &files, &paths).is_empty());
+        let mutated = vec![
+            "Defines `LlmGateway` with `pub async fn chat_stream(&self, system_prompt: &str)` at line 3".to_string(),
+            "Defines `LlmGateway` with `pub async fn chat(&self, system_prompt: &str)` at line 90".to_string(),
+            "`LlmGateway::shutdown` returns `Result<()>`".to_string(),
+        ];
+        assert_eq!(claim_flags(&mutated, &files, &paths).len(), 3);
+    }
+
+    #[test]
     fn invented_or_unquoted_claims_are_rejected() {
         let evidence = "fn walk(depth: u32) { if max_depth == 0 { return; } }";
         let obs = vec![
