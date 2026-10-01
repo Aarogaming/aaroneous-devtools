@@ -206,7 +206,7 @@ pub(crate) fn unanchored_observations(observations: &[String], evidence: &str) -
             if is_negative_claim(observation) && !quotes.is_empty() {
                 return false;
             }
-            quotes.is_empty() || quotes.iter().any(|q| !haystack.contains(&normalize(q)))
+            quotes.is_empty() || quotes.iter().any(|q| !quote_present(&haystack, q))
         })
         .map(|(index, _)| index)
         .collect()
@@ -227,6 +227,21 @@ fn is_negative_claim(observation: &str) -> bool {
     ]
     .iter()
     .any(|prefix| lower.starts_with(prefix))
+}
+
+/// `true` when `quote` occurs in the already-normalised `haystack`, either literally or as a
+/// Rust path such as `StateAdaptor::new`, which models write for a method that the source only
+/// shows as `impl StateAdaptor { ... fn new`. A path counts when every `::` segment occurs.
+fn quote_present(haystack: &str, quote: &str) -> bool {
+    let quote = normalize(quote);
+    if haystack.contains(&quote) {
+        return true;
+    }
+    let segments: Vec<&str> = quote.split("::").collect();
+    segments.len() >= 2
+        && segments
+            .iter()
+            .all(|segment| !segment.is_empty() && haystack.contains(segment))
 }
 
 fn backtick_quotes(text: &str) -> Vec<&str> {
@@ -294,7 +309,7 @@ pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str)
             } else {
                 normalize(&lines[start - 1..end].join("\n"))
             };
-            quotes.iter().all(|q| !window.contains(&normalize(q)))
+            quotes.iter().all(|q| !quote_present(&window, q))
         })
         .map(|(index, _)| index)
         .collect()
@@ -515,6 +530,20 @@ impl ToolRegistry {}
         let wrong =
             vec!["Defines `Specialist` trait: `pub trait Specialist {` at line 20".to_string()];
         assert_eq!(out_of_range_observations(&wrong, &evidence), vec![0]);
+    }
+
+    #[test]
+    fn a_rust_path_quote_is_anchored_when_every_segment_is_in_the_source() {
+        let evidence = "impl StateAdaptor {
+    pub fn new(a: f32) -> Self { todo_free() }
+}
+";
+        let obs = vec![
+            "Source line 2 defines `StateAdaptor::new` accepting one parameter".to_string(),
+            "Source line 2 defines `StateAdaptor::vanish_method` here".to_string(),
+        ];
+        assert_eq!(unanchored_observations(&obs, evidence), vec![1]);
+        assert!(out_of_range_observations(&obs[..1], evidence).is_empty());
     }
 
     #[test]
