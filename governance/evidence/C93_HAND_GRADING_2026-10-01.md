@@ -20,6 +20,15 @@ Fixes: #35 (negation, any-quote-in-range, `::` path segments, declared evidence 
 
 Job FEED-F279B98E0D46616D, crates/llm_gateway/src/gateway.rs: (0) public methods `chat`, `embed`, `chat_with_ast_prefix` exist (lines 56, 66, 76); (1) no `cfg(test)` or `tokio::test` in the file; (2) the `LLMProvider` and `AstPrefixCacheManager` references exist (lines 11/25 and 78).
 
+## Round 3 (binary with #35 fixes; jobs FEED-7CD6322BBCACC5B4, FEED-B9B60C69078F5910, FEED-F0C620E2A6A2FC63)
+
+| job | source file | flag | what the source shows | cause |
+|---|---|---|---|---|
+| FEED-7CD6322BBCACC5B4 obs 1 | crates/llm_gateway/src/mcp_gateway.rs | not anchored | `grep -c "cfg(test)\|#\[test\]"` returns 0, so "No existing tests found" is true | unquoted negative claim: the checker treats any observation without a quote as unanchored |
+| FEED-F0C620E2A6A2FC63 obs 0 | crates/llm_gateway_types/src/config.rs | not anchored | 0 test markers (true); `LLMConfig` has 13 public fields (true); the model wrote "but no `#[cfg(test)]` module" | negative quote in the middle of a sentence, not at its start |
+
+FEED-B9B60C69078F5910 was unflagged (observations not individually graded). Running tally: 7 of 7 graded flags are false positives; 3 of 3 graded unflagged observations true. The two new causes are not fixed by #35.
+
 ## Not verified
 - No flagged observation has been a truly wrong claim yet, so the checks' true-positive behaviour is only covered by a constructed test (`real_observations_pass_and_mutated_ones_are_caught`).
 - Unflagged observations of the other jobs were not graded; recall is unknown.
