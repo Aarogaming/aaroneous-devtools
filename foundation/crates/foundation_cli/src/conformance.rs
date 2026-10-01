@@ -197,6 +197,14 @@ const LINE_SLACK: usize = 10;
 /// paraphrased "findings"; it cannot tell whether a real quote supports the
 /// claim, so it is a floor filter, not review.
 pub(crate) fn unanchored_observations(observations: &[String], evidence: &str) -> Vec<usize> {
+    unanchored_with_paths(observations, evidence, &[])
+}
+
+fn unanchored_with_paths(
+    observations: &[String],
+    evidence: &str,
+    known_paths: &[String],
+) -> Vec<usize> {
     let haystack = normalize(evidence);
     observations
         .iter()
@@ -206,7 +214,10 @@ pub(crate) fn unanchored_observations(observations: &[String], evidence: &str) -
             if is_negative_claim(observation) && !quotes.is_empty() {
                 return false;
             }
-            quotes.is_empty() || quotes.iter().any(|q| !quote_present(&haystack, q))
+            quotes.is_empty()
+                || quotes
+                    .iter()
+                    .any(|q| !quote_present(&haystack, q, known_paths))
         })
         .map(|(index, _)| index)
         .collect()
@@ -232,9 +243,11 @@ fn is_negative_claim(observation: &str) -> bool {
 /// `true` when `quote` occurs in the already-normalised `haystack`, either literally or as a
 /// Rust path such as `StateAdaptor::new`, which models write for a method that the source only
 /// shows as `impl StateAdaptor { ... fn new`. A path counts when every `::` segment occurs.
-fn quote_present(haystack: &str, quote: &str) -> bool {
+/// A quote equal to one of the job's declared evidence paths also counts: a file's own path is
+/// never in its contents.
+fn quote_present(haystack: &str, quote: &str, known_paths: &[String]) -> bool {
     let quote = normalize(quote);
-    if haystack.contains(&quote) {
+    if haystack.contains(&quote) || known_paths.iter().any(|path| normalize(path) == quote) {
         return true;
     }
     let segments: Vec<&str> = quote.split("::").collect();
@@ -287,6 +300,14 @@ fn cited_line_range(text: &str) -> Option<(usize, usize)> {
 /// `LINE_SLACK` lines either side (whitespace normalised). Observations without a citation or without a quote are not reported here:
 /// they are unverifiable, not wrong (use [`unanchored_observations`] for quote presence).
 pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str) -> Vec<usize> {
+    out_of_range_with_paths(observations, evidence, &[])
+}
+
+fn out_of_range_with_paths(
+    observations: &[String],
+    evidence: &str,
+    known_paths: &[String],
+) -> Vec<usize> {
     let lines: Vec<&str> = evidence.lines().collect();
     observations
         .iter()
@@ -309,7 +330,9 @@ pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str)
             } else {
                 normalize(&lines[start - 1..end].join("\n"))
             };
-            quotes.iter().all(|q| !quote_present(&window, q))
+            quotes
+                .iter()
+                .all(|q| !quote_present(&window, q, known_paths))
         })
         .map(|(index, _)| index)
         .collect()
@@ -347,15 +370,19 @@ pub(crate) fn draft_flags(rust_draft: &str) -> Vec<String> {
 ///   do occur, they are outside the cited lines (see [`out_of_range_observations`]).
 ///
 /// Observations without a citation are never range-flagged: they are unverifiable.
-pub(crate) fn claim_flags(observations: &[String], evidence_files: &[String]) -> Vec<String> {
+pub(crate) fn claim_flags(
+    observations: &[String],
+    evidence_files: &[String],
+    declared_paths: &[String],
+) -> Vec<String> {
     let mut flags = Vec::new();
     let per_file_unanchored: Vec<Vec<usize>> = evidence_files
         .iter()
-        .map(|file| unanchored_observations(observations, file))
+        .map(|file| unanchored_with_paths(observations, file, declared_paths))
         .collect();
     let per_file_out_of_range: Vec<Vec<usize>> = evidence_files
         .iter()
-        .map(|file| out_of_range_observations(observations, file))
+        .map(|file| out_of_range_with_paths(observations, file, declared_paths))
         .collect();
     for (index, observation) in observations.iter().enumerate() {
         let unanchored_everywhere = !evidence_files.is_empty()
@@ -547,6 +574,19 @@ impl ToolRegistry {}
     }
 
     #[test]
+    fn a_declared_evidence_path_quote_is_anchored() {
+        let file = "pub fn run() {}
+"
+        .to_string();
+        let obs = vec![
+            "File `crates/compute/src/tensor_kernel.rs` defines `pub fn run() {}`".to_string(),
+        ];
+        let paths = vec!["crates/compute/src/tensor_kernel.rs".to_string()];
+        assert!(claim_flags(&obs, std::slice::from_ref(&file), &paths).is_empty());
+        assert_eq!(claim_flags(&obs, &[file], &[]).len(), 1);
+    }
+
+    #[test]
     fn invented_or_unquoted_claims_are_rejected() {
         let evidence = "fn walk(depth: u32) { if max_depth == 0 { return; } }";
         let obs = vec![
@@ -643,7 +683,7 @@ impl ToolRegistry {}
             "Wrong place, lines 1-2: `fn normalize_path() {}`".to_string(),
             "No citation, quote `fn walk() {}` only".to_string(),
         ];
-        let flags = claim_flags(&obs, &[file]);
+        let flags = claim_flags(&obs, &[file], &[]);
         assert_eq!(flags.len(), 2, "{flags:?}");
         assert!(flags[0].starts_with("observation 1:"), "{flags:?}");
         assert!(flags[0].contains("not anchored"), "{flags:?}");
@@ -657,13 +697,13 @@ impl ToolRegistry {}
         let a = "alpha\nbeta\n".to_string();
         let b = "gamma\nfn target_fn() {}\n".to_string();
         let obs = vec!["See line 2: `fn target_fn() {}`".to_string()];
-        assert!(claim_flags(&obs, &[a, b]).is_empty());
+        assert!(claim_flags(&obs, &[a, b], &[]).is_empty());
     }
 
     #[test]
     fn claim_flags_with_no_evidence_flags_nothing() {
         let obs = vec!["anything `quoted text`".to_string()];
-        assert!(claim_flags(&obs, &[]).is_empty());
+        assert!(claim_flags(&obs, &[], &[]).is_empty());
     }
 
     #[test]

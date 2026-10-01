@@ -383,8 +383,11 @@ where
         };
         match delegate(&c.endpoint, &record.input) {
             Ok(proposal) => {
-                let mut flags =
-                    crate::conformance::claim_flags(&proposal.observations, &evidence_files);
+                let mut flags = crate::conformance::claim_flags(
+                    &proposal.observations,
+                    &evidence_files,
+                    &job.evidence,
+                );
                 if let Some(code) = &proposal.rust_draft {
                     flags.extend(crate::conformance::draft_flags(code));
                 }
