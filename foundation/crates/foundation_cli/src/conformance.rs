@@ -203,10 +203,30 @@ pub(crate) fn unanchored_observations(observations: &[String], evidence: &str) -
         .enumerate()
         .filter(|(_, observation)| {
             let quotes = backtick_quotes(observation);
+            if is_negative_claim(observation) && !quotes.is_empty() {
+                return false;
+            }
             quotes.is_empty() || quotes.iter().any(|q| !haystack.contains(&normalize(q)))
         })
         .map(|(index, _)| index)
         .collect()
+}
+
+/// `true` for an observation that asserts something is absent ("No `#[test]` found"). Its
+/// quoted text cannot be in the evidence, so quote anchoring does not apply to it when it
+/// quotes something; an unquoted negative claim is still reported as unanchored.
+fn is_negative_claim(observation: &str) -> bool {
+    let lower = observation.trim_start().to_ascii_lowercase();
+    [
+        "no ",
+        "not ",
+        "none ",
+        "there is no ",
+        "there are no ",
+        "lacks ",
+    ]
+    .iter()
+    .any(|prefix| lower.starts_with(prefix))
 }
 
 fn backtick_quotes(text: &str) -> Vec<&str> {
@@ -248,7 +268,7 @@ fn cited_line_range(text: &str) -> Option<(usize, usize)> {
 /// Returns indices of observations whose cited line range does not contain their quoted text.
 ///
 /// An observation that cites `line N` or `lines A-B` and quotes `backticked` text (8+ chars)
-/// is rejected when any quote is absent from those lines of `evidence`, widened by
+/// is flagged only when NONE of its quotes is present in those lines of `evidence`, widened by
 /// `LINE_SLACK` lines either side (whitespace normalised). Observations without a citation or without a quote are not reported here:
 /// they are unverifiable, not wrong (use [`unanchored_observations`] for quote presence).
 pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str) -> Vec<usize> {
@@ -257,6 +277,9 @@ pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str)
         .iter()
         .enumerate()
         .filter(|(_, observation)| {
+            if is_negative_claim(observation) {
+                return false;
+            }
             let Some((a, b)) = cited_line_range(observation) else {
                 return false;
             };
@@ -271,7 +294,7 @@ pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str)
             } else {
                 normalize(&lines[start - 1..end].join("\n"))
             };
-            quotes.iter().any(|q| !window.contains(&normalize(q)))
+            quotes.iter().all(|q| !window.contains(&normalize(q)))
         })
         .map(|(index, _)| index)
         .collect()
@@ -453,6 +476,45 @@ mod tests {
         let evidence = "fn walk(depth: u32) {\n    if max_depth  == 0 { return; }\n}\n";
         let obs = vec!["Guard exists: `if max_depth == 0 { return; }`".to_string()];
         assert!(unanchored_observations(&obs, evidence).is_empty());
+    }
+
+    #[test]
+    fn a_negative_claim_that_quotes_absent_text_is_not_flagged_but_unquoted_ones_still_are() {
+        let evidence = "pub struct ToolRegistry;
+impl ToolRegistry {}
+";
+        let obs = vec![
+            "No `#[cfg(test)]` module or `#[test]` attributes found in the file".to_string(),
+            "No depth guard exists".to_string(),
+        ];
+        assert_eq!(unanchored_observations(&obs, evidence), vec![1]);
+        assert!(out_of_range_observations(&obs, evidence).is_empty());
+    }
+
+    #[test]
+    fn a_bare_identifier_quote_out_of_range_does_not_flag_when_the_source_line_is_in_range() {
+        let mut evidence = String::from(
+            "// Specialist docs
+",
+        );
+        for _ in 0..40 {
+            evidence.push_str(
+                "fn filler() {}
+",
+            );
+        }
+        evidence.push_str(
+            "pub trait Specialist: Send + Sync {
+",
+        );
+        let obs = vec![
+            "File defines `Specialist` trait. Source: `pub trait Specialist: Send + Sync {` at line 40"
+                .to_string(),
+        ];
+        assert!(out_of_range_observations(&obs, &evidence).is_empty());
+        let wrong =
+            vec!["Defines `Specialist` trait: `pub trait Specialist {` at line 20".to_string()];
+        assert_eq!(out_of_range_observations(&wrong, &evidence), vec![0]);
     }
 
     #[test]
