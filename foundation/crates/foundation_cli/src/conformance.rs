@@ -1,0 +1,357 @@
+//! Deterministic conformance checks for local-model drafts (lane C76).
+//!
+//! Pure functions over text: no I/O, no clock, no environment. Nothing here
+//! compiles or runs a draft (that is `dogfood::verify_draft`, M44); this
+//! module supplies the parts that need no toolchain:
+//!
+//! * [`RULE_PACK`] - Aaroneous floor rules, phrased for a small model's system prompt.
+//! * [`scan_draft`] - heuristic static scan for the floor's banned patterns.
+//! * [`unanchored_observations`] - rejects model claims that do not quote a
+//!   line that actually occurs in the supplied evidence.
+//!
+//! The scan is a line/brace heuristic, not a parser. It ignores comments and
+//! braces inside string/char literals, but still reports banned patterns that
+//! appear inside literals, and it does not track raw strings or literals that span
+//! lines. Tier 0 (`xtask gate`, `ast_auditor`) stays the authority. A clean scan is
+//! never evidence of conformance.
+
+/// Rules for the worker system prompt. Source: AGENTS.md sections 2 and 5.
+pub(crate) const RULE_PACK: &str = "\
+Aaroneous floor rules (a draft that breaks any is rejected):
+1. No std::env::var/var_os/set_var/remove_var/temp_dir/current_dir and no .canonicalize(). Take paths and config through constructor arguments.
+2. No SystemTime::now() or Instant::now() in non-test code. Take time as a parameter (tick or injected clock).
+3. Never spawn threads or async tasks (std::thread::spawn, tokio::spawn).
+4. No todo!() or unimplemented!(). No unsafe impl of Pod or Zeroable (derive only).
+5. Outside #[cfg(test)]: no .unwrap(), .expect(), panic!() or assert!(). Return Result. The only exception is a call directly preceded by a `// INFALLIBLE: <reason>` comment.
+6. Tests build their own fixtures with tempfile::tempdir(); never read host environment variables or use ambient temp folders.
+7. Every observation must quote the exact source line it refers to in `backticks`. Do not claim something is missing unless you searched the supplied source for it.";
+
+/// One rule breach found by [`scan_draft`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Violation {
+    pub rule: &'static str,
+    /// 1-based line number within the scanned source.
+    pub line: usize,
+}
+
+/// Patterns banned everywhere in a draft, including tests.
+const BANNED_EVERYWHERE: &[(&str, &str)] = &[
+    ("ambient-env", "env::var"),
+    ("ambient-env", "env::set_var"),
+    ("ambient-env", "env::remove_var"),
+    ("ambient-env", "env::temp_dir"),
+    ("ambient-env", "env::current_dir"),
+    ("ambient-path", ".canonicalize("),
+    ("self-started-thread", "thread::spawn"),
+    ("self-started-task", "tokio::spawn"),
+    ("stub", "todo!("),
+    ("stub", "unimplemented!("),
+    ("unsafe-pod", "unsafe impl Pod"),
+    ("unsafe-pod", "unsafe impl Zeroable"),
+];
+
+/// Patterns banned outside test regions.
+const BANNED_OUTSIDE_TESTS: &[(&str, &str)] = &[
+    ("ambient-clock", "SystemTime::now"),
+    ("ambient-clock", "Instant::now"),
+    ("panic-on-input", ".unwrap()"),
+    ("panic-on-input", ".expect("),
+    ("panic-on-input", "panic!("),
+    ("panic-on-input", "assert!("),
+    ("panic-on-input", "assert_eq!("),
+    ("panic-on-input", "assert_ne!("),
+];
+
+/// Scans `source` for the floor's banned patterns.
+///
+/// Test regions (a `#[cfg(test)]` item or a `#[test]` function body, found by
+/// brace counting) are exempt from the panic and clock rules only. Comment-only
+/// lines are ignored. A panic-rule hit is waived when the nearest preceding
+/// non-blank line is a `// INFALLIBLE:` comment.
+pub(crate) fn scan_draft(source: &str) -> Vec<Violation> {
+    let mut found = Vec::new();
+    let mut depth: i64 = 0;
+    // Depth at which the current test region opened; `None` outside one.
+    let mut test_region_from: Option<i64> = None;
+    let mut test_attr_pending = false;
+    let mut previous_code_line: Option<&str> = None;
+
+    for (index, raw) in source.lines().enumerate() {
+        let line = raw.trim();
+        let comment_only = line.starts_with("//");
+        if !comment_only {
+            if line.contains("#[cfg(test)]") || line.starts_with("#[test]") {
+                test_attr_pending = true;
+            }
+            let in_test = test_region_from.is_some() || test_attr_pending;
+            let (code, structure) = split_code(line);
+            for (rule, needle) in BANNED_EVERYWHERE {
+                if code.contains(needle) {
+                    found.push(Violation {
+                        rule,
+                        line: index + 1,
+                    });
+                }
+            }
+            if !in_test {
+                let waived = previous_code_line
+                    .is_some_and(|p| p.trim_start().starts_with("// INFALLIBLE:"));
+                for (rule, needle) in BANNED_OUTSIDE_TESTS {
+                    if code.contains(needle) && !(waived && *rule == "panic-on-input") {
+                        found.push(Violation {
+                            rule,
+                            line: index + 1,
+                        });
+                    }
+                }
+            }
+            for ch in structure.chars() {
+                match ch {
+                    '{' => {
+                        if test_attr_pending && test_region_from.is_none() {
+                            test_region_from = Some(depth);
+                            test_attr_pending = false;
+                        }
+                        depth += 1;
+                    }
+                    '}' => {
+                        depth -= 1;
+                        if test_region_from == Some(depth) {
+                            test_region_from = None;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if !line.is_empty() {
+            previous_code_line = Some(raw);
+        }
+    }
+    found
+}
+
+/// Splits one line into (`code`, `structure`).
+///
+/// `code` is the line with any trailing `//` comment removed, where a `//` inside a
+/// string literal does not start a comment; string contents are kept, so patterns
+/// inside literals are still reported (over-report). `structure` is the same text
+/// with string and char literal contents removed, so braces inside literals do not
+/// move the test-region depth. Raw strings and literals spanning lines are not
+/// tracked; that is a documented limit of this heuristic.
+fn split_code(line: &str) -> (String, String) {
+    let chars: Vec<char> = line.chars().collect();
+    let mut code = String::new();
+    let mut structure = String::new();
+    let mut in_str = false;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if in_str {
+            code.push(c);
+            if c == '\\' && i + 1 < chars.len() {
+                code.push(chars[i + 1]);
+                i += 1;
+            } else if c == '"' {
+                in_str = false;
+            }
+        } else if c == '"' {
+            in_str = true;
+            code.push(c);
+        } else if c == '/' && chars.get(i + 1) == Some(&'/') {
+            break;
+        } else if c == '\'' && chars.get(i + 2) == Some(&'\'') {
+            // char literal such as '{'
+            code.extend(&chars[i..i + 3]);
+            i += 2;
+        } else if c == '\'' && chars.get(i + 1) == Some(&'\\') && chars.get(i + 3) == Some(&'\'') {
+            // escaped char literal such as '\n'
+            code.extend(&chars[i..i + 4]);
+            i += 3;
+        } else {
+            code.push(c);
+            structure.push(c);
+        }
+        i += 1;
+    }
+    (code, structure)
+}
+
+fn normalize(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Quoted segments shorter than this carry too little information to anchor a claim.
+const MIN_ANCHOR_LEN: usize = 8;
+
+/// Returns the indices of observations that are not anchored in `evidence`.
+///
+/// An observation is anchored when it contains at least one backtick-quoted
+/// excerpt of `MIN_ANCHOR_LEN`+ characters and every such excerpt occurs in
+/// `evidence` (compared with whitespace normalised). This catches invented or
+/// paraphrased "findings"; it cannot tell whether a real quote supports the
+/// claim, so it is a floor filter, not review.
+pub(crate) fn unanchored_observations(observations: &[String], evidence: &str) -> Vec<usize> {
+    let haystack = normalize(evidence);
+    observations
+        .iter()
+        .enumerate()
+        .filter(|(_, observation)| {
+            let quotes = backtick_quotes(observation);
+            quotes.is_empty() || quotes.iter().any(|q| !haystack.contains(&normalize(q)))
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
+fn backtick_quotes(text: &str) -> Vec<&str> {
+    text.split('`')
+        .enumerate()
+        .filter(|(i, part)| i % 2 == 1 && part.trim().len() >= MIN_ANCHOR_LEN)
+        .map(|(_, part)| part)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rules(source: &str) -> Vec<&'static str> {
+        scan_draft(source).into_iter().map(|v| v.rule).collect()
+    }
+
+    #[test]
+    fn clean_reducer_passes() {
+        let src =
+            "pub fn reduce(state: u32, input: u32) -> u32 {\n    state.saturating_add(input)\n}\n";
+        assert!(scan_draft(src).is_empty());
+    }
+
+    #[test]
+    fn ambient_authority_is_flagged_even_in_tests() {
+        let src = "#[test]\nfn t() {\n    let d = std::env::temp_dir();\n}\n";
+        assert_eq!(rules(src), vec!["ambient-env"]);
+    }
+
+    #[test]
+    fn stubs_threads_and_pod_impls_are_flagged() {
+        let src =
+            "fn a() { todo!() }\nfn b() { std::thread::spawn(|| {}); }\nunsafe impl Pod for X {}\n";
+        assert_eq!(
+            rules(src),
+            vec!["stub", "self-started-thread", "unsafe-pod"]
+        );
+    }
+
+    #[test]
+    fn unwrap_outside_tests_is_flagged_with_line_number() {
+        let src = "fn f(x: Option<u8>) -> u8 {\n    x.unwrap()\n}\n";
+        assert_eq!(
+            scan_draft(src),
+            vec![Violation {
+                rule: "panic-on-input",
+                line: 2
+            }]
+        );
+    }
+
+    #[test]
+    fn unwrap_inside_cfg_test_module_and_test_fn_is_exempt() {
+        let src = "#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() {\n        Some(1).unwrap();\n        assert_eq!(1, 1);\n    }\n}\n";
+        assert!(scan_draft(src).is_empty());
+        let single = "#[test]\nfn t() {\n    assert!(true);\n}\nfn after(x: Option<u8>) -> u8 { x.unwrap() }\n";
+        assert_eq!(
+            scan_draft(single).len(),
+            1,
+            "region must close before `after`"
+        );
+    }
+
+    #[test]
+    fn infallible_comment_waives_only_the_immediately_following_call() {
+        let src = "fn f(x: Option<u8>) -> u8 {\n    // INFALLIBLE: checked by caller\n    x.unwrap()\n}\nfn g(x: Option<u8>) -> u8 {\n    x.unwrap()\n}\n";
+        let hits = scan_draft(src);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].line, 6);
+    }
+
+    #[test]
+    fn ambient_clock_is_flagged_outside_tests_only() {
+        assert_eq!(
+            rules("fn now() { let _ = std::time::Instant::now(); }\n"),
+            vec!["ambient-clock"]
+        );
+        assert!(scan_draft("#[test]\nfn t() { let _ = std::time::Instant::now(); }\n").is_empty());
+    }
+
+    #[test]
+    fn comments_do_not_trigger_rules() {
+        let src = "// never call .unwrap() or env::var here\nfn f() {} // todo!( later\n";
+        assert!(scan_draft(src).is_empty());
+    }
+
+    #[test]
+    fn rule_pack_names_every_banned_family() {
+        for needle in [
+            "env::var",
+            "SystemTime::now",
+            "thread::spawn",
+            "todo!()",
+            ".unwrap()",
+            "tempfile",
+            "INFALLIBLE",
+            "backticks",
+        ] {
+            assert!(RULE_PACK.contains(needle), "rule pack missing {needle}");
+        }
+    }
+
+    #[test]
+    fn claims_quoting_real_source_are_anchored() {
+        let evidence = "fn walk(depth: u32) {\n    if max_depth  == 0 { return; }\n}\n";
+        let obs = vec!["Guard exists: `if max_depth == 0 { return; }`".to_string()];
+        assert!(unanchored_observations(&obs, evidence).is_empty());
+    }
+
+    #[test]
+    fn invented_or_unquoted_claims_are_rejected() {
+        let evidence = "fn walk(depth: u32) { if max_depth == 0 { return; } }";
+        let obs = vec![
+            "No depth guard exists".to_string(),
+            "Missing: `depth.checked_sub(1).ok_or(Overflow)?`".to_string(),
+            "Short quote `x` is too small to anchor".to_string(),
+            "Real: `if max_depth == 0`".to_string(),
+        ];
+        assert_eq!(unanchored_observations(&obs, evidence), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn c56_style_contradicted_claim_is_not_anchored_by_a_paraphrase() {
+        let evidence = "Component::CurDir => continue,";
+        let obs = vec!["CurDir handling is missing: `Component::CurDir => Err(())`".to_string()];
+        assert_eq!(unanchored_observations(&obs, evidence), vec![0]);
+    }
+
+    #[test]
+    fn double_slash_inside_a_string_does_not_hide_a_later_violation() {
+        let src = "fn f(x: Option<u8>) -> u8 { let _u = \"https://example\"; x.unwrap() }\n";
+        assert_eq!(rules(src), vec!["panic-on-input"]);
+    }
+
+    #[test]
+    fn braces_inside_literals_do_not_keep_a_test_region_open() {
+        let src = "#[test]\nfn t() { let _s = \"}\"; let _c = '{'; }\nfn after(x: Option<u8>) -> u8 { x.unwrap() }\n";
+        let hits = scan_draft(src);
+        assert_eq!(
+            hits.len(),
+            1,
+            "region must close at the real brace: {hits:?}"
+        );
+        assert_eq!(hits[0].line, 3);
+    }
+
+    #[test]
+    fn a_real_trailing_comment_is_still_stripped() {
+        assert!(scan_draft("fn f() {} // x.unwrap() here is only a comment\n").is_empty());
+    }
+}
