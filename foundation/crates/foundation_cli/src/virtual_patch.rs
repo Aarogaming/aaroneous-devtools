@@ -445,8 +445,21 @@ pub fn render_unified_diff(file_path: &str, original: &str, modified: &str) -> S
 pub fn check_patch_set_conformance(
     patch_set: &VirtualPatchSet,
 ) -> Vec<(String, Vec<crate::conformance::Violation>)> {
+    check_selected_patch_conformance(patch_set, None)
+}
+
+/// Like [`check_patch_set_conformance`], but when `selected` is `Some`, only patches whose
+/// `patch_index` is in that list are scanned, so a violation in a patch the reviewer did not
+/// select cannot block materializing the ones they did.
+pub fn check_selected_patch_conformance(
+    patch_set: &VirtualPatchSet,
+    selected: Option<&[usize]>,
+) -> Vec<(String, Vec<crate::conformance::Violation>)> {
     let mut violations = Vec::new();
     for patch in &patch_set.patches {
+        if selected.is_some_and(|indices| !indices.contains(&patch.patch_index)) {
+            continue;
+        }
         if patch.file_path.ends_with(".rs") {
             let hits = crate::conformance::scan_draft(&patch.replace_block);
             if !hits.is_empty() {
@@ -476,7 +489,8 @@ pub fn materialize(
 ) -> Result<MaterializationResult> {
     verify_patch_set(patch_set)?;
 
-    let conformance_violations = check_patch_set_conformance(patch_set);
+    let conformance_violations =
+        check_selected_patch_conformance(patch_set, Some(&selection.selected_patch_indices));
     if !conformance_violations.is_empty() {
         let summary = conformance_violations
             .iter()
@@ -742,6 +756,78 @@ mod tests {
 
         let err = materialize(dir.path(), &ps, &selection).expect_err("must reject stale base");
         assert!(err.to_string().contains("stale-base rejection"));
+    }
+
+    #[test]
+    fn test_unselected_violating_patch_does_not_block_selected_patches() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("ok.rs"),
+            "pub fn a() {}
+",
+        )
+        .expect("write ok");
+        fs::write(
+            dir.path().join("bad.rs"),
+            "pub fn b() {}
+",
+        )
+        .expect("write bad");
+        let ps = create_patch_set(
+            "PS-SEL",
+            "TASK-SEL",
+            "commit-1",
+            1000,
+            PatchProvenance {
+                generator_model: "qwen".into(),
+                endpoint: None,
+                instruction: "two patches".into(),
+                rationale: None,
+            },
+            vec![
+                RawPatchInput {
+                    file_path: "ok.rs".into(),
+                    base_digest: Some(sha256_digest(
+                        b"pub fn a() {}
+",
+                    )),
+                    search_block: "pub fn a() {}
+"
+                    .into(),
+                    replace_block: "pub fn a2() {}
+"
+                    .into(),
+                },
+                RawPatchInput {
+                    file_path: "bad.rs".into(),
+                    base_digest: Some(sha256_digest(
+                        b"pub fn b() {}
+",
+                    )),
+                    search_block: "pub fn b() {}
+"
+                    .into(),
+                    replace_block: "pub fn b(x: Option<u8>) -> u8 { x.unwrap() }
+"
+                    .into(),
+                },
+            ],
+        )
+        .expect("patch set");
+        let only_ok = ReviewSelection {
+            selected_patch_indices: vec![0],
+            reviewer: "claude".into(),
+            disposition: ReviewDisposition::Approved,
+            rationale: "only the conforming patch".into(),
+        };
+        materialize(dir.path(), &ps, &only_ok).expect("selected conforming patch materializes");
+        let bad_selected = ReviewSelection {
+            selected_patch_indices: vec![1],
+            ..only_ok
+        };
+        let err =
+            materialize(dir.path(), &ps, &bad_selected).expect_err("selected violation blocks");
+        assert!(err.to_string().contains("conformance violation"));
     }
 
     #[test]

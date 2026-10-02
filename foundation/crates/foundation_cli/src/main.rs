@@ -489,6 +489,11 @@ fn main() -> Result<()> {
                         println!("  {path}:{}: rule violation '{}'", hit.line, hit.rule);
                     }
                 }
+                bail!(
+                    "patch set {} failed conformance pre-flight: {} file(s) with violations",
+                    ps.patch_set_id,
+                    violations.len()
+                );
             } else {
                 println!("Conformance pre-flight check passed (0 violations).");
             }
