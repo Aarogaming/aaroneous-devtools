@@ -494,6 +494,63 @@ pub(crate) fn tick(config: &Path, minute: u32, now: u64) -> Result<()> {
 /// minutes even after a long idle streak, so a real backlog that shows up
 /// later is never starved for more than half an hour by an over-eager
 /// backoff.
+/// Pure summary of worker state for `local-worker-status` (C96 slice 4). Inputs are explicit, so
+/// it needs no clock: `now` is supplied by the caller.
+fn render_status(
+    now: u64,
+    status_text: Option<&str>,
+    pending: usize,
+    results: usize,
+    flagged: usize,
+) -> String {
+    let field = |key: &str| {
+        status_text.and_then(|t| {
+            t.lines()
+                .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
+        })
+    };
+    let last_poll = field("last_poll_secs").and_then(|v| v.parse::<u64>().ok());
+    let age = match last_poll {
+        Some(at) => format!("{}s ago", now.saturating_sub(at)),
+        None => "never".to_string(),
+    };
+    format!(
+        "last_poll: {age}
+last_outcome: {}
+pending_jobs: {pending}
+results: {results}
+flagged_results: {flagged}
+",
+        field("outcome").unwrap_or("unknown")
+    )
+}
+
+/// Read-only status of a worker config: heartbeat age, pending job manifests, results, and how
+/// many results carry shadow-validator flags. Writes nothing.
+pub(crate) fn status(config_path: &Path, now: u64) -> Result<()> {
+    if !config_path.is_absolute() {
+        bail!("absolute config required");
+    }
+    let c: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
+    let status_text = fs::read_to_string(c.results_directory.join("status.txt")).ok();
+    let pending = files(&c.jobs_directory, "toml")?.len();
+    let results = files(&c.results_directory, "json")?;
+    let mut flagged = 0;
+    for path in &results {
+        if let Ok(text) = read_bounded(path, 1 << 20)
+            && let Ok(record) = serde_json::from_str::<Record>(&text)
+            && !record.conformance_flags.is_empty()
+        {
+            flagged += 1;
+        }
+    }
+    print!(
+        "{}",
+        render_status(now, status_text.as_deref(), pending, results.len(), flagged)
+    );
+    Ok(())
+}
+
 const SERVE_MIN_DELAY: Duration = Duration::from_secs(120);
 const SERVE_MAX_DELAY: Duration = Duration::from_secs(30 * 60);
 
@@ -790,6 +847,55 @@ mod tests {
         assert!(flags[0].as_str().expect("s").starts_with("observation 0:"));
         assert!(flags[1].as_str().expect("s").starts_with("draft line 1:"));
     }
+    #[test]
+    fn render_status_reports_age_outcome_and_counts() {
+        let out = render_status(
+            1000,
+            Some(
+                "last_poll_secs=940
+outcome=backpressure
+",
+            ),
+            3,
+            5,
+            2,
+        );
+        assert_eq!(
+            out,
+            "last_poll: 60s ago
+last_outcome: backpressure
+pending_jobs: 3
+results: 5
+flagged_results: 2
+"
+        );
+        assert!(render_status(1, None, 0, 0, 0).starts_with(
+            "last_poll: never
+last_outcome: unknown"
+        ));
+    }
+
+    #[test]
+    fn status_counts_flagged_results_without_writing() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| {
+            let mut d = draft();
+            d.rust_draft = Some(
+                "pub fn a(x: Option<u8>) -> u8 { x.unwrap() }
+"
+                .into(),
+            );
+            Ok(d)
+        })
+        .expect("tick");
+        let before = files(&c.results_directory, "json").expect("r").len();
+        status(&config, 100).expect("status");
+        assert_eq!(
+            files(&c.results_directory, "json").expect("r").len(),
+            before
+        );
+    }
+
     #[test]
     fn clean_observations_add_no_flags_field() {
         let (_d, c, config) = fixture();
