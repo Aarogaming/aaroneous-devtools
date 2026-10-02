@@ -214,10 +214,12 @@ fn unanchored_with_paths(
             if quotes.is_empty() {
                 return true;
             }
-            if is_negative_claim(observation) {
-                return false;
-            }
-            asserted_quotes(observation)
+            let to_check = if is_negative_claim(observation) {
+                evidence_quotes(observation)
+            } else {
+                asserted_quotes(observation)
+            };
+            to_check
                 .iter()
                 .any(|q| !quote_present(&haystack, q, known_paths))
         })
@@ -273,6 +275,36 @@ const NEGATIONS: [&str; 6] = ["no ", "not ", "without ", "lacks ", "lack ", "nev
 
 /// How many characters before a quote are searched for a negation word.
 const NEGATION_WINDOW: usize = 16;
+
+/// For a negative claim ("No guard exists; source: `return Err(..)` at line 40"): only the
+/// quotes that are supporting evidence, meaning the ones followed by a line citation or preceded
+/// by "source", must still be found in the evidence. The quote naming the absent subject is
+/// exempt, an invented evidence quote is not.
+fn evidence_quotes(text: &str) -> Vec<&str> {
+    let mut offset: usize = 0;
+    let mut kept = Vec::new();
+    for (index, part) in text.split('`').enumerate() {
+        if index % 2 == 1 && part.trim().len() >= MIN_ANCHOR_LEN {
+            let before = text[..offset.saturating_sub(1)].to_ascii_lowercase();
+            let after_start = offset + part.len() + 1;
+            let after: String = text
+                .get(after_start..)
+                .unwrap_or("")
+                .chars()
+                .take(16)
+                .collect::<String>()
+                .to_ascii_lowercase();
+            let cited = after.contains("line");
+            let sourced =
+                before.trim_end().ends_with("source:") || before.trim_end().ends_with("source");
+            if cited || sourced {
+                kept.push(part);
+            }
+        }
+        offset += part.len() + 1;
+    }
+    kept
+}
 
 /// Like [`backtick_quotes`], but drops quotes that a negation word directly precedes.
 fn asserted_quotes(text: &str) -> Vec<&str> {
@@ -344,13 +376,14 @@ fn out_of_range_with_paths(
         .iter()
         .enumerate()
         .filter(|(_, observation)| {
-            if is_negative_claim(observation) {
-                return false;
-            }
             let Some((a, b)) = cited_line_range(observation) else {
                 return false;
             };
-            let quotes = asserted_quotes(observation);
+            let quotes = if is_negative_claim(observation) {
+                evidence_quotes(observation)
+            } else {
+                asserted_quotes(observation)
+            };
             if quotes.is_empty() {
                 return false;
             }
@@ -654,6 +687,24 @@ impl<P: LLMProvider> LlmGateway<P> {
             "Defines `LlmConfig` struct, plus `fn invented_helper() {}` here".to_string(),
         ];
         assert_eq!(unanchored_observations(&obs, evidence), vec![1]);
+    }
+
+    #[test]
+    fn a_negative_claim_still_validates_its_supporting_evidence_quote() {
+        let evidence = "fn walk(depth: u32) {
+    if depth == 0 { return; }
+}
+";
+        let invented =
+            vec!["No depth guard exists; source: `return Err(Overflow)?` at line 2".to_string()];
+        assert_eq!(unanchored_observations(&invented, evidence), vec![0]);
+        assert_eq!(out_of_range_observations(&invented, evidence), vec![0]);
+        let real = vec![
+            "No other guard exists; source: `if depth == 0 { return; }` at line 2".to_string(),
+        ];
+        assert!(unanchored_observations(&real, evidence).is_empty());
+        let absent_subject = vec!["No `#[cfg(test)]` module found in the file".to_string()];
+        assert!(unanchored_observations(&absent_subject, evidence).is_empty());
     }
 
     #[test]
