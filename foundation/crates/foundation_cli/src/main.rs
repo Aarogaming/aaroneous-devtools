@@ -85,6 +85,11 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Read-only lint of every approved job manifest (parse, rules, duplicate ids, evidence exists).
+    LocalWorkerLintJobs {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Adaptive persistent local-worker loop: tick, look at what actually
     /// happened, and decide the next tick's delay from that -- backing off
     /// when there's nothing to do rather than re-firing on a blind fixed
@@ -425,6 +430,7 @@ fn main() -> Result<()> {
                 .as_secs();
             local_worker::status(&config, now)
         }
+        Command::LocalWorkerLintJobs { config } => local_worker::lint_jobs(&config),
         Command::LocalWorkerServe { config } => local_worker::serve(&config),
         Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::MultithreaderServe {
