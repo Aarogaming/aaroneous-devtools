@@ -578,6 +578,12 @@ pub(crate) fn archive(config_path: &Path, job_id: &str) -> Result<()> {
         bail!("job id must be 1..=64 letters, digits or '-'");
     }
     let c: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
+    for (label, directory) in [
+        ("results", &c.results_directory),
+        ("archive", &c.archive_directory),
+    ] {
+        validate_directory(label, directory)?;
+    }
     let prefix = format!("{job_id}-");
     let matches: Vec<PathBuf> = files(&c.results_directory, "json")?
         .into_iter()
@@ -1090,6 +1096,20 @@ instruction = \"x\"
         job.id = "ok".into();
         job.evidence.clear();
         assert!(job_problem(&job).is_some());
+    }
+
+    #[test]
+    fn archive_rejects_relative_directories() {
+        let (_d, mut c, config) = fixture();
+        c.archive_directory = PathBuf::from("archive");
+        fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
+        let err = archive(&config, "some-job").expect_err("relative archive dir");
+        assert!(!err.to_string().contains("no pending result"), "{err}");
+        let (_d2, mut c2, config2) = fixture();
+        c2.results_directory = c2.results_directory.join("..").join("elsewhere");
+        fs::write(&config2, toml::to_string(&c2).expect("config")).expect("write config");
+        let err2 = archive(&config2, "some-job").expect_err("unnormalized results dir");
+        assert!(!err2.to_string().contains("no pending result"), "{err2}");
     }
 
     #[test]
