@@ -79,7 +79,7 @@ second queue; `COORDINATION_QUEUE.md` remains the sole claim authority.
 ## G-2026-06 — verification is comprehensive but lacks a cost-layered contract
 
 - Boundary: Aaroneous native verification and Foundry gate selection.
-- Evidence: `xtask/src/gate.rs:5-147` provides a comprehensive, CI-parity
+- Evidence: `xtask/src/gate.rs:5-192` provides a comprehensive, CI-parity
   sequence, including encoding, formatting, workspace Clippy, native audit,
   compilation, tests, AST audit, ratchets and feature checks. It runs
   whole-workspace Clippy before several cheaper metadata/ratchet/structural
