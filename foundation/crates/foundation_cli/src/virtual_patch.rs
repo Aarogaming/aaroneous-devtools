@@ -439,9 +439,29 @@ pub fn render_unified_diff(file_path: &str, original: &str, modified: &str) -> S
     diff
 }
 
+/// One-line summary of conformance violations: `path: N violation(s) [line L: rule, ...]; ...`.
+fn conformance_summary(violations: &[(String, Vec<crate::conformance::Violation>)]) -> String {
+    violations
+        .iter()
+        .map(|(path, hits)| {
+            format!(
+                "{path}: {} violation(s) [{}]",
+                hits.len(),
+                hits.iter()
+                    .map(|h| format!("line {}: {}", h.line, h.rule))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
 /// Scans all Rust patches in the patch set for Aaroneous floor rule violations.
 ///
-/// Returns a list of (file path, violations) found in the replacement blocks.
+/// Returns a list of (file path, violations) found in the replacement blocks. This is the
+/// pre-flight used by `verify-virtual-patch`, which has only the patch-set JSON; `materialize`
+/// scans the resulting files instead.
 pub fn check_patch_set_conformance(
     patch_set: &VirtualPatchSet,
 ) -> Vec<(String, Vec<crate::conformance::Violation>)> {
@@ -488,26 +508,6 @@ pub fn materialize(
     selection: &ReviewSelection,
 ) -> Result<MaterializationResult> {
     verify_patch_set(patch_set)?;
-
-    let conformance_violations =
-        check_selected_patch_conformance(patch_set, Some(&selection.selected_patch_indices));
-    if !conformance_violations.is_empty() {
-        let summary = conformance_violations
-            .iter()
-            .map(|(path, hits)| {
-                format!(
-                    "{path}: {} violation(s) [{}]",
-                    hits.len(),
-                    hits.iter()
-                        .map(|h| format!("line {}: {}", h.line, h.rule))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("; ");
-        bail!("materialization blocked: patch set contains conformance violation(s): {summary}");
-    }
 
     if selection.disposition != ReviewDisposition::Approved {
         bail!(
@@ -608,6 +608,24 @@ pub fn materialize(
                 original_content: String::new(),
             });
         }
+    }
+
+    // Scan the files as they would exist after the patches, not the isolated replacement blocks:
+    // a hunk's surrounding syntax and test context decide whether a pattern is a violation.
+    let mut resulting_violations = Vec::new();
+    for plan in &planned {
+        if plan.relative_path.ends_with(".rs") {
+            let hits = crate::conformance::scan_draft(&plan.new_content);
+            if !hits.is_empty() {
+                resulting_violations.push((plan.relative_path.clone(), hits));
+            }
+        }
+    }
+    if !resulting_violations.is_empty() {
+        bail!(
+            "materialization blocked: patch set contains conformance violation(s): {}",
+            conformance_summary(&resulting_violations)
+        );
     }
 
     // Step 2: Atomic materialization write phase
@@ -828,6 +846,80 @@ mod tests {
         let err =
             materialize(dir.path(), &ps, &bad_selected).expect_err("selected violation blocks");
         assert!(err.to_string().contains("conformance violation"));
+    }
+
+    #[test]
+    fn test_materialize_scans_the_resulting_file_not_the_replacement_block() {
+        // A replacement block that is harmless alone but completes a banned call in context.
+        let dir = tempdir().expect("tempdir");
+        let base = "fn f() { let _ = std::env::__M__; }
+";
+        fs::write(dir.path().join("a.rs"), base).expect("write a");
+        let ps = create_patch_set(
+            "PS-CTX",
+            "TASK-CTX",
+            "commit-1",
+            1000,
+            PatchProvenance {
+                generator_model: "qwen".into(),
+                endpoint: None,
+                instruction: "complete a call".into(),
+                rationale: None,
+            },
+            vec![RawPatchInput {
+                file_path: "a.rs".into(),
+                base_digest: Some(sha256_digest(base.as_bytes())),
+                search_block: "__M__".into(),
+                replace_block: "var(\"X\")".into(),
+            }],
+        )
+        .expect("patch set");
+        assert!(
+            check_patch_set_conformance(&ps).is_empty(),
+            "block alone looks clean"
+        );
+        let sel = ReviewSelection {
+            selected_patch_indices: vec![0],
+            reviewer: "claude".into(),
+            disposition: ReviewDisposition::Approved,
+            rationale: "ctx".into(),
+        };
+        let err = materialize(dir.path(), &ps, &sel).expect_err("resulting file violates");
+        assert!(err.to_string().contains("conformance violation"), "{err}");
+        // And the other direction: an assert inside an existing test module is not a violation.
+        let base2 = "#[cfg(test)]
+mod tests {
+    #[test]
+    fn t() {
+        __M__
+    }
+}
+";
+        fs::write(dir.path().join("b.rs"), base2).expect("write b");
+        let ps2 = create_patch_set(
+            "PS-CTX2",
+            "TASK-CTX2",
+            "commit-1",
+            1000,
+            PatchProvenance {
+                generator_model: "qwen".into(),
+                endpoint: None,
+                instruction: "add an assertion".into(),
+                rationale: None,
+            },
+            vec![RawPatchInput {
+                file_path: "b.rs".into(),
+                base_digest: Some(sha256_digest(base2.as_bytes())),
+                search_block: "__M__".into(),
+                replace_block: "assert_eq!(1, 1);".into(),
+            }],
+        )
+        .expect("patch set");
+        assert!(
+            !check_patch_set_conformance(&ps2).is_empty(),
+            "block alone looks like a violation"
+        );
+        materialize(dir.path(), &ps2, &sel).expect("inside a test module it is allowed");
     }
 
     #[test]
