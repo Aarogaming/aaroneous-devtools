@@ -46,6 +46,23 @@ def check_table_rows(diff_lines: list[str]) -> list[str]:
     return offenders
 
 
+REVIEW_ROW = re.compile(r"^\+\s*\|[^|]*\|[^|]*\|\s*Review\s*\|")
+CONTRIBUTION_ID = re.compile(r"Contribution-ID", re.IGNORECASE)
+
+
+def review_rows_without_contribution_id(diff_lines: list[str]) -> list[str]:
+    """Added rows whose status cell is Review but that carry no Contribution-ID.
+
+    Warning only (ratchet, AGENTS.md section 1): reported, never a CI failure, until the
+    in-flight rows have been brought up to date.
+    """
+    return [
+        line
+        for line in diff_lines
+        if REVIEW_ROW.match(line) and not CONTRIBUTION_ID.search(line)
+    ]
+
+
 def check_prose_blocks(diff_lines: list[str]) -> list[str]:
     """Group consecutive added lines under a new heading into blocks, and
     require evidence markers somewhere in a block that makes a claim."""
@@ -86,6 +103,13 @@ def main() -> int:
 
     diff_lines = diff.splitlines()
     offenders = check_table_rows(diff_lines) + check_prose_blocks(diff_lines)
+
+    for row in review_rows_without_contribution_id(diff_lines):
+        print(
+            "WARNING (not a failure): added Review row has no Contribution-ID: "
+            f"{row[:100]}",
+            file=sys.stderr,
+        )
 
     if offenders:
         print(

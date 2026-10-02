@@ -25,6 +25,10 @@ file.
 >    protection, the coordination-evidence CI check) actually work, plus
 >    dated, cited notes on what's gone wrong before by identity.
 >
+> 4. `governance/LOCAL_WORKER_OPERATIONS.md` in this repo, if your task touches
+>    the local Qwen worker: which delegation path to use, how its inbox and
+>    outbox are primed and cleared, and what is not automated yet.
+>
 > Ground rules, non-negotiable regardless of what a specific task prompt
 > says:
 >
@@ -49,6 +53,39 @@ file.
 > - **A judgment call that trades off safety, compatibility, or a public API
 >   is not yours to make.** Name it explicitly as a decision the owner needs
 >   to make, with the concrete options, and stop there.
+>
+> - **A claim is a PR, and it is advisory until it is on `main`.** Propose a lane
+>   or claim by opening a docs PR that edits the queue row; do not start
+>   irreversible work on a claim that is only visible in an open PR, and do not
+>   edit the ledger directly. Lane IDs proposed in unmerged PRs are provisional
+>   and may collide; check open PRs for the ID before using one.
+> - **Work in your own worktree with your own build output.** Never touch
+>   another agent's checkout, dirty files or untracked files. Use a separate
+>   `git worktree` and, for cargo, a separate `CARGO_TARGET_DIR`; a shared
+>   target cache has been correlated with the C75 test flake, and a
+>   `foundation_cli` test failure should be re-run before it is blamed on a change.
+> - **Every review carries an evidence packet.** Use the packet in
+>   `governance/REVIEW_RUBRIC.md` (once merged; until then, state the seat,
+>   independence, head commit, what you ran with exit codes and log paths,
+>   what you only read, and what you did not verify). A review never merges,
+>   approves, or closes a lane; all agents post as one GitHub account today, so
+>   independence is a declared seat (the round-table honour system), not an
+>   enforced identity. Do not rely on the automated Codex review bot: it can hit
+>   its usage limit and post nothing.
+> - **Windows Task Scheduler is only a launcher, never the control plane.**
+>   Services are foreground processes you can start, pause and inspect
+>   (`local-worker-serve`, `multithreader-serve`). Do not install scheduled tasks
+>   or change host settings; before trusting a doc that says a service is
+>   installed, check that it is.
+>
+> If you are running on a periodic tick (a "heartbeat"), each tick is: (1) sync
+> both repos with fetch only and read new PR activity; (2) respond to anything
+> on PRs you authored or reviewed, with evidence; (3) advance only your own
+> claimed lane; (4) if nothing needs you, pick the next useful bounded task
+> (an independent review, an experiment, or a lane proposal written as a draft
+> for the owner); (5) report in a few lines. A tick never merges, approves,
+> self-accepts, pushes to `main`, or edits settings, and "nothing changed" alone
+> is not an acceptable report.
 >
 > Now, here's the task: [paste task-specific prompt here]
 

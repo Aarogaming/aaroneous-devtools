@@ -15,3 +15,5 @@
 # GUI dashboard build artifacts (regenerate via `npm install`/`npm run build`).
 /gui/node_modules/
 /gui/dist/
+__pycache__/
+*.pyc

@@ -22,7 +22,7 @@ At claim time, record priority, dependency, exact paths, and expected evidence. 
 verify the required gate and release paths. At weekly review, keep no more than three primary
 implementation claims open unless an additional scope has independent files and a named reviewer.
 
-## Native candidate review (installed 2026-09-16)
+## Native candidate review (installed 2026-09-16; task removed 2026-09-17, see [PERSISTENT_OPERATIONS.md](PERSISTENT_OPERATIONS.md))
 
 Windows task `Aaroneous-Devtools-Multithreader` reviews the declared evidence hourly at :00 through the Rust foundation executable. Suggestions and failures go to an external devtools inbox for owner review. See [MULTITHREADER_SERVICE.md](MULTITHREADER_SERVICE.md) for inputs, limits, verification and operating commands. This service does not check CI or automatically promote/implement suggestions. The retired rolling-worklist heartbeat remains paused. The Codex audit and Rust reuse heartbeat was deleted at the user's request. No active Codex maintenance schedule remains.
 
