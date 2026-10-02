@@ -184,6 +184,11 @@ fn normalize(text: &str) -> String {
 /// Quoted segments shorter than this carry too little information to anchor a claim.
 const MIN_ANCHOR_LEN: usize = 8;
 
+/// Lines of slack either side of a cited range before a quote counts as out of range.
+/// A live run of the worker showed near misses (cited 104, real line 98) that are citation
+/// noise, not wrong claims; larger distances are the ones worth a reviewer's attention.
+const LINE_SLACK: usize = 10;
+
 /// Returns the indices of observations that are not anchored in `evidence`.
 ///
 /// An observation is anchored when it contains at least one backtick-quoted
@@ -210,6 +215,130 @@ fn backtick_quotes(text: &str) -> Vec<&str> {
         .filter(|(i, part)| i % 2 == 1 && part.trim().len() >= MIN_ANCHOR_LEN)
         .map(|(_, part)| part)
         .collect()
+}
+
+/// Parses the first `line N` / `lines A-B` citation in `text` as an inclusive 1-based range.
+fn cited_line_range(text: &str) -> Option<(usize, usize)> {
+    let lower = text.to_ascii_lowercase();
+    let at = lower.find("line")?;
+    let rest = &lower[at + 4..];
+    let rest = rest.strip_prefix('s').unwrap_or(rest).trim_start();
+    let digits = |s: &str| -> (usize, usize) {
+        let end = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+        (s[..end].parse().unwrap_or(0), end)
+    };
+    let (start, used) = digits(rest);
+    if used == 0 || start == 0 {
+        return None;
+    }
+    let tail = rest[used..].trim_start();
+    let tail = tail
+        .strip_prefix('-')
+        .or_else(|| tail.strip_prefix('\u{2013}'));
+    let end = match tail {
+        Some(t) => {
+            let (n, used_end) = digits(t.trim_start());
+            if used_end == 0 { start } else { n.max(start) }
+        }
+        None => start,
+    };
+    Some((start, end))
+}
+
+/// Returns indices of observations whose cited line range does not contain their quoted text.
+///
+/// An observation that cites `line N` or `lines A-B` and quotes `backticked` text (8+ chars)
+/// is rejected when any quote is absent from those lines of `evidence`, widened by
+/// `LINE_SLACK` lines either side (whitespace normalised). Observations without a citation or without a quote are not reported here:
+/// they are unverifiable, not wrong (use [`unanchored_observations`] for quote presence).
+pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str) -> Vec<usize> {
+    let lines: Vec<&str> = evidence.lines().collect();
+    observations
+        .iter()
+        .enumerate()
+        .filter(|(_, observation)| {
+            let Some((a, b)) = cited_line_range(observation) else {
+                return false;
+            };
+            let quotes = backtick_quotes(observation);
+            if quotes.is_empty() {
+                return false;
+            }
+            let start = a.saturating_sub(LINE_SLACK).max(1);
+            let end = b.saturating_add(LINE_SLACK).min(lines.len());
+            let window = if start > end {
+                String::new()
+            } else {
+                normalize(&lines[start - 1..end].join("\n"))
+            };
+            quotes.iter().any(|q| !window.contains(&normalize(q)))
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// First 1-based line of `evidence` whose normalised text contains the normalised `quote`.
+fn first_line_of(evidence: &str, quote: &str) -> Option<usize> {
+    let needle = normalize(quote);
+    evidence
+        .lines()
+        .position(|line| normalize(line).contains(&needle))
+        .map(|index| index + 1)
+}
+
+/// Shadow-mode claim checks for a worker draft against every declared evidence file.
+///
+/// Returns one human-readable flag per suspicious observation; an empty vector means
+/// "nothing detected", never "correct". An observation is flagged
+/// - `not anchored` when a backtick quote of 8+ characters appears in none of the files,
+///   or it has no such quote at all (see [`unanchored_observations`]);
+/// - `line range` when it cites `line N` / `lines A-B` and, in every file where its quotes
+///   do occur, they are outside the cited lines (see [`out_of_range_observations`]).
+///
+/// Observations without a citation are never range-flagged: they are unverifiable.
+pub(crate) fn claim_flags(observations: &[String], evidence_files: &[String]) -> Vec<String> {
+    let mut flags = Vec::new();
+    let per_file_unanchored: Vec<Vec<usize>> = evidence_files
+        .iter()
+        .map(|file| unanchored_observations(observations, file))
+        .collect();
+    let per_file_out_of_range: Vec<Vec<usize>> = evidence_files
+        .iter()
+        .map(|file| out_of_range_observations(observations, file))
+        .collect();
+    for (index, observation) in observations.iter().enumerate() {
+        let unanchored_everywhere = !evidence_files.is_empty()
+            && per_file_unanchored
+                .iter()
+                .all(|missing| missing.contains(&index));
+        if unanchored_everywhere {
+            flags.push(format!(
+                "observation {index}: not anchored in any declared evidence file"
+            ));
+            continue;
+        }
+        let anchored_files: Vec<usize> = (0..evidence_files.len())
+            .filter(|file| !per_file_unanchored[*file].contains(&index))
+            .collect();
+        if !anchored_files.is_empty()
+            && anchored_files
+                .iter()
+                .all(|file| per_file_out_of_range[*file].contains(&index))
+        {
+            let found = backtick_quotes(observation).first().and_then(|quote| {
+                anchored_files
+                    .iter()
+                    .find_map(|file| first_line_of(&evidence_files[*file], quote))
+            });
+            let found = found.map_or(String::new(), |line| {
+                format!("; first found at line {line}")
+            });
+            flags.push(format!(
+                "observation {index}: cited line range (+/-{LINE_SLACK} lines) does not contain its quoted text{found}"
+            ));
+        }
+    }
+    flags
 }
 
 #[cfg(test)]
@@ -353,5 +482,83 @@ mod tests {
     #[test]
     fn a_real_trailing_comment_is_still_stripped() {
         assert!(scan_draft("fn f() {} // x.unwrap() here is only a comment\n").is_empty());
+    }
+
+    #[test]
+    fn range_check_accepts_a_quote_inside_the_cited_lines() {
+        let evidence = "fn a() {}\nfn walk(depth: u32) {\n    if max_depth == 0 { return; }\n}\n";
+        let obs = vec!["Guard at lines 2-3: `if max_depth == 0 { return; }`".to_string()];
+        assert!(out_of_range_observations(&obs, evidence).is_empty());
+    }
+
+    #[test]
+    fn range_check_rejects_a_real_quote_at_the_wrong_lines() {
+        let mut evidence = String::new();
+        for _ in 0..30 {
+            evidence.push_str("fn filler() {}\n");
+        }
+        evidence.push_str("fn walk(depth: u32) { if max_depth == 0 { return; } }\n");
+        let obs = vec!["See lines 1-2: `if max_depth == 0 { return; }`".to_string()];
+        assert_eq!(out_of_range_observations(&obs, &evidence), vec![0]);
+        let near = vec!["See line 25: `if max_depth == 0 { return; }`".to_string()];
+        assert!(
+            out_of_range_observations(&near, &evidence).is_empty(),
+            "within slack"
+        );
+    }
+
+    #[test]
+    fn range_check_ignores_unverifiable_observations() {
+        let evidence = "fn a() {}\n";
+        let obs = vec![
+            "No citation but a quote: `fn a() {}` here".to_string(),
+            "Cites lines 1-1 but quotes nothing".to_string(),
+        ];
+        assert!(out_of_range_observations(&obs, evidence).is_empty());
+    }
+
+    #[test]
+    fn range_check_handles_single_line_and_out_of_file_ranges() {
+        let evidence = "one\ntwo_two_two\nthree\n";
+        let ok = vec!["At line 2: `two_two_two`".to_string()];
+        let past_end = vec!["At lines 40-50: `two_two_two`".to_string()];
+        assert!(out_of_range_observations(&ok, evidence).is_empty());
+        assert_eq!(out_of_range_observations(&past_end, evidence), vec![0]);
+    }
+
+    #[test]
+    fn claim_flags_reports_unanchored_and_wrong_range_but_not_good_claims() {
+        let mut file = "one\nfn walk() {}\nlet guard = `x`;\n".to_string();
+        for _ in 0..20 {
+            file.push_str("fn filler() {}\n");
+        }
+        file.push_str("fn normalize_path() {}\n");
+        let obs = vec![
+            "Good, line 24: `fn normalize_path() {}`".to_string(),
+            "Invented: `fn invented_thing() {}` exists".to_string(),
+            "Wrong place, lines 1-2: `fn normalize_path() {}`".to_string(),
+            "No citation, quote `fn walk() {}` only".to_string(),
+        ];
+        let flags = claim_flags(&obs, &[file]);
+        assert_eq!(flags.len(), 2, "{flags:?}");
+        assert!(flags[0].starts_with("observation 1:"), "{flags:?}");
+        assert!(flags[0].contains("not anchored"), "{flags:?}");
+        assert!(flags[1].starts_with("observation 2:"), "{flags:?}");
+        assert!(flags[1].contains("line range"), "{flags:?}");
+        assert!(flags[1].contains("first found at line 24"), "{flags:?}");
+    }
+
+    #[test]
+    fn claim_flags_accepts_a_quote_that_is_right_in_at_least_one_file() {
+        let a = "alpha\nbeta\n".to_string();
+        let b = "gamma\nfn target_fn() {}\n".to_string();
+        let obs = vec!["See line 2: `fn target_fn() {}`".to_string()];
+        assert!(claim_flags(&obs, &[a, b]).is_empty());
+    }
+
+    #[test]
+    fn claim_flags_with_no_evidence_flags_nothing() {
+        let obs = vec!["anything `quoted text`".to_string()];
+        assert!(claim_flags(&obs, &[]).is_empty());
     }
 }
