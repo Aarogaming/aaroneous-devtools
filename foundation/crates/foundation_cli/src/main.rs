@@ -5,6 +5,7 @@ mod component_inventory;
 mod conformance;
 mod dependency_review;
 mod dogfood;
+mod feeder;
 mod intake;
 mod intake_generator;
 mod local_proposal;
@@ -59,6 +60,25 @@ enum Command {
     LocalWorkerTick {
         #[arg(long)]
         config: PathBuf,
+    },
+    /// Deterministically propose fixture-drafting jobs for source files that have no tests.
+    /// Dry run unless --write is given; never overwrites a manifest; explicit inputs only.
+    LocalWorkerFeed {
+        /// Absolute path of the product checkout (read-only).
+        #[arg(long)]
+        checkout: PathBuf,
+        /// Absolute path of the worker's jobs directory (outside the checkout).
+        #[arg(long)]
+        jobs_dir: PathBuf,
+        /// Worker results/archive directories, used to skip already-attempted files (repeatable).
+        #[arg(long = "history-dir")]
+        history_dirs: Vec<PathBuf>,
+        /// Maximum new jobs to propose (capped at 16).
+        #[arg(long, default_value_t = 4)]
+        limit: usize,
+        /// Create the manifests instead of only listing them.
+        #[arg(long)]
+        write: bool,
     },
     /// Adaptive persistent local-worker loop: tick, look at what actually
     /// happened, and decide the next tick's delay from that -- backing off
@@ -387,6 +407,13 @@ fn main() -> Result<()> {
                 .as_secs();
             local_worker::tick(&config, ((now / 60) % 60) as u32, now)
         }
+        Command::LocalWorkerFeed {
+            checkout,
+            jobs_dir,
+            history_dirs,
+            limit,
+            write,
+        } => feeder::run_feed(&checkout, &jobs_dir, &history_dirs, limit, write),
         Command::LocalWorkerServe { config } => local_worker::serve(&config),
         Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::MultithreaderServe {
