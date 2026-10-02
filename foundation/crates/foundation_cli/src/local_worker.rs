@@ -201,6 +201,33 @@ fn persist(c: &Config, record: &Record) -> Result<()> {
     }
     bail!("result sequence exhausted")
 }
+/// Validates one configured directory: absolute, normalized (no `.` or `..` segments), and with
+/// no symlink in it or in any ancestor. Shared by the tick and by the read-only commands, so none
+/// of them can be pointed outside the explicitly configured tree.
+fn validate_directory(label: &str, directory: &Path) -> Result<()> {
+    crate::require_absolute_directory(label, directory)?;
+    if directory.components().any(|part| {
+        matches!(
+            part,
+            std::path::Component::ParentDir | std::path::Component::CurDir
+        )
+    }) {
+        bail!("directory must be normalized without parent segments");
+    }
+    let mut ancestor = PathBuf::new();
+    for component in directory.components() {
+        ancestor.push(component.as_os_str());
+        if matches!(component, std::path::Component::Normal(_))
+            && fs::symlink_metadata(&ancestor)?.file_type().is_symlink()
+        {
+            bail!("symlink directory ancestor forbidden");
+        }
+    }
+    if fs::symlink_metadata(directory)?.file_type().is_symlink() {
+        bail!("symlink directory forbidden");
+    }
+    Ok(())
+}
 fn tick_with<F>(config_path: &Path, minute: u32, now: u64, delegate: F) -> Result<()>
 where
     F: Fn(&str, &str) -> Result<Draft>,
@@ -222,27 +249,7 @@ where
         ("archive", &c.archive_directory),
         ("reservation", &c.reservation_directory),
     ] {
-        crate::require_absolute_directory(label, directory)?;
-        if directory.components().any(|part| {
-            matches!(
-                part,
-                std::path::Component::ParentDir | std::path::Component::CurDir
-            )
-        }) {
-            bail!("directory must be normalized without parent segments");
-        }
-        let mut ancestor = PathBuf::new();
-        for component in directory.components() {
-            ancestor.push(component.as_os_str());
-            if matches!(component, std::path::Component::Normal(_))
-                && fs::symlink_metadata(&ancestor)?.file_type().is_symlink()
-            {
-                bail!("symlink directory ancestor forbidden");
-            }
-        }
-        if fs::symlink_metadata(directory)?.file_type().is_symlink() {
-            bail!("symlink directory forbidden");
-        }
+        validate_directory(label, directory)?;
     }
     for output in [
         &c.results_directory,
@@ -478,18 +485,13 @@ pub(crate) fn tick(config: &Path, minute: u32, now: u64) -> Result<()> {
     tick_with(config, minute, now, delegate)
 }
 
-/// Base and ceiling for `serve`'s adaptive delay: never tighter than the
-/// documented LocalWorker cadence (2 minutes), never looser than 30
-/// minutes even after a long idle streak, so a real backlog that shows up
-/// later is never starved for more than half an hour by an over-eager
-/// backoff.
 /// Why a parsed job manifest is unusable, or `None` when it is valid. Shared by the tick (which
 /// refuses the whole batch on the first bad manifest) and `local-worker-lint-jobs`.
 fn job_problem(job: &Job) -> Option<&'static str> {
     if job.schema_version != 1 {
         Some("schema_version must be 1")
     } else if job.id.is_empty() || job.id.len() > 64 {
-        Some("id must be 1..=64 characters")
+        Some("id must be 1..=64 bytes")
     } else if !job
         .id
         .bytes()
@@ -499,7 +501,7 @@ fn job_problem(job: &Job) -> Option<&'static str> {
     } else if job.evidence.is_empty() || job.evidence.len() > 8 {
         Some("evidence must list 1..=8 files")
     } else if job.instruction.trim().is_empty() || job.instruction.len() > 8192 {
-        Some("instruction must be 1..=8192 characters")
+        Some("instruction must be non-blank and at most 8192 bytes")
     } else {
         None
     }
@@ -513,6 +515,9 @@ pub(crate) fn lint_jobs(config_path: &Path) -> Result<()> {
         bail!("absolute config required");
     }
     let c: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
+    for (label, directory) in [("checkout", &c.checkout), ("jobs", &c.jobs_directory)] {
+        validate_directory(label, directory)?;
+    }
     let mut seen = std::collections::HashSet::new();
     let mut problems = 0usize;
     let paths = files(&c.jobs_directory, "toml")?;
@@ -591,6 +596,12 @@ pub(crate) fn status(config_path: &Path, now: u64) -> Result<()> {
         bail!("absolute config required");
     }
     let c: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
+    for (label, directory) in [
+        ("results", &c.results_directory),
+        ("jobs", &c.jobs_directory),
+    ] {
+        validate_directory(label, directory)?;
+    }
     let status_text = fs::read_to_string(c.results_directory.join("status.txt")).ok();
     let pending = files(&c.jobs_directory, "toml")?.len();
     let results = files(&c.results_directory, "json")?;
@@ -610,6 +621,11 @@ pub(crate) fn status(config_path: &Path, now: u64) -> Result<()> {
     Ok(())
 }
 
+/// Base and ceiling for `serve`'s adaptive delay: never tighter than the
+/// documented LocalWorker cadence (2 minutes), never looser than 30
+/// minutes even after a long idle streak, so a real backlog that shows up
+/// later is never starved for more than half an hour by an over-eager
+/// backoff.
 const SERVE_MIN_DELAY: Duration = Duration::from_secs(120);
 const SERVE_MAX_DELAY: Duration = Duration::from_secs(30 * 60);
 
@@ -972,6 +988,37 @@ instruction = \"x\"
         .expect("write");
         assert!(lint_jobs(&config).is_err());
         assert!(files(&c.results_directory, "json").expect("r").is_empty());
+    }
+
+    #[test]
+    fn read_only_commands_reject_relative_or_unnormalized_directories() {
+        let (_d, mut c, config) = fixture();
+        c.jobs_directory = PathBuf::from("jobs");
+        fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
+        assert!(lint_jobs(&config).is_err());
+        assert!(status(&config, 1).is_err());
+        let (_d2, mut c2, config2) = fixture();
+        c2.checkout = c2.checkout.join("..").join("elsewhere");
+        fs::write(&config2, toml::to_string(&c2).expect("config")).expect("write config");
+        assert!(lint_jobs(&config2).is_err());
+    }
+
+    #[test]
+    fn job_problem_messages_say_bytes_not_characters() {
+        let mut job = Job {
+            schema_version: 1,
+            id: "ok".into(),
+            mode: Mode::Analysis,
+            evidence: vec!["a.rs".into()],
+            instruction: "x".repeat(8193),
+        };
+        assert_eq!(
+            job_problem(&job),
+            Some("instruction must be non-blank and at most 8192 bytes")
+        );
+        job.instruction = "ok".into();
+        job.id = "a".repeat(65);
+        assert_eq!(job_problem(&job), Some("id must be 1..=64 bytes"));
     }
 
     #[test]
