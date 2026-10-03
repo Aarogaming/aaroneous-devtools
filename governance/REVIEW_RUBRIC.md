@@ -47,6 +47,8 @@ RUBRIC (mark each: pass | fail | n/a | not-checked, with one evidence pointer)
   R7 Dependencies New third-party dependencies carry an AGENTS.md sec. 4 verdict.
   R8 Docs/ledger Row status, owner, branch and evidence match reality; ID unique;
                  merge order and stacked bases stated.
+                 Handoffs and maintained state pass the cold-handoff check in
+                 OPERATING_MODEL.md (Independent continuability).
   R9 Reversal    How the change is undone, and what it does not touch.
 
 FINDINGS  (severity: blocking | should-fix | note)

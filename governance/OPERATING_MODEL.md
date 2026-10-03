@@ -39,13 +39,50 @@ Do not create empty scaffolding for every possible tool. Add a directory when a 
 ## One home for each planning fact
 
 - `MULTITHREAD_PROGRAM.md`: prioritized cross-repository portfolio and capacity.
-- `COORDINATION_QUEUE.md`: live claims, exact files, dependencies, handoffs and review evidence.
+- `COORDINATION_QUEUE.md`: live claims, exact files, dependencies, handoffs and review evidence. Handoffs meet [independent continuability](#independent-continuability).
 - `architecture/MAINTENANCE_PROGRAM.md`: application delivery sequence and acceptance milestones.
 - `WORKLIST.md`: historical task briefs and links into current planning; old labels are not current certification.
 - `SCHEDULE.md`: intended recurring cadence; actual installed state comes from service records.
 - `DECISIONS.md`: durable choices and reasons, not another task list.
 
 Generated findings enter an inbox first. A reviewed finding gets a canonical portfolio ID and a bounded acceptance criterion. A Ready queue row is created only when dependencies, exact scope and reviewer capacity are available. Do not copy the full roadmap into README, agent prompts or new audit documents.
+
+## Independent continuability
+
+Every maintained contribution must be continuable by another authorized contributor without the original
+contributor's availability. No person, model, session, provider or machine is an undocumented
+dependency. This is the canonical standard; handoff and review requirements reference it and do not
+restate or fork it.
+
+A maintained contribution leaves, in canonical records only:
+
+- **Contracts**: what it does, its inputs and outputs, and its configuration, all explicit.
+- **Retained verification**: the commands, exit codes and log paths or hashes needed to reproduce the
+  checks, as the review rubric already requires.
+- **Recoverable state**: how to operate, repair, roll back or restart it, and where its operational state
+  lives. State that exists only in a session, a chat or one machine does not count.
+- **Replaceable boundaries**: a component sits behind a workspace-defined boundary so a provider, model or
+  machine can be swapped without rediscovery.
+- **An actionable handoff** whenever work stops short of done: the destination (PR, queue row or document),
+  the blockers, the next permitted step, and the acceptance condition.
+
+Apply this in proportion to the job. A one-line docs fix needs a clear commit and PR; a service, gate or
+state-holding component needs the full set. Prefer discoverable authoritative state (the queue, the PR,
+the existing registers) over new documents; never create a competing register.
+
+**Cold-handoff check.** Acceptance includes: an independent contributor, using only canonical records and
+normal authorized access, can (1) locate the current state, (2) reproduce the relevant verification, and
+(3) take the next authorized step. A reviewer applies this at review time (rubric R8); a failure is a
+finding, not a style note.
+
+**Ownership transfers explicitly.** A handoff names the new owner in the queue row or PR. An absent owner
+never grants extra authority, bypasses review, or permits overriding a claim; a claim held by an
+unavailable owner changes hands only through the claim and lease rules in the coordination protocol.
+
+**Measure outcomes, not documentation volume**: less rediscovery (questions answered from records rather
+than from the original contributor), fewer owner-only operations, and shorter time from handoff to
+verified next step. Take these from existing PR and queue timestamps and review packets; do not add a
+metrics document.
 
 ## Local automation beyond Git
 
