@@ -75,7 +75,7 @@ normal authorized access, can (1) locate the current state, (2) reproduce the re
 (3) take the next authorized step. A reviewer applies this at review time (rubric R8); a failure is a
 finding, not a style note.
 
-**Ownership transfers explicitly.** A handoff names the new owner in the queue row or PR. An absent owner
+**Ownership transfers explicitly.** A handoff names the new owner in the queue row or PR, or, when no successor has agreed, releases the work as `Unowned` while still recording the destination, blockers, next permitted step and acceptance condition; the current contributor never assigns ownership unilaterally. An absent owner
 never grants extra authority, bypasses review, or permits overriding a claim; a claim held by an
 unavailable owner changes hands only through the claim and lease rules in the coordination protocol.
 
