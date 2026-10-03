@@ -196,6 +196,7 @@ const LINE_SLACK: usize = 10;
 /// `evidence` (compared with whitespace normalised). This catches invented or
 /// paraphrased "findings"; it cannot tell whether a real quote supports the
 /// claim, so it is a floor filter, not review.
+#[cfg(test)]
 pub(crate) fn unanchored_observations(observations: &[String], evidence: &str) -> Vec<usize> {
     unanchored_with_paths(observations, evidence, &[])
 }
@@ -362,6 +363,7 @@ fn cited_line_range(text: &str) -> Option<(usize, usize)> {
 /// is flagged only when NONE of its quotes is present in those lines of `evidence`, widened by
 /// `LINE_SLACK` lines either side (whitespace normalised). Observations without a citation or without a quote are not reported here:
 /// they are unverifiable, not wrong (use [`unanchored_observations`] for quote presence).
+#[cfg(test)]
 pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str) -> Vec<usize> {
     out_of_range_with_paths(observations, evidence, &[])
 }
