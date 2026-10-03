@@ -29,7 +29,8 @@ product library. Devtools is the beta channel and orchestrator that uses and bui
    proves the pin can move back and devtools still runs.
 
 Ratchet baselines, rollback and versioning replace manual sign-off. The only human gate that remains
-is loosening a crate's compliance profile (AGENTS.md section 1).
+is loosening a crate's compliance profile whose stricter rules the auditor cannot prove unnecessary;
+provable loosenings are automated and unproven ones go to the owner (section 6; AGENTS.md section 1).
 
 ## 3. Review coverage rule
 
@@ -45,10 +46,10 @@ from a whole-diff accept to the current head, cover all of `base...head`.
 
 | field | meaning |
 |---|---|
-| `pr`, `head` | PR number and full head SHA the record binds to |
-| `base_ref`, `base_sha` | base branch and the immutable merge-base SHA the diff was computed against; a `whole` record is valid only while `git merge-base base_ref head` still equals `base_sha`, so retargeting or a moved base invalidates it |
+| `repo`, `pr`, `head` | repository identity (`owner/name`, plus head repository for forks), PR number and full head SHA the record binds to |
+| `base_ref`, `base_sha` | base branch and the immutable merge-base SHA the diff was computed against; a `whole` record is valid only while `git merge-base base_ref head` still equals `base_sha`. Two cases are kept distinct: (a) the merge-base changes (retarget, rebase, or a base rewrite) and the record is invalidated; (b) the base tip moves but the merge-base is unchanged, so the record stays valid and the steward only re-runs the gates and the mergeability check against the new tip |
 | `scope` | `whole` or `delta` with `from` SHA (delta must chain to a `whole`) |
-| `reviewer`, `implementer` | seat identities (independence is checked, honour-system today) |
+| `reviewer`, `implementers` | reviewer seat and the list of every implementer and substantive co-author seat; the reviewer must not appear in `implementers` (independence is checked, honour-system today) |
 | `commands` | list of `{command, exit_code, passed, failed, log_ref, log_sha256}` actually run (`log_ref` is a retained artifact id or path) |
 | `read_only_evidence` | list of `{claim, location, what_was_read}` for checks done by reading only |
 | `rubric` | R1..R9 results from `REVIEW_RUBRIC.md`, each `pass/fail/n/a/not-checked` with one evidence pointer |
@@ -67,8 +68,10 @@ reproduction need the log hashes, counts, inspected claims and failure details.
   markdown ledger becomes a rendered view, not the source of truth.
 - **Steward service**: one scheduler replaces per-agent heartbeats (sync, route reviews, retarget,
   rebase, nudge). Agents are workers that pull a leased task and submit a result. Leases expire.
-- **Path-based gates**: docs or ledger edits run encoding/link/evidence checks only; Rust changes run
-  the full gate.
+- **Path-based gates**: only an allowlist of known-safe paths (docs and ledger files) runs the light
+  encoding/link/evidence checks. Everything else, including `Cargo.lock`, `Cargo.toml`, `build.rs`,
+  workflow files, security or native policy files, and any path not on the allowlist, runs the full
+  gate. The default is the conservative one.
 - **Onboarding**: one entry command issues identity, lane lease and the rules for that lane.
 
 ## 5. Metadata and readable code
