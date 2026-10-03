@@ -69,7 +69,7 @@ measurement or housekeeping task only to have an artifact. If several ticks are 
    authorized a co-author delta branch.
 6. **Review and cleanup.** Independently review an open PR lacking my review when one is available (full
    packet, commands run, whole-diff scope stated; a review of my own PR never counts as the independent
-   accept). Run `python scripts/worktree_inventory.py <repo-dir>` read-only once for each of `D:aroneous-devtools` and
+   accept). Run `python scripts/worktree_inventory.py <repo-dir>` read-only once for each of `D:\aaroneous-devtools` and
    `D:\Aaroneous` (it requires the repository directory argument). Remove only worktrees I created, when clean
    and their PR is merged or closed (`git worktree remove`, no `--force`). Verify the path with `pwd`
    before git commands in a worktree. Never touch others' worktrees, dirty or untracked files, or the
