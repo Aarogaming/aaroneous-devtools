@@ -565,7 +565,7 @@ pub(crate) fn lint_jobs(config_path: &Path) -> Result<()> {
 /// which is what frees backpressure after the owner has read them. Never overwrites: an existing
 /// archive file with the same name is an error. Matches `<job-id>-<n>.json` exactly, so one
 /// job id cannot sweep up another whose id merely starts with the same text.
-pub(crate) fn archive(config_path: &Path, job_id: &str) -> Result<()> {
+pub(crate) fn archive(config_path: &Path, job_id: &str, apply: bool) -> Result<()> {
     if !config_path.is_absolute() {
         bail!("absolute config required");
     }
@@ -581,8 +581,12 @@ pub(crate) fn archive(config_path: &Path, job_id: &str) -> Result<()> {
     for (label, directory) in [
         ("results", &c.results_directory),
         ("archive", &c.archive_directory),
+        ("reservation", &c.reservation_directory),
     ] {
         validate_directory(label, directory)?;
+    }
+    if c.reservation_directory.join("review.lock").exists() {
+        bail!("a tick holds the reservation; archive after it finishes");
     }
     let prefix = format!("{job_id}-");
     let matches: Vec<PathBuf> = files(&c.results_directory, "json")?
@@ -605,6 +609,13 @@ pub(crate) fn archive(config_path: &Path, job_id: &str) -> Result<()> {
         if destination.exists() {
             bail!("archive already holds {}", destination.display());
         }
+    }
+    if !apply {
+        println!(
+            "local worker: dry run, {} result(s) for {job_id} would be archived; pass --apply",
+            matches.len()
+        );
+        return Ok(());
     }
     for path in &matches {
         if let Some(name) = path.file_name() {
@@ -1103,12 +1114,12 @@ instruction = \"x\"
         let (_d, mut c, config) = fixture();
         c.archive_directory = PathBuf::from("archive");
         fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
-        let err = archive(&config, "some-job").expect_err("relative archive dir");
+        let err = archive(&config, "some-job", true).expect_err("relative archive dir");
         assert!(!err.to_string().contains("no pending result"), "{err}");
         let (_d2, mut c2, config2) = fixture();
         c2.results_directory = c2.results_directory.join("..").join("elsewhere");
         fs::write(&config2, toml::to_string(&c2).expect("config")).expect("write config");
-        let err2 = archive(&config2, "some-job").expect_err("unnormalized results dir");
+        let err2 = archive(&config2, "some-job", true).expect_err("unnormalized results dir");
         assert!(!err2.to_string().contains("no pending result"), "{err2}");
     }
 
@@ -1123,12 +1134,33 @@ instruction = \"x\"
             .to_string_lossy()
             .to_string();
         let job_id = stem.rsplit_once('-').expect("id-n").0.to_string();
-        assert!(archive(&config, "other-job").is_err());
-        assert!(archive(&config, "bad id").is_err());
-        archive(&config, &job_id).expect("archive");
+        assert!(archive(&config, "other-job", true).is_err());
+        assert!(archive(&config, "bad id", true).is_err());
+        archive(&config, &job_id, true).expect("archive");
         assert!(files(&c.results_directory, "json").expect("r").is_empty());
         assert_eq!(files(&c.archive_directory, "json").expect("a").len(), 1);
-        assert!(archive(&config, &job_id).is_err());
+        assert!(archive(&config, &job_id, true).is_err());
+    }
+
+    #[test]
+    fn archive_defaults_to_dry_run_and_refuses_while_a_tick_holds_the_reservation() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        let results = files(&c.results_directory, "json").expect("results");
+        let stem = results[0]
+            .file_stem()
+            .expect("stem")
+            .to_string_lossy()
+            .to_string();
+        let job_id = stem.rsplit_once('-').expect("id-n").0.to_string();
+        archive(&config, &job_id, false).expect("dry run");
+        assert_eq!(files(&c.results_directory, "json").expect("r").len(), 1);
+        assert!(files(&c.archive_directory, "json").expect("a").is_empty());
+        fs::create_dir_all(&c.reservation_directory).expect("reservation dir");
+        fs::write(c.reservation_directory.join("review.lock"), "owner").expect("reserve");
+        let err = archive(&config, &job_id, true).expect_err("busy reservation");
+        assert!(err.to_string().contains("holds the reservation"), "{err}");
+        assert_eq!(files(&c.results_directory, "json").expect("r").len(), 1);
     }
 
     #[test]
