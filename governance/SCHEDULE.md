@@ -20,20 +20,23 @@ blocked item, completed item, or newly reproduced defect. Do not issue routine s
 
 A full repeat of the 2026-09-26/27 documentation-and-process audit
 (`governance/AUDIT_2026-09-26_DOCUMENTATION_AND_PROCESS.md`), not just the
-monthly roadmap/code drift check below — that audit found the same
-self-certification pattern recurring five times and real doc sprawl/
-canonical-doc collisions that a drift-only check wouldn't catch. Without a
-standing cadence this stays a one-off, and the queue's own sprawl (40+
-`governance/` files, six of them separately claiming to be "one home for X"
+cloud routine's monthly (1st) roadmap/documentation-drift check further
+below in this file — that audit found the same self-certification pattern
+recurring five times and real doc sprawl/canonical-doc collisions that a
+drift-only check wouldn't catch. Without a standing cadence this stays a
+one-off, and the queue's own sprawl (37 `governance/` entries as of this
+writing — the exact count will drift; "well past what fits in one head" is
+the durable point — six of them separately claiming to be "one home for X"
 in `OPERATING_MODEL.md`) is exactly the kind of thing cheap to catch early
 and expensive to catch late.
 
 - **Cadence:** every three months, independent of and in addition to the
-  monthly check below — this is a deliberately lower-frequency layer, the
-  same way the native candidate review (hourly), local worker (every two
-  minutes, gated to specific minute windows), and cloud routine
-  (daily/weekly/monthly) already run at different frequencies for different
-  scopes rather than forcing everything onto one clock.
+  cloud routine's monthly roadmap/drift check (below) and this file's own
+  "Monthly architecture review" section (above) — this is a deliberately
+  lower-frequency layer, the same way the native candidate review (hourly),
+  local worker (every two minutes, gated to specific minute windows), and
+  cloud routine (daily/weekly/monthly) already run at different frequencies
+  for different scopes rather than forcing everything onto one clock.
 - **Trigger, redundantly:** the cloud primary-lane routine's monthly (1st)
   wake checks whether a quarterly audit is due (three months since the last
   one logged in `DECISIONS.md` or this file) and runs it in that wake if so
