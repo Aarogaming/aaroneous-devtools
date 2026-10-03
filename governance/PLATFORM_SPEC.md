@@ -46,13 +46,20 @@ from a whole-diff accept to the current head, cover all of `base...head`.
 | field | meaning |
 |---|---|
 | `pr`, `head` | PR number and full head SHA the record binds to |
+| `base_ref`, `base_sha` | base branch and the immutable merge-base SHA the diff was computed against; a `whole` record is valid only while `git merge-base base_ref head` still equals `base_sha`, so retargeting or a moved base invalidates it |
 | `scope` | `whole` or `delta` with `from` SHA (delta must chain to a `whole`) |
 | `reviewer`, `implementer` | seat identities (independence is checked, honour-system today) |
-| `commands` | list of `{command, exit_code}` actually run |
+| `commands` | list of `{command, exit_code, passed, failed, log_ref, log_sha256}` actually run (`log_ref` is a retained artifact id or path) |
+| `read_only_evidence` | list of `{claim, location, what_was_read}` for checks done by reading only |
+| `rubric` | R1..R9 results from `REVIEW_RUBRIC.md`, each `pass/fail/n/a/not-checked` with one evidence pointer |
+| `findings` | list of `{id, severity, location, text, evidence}` |
 | `not_verified` | explicit list of things not checked |
 | `verdict` | `accept` / `changes_requested` / `needs_revision` |
 
-Records are append-only events (section 4). Existing REVIEW PACKET comments map onto this record.
+Records are append-only events (section 4). The REVIEW PACKET in `governance/REVIEW_RUBRIC.md` maps
+onto this record field for field (VERIFIED BY RUNNING, VERIFIED BY READING ONLY, NOT VERIFIED,
+rubric R1-R9, FINDINGS, VERDICT, Limits); the event log must not drop any of them, because audit and
+reproduction need the log hashes, counts, inspected claims and failure details.
 
 ## 4. Operations
 
