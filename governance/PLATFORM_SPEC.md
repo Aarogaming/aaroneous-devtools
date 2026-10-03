@@ -75,11 +75,18 @@ Records are append-only events (section 4). Existing REVIEW PACKET comments map 
 
 The profile is the declared truth. A raised flag means repair the code (default) or change the
 profile. Repair if the flagged behaviour is incidental; reprofile only if it is the crate's actual
-job. Loosening a profile needs owner sign-off. **Option (owner to accept or drop):** auto-allow a
-loosening when the auditor proves the stricter rules no longer apply (no hot-path code, no `unsafe`,
-no layout-sensitive types crossing into `kernel`, no dependents that would break).
+job. Loosening a profile needs owner sign-off.
 
-## 7. Naming (proposed amendment to AGENTS.md section 4, NOT applied)
+**Owner decision (2026-10-03): automated loosening is accepted with a guard.** The auditor may
+auto-allow a loosening only when it proves the stricter rules no longer apply (no hot-path code, no
+`unsafe`, no layout-sensitive types crossing into `kernel`, no dependents that would break), and
+anything unproven still goes to the owner. It must never be used to produce sloppier code: if a
+capability can be done at a lower (stricter) level, it is supported there and raised back up from the
+base by default. Writing a second copy of a kernel-level operation in a higher tier is a defect, not a
+loosening. The check therefore also fails when the loosened crate duplicates an operation already
+provided by a stricter crate.
+
+## 7. Naming (owner confirmed 2026-10-03; amendment to AGENTS.md section 4 still to be made in its own PR, NOT applied here)
 
 Proper nouns for products and programs (Aaroneous, devtools, Cratify, Foundry, Merlin). Generic
 systems terminology for crates, modules, types, traits, IPC channels and functions; a new
@@ -90,8 +97,17 @@ brand-style identifier needs a recorded reason.
 1. This spec accepted. 2. `review-coverage` required check. 3. Ledger to event log. 4. Steward
 service and leases, then retire individual heartbeats. 5. Path-based gates and commit/doc lints.
 
-## 9. Open questions for the owner
+## 9. Decisions and open questions
 
-- Accept or drop the automated profile-loosening option (section 6).
-- Confirm the naming split (section 7).
-- Where the event log lives (repo file, branch, or service) and who may append.
+Decided 2026-10-03:
+
+- Event log lives in a **separate service** (not a repo file). Its API, authentication and who may
+  append are still to be specified before step 3; v0 must not assume repo-file storage.
+- Automated profile loosening accepted with the guard in section 6.
+- Naming split confirmed (section 7).
+- Reviewers for whole-diff accepts: first come first served unless someone has recorded dibs.
+
+Open:
+
+- Service API and trust model (identity of appenders, tamper evidence, backup and rollback of the log).
+- Where the service runs (local, cloud, or both) given the mixed local and cloud operators.
