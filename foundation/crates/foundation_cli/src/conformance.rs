@@ -16,7 +16,7 @@
 //! never evidence of conformance.
 
 /// Rules for the worker system prompt. Source: AGENTS.md sections 2 and 5.
-pub(crate) const RULE_PACK: &str = "\
+pub const RULE_PACK: &str = "\
 Aaroneous floor rules (a draft that breaks any is rejected):
 1. No std::env::var/var_os/set_var/remove_var/temp_dir/current_dir and no .canonicalize(). Take paths and config through constructor arguments.
 2. No SystemTime::now() or Instant::now() in non-test code. Take time as a parameter (tick or injected clock).
@@ -28,7 +28,7 @@ Aaroneous floor rules (a draft that breaks any is rejected):
 
 /// One rule breach found by [`scan_draft`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Violation {
+pub struct Violation {
     pub rule: &'static str,
     /// 1-based line number within the scanned source.
     pub line: usize,
@@ -68,7 +68,7 @@ const BANNED_OUTSIDE_TESTS: &[(&str, &str)] = &[
 /// brace counting) are exempt from the panic and clock rules only. Comment-only
 /// lines are ignored. A panic-rule hit is waived when the nearest preceding
 /// non-blank line is a `// INFALLIBLE:` comment.
-pub(crate) fn scan_draft(source: &str) -> Vec<Violation> {
+pub fn scan_draft(source: &str) -> Vec<Violation> {
     let mut found = Vec::new();
     let mut depth: i64 = 0;
     // Depth at which the current test region opened; `None` outside one.
@@ -196,6 +196,7 @@ const LINE_SLACK: usize = 10;
 /// `evidence` (compared with whitespace normalised). This catches invented or
 /// paraphrased "findings"; it cannot tell whether a real quote supports the
 /// claim, so it is a floor filter, not review.
+#[cfg(test)]
 pub(crate) fn unanchored_observations(observations: &[String], evidence: &str) -> Vec<usize> {
     unanchored_with_paths(observations, evidence, &[])
 }
@@ -362,6 +363,7 @@ fn cited_line_range(text: &str) -> Option<(usize, usize)> {
 /// is flagged only when NONE of its quotes is present in those lines of `evidence`, widened by
 /// `LINE_SLACK` lines either side (whitespace normalised). Observations without a citation or without a quote are not reported here:
 /// they are unverifiable, not wrong (use [`unanchored_observations`] for quote presence).
+#[cfg(test)]
 pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str) -> Vec<usize> {
     out_of_range_with_paths(observations, evidence, &[])
 }
