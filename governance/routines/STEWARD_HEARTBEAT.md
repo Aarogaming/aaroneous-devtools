@@ -22,8 +22,10 @@ the owner confirms it in chat.
 
 Every tick ends with a concrete artifact: a pushed commit, a PR or PR comment with evidence, a thread
 reply or resolution, a retarget with CI started, a measurement, a cleanup report, a register update, a
-merge, or a merged-state refresh. "Nothing changed" is not an artifact. If several ticks are queued, treat
-them as one.
+merge, or a merged-state refresh. When the sync step verifies that nothing changed and state is healthy,
+a verified healthy no-op is a valid outcome (idle is a healthy state, `OPERATING_MODEL.md`): record the
+heads and states checked in the tick's report, do not invent work, and do not notify. Never fabricate a
+measurement or housekeeping task only to have an artifact. If several ticks are queued, treat them as one.
 
 ## Evidence sources (read, do not copy)
 
@@ -45,7 +47,7 @@ them as one.
    files.
 2. **Respond first to feedback on my PRs.** Fix valid findings on my own branch (Rust: fmt, clippy
    `-D warnings`, `cargo test -p foundation_cli`, `git diff --check`; docs: `git diff --check` and
-   `scripts/check_coordination_evidence.py`). Push with `--force-with-lease`. Comment with evidence
+   `python scripts/check_coordination_evidence.py origin/main HEAD`, which requires both refs). Push with `--force-with-lease`. Comment with evidence
    (command, exit code, hash); a new head is new evidence and earlier accepts do not carry. Reply on each
    thread; resolve a thread only when it is actually addressed. Correct my own mistakes publicly.
 3. **Merge step (only while a grant is active, section "Authority").** A PR in `aaroneous-devtools` may be
@@ -67,11 +69,15 @@ them as one.
    authorized a co-author delta branch.
 6. **Review and cleanup.** Independently review an open PR lacking my review when one is available (full
    packet, commands run, whole-diff scope stated; a review of my own PR never counts as the independent
-   accept). Run `scripts/worktree_inventory.py` read-only. Remove only worktrees I created, when clean
+   accept). Run `python scripts/worktree_inventory.py <repo-dir>` read-only once for each of `D:aroneous-devtools` and
+   `D:\Aaroneous` (it requires the repository directory argument). Remove only worktrees I created, when clean
    and their PR is merged or closed (`git worktree remove`, no `--force`). Verify the path with `pwd`
    before git commands in a worktree. Never touch others' worktrees, dirty or untracked files, or the
    shared checkouts' working trees.
-7. **Steward program progression (primary forward work).** Governed by `PLATFORM_SPEC.md`. Phases in
+7. **Steward program progression (primary forward work).** Governed by `PLATFORM_SPEC.md`. If that file
+   or the C97 lane is not yet on `origin/main` (the spec is PR #40, the claim is PR #42), do not infer
+   phase requirements or acceptance criteria: limit this step to unblocking them (answering review
+   findings, requesting or performing independent reviews). Phases in
    order: P1 spec accepted; P2 review-coverage shadow check (lane C97), then required; structured
    attestations; P3 append-only event log as a separate service; P4 steward service with expiring leases
    replacing per-agent heartbeats (retire this routine's trigger only after the steward demonstrably
