@@ -19,10 +19,14 @@ opening this repo. The owner has named two real fixes — make this repo
 public so a direct pointer from Product always resolves, or build an actual
 sync/notification mechanism between the two repos — and has not chosen
 between them yet; this is still an owner decision, not something to resolve
-unilaterally. Until it's made, the mitigation in place is a lighter one: a
+unilaterally. Until it's made, the proposed mitigation is a lighter one: a
 nudge in Product's own PR template toward checking/logging a lane here for
 substantial work, which doesn't require Product to assume this repo is
-reachable.
+reachable — pending as `.github/pull_request_template.md` in
+Aarogaming/aaroneous#89 (not yet merged to Product `main` as of this
+writing; `git show origin/main:.github/pull_request_template.md` on
+Product correctly returns nothing until it lands — check that PR's state
+rather than assuming this is already in effect).
 
 ## The mechanical safety net (read this part even if you skip the rest)
 

@@ -39,10 +39,13 @@ and expensive to catch late.
   for different scopes rather than forcing everything onto one clock.
 - **Trigger, redundantly:** the cloud primary-lane routine's monthly (1st)
   wake checks whether a quarterly audit is due (three months since the last
-  one logged in `DECISIONS.md` or this file) and runs it in that wake if so
-  — but this does not depend on that routine's continued existence; any
-  active agent session doing a monthly review should make the same check
-  as an interlock, not a single point of failure.
+  one logged in `DECISIONS.md` or this file; if neither has a logged
+  quarterly audit yet, use the original 2026-09-26/27
+  `AUDIT_2026-09-26_DOCUMENTATION_AND_PROCESS.md` as the reference date for
+  that first computation) and runs it in that wake if so — but this does
+  not depend on that routine's continued existence; any active agent
+  session doing a monthly review should make the same check as an
+  interlock, not a single point of failure.
 - **Scope:** re-run the original audit's method — self-certification
   pattern check across recent queue entries, gate/CI coverage drift (does
   `cargo xtask gate` still actually cover every CI workflow, not just
