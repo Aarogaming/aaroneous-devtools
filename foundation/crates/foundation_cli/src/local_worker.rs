@@ -562,7 +562,7 @@ pub(crate) fn lint_jobs(config_path: &Path) -> Result<()> {
 }
 
 /// Moves the reviewed results of one job from the results directory to the archive directory,
-/// which is what frees backpressure after the owner has read them. Never overwrites: an existing
+/// which is what frees backpressure after the owner has read them. Holds the same `review.lock` reservation as a tick for the whole operation. Never overwrites: an existing
 /// archive file with the same name is an error. Matches `<job-id>-<n>.json` exactly, so one
 /// job id cannot sweep up another whose id merely starts with the same text.
 pub(crate) fn archive(config_path: &Path, job_id: &str, apply: bool) -> Result<()> {
@@ -585,9 +585,20 @@ pub(crate) fn archive(config_path: &Path, job_id: &str, apply: bool) -> Result<(
     ] {
         validate_directory(label, directory)?;
     }
-    if c.reservation_directory.join("review.lock").exists() {
-        bail!("a tick holds the reservation; archive after it finishes");
+    fs::create_dir_all(&c.reservation_directory)?;
+    let lock = c.reservation_directory.join("review.lock");
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock)
+    {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            bail!("a tick holds the reservation; archive after it finishes");
+        }
+        Err(e) => return Err(e.into()),
     }
+    let _reservation = Reservation(lock);
     let prefix = format!("{job_id}-");
     let matches: Vec<PathBuf> = files(&c.results_directory, "json")?
         .into_iter()
@@ -1161,6 +1172,30 @@ instruction = \"x\"
         let err = archive(&config, &job_id, true).expect_err("busy reservation");
         assert!(err.to_string().contains("holds the reservation"), "{err}");
         assert_eq!(files(&c.results_directory, "json").expect("r").len(), 1);
+    }
+
+    #[test]
+    fn archive_refuses_a_destination_collision_and_releases_its_reservation() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        let results = files(&c.results_directory, "json").expect("results");
+        let name = results[0].file_name().expect("name").to_owned();
+        let stem = results[0]
+            .file_stem()
+            .expect("stem")
+            .to_string_lossy()
+            .to_string();
+        let job_id = stem.rsplit_once('-').expect("id-n").0.to_string();
+        fs::create_dir_all(&c.archive_directory).expect("archive dir");
+        fs::write(c.archive_directory.join(&name), "existing").expect("occupy");
+        let err = archive(&config, &job_id, true).expect_err("collision");
+        assert!(err.to_string().contains("archive already holds"), "{err}");
+        assert_eq!(files(&c.results_directory, "json").expect("r").len(), 1);
+        assert_eq!(
+            fs::read_to_string(c.archive_directory.join(&name)).expect("kept"),
+            "existing"
+        );
+        assert!(!c.reservation_directory.join("review.lock").exists());
     }
 
     #[test]
