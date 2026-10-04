@@ -106,6 +106,27 @@ def ingest(snapshot, events):
     return {"comment_ids": [f["id"] for f in fresh], "per_seat": per_seat, "unattributed": sum(1 for f in fresh if not f["seat"])}
 
 
+def lease_table(events, tick, done):
+    """Replay lease events. A lease is granted with an expiry tick; it ends when its card is completed
+    (key in `done`), is released, or expires. Returns (active, expired, completed) keyed by card key."""
+    granted = {}
+    for event in events:
+        data = event["data"]
+        if event["type"] == "lease_grant":
+            granted[data["key"]] = {"agent": data["agent"], "expires": data["expires"]}
+        elif event["type"] in ("lease_done", "lease_expired"):
+            granted.pop(data["key"], None)
+    active, expired, completed = {}, {}, {}
+    for key, lease in granted.items():
+        if key in done:
+            completed[key] = lease
+        elif tick >= lease["expires"]:
+            expired[key] = lease
+        else:
+            active[key] = lease
+    return active, expired, completed
+
+
 def stalled_seats(events, agents, stall_after):
     """Seats that were issued cards in each of the last K ticks but ingested no artifact in them."""
     ticks = {}
@@ -127,14 +148,16 @@ def stalled_seats(events, agents, stall_after):
     ]
 
 
-def escalation_card(agent, stall_after, last_cards):
+def escalation_card(agent, stall_after, last_cards, expired_lease=False):
+    reason = ("a lease expired without completion" if expired_lease
+              else f"no artifact for {stall_after} ticks although cards were issued")
     return {
         "agent": agent,
         "role": "escalation",
         "tick": None,
         "priority": 0,
-        "task": f"No artifact from {agent} for {stall_after} ticks although cards were issued: do the card now or name the blocker",
-        "why_now": "engagement stall detected from the event log",
+        "task": f"{agent}: {reason}: do the card now or name the blocker",
+        "why_now": "engagement stall or expired lease detected from the event log",
         "inputs": {"pr": None, "kind": "stall"},
         "marker": "",
         "acceptance": "a comment that either completes one of the cards below or states exactly which step is blocked, by whom and what would unblock it",
@@ -149,7 +172,18 @@ def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after
     events = read_events(log_path)
     ingested = ingest(comments_snapshot, events)
     append_event(log_path, "ingest", dict(ingested, tick=tick), now)
+    active, expired, completed = lease_table(events, tick, set(snapshot_state.get("done", [])))
+    for key, lease in completed.items():
+        append_event(log_path, "lease_done", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
+    for key, lease in expired.items():
+        append_event(log_path, "lease_expired", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
+    snapshot_state = dict(snapshot_state, leases=active)
     cards = nt.build_cards(snapshot_state, tick)
+    for card in cards:
+        lease = card.get("lease")
+        if lease and not lease["renewed"]:
+            append_event(log_path, "lease_grant",
+                         {"tick": tick, "key": lease["key"], "agent": card["agent"], "expires": lease["expires_tick"]}, now)
     append_event(log_path, "cards", {
         "tick": tick,
         "agents": [c["agent"] for c in cards],
@@ -158,11 +192,14 @@ def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after
     events = read_events(log_path)
     names = [a["name"] for a in snapshot_state["agents"]]
     escalations = []
-    for agent in stalled_seats(events, names, stall_after):
+    expired_agents = {lease["agent"] for lease in expired.values()}
+    for agent in sorted(set(stalled_seats(events, names, stall_after)) | expired_agents):
         mine = [c["task"] for c in cards if c["agent"] == agent]
-        escalations.append(escalation_card(agent, stall_after, mine))
-        append_event(log_path, "stall", {"tick": tick, "agent": agent, "after": stall_after}, now)
-    return {"cards": cards, "escalations": escalations, "ingest": ingested}
+        escalations.append(escalation_card(agent, stall_after, mine, agent in expired_agents))
+        append_event(log_path, "stall", {"tick": tick, "agent": agent, "after": stall_after,
+                                         "expired_lease": agent in expired_agents}, now)
+    return {"cards": cards, "escalations": escalations, "ingest": ingested,
+            "leases": {"active": len(active), "completed": sorted(completed), "expired": sorted(expired)}}
 
 
 def render(result):
@@ -171,6 +208,8 @@ def render(result):
         out.append(f"[{e['agent']}] ESCALATION\n  TASK: {e['task']}\n  ACCEPT: {e['acceptance']}")
     per = ", ".join(f"{s}={n}" for s, n in sorted(result["ingest"]["per_seat"].items())) or "none"
     out.append(f"INGESTED new artifacts by seat: {per}; unattributed: {result['ingest']['unattributed']}")
+    lz = result["leases"]
+    out.append(f"LEASES active={lz['active']} completed={len(lz['completed'])} expired={len(lz['expired'])}")
     return "\n\n".join(out)
 
 

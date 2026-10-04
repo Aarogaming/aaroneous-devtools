@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
+import next_task as nt  # noqa: E402
 import steward_run as sr  # noqa: E402
 
 NOW = "2026-10-04T12:00:00Z"
@@ -133,6 +134,65 @@ class Stalls(unittest.TestCase):
     def test_the_log_stays_verifiable_after_ticks(self):
         path = tmp_log()
         self.ticks(path, {2: "Codex review"}, 4)
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+        os.unlink(path)
+
+
+class Leases(unittest.TestCase):
+    def two_prs(self, **kw):
+        s = state([pr(1, seat="other"), pr(2, seat="other")])
+        s.update(kw)
+        return s
+
+    def tasks_by_agent(self, result):
+        return {c["agent"]: c["task"] for c in result["cards"]}
+
+    def test_an_agent_keeps_the_card_it_holds_a_lease_on(self):
+        path = tmp_log()
+        runs = [sr.run_tick(self.two_prs(), snap({1: [], 2: []}), path, t, NOW) for t in range(1, 5)]
+        first = self.tasks_by_agent(runs[0])
+        for later in runs[1:]:
+            self.assertEqual(self.tasks_by_agent(later), first)
+        os.unlink(path)
+
+    def test_a_leased_item_is_not_given_to_another_agent(self):
+        path = tmp_log()
+        run = sr.run_tick(self.two_prs(), snap({1: [], 2: []}), path, 1, NOW)
+        reviews = [c["task"] for c in run["cards"] if "independent whole-diff review" in c["task"]]
+        self.assertEqual(len(reviews), len(set(reviews)))
+        later = sr.run_tick(self.two_prs(), snap({1: [], 2: []}), path, 2, NOW)
+        again = [c["task"] for c in later["cards"] if "independent whole-diff review" in c["task"]]
+        self.assertEqual(sorted(again), sorted(reviews))
+        os.unlink(path)
+
+    def test_a_completed_card_releases_its_lease_and_is_not_reissued(self):
+        path = tmp_log()
+        first = sr.run_tick(self.two_prs(), snap({1: [], 2: []}), path, 1, NOW)
+        key = next(c["lease"]["key"] for c in first["cards"] if c.get("lease"))
+        done = self.two_prs(done=[key])
+        second = sr.run_tick(done, snap({1: [], 2: []}), path, 2, NOW)
+        self.assertIn(key, second["leases"]["completed"])
+        self.assertFalse(any(c.get("lease", {}).get("key") == key for c in second["cards"]))
+        events = sr.read_events(path)
+        self.assertTrue(any(e["type"] == "lease_done" and e["data"]["key"] == key for e in events))
+        os.unlink(path)
+
+    def test_an_expired_lease_returns_the_item_and_escalates_the_holder(self):
+        path = tmp_log()
+        ttl = nt.LEASE_TTL
+        runs = [sr.run_tick(self.two_prs(), snap({1: [], 2: []}), path, t, NOW, stall_after=99) for t in range(1, ttl + 2)]
+        last = runs[-1]
+        self.assertTrue(last["leases"]["expired"])
+        self.assertTrue(last["escalations"])
+        self.assertIn("lease expired", last["escalations"][0]["task"])
+        events = sr.read_events(path)
+        self.assertTrue(any(e["type"] == "lease_expired" for e in events))
+        os.unlink(path)
+
+    def test_the_log_with_leases_still_verifies(self):
+        path = tmp_log()
+        for t in range(1, 9):
+            sr.run_tick(self.two_prs(), snap({1: [], 2: []}), path, t, NOW)
         self.assertEqual(sr.verify_chain(path), (True, ""))
         os.unlink(path)
 
