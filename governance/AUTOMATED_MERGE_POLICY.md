@@ -175,7 +175,7 @@ Per `LOCAL_MODEL_AUTONOMY_POLICY.md`'s own deferred criterion: before
 Tier B auto-merge is *live* for a given file-pattern category (e.g.
 `governance/*.md`, or `**/tests/*.rs`), that category needs a logged
 track record — a specific number of consecutive PRs in that category that
-met all seven conditions above and were merged by the owner manually with
+met all conditions above (1, 2, 2a, 3-7) and were merged by the owner manually with
 zero reverts afterward. Proposed starting threshold: **5 consecutive
 clean manual merges in that category, zero reverts, logged in
 `DECISIONS.md`**, before automatic merging is turned on for it. This
@@ -193,7 +193,8 @@ checks get exercised and proven against real PRs) but only *reports*
 This is infrastructure to build, not yet built as of this document:
 
 - A small checker (xtask subcommand in Aaroneous, or a script here) that
-  takes a PR number and evaluates conditions 1-7 against the GitHub API,
+  takes a PR number and evaluates conditions 1-7 (including 2a) against
+  the GitHub API,
   producing a pass/fail with the specific condition(s) that failed.
 - A kill switch: the same `circuit_breaker_override.toml` mechanism
   already used for local-model promotion, extended to also block this
