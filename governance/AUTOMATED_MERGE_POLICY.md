@@ -2,10 +2,12 @@
 
 Owner-directed, 2026-10-04. This closes the "Raising the auto-merge bar"
 open item in [`LOCAL_MODEL_AUTONOMY_POLICY.md`](LOCAL_MODEL_AUTONOMY_POLICY.md)
-and the parallel gap in [`CROSS_AGENT_COORDINATION_PROTOCOL.md`](CROSS_AGENT_COORDINATION_PROTOCOL.md):
-until now, "no agent merges, ever" was the entire rule, with every PR —
-however much independent evidence it carried — parked waiting on the owner
-to personally run the merge. The owner's direct instruction starting this
+(`:98`/`:118`'s "not yet" framing, `:170`'s open item verbatim) and the
+same blanket stance in [`COORDINATION_QUEUE.md`](COORDINATION_QUEUE.md)'s
+header ("No self-certification or automatic merge authority") and
+`LOCAL_MODEL_AUTONOMY_POLICY.md:98` ("Never auto-merge … for now"): until
+now, every PR — however much independent evidence it carried — was parked
+waiting on the owner to personally run the merge. The owner's direct instruction starting this
 document: the goal is to build a real, mechanical, bounded process that
 takes the owner out of that loop for the categories of change where it's
 safe to, not to relax review standards. This document is that process, not
@@ -35,17 +37,23 @@ any party certify its own work (self-certification stays banned exactly as
 **Tier A — never auto-merged, always the owner.** Anything touching a
 `kernel`-profile crate (per Aaroneous `AGENTS.md` section 1), anything
 containing generated `unsafe` code, anything changing branch protection,
-CI/CD workflow files, credentials, dependency-admission verdicts, or this
-policy document itself. Matches the existing high-risk allowlist pattern
-in `LOCAL_MODEL_AUTONOMY_POLICY.md`'s Tier 2. No trust-building period
-changes this tier — it is a permanent floor, not a starting point.
+**any CI/CD workflow file, unconditionally** (added, modified, or
+removed — there is no carve-out for a new workflow file, below or
+anywhere else in this document), credentials, dependency-admission
+verdicts, or this policy document itself. Matches the existing high-risk
+allowlist pattern in `LOCAL_MODEL_AUTONOMY_POLICY.md`'s Tier 2. No
+trust-building period changes this tier — it is a permanent floor, not a
+starting point. (A new workflow file is exactly the case Aaroneous
+`AGENTS.md` section 6 flags post-#89: adding one without its matching
+local gate and drift test silently reopens the CI/local-gate coverage gap
+that section exists to close, so it stays owner-only rather than earning
+a carve-out.)
 
 **Tier B — auto-mergeable once the checks below pass.** Everything else:
 documentation, governance process docs, `control`/`presentation`/`tooling`
-profile crates, test-only files, CI workflow *additions* that don't touch
-existing required checks, Dependabot version bumps already covered by
-`cargo-semver-checks`. This is the category this policy actually activates
-automation for.
+profile crates, test-only files, Dependabot version bumps already covered
+by `cargo-semver-checks`. This is the category this policy actually
+activates automation for.
 
 ## Mechanical conditions (all required, checked by tooling, not by a model's say-so)
 
@@ -56,6 +64,11 @@ For a given PR head commit, before anything merges it automatically:
    also `security-audit.yml` and `semver-checks.yml` per the gates they
    cover (see Aaroneous `AGENTS.md` section 6).
 2. **No merge conflict** against the current base branch tip.
+2a. **Base is the repository's default branch.** A PR stacked on a
+    non-default base (a sequencing branch like `codex/foundry-transition`)
+    is never auto-merge-eligible, regardless of tier or trust status —
+    stacked-landing sequencing stays an explicit owner or author-seat
+    decision, matching the steward-grant precedent in `#44`.
 3. **≥2 independent accept verdicts** at that exact head, from reviewer
    seats that are not the implementer and not each other (the honour-system
    identity rule in `CROSS_AGENT_COORDINATION_PROTOCOL.md` still applies —
@@ -78,9 +91,10 @@ For a given PR head commit, before anything merges it automatically:
    tier until a human clears it, exactly as it already blocks local-model
    promotion.
 
-Any PR failing condition 1-4 or 6-7 is not eligible for automatic merge at
-that head, full stop — it waits for the owner like every PR does today.
-Condition 5 is a quality bar on condition 3, not a separate gate.
+Any PR failing condition 1, 2, 2a, 3, 4, 6, or 7 is not eligible for
+automatic merge at that head, full stop — it waits for the owner like
+every PR does today. Condition 5 is a quality bar on condition 3, not a
+separate gate.
 
 ## Literal checklist the checker must output per PR (not a prose summary)
 
@@ -91,6 +105,7 @@ checklist, not a narrative — a check that can't be rendered as one of
 ```
 [ ] 1. CI green on head <sha> (run id / workflow / conclusion)
 [ ] 2. No merge conflict vs. <base-branch> tip <sha>
+[ ] 2a. Base branch is the repository default branch
 [ ] 3. >=2 independent accept verdicts at <sha>, seats: <a>, <b>, ...
 [ ] 4. Zero open blocking/red-circle threads (count checked: N)
 [ ] 5. Each counted verdict cites command + exit code (verdict ids: ...)
@@ -125,7 +140,8 @@ judgment:
   does not count toward condition 3 at all (not "counts with a caveat").
 - **`circuit_breaker_override.toml` itself fails to parse or fetch** →
   fail closed exactly as `promote` already does for the same file
-  (section "Closed (C27)" above) — never proceed as if untripped.
+  (`LOCAL_MODEL_AUTONOMY_POLICY.md`'s "~~Revert-triggered circuit breaker
+  trips.~~ Closed (C27)" entry) — never proceed as if untripped.
 - **Trust-building counter for a category is missing or ambiguous**
   (e.g. the category pattern matches files from two different declared
   categories) → treat as not-yet-cleared (box 8 `[ ]`), report the
@@ -213,8 +229,16 @@ This is infrastructure to build, not yet built as of this document:
 
 - Exact category list for the first trust-building cohorts (proposed
   starting point: `governance/*.md` docs here, and `tests/*.rs`-only
-  diffs in Aaroneous, mirroring Tier 1's existing scope).
+  diffs in Aaroneous, mirroring the "narrow, proven-safe category"
+  example — new test-only files — in `LOCAL_MODEL_AUTONOMY_POLICY.md`'s
+  "Why no auto-merge yet" section, not Tier 1, which is the unrelated
+  local-worker-dispatch tier).
 - Whether the 5-clean-merge threshold should vary by category risk, or
   stay uniform for simplicity until there's evidence either way.
+- Condition 3's ≥2-accept bar is stricter than today's typical
+  single-accept practice; since each of the 5 trust-building merges
+  needs 2 accepts, a category will clear its threshold slower than
+  recent merge history alone would suggest. Worth it for the bar this
+  closes, but the pacing is real and owner-adjustable if it's too slow.
 - Who owns building the checker tool itself and on what timeline —
   tracked as a queue item, not committed to in this document.
