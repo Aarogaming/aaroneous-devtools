@@ -102,7 +102,8 @@ def evaluate(head, merge_base, records, is_ancestor):
     rebased or flattened head cannot inherit coverage by naming an old SHA.
     """
     if merge_base in (None, "", "unknown"):
-        return {"covered": False, "reasons": ["merge-base unresolved: coverage cannot be judged"], "accepts_at_head": 0}
+        return {"covered": False, "reasons": ["merge-base unresolved: coverage cannot be judged"], "accepts_at_head": 0,
+                "counted": [], "accept_seats": []}
     at_head = [r for r in records if r["head"] == head]
     blockers = [r for r in at_head if r["verdict"] in REJECT and r["base_sha"] == merge_base]
     reasons = []
@@ -133,7 +134,14 @@ def evaluate(head, merge_base, records, is_ancestor):
             reasons.append("accept at head exists but is not chained to a whole accept at this base")
         else:
             reasons.append("no accept at the current head")
-    return {"covered": ok, "reasons": reasons, "accepts_at_head": len(at_head)}
+    counted = [r for r in valid if r["head"] == head]
+    return {
+        "covered": ok,
+        "reasons": reasons,
+        "accepts_at_head": len(at_head),
+        "counted": counted,
+        "accept_seats": sorted({r["reviewer"] for r in counted}),
+    }
 
 
 def load_keys(path):
@@ -258,6 +266,9 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                 "base": pr.get("base", "main"),
                 "covered": decision["covered"],
                 "reasons": decision["reasons"],
+                "accept_seats": decision["accept_seats"],
+                "counted_verdicts": len(decision["counted"]),
+                "verdicts_missing_evidence": [r.get("comment") for r in decision["counted"] if not r.get("commands")],
                 "structured_attestations": len(structured),
                 "authenticated_reviews": len(formal),
                 "signed_attestations": sum(1 for r in structured if r.get("verified")),

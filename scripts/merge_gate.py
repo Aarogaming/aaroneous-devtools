@@ -55,6 +55,69 @@ def gate_plan(paths):
     return {"level": "light" if docs_only else "full", "commands": LIGHT_GATE if docs_only else FULL_GATE}
 
 
+TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "governance/AUTOMATED_MERGE_POLICY.md")
+TRUST_NEEDED = 5
+
+
+def tier_of(paths):
+    """Tier A is owner-only (workflows and branch protection, the policy document itself, AGENTS.md).
+    Kernel-profile crates, unsafe code, credentials and dependency admission cannot be judged from paths
+    alone here, so those are reported as unclassified, never assumed safe."""
+    hits = [p for p in paths if any(p == t or p.startswith(t) for t in TIER_A_PATHS)]
+    return ("A", f"touches owner-only paths: {hits}") if hits else ("B", "")
+
+
+def box(ok, label, detail=""):
+    """Render one checklist line: [x], [ ] or [blocked: reason] (ok=None)."""
+    if ok is True:
+        mark = "[x]"
+    elif ok is False:
+        mark = "[ ]"
+    else:
+        mark = f"[blocked: {detail}]"
+        detail = ""
+    return f"{mark} {label}" + (f" ({detail})" if detail else "")
+
+
+def checklist(facts):
+    """The policy's literal checklist (governance/AUTOMATED_MERGE_POLICY.md, #53). Report-only: returns
+    (lines, would_merge, first_blocker). A box the checker cannot evaluate is blocked and fails the gate
+    like an unchecked box; nothing is rounded up to green."""
+    head = facts["head"][:12]
+    ci = facts.get("ci") or {"state": "missing", "detail": "no CI status found"}
+    seats = facts.get("accept_seats", [])
+    missing_evidence = facts.get("verdicts_missing_evidence", [])
+    counted = facts.get("counted_verdicts", 0)
+    checks = [
+        ("1", None if ci["state"] == "missing" else ci["state"] == "success",
+         f"CI green on head {head}", ci.get("detail", ""), ci.get("detail") or "no CI status found"),
+        ("2", facts["trial_merge_ok"], f"No merge conflict vs. {facts['base_ref']} tip {facts.get('base_tip', '?')[:12]}", "", ""),
+        ("2a", facts["base_ref"] == facts["default_branch"], "Base branch is the repository default branch",
+         f"base={facts['base_ref']}", ""),
+        ("3", len(seats) >= 2 and facts.get("covered", False),
+         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}", "", ""),
+        ("4", None if facts.get("threads_open") is None else facts["threads_open"] == 0 and not facts.get("standing_changes_requested", False),
+         "Zero open blocking threads", f"count checked: {facts.get('threads_open')}", "thread count unavailable"),
+        ("5", counted > 0 and not missing_evidence, "Each counted verdict cites command + exit code",
+         f"verdicts missing evidence: {missing_evidence}" if missing_evidence else f"counted: {counted}", ""),
+        ("6", facts.get("revertible"), "Revertible via plain `git revert` (no migration/external side effect)", "",
+         "needs a human classification"),
+        ("7", None if facts.get("breaker_tripped") is None else not facts["breaker_tripped"],
+         "circuit_breaker_override.toml: tripped = false", "", "circuit breaker file not found or unparseable (fail closed)"),
+        ("8", False if facts.get("trust") is None else facts["trust"][0] >= facts["trust"][1],
+         f"Category {facts.get('category', '?')} has cleared trust-building threshold",
+         f"{(facts.get('trust') or (0, TRUST_NEEDED))[0]}/{(facts.get('trust') or (0, TRUST_NEEDED))[1]}", ""),
+    ]
+    tier, why = facts.get("tier", ("B", ""))
+    lines = [box(tier == "B", f"0. Tier B (auto-merge eligible)", why)]
+    first = None if tier == "B" else f"0 ({why})"
+    for number, ok, label, detail, blocked_reason in checks:
+        lines.append(box(ok, f"{number}. {label}", blocked_reason if ok is None else detail))
+        if ok is not True and first is None:
+            first = number
+    return lines, first is None, first
+
+
 def decide(pr_row, paths, base_ref, trial_merge_ok, owner_confirmed_protected=False):
     reasons = []
     if not pr_row["covered"]:
@@ -96,6 +159,21 @@ def run_checks(repo_dir, head, base_ref, plan):
     return results
 
 
+def ci_state(rollup):
+    """Fail-closed CI state from a statusCheckRollup list; pending or absent is never success."""
+    if not rollup:
+        return {"state": "missing", "detail": "no CI status found"}
+    states = []
+    for item in rollup:
+        conclusion = (item.get("conclusion") or "").upper()
+        status = (item.get("status") or "").upper()
+        states.append(conclusion if status == "COMPLETED" or conclusion else "PENDING")
+    if any(s in ("", "PENDING", "QUEUED", "IN_PROGRESS") for s in states):
+        return {"state": "pending", "detail": "checks still running"}
+    ok = all(s == "SUCCESS" for s in states)
+    return {"state": "success" if ok else "failure", "detail": f"{len(states)} checks: {', '.join(sorted(set(states)))}"}
+
+
 def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks):
     snapshot = rc.live_snapshot(repo, repo_dir)
     keys = rc.load_keys(identities_path)
@@ -117,6 +195,74 @@ def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks):
     return decisions
 
 
+def print_checklists(args):
+    snapshot = rc.live_snapshot(args.repo, args.repo_dir)
+    keys = rc.load_keys(args.identities)
+    rows = {r["pr"]: r for r in rc.report_snapshot(
+        snapshot, rc.live_ancestry(args.repo_dir), rc.load_identities(args.identities), keys, True)}
+    default = rc.gh_json("repo", "view", args.repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
+    for pr in snapshot["prs"]:
+        if args.pr and pr["number"] != args.pr:
+            continue
+        paths = changed_paths(args.repo_dir, pr["base"], pr["head"])
+        facts = gather_facts(args.repo, args.repo_dir, pr, rows[pr["number"]], paths,
+                             trial_merge(args.repo_dir, pr["base"], pr["head"]), default)
+        lines, would, first = checklist(facts)
+        print(f"PR #{pr['number']} head {pr['head'][:12]}")
+        for line in lines:
+            print("  " + line)
+        print("  => " + ("would merge (report-only; nothing merged)" if would else f"would merge, blocked on box {first}") + "\n")
+    return 0
+
+
+def category_of(paths):
+    """A coarse file-pattern category for the trust counter, e.g. governance/*.md."""
+    if not paths:
+        return "?"
+    dirs = {os.path.dirname(p) or "." for p in paths}
+    exts = {os.path.splitext(p)[1] or "*" for p in paths}
+    if len(dirs) == 1 and len(exts) == 1:
+        return f"{dirs.pop()}/*{exts.pop()}"
+    return "mixed"
+
+
+def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
+    """Live facts for one PR, read-only. Anything that cannot be read stays None (blocked, fail closed)."""
+    facts = {
+        "head": pr["head"], "base_ref": pr["base"], "default_branch": default_branch,
+        "trial_merge_ok": trial_ok, "covered": row["covered"], "accept_seats": row["accept_seats"],
+        "counted_verdicts": row["counted_verdicts"], "verdicts_missing_evidence": row["verdicts_missing_evidence"],
+        "standing_changes_requested": any("changes_requested" in r or "needs_revision" in r for r in row["reasons"]),
+        "tier": tier_of(paths), "category": category_of(paths), "trust": None,
+        "breaker_tripped": None, "threads_open": None, "ci": None,
+    }
+    tip = rc.git(repo_dir, "rev-parse", f"origin/{pr['base']}").stdout.strip()
+    facts["base_tip"] = tip or "?"
+    docs = bool(paths) and all(p.endswith((".md", ".json")) and p.startswith(DOCS_ALLOWLIST) for p in paths)
+    facts["revertible"] = True if docs else None
+    try:
+        view = rc.gh_json("pr", "view", str(pr["number"]), "-R", repo, "--json", "statusCheckRollup")
+        facts["ci"] = ci_state(view.get("statusCheckRollup", []))
+        owner, name = repo.split("/", 1)
+        query = ("query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num)"
+                 "{reviewThreads(first:100){nodes{isResolved}}}}}")
+        data = rc.gh_json("api", "graphql", "-f", f"query={query}", "-F", f"o={owner}", "-F", f"n={name}",
+                          "-F", f"num={pr['number']}")
+        nodes = data["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+        facts["threads_open"] = sum(1 for n in nodes if not n["isResolved"])
+    except Exception:
+        pass
+    listing = rc.git(repo_dir, "ls-tree", "-r", "--name-only", "origin/" + default_branch).stdout.split()
+    breaker = [f for f in listing if f.endswith("circuit_breaker_override.toml")]
+    if breaker:
+        text = rc.git(repo_dir, "show", f"origin/{default_branch}:{breaker[0]}").stdout
+        if "tripped = false" in text:
+            facts["breaker_tripped"] = False
+        elif "tripped = true" in text:
+            facts["breaker_tripped"] = True
+    return facts
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", required=True)
@@ -125,10 +271,14 @@ def main(argv):
     parser.add_argument("--pr", type=int)
     parser.add_argument("--run-checks", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--checklist", action="store_true",
+                        help="print the policy's literal checklist per PR (report-only 'would merge')")
     args = parser.parse_args(argv)
     remote = rc.git(args.repo_dir, "remote", "get-url", "origin")
     if remote.returncode != 0 or not rc.checkout_matches(remote.stdout, args.repo):
         raise SystemExit(f"--repo-dir {args.repo_dir!r} is not a clone of {args.repo}")
+    if args.checklist:
+        return print_checklists(args)
     decisions = evaluate_all(args.repo, args.repo_dir, args.identities, args.pr, args.run_checks)
     if args.json:
         print(json.dumps(decisions, indent=2))

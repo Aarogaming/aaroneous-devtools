@@ -53,5 +53,73 @@ class Decision(unittest.TestCase):
         self.assertEqual(sorted(r[0] for r in d["reasons"]), ["a", "b", "d", "f"])
 
 
+def good_facts(**kw):
+    facts = {
+        "head": "a" * 40, "base_ref": "main", "base_tip": "b" * 40, "default_branch": "main",
+        "ci": {"state": "success", "detail": "2 checks: SUCCESS"}, "trial_merge_ok": True,
+        "accept_seats": ["mimo", "codex"], "covered": True, "threads_open": 0,
+        "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
+        "breaker_tripped": False, "trust": (5, 5), "category": "governance/*.md", "tier": ("B", ""),
+    }
+    facts.update(kw)
+    return facts
+
+
+class Checklist(unittest.TestCase):
+    def test_all_boxes_green_means_would_merge(self):
+        lines, ok, first = mg.checklist(good_facts())
+        self.assertTrue(ok)
+        self.assertIsNone(first)
+        self.assertTrue(all(l.startswith("[x]") for l in lines), lines)
+
+    def test_each_failing_condition_stops_the_loop_at_its_box(self):
+        cases = {
+            "1": {"ci": {"state": "failure", "detail": "x"}},
+            "2": {"trial_merge_ok": False},
+            "2a": {"base_ref": "codex/foundry-transition"},
+            "3": {"accept_seats": ["mimo"]},
+            "4": {"threads_open": 2},
+            "5": {"verdicts_missing_evidence": [4]},
+            "6": {"revertible": False},
+            "7": {"breaker_tripped": True},
+            "8": {"trust": (2, 5)},
+        }
+        for box_no, change in cases.items():
+            lines, ok, first = mg.checklist(good_facts(**change))
+            self.assertFalse(ok, box_no)
+            self.assertEqual(first, box_no)
+
+    def test_an_unevaluable_box_is_blocked_and_fails_the_gate(self):
+        for change, text in (({"ci": None}, "CI"), ({"revertible": None}, "classification"),
+                             ({"breaker_tripped": None}, "circuit"), ({"threads_open": None}, "thread")):
+            lines, ok, first = mg.checklist(good_facts(**change))
+            self.assertFalse(ok)
+            self.assertTrue(any(l.startswith("[blocked:") for l in lines), lines)
+
+    def test_pending_ci_is_not_success(self):
+        self.assertEqual(mg.ci_state([{"status": "IN_PROGRESS", "conclusion": ""}])["state"], "pending")
+        self.assertEqual(mg.ci_state([])["state"], "missing")
+        self.assertEqual(mg.ci_state([{"status": "COMPLETED", "conclusion": "SUCCESS"}])["state"], "success")
+        self.assertEqual(mg.ci_state([{"status": "COMPLETED", "conclusion": "SUCCESS"},
+                                      {"status": "COMPLETED", "conclusion": "FAILURE"}])["state"], "failure")
+
+    def test_tier_a_paths_are_owner_only(self):
+        for path in (".github/workflows/ci.yml", "AGENTS.md", "governance/AUTOMATED_MERGE_POLICY.md"):
+            self.assertEqual(mg.tier_of([path])[0], "A", path)
+            lines, ok, first = mg.checklist(good_facts(tier=mg.tier_of([path])))
+            self.assertFalse(ok)
+            self.assertTrue(first.startswith("0"))
+        self.assertEqual(mg.tier_of(["governance/PLATFORM_SPEC.md"])[0], "B")
+
+    def test_two_seats_must_also_be_covered(self):
+        lines, ok, first = mg.checklist(good_facts(covered=False))
+        self.assertFalse(ok)
+        self.assertEqual(first, "3")
+
+    def test_standing_changes_requested_fails_the_threads_box(self):
+        lines, ok, first = mg.checklist(good_facts(standing_changes_requested=True))
+        self.assertEqual(first, "4")
+
+
 if __name__ == "__main__":
     unittest.main()
