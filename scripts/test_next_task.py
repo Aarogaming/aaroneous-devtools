@@ -143,6 +143,20 @@ class Cards(unittest.TestCase):
         owner = next(c for c in cards if c["inputs"]["kind"] == "fix_threads")
         self.assertEqual(owner["agent"], "codex")
 
+    def test_a_covered_pr_stacked_on_a_non_default_base_gets_no_merge_brief(self):
+        s = state([pr(9, covered=True, base="proposal/other")])
+        s["default_branch"] = "main"
+        kinds = {i["kind"] for i in nt.work_items(s)}
+        self.assertEqual(kinds, {"stacked"})
+        for card in nt.build_cards(s, 0):
+            self.assertNotEqual(card["inputs"]["kind"], "ready_to_merge")
+            self.assertNotIn("merge brief", card["task"])
+
+    def test_a_covered_pr_on_the_default_base_still_gets_the_merge_brief(self):
+        s = state([pr(9, covered=True, base="main")])
+        s["default_branch"] = "main"
+        self.assertEqual({i["kind"] for i in nt.work_items(s)}, {"ready_to_merge"})
+
     def test_cards_change_with_state(self):
         a = [c["task"] for c in nt.build_cards(state([pr(1)]), 0)]
         b = [c["task"] for c in nt.build_cards(state([pr(1, covered=True)]), 0)]

@@ -49,6 +49,7 @@ def work_items(state):
     """
     now = parse_time(state["now"])
     done = set(state.get("done", []))
+    default_branch = state.get("default_branch", "main")
     items = []
     for pr in state["prs"]:
         number, draft = pr["number"], pr.get("draft", False)
@@ -63,6 +64,9 @@ def work_items(state):
             items.append(dict(base, kind="needs_review", rank=2, detail="no covered whole-diff accept at the current head"))
         elif draft:
             items.append(dict(base, kind="draft", rank=4, detail="draft: merge option hidden until ready for review"))
+        elif pr.get("covered") and clean and pr.get("base", default_branch) != default_branch:
+            items.append(dict(base, kind="stacked", rank=6,
+                              detail=f"covered and CLEAN but stacked on {pr.get('base')}: lands after its base, not into {default_branch}"))
         elif pr.get("covered") and clean:
             items.append(dict(base, kind="ready_to_merge", rank=3, detail="covered, CLEAN, no unresolved threads"))
         elif not clean:
@@ -71,7 +75,7 @@ def work_items(state):
             items.append(dict(base, kind="stale", rank=5, detail=f"no update for {int(age_h)}h"))
     items = [i for i in items if item_key(i["kind"], i["pr"], i["head"]) not in done]
     # A stale overlay on a PR that already has its primary action (merge brief or draft flip) is noise.
-    primary = {i["pr"] for i in items if i["kind"] in ("ready_to_merge", "draft")}
+    primary = {i["pr"] for i in items if i["kind"] in ("ready_to_merge", "draft", "stacked")}
     items = [i for i in items if not (i["kind"] == "stale" and i["pr"] in primary)]
     return sorted(items, key=lambda i: (i["rank"], i["pr"]))
 
@@ -170,6 +174,7 @@ def standby_card(agent, role, tick):
 def build_cards(state, tick):
     agents = state["agents"]
     urgent = work_items(state)
+    urgent = [i for i in urgent if i["kind"] != "stacked"]
     substantive = [i for i in urgent if i["kind"] != "stale"]
     only_owner_left = bool(substantive) and all(i["kind"] in ("ready_to_merge", "draft") for i in substantive)
     ladder = list(urgent) + [dict(i, kind="backlog", rank=7) for i in backlog_items(state)]
