@@ -152,17 +152,23 @@ def load_identities(path):
     return mapping
 
 
-def reviews_to_records(reviews, repo, number, head, merge_base, implementers, login_to_seat):
+def reviews_to_records(reviews, repo, number, head, merge_base, implementers, login_to_seat, base_events=()):
     """Turn GitHub PR reviews into attestation-shaped records, plus problems explaining skips.
 
     Only reviews at the current head by a mapped seat are used. Approval is whole-diff by GitHub's own
     binding of a review to a commit. Implementers must be known, or independence cannot be shown.
+    A review submitted before a ``base_events`` timestamp (base_ref_changed / base_ref_force_pushed) is
+    skipped: the diff it reviewed is no longer base...head, so only an attestation may restate it.
     """
     records, problems = [], []
     for review in reviews:
         login = (review.get("user") or {}).get("login", "")
         state = review.get("state", "")
         if state not in ("APPROVED", "CHANGES_REQUESTED") or review.get("commit_id") != head:
+            continue
+        submitted = review.get("submitted_at", "")
+        if submitted and any(event > submitted for event in base_events):
+            problems.append({"review": review.get("id"), "problem": "base changed after this review was submitted"})
             continue
         seat = login_to_seat.get(login.lower())
         if not seat:
@@ -230,7 +236,7 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
             )
         formal, formal_problems = reviews_to_records(
             pr.get("reviews", []), repo, pr["number"], pr["head"], pr["merge_base"],
-            pr.get("implementers", []), identities or {},
+            pr.get("implementers", []), identities or {}, pr.get("base_events", []),
         )
         problems = problems + formal_problems
         ancestry = is_ancestor or pairs_ancestry(pr.get("ancestry", []))
@@ -312,6 +318,13 @@ def live_snapshot(repo, repo_dir):
                 "comments": flatten_pages(pages),
                 "reviews": flatten_pages(
                     gh_json("api", f"repos/{repo}/pulls/{item['number']}/reviews", "--paginate", "--slurp")
+                ),
+                "base_events": sorted(
+                    e.get("created_at", "")
+                    for e in flatten_pages(
+                        gh_json("api", f"repos/{repo}/issues/{item['number']}/timeline", "--paginate", "--slurp")
+                    )
+                    if e.get("event") in ("base_ref_changed", "base_ref_force_pushed")
                 ),
             }
         )

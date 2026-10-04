@@ -12,13 +12,13 @@ H1, H2 = "a" * 40, "b" * 40
 MAP = {"mimo-bot": "mimo", "codex-bot": "codex", "claude-bot": "claude"}
 
 
-def review(login, state="APPROVED", commit=H1, rid=1):
-    return {"id": rid, "user": {"login": login}, "state": state, "commit_id": commit}
+def review(login, state="APPROVED", commit=H1, rid=1, submitted="2026-10-04T10:00:00Z"):
+    return {"id": rid, "user": {"login": login}, "state": state, "commit_id": commit, "submitted_at": submitted}
 
 
-def snapshot(reviews, implementers=("claude",), head=H1):
+def snapshot(reviews, implementers=("claude",), head=H1, base_events=()):
     pr = {"number": 5, "head": head, "merge_base": MB, "comments": [], "reviews": reviews,
-          "implementers": list(implementers)}
+          "implementers": list(implementers), "base_events": list(base_events)}
     return {"repo": "o/r", "prs": [pr]}
 
 
@@ -56,6 +56,15 @@ class FormalReviews(unittest.TestCase):
         r = row([review("mimo-bot")], implementers=())
         self.assertFalse(r["covered"])
         self.assertIn("independence unproven", r["malformed"][0]["problem"])
+
+    def test_a_base_change_after_the_review_invalidates_it(self):
+        r = rc.report_snapshot(snapshot([review("mimo-bot")], base_events=["2026-10-04T11:00:00Z"]), None, MAP)[0]
+        self.assertFalse(r["covered"])
+        self.assertIn("base changed after this review", r["malformed"][0]["problem"])
+
+    def test_a_base_change_before_the_review_does_not_invalidate_it(self):
+        r = rc.report_snapshot(snapshot([review("mimo-bot")], base_events=["2026-10-04T09:00:00Z"]), None, MAP)[0]
+        self.assertTrue(r["covered"])
 
     def test_login_matching_is_case_insensitive(self):
         self.assertTrue(row([review("MIMO-BOT")])["covered"])
