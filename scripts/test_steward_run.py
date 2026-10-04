@@ -76,6 +76,71 @@ class Chain(unittest.TestCase):
         os.unlink(path)
 
 
+class Tip(unittest.TestCase):
+    def log(self):
+        path = tmp_log()
+        for i in range(3):
+            sr.append_event(path, "x", {"i": i}, NOW)
+        return path
+
+    def cleanup(self, path):
+        for p in (path, sr.tip_path(path)):
+            if os.path.exists(p):
+                os.unlink(p)
+
+    def test_an_untouched_log_passes_the_tip_check(self):
+        path = self.log()
+        self.assertEqual(sr.verify_tip(path), (True, ""))
+        self.cleanup(path)
+
+    def test_deleting_the_last_event_is_caught_by_the_tip_sidecar(self):
+        path = self.log()
+        lines = read_lines(path)
+        write_lines(path, lines[:-1])
+        self.assertEqual(sr.verify_chain(path), (True, ""))  # the chain alone cannot see this
+        ok, problem = sr.verify_tip(path)
+        self.assertFalse(ok)
+        self.assertIn("sidecar", problem)
+        self.cleanup(path)
+
+    def test_editing_the_last_event_is_caught_by_the_tip_sidecar(self):
+        path = self.log()
+        lines = read_lines(path)
+        lines[-1] = lines[-1].replace('"i": 2', '"i": 9').replace('"i":2', '"i":9')
+        write_lines(path, lines)
+        self.assertFalse(sr.verify_tip(path)[0])
+        self.cleanup(path)
+
+    def test_an_external_anchor_catches_a_rewritten_sidecar_too(self):
+        path = self.log()
+        anchor = sr.current_tip(path)[1]
+        lines = read_lines(path)
+        write_lines(path, lines[:-1])
+        count, tip = sr.current_tip(path)
+        with open(sr.tip_path(path), "w", encoding="utf-8") as handle:
+            json.dump({"count": count, "tip": tip}, handle)  # attacker rewrites the sidecar to match
+        self.assertTrue(sr.verify_tip(path)[0])
+        ok, problem = sr.verify_tip(path, expected=anchor)
+        self.assertFalse(ok)
+        self.assertIn("externally anchored", problem)
+        self.cleanup(path)
+
+
+class HealthyIdle(unittest.TestCase):
+    def test_healthy_idle_and_standby_cards_do_not_count_toward_stalls(self):
+        path = tmp_log()
+        results = []
+        for tick in range(1, 6):
+            results.append(sr.run_tick(state([]), snap({1: []}), path, tick, NOW, stall_after=3))
+        self.assertTrue(all(not r["escalations"] for r in results))
+        events = sr.read_events(path)
+        for e in [e for e in events if e["type"] == "cards"]:
+            if e["data"]["tick"] % nt.AUDIT_EVERY != 0:
+                self.assertEqual(e["data"]["agents"], [])
+        os.unlink(path)
+        os.unlink(sr.tip_path(path))
+
+
 class Ingest(unittest.TestCase):
     def test_seat_is_read_from_the_text(self):
         self.assertEqual(sr.seat_from_comment("REVIEW PACKET\nSeat / agent: Mimo (x)"), "mimo")
@@ -99,13 +164,17 @@ class Ingest(unittest.TestCase):
         os.unlink(path)
 
 
+def three_open():
+    return state([pr(1, seat="other"), pr(2, seat="other"), pr(3, seat="other")])
+
+
 class Stalls(unittest.TestCase):
     def ticks(self, path, produced_by_tick, total):
         results = []
         for tick in range(1, total + 1):
             body = produced_by_tick.get(tick)
             comments = {1: [{"id": 100 + tick, "body": body}]} if body else {1: []}
-            results.append(sr.run_tick(state([pr(1)]), snap(comments), path, tick, NOW, stall_after=3))
+            results.append(sr.run_tick(three_open(), snap(comments), path, tick, NOW, stall_after=3))
         return results
 
     def test_a_seat_that_never_produces_is_escalated_after_k_ticks(self):
@@ -144,7 +213,7 @@ class Attribution(unittest.TestCase):
         results = []
         for tick in range(1, 4):
             comments = {1: [{"id": 200 + tick * 10 + n, "body": "plain note with no seat"} for n in range(3)]}
-            results.append(sr.run_tick(state([pr(1)]), snap(comments), path, tick, NOW, stall_after=3))
+            results.append(sr.run_tick(three_open(), snap(comments), path, tick, NOW, stall_after=3))
         self.assertTrue(results[-1]["attribution_weak"])
         self.assertEqual(results[-1]["escalations"], [])
         os.unlink(path)
@@ -154,7 +223,7 @@ class Attribution(unittest.TestCase):
         results = []
         for tick in range(1, 4):
             comments = {1: [{"id": 300 + tick, "body": "Gemini independent review"}]}
-            results.append(sr.run_tick(state([pr(1)]), snap(comments), path, tick, NOW, stall_after=3))
+            results.append(sr.run_tick(three_open(), snap(comments), path, tick, NOW, stall_after=3))
         self.assertFalse(results[-1]["attribution_weak"])
         self.assertTrue({e["agent"] for e in results[-1]["escalations"]} >= {"claude", "mimo", "codex"})
         os.unlink(path)

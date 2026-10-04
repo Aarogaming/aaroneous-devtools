@@ -4,7 +4,11 @@
   collect state -> ingest new agent output -> append events -> detect stalls -> issue task cards
 
 The log is an append-only JSONL file where every line carries the SHA-256 of the previous line, so
-removing or editing history is detectable (``verify_chain``). It records which cards were issued and
+editing or removing history *before the last event* is detectable (``verify_chain``). Editing or
+deleting the final event is not visible to the chain alone, so each append also writes the tip digest
+to a ``<log>.tip`` sidecar and every run prints it for anchoring somewhere the log's writer cannot
+quietly rewrite (a PR comment, another seat's record); ``--expect-tip`` verifies against such an
+external digest. The sidecar alone only catches casual edits. It records which cards were issued and
 which comments (artifacts) were ingested per seat, so engagement is measured from output, not from
 polling: a seat that was handed cards but produced no artifact for ``K`` ticks gets an escalation card
 that demands either the artifact or an explicit named blocker.
@@ -62,6 +66,32 @@ def verify_chain(path):
     return True, ""
 
 
+def tip_path(path):
+    return path + ".tip"
+
+
+def current_tip(path):
+    """(count, digest of the last line) for the log, or (0, GENESIS) when empty."""
+    if not os.path.exists(path):
+        return 0, GENESIS
+    with open(path, encoding="utf-8") as handle:
+        lines = [l.rstrip("\n") for l in handle if l.strip()]
+    return len(lines), (digest(lines[-1]) if lines else GENESIS)
+
+
+def verify_tip(path, expected=None):
+    """Check the log tip against the sidecar and, when given, an external digest. Returns (ok, problem)."""
+    count, tip = current_tip(path)
+    if expected and tip != expected:
+        return False, "tip digest does not match the externally anchored value (last events edited or removed)"
+    if os.path.exists(tip_path(path)):
+        with open(tip_path(path), encoding="utf-8") as handle:
+            recorded = json.load(handle)
+        if recorded.get("count") != count or recorded.get("tip") != tip:
+            return False, "tip sidecar disagrees with the log (last events edited, removed or appended outside the tool)"
+    return True, ""
+
+
 def append_event(path, event_type, data, now):
     events = read_events(path)
     prev = GENESIS
@@ -70,8 +100,11 @@ def append_event(path, event_type, data, now):
             lines = [l.rstrip("\n") for l in handle if l.strip()]
         prev = digest(lines[-1])
     event = {"seq": len(events) + 1, "ts": now, "type": event_type, "data": data, "prev": prev}
+    line = json.dumps(event, sort_keys=True, ensure_ascii=False)
     with open(path, "a", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(event, sort_keys=True, ensure_ascii=False) + "\n")
+        handle.write(line + "\n")
+    with open(tip_path(path), "w", encoding="utf-8") as handle:
+        json.dump({"count": event["seq"], "tip": digest(line)}, handle)
     return event
 
 
@@ -193,9 +226,12 @@ def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after
         if lease and not lease["renewed"]:
             append_event(log_path, "lease_grant",
                          {"tick": tick, "key": lease["key"], "agent": card["agent"], "expires": lease["expires_tick"]}, now)
+    # Only cards that require an artifact count toward stall accounting; healthy-idle and standby cards
+    # say no output is expected, so silence on them is not a stall.
+    actionable = [c for c in cards if c["inputs"]["kind"] not in ("healthy_idle", "standby")]
     append_event(log_path, "cards", {
         "tick": tick,
-        "agents": [c["agent"] for c in cards],
+        "agents": [c["agent"] for c in actionable],
         "tasks": [c["task"] for c in cards],
     }, now)
     events = read_events(log_path)
@@ -240,10 +276,14 @@ def main(argv):
     parser.add_argument("--log", required=True)
     parser.add_argument("--tick", type=int, required=True)
     parser.add_argument("--stall-after", type=int, default=3)
+    parser.add_argument("--expect-tip", help="externally anchored SHA-256 of the log's last line")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     if os.path.exists(args.log):
         ok, problem = verify_chain(args.log)
+        if not ok:
+            raise SystemExit(f"event log failed verification: {problem}")
+        ok, problem = verify_tip(args.log, args.expect_tip)
         if not ok:
             raise SystemExit(f"event log failed verification: {problem}")
     remote = cs.rc.git(args.repo_dir, "remote", "get-url", "origin")
@@ -255,7 +295,9 @@ def main(argv):
     state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = run_tick(state, snapshot, args.log, args.tick, now, args.stall_after)
-    print(json.dumps(result, indent=2) if args.json else render(result))
+    count, tip = current_tip(args.log)
+    result["tip"] = {"count": count, "sha256": tip}
+    print(json.dumps(result, indent=2) if args.json else render(result) + f"\n\nLOG TIP seq={count} sha256={tip} (anchor this externally)")
     return 0
 
 
