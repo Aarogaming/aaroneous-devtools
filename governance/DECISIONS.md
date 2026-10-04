@@ -35,3 +35,18 @@ survives without re-reading the whole queue from scratch. Cadence is daily, with
 scope folded into the Monday and 1st-of-month wakes — see `SCHEDULE.md`. It obeys the same capacity,
 claim-expiry, and native-gate rules as any other thread in `MULTITHREAD_PROGRAM.md`; it does not get
 a reserved lane, and it stands down when three primary lanes are already claimed.
+
+## 2026-10-04 — Automated merge policy (closes the "raising the auto-merge bar" open item)
+
+Owner directed removing themselves from the merge-approval loop as a systematic pipeline goal,
+not a one-off exception: "we're actively trying to MAKE the process, that takes me out of that
+loop." Wrote `governance/AUTOMATED_MERGE_POLICY.md`: a two-tier eligibility split (Tier A —
+kernel-profile/unsafe/CI-config/credentials/this-policy-itself, never automatic; Tier B —
+docs/tests/control-or-looser-profile crates/semver-checked dependency bumps, automatable), seven
+mechanical conditions checked per PR head (CI green, no conflict, >=2 independent accept verdicts
+with retained command+exit-code evidence, zero open blocking threads, revertibility, circuit
+breaker clear), and a trust-building gate (5 consecutive clean manual merges in a category, logged
+here, before that category's automatic merging goes live). Self-certification stays banned; the
+circuit breaker stays the one kill switch for both local-model promotion and this mechanism. The
+checker and its GitHub-merge wiring are not yet built — this is the policy the implementation
+targets next.
