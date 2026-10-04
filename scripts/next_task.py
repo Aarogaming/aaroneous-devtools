@@ -147,6 +147,7 @@ def build_cards(state, tick):
             ]
         ladder = [audit_item(state, tick)]
     cards = []
+    taken = set()
     for index, agent in enumerate(agents):
         roles = agent.get("roles") or DEFAULT_ROLES
         role = roles[(tick + index) % len(roles)]
@@ -155,7 +156,11 @@ def build_cards(state, tick):
             if not (item["kind"] == "needs_review" and item.get("seat") == agent["name"])
             and not (item["kind"] == "fix_threads" and item.get("owner_seat") not in (None, "", agent["name"]))
         ] or [audit_item(state, tick)]
-        item = eligible[(tick + index) % len(eligible)]
+        start = (tick + index) % len(eligible)
+        order = eligible[start:] + eligible[:start]
+        # Spread work: prefer an item no other agent was given this tick; reuse only when all are taken.
+        item = next((i for i in order if id(i) not in taken), order[0])
+        taken.add(id(item))
         card = card_for(agent, role, tick, item)
         card["owner_blocked"] = only_owner_left
         cards.append(card)

@@ -84,6 +84,11 @@ class Cards(unittest.TestCase):
             kinds = {c["inputs"]["kind"] for c in nt.build_cards(state([pr(1)]), tick)}
             self.assertNotIn("healthy_idle", kinds)
 
+    def test_work_is_spread_across_agents_when_there_is_enough_of_it(self):
+        s = state([pr(1, seat="other"), pr(2, seat="other"), pr(3, seat="other")])
+        reviews = [c["task"] for c in nt.build_cards(s, 0) if "independent whole-diff review" in c["task"]]
+        self.assertEqual(len(reviews), len(set(reviews)))
+
     def test_backlog_items_are_used_after_urgent_work(self):
         backlog = [{"id": "b1", "task": "Normalise verdict wording in review_coverage.py", "acceptance": "tests pass"}]
         cards = nt.build_cards(state([], backlog), 0)
