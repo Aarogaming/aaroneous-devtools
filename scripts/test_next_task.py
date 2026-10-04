@@ -136,6 +136,13 @@ class Cards(unittest.TestCase):
         cards = nt.build_cards(state([], backlog), 0)
         self.assertTrue(any("Normalise verdict wording" in c["task"] for c in cards))
 
+    def test_a_lease_held_by_an_agent_that_may_no_longer_hold_the_item_is_ignored(self):
+        s = state([pr(1, threads_unresolved=2, seat="codex")])
+        s["leases"] = {nt.item_key("fix_threads", 1, "a" * 40): {"agent": "mimo", "expires": 99}}
+        cards = nt.build_cards(s, 0)
+        owner = next(c for c in cards if c["inputs"]["kind"] == "fix_threads")
+        self.assertEqual(owner["agent"], "codex")
+
     def test_cards_change_with_state(self):
         a = [c["task"] for c in nt.build_cards(state([pr(1)]), 0)]
         b = [c["task"] for c in nt.build_cards(state([pr(1, covered=True)]), 0)]

@@ -189,18 +189,27 @@ def build_cards(state, tick):
     def key_of(item):
         return item_key(item["kind"], item["pr"], item.get("head", "")) if item.get("pr") else None
 
+    def allowed(item, name):
+        if item["kind"] == "needs_review" and item.get("seat") == name:
+            return False
+        return not (item["kind"] == "fix_threads" and item.get("owner_seat") not in (None, "", name))
+
+    # Ignore leases whose holder is no longer allowed to hold the item (ownership or role changed).
+    leases = {k: v for k, v in leases.items()
+              if not any(key_of(i) == k and not allowed(i, v["agent"]) for i in ladder)}
+
     for index, agent in enumerate(agents):
         roles = agent.get("roles") or DEFAULT_ROLES
         role = roles[(tick + index) % len(roles)]
         name = agent["name"]
-        held = [i for i in ladder if key_of(i) in leases and leases[key_of(i)]["agent"] == name]
         leased_to_others = {id(i) for i in ladder if key_of(i) in leases and leases[key_of(i)]["agent"] != name}
         eligible = [
             item for item in ladder
-            if id(item) not in leased_to_others
-            and not (item["kind"] == "needs_review" and item.get("seat") == name)
-            and not (item["kind"] == "fix_threads" and item.get("owner_seat") not in (None, "", name))
+            if id(item) not in leased_to_others and allowed(item, name)
         ]
+        # A lease is honoured only while the item is still eligible for its holder (ownership or role may
+        # have changed since it was granted); otherwise the holder just draws a fresh card.
+        held = [i for i in eligible if key_of(i) in leases and leases[key_of(i)]["agent"] == name]
         if held:
             # Continuity: an agent keeps the card it holds a lease on until it completes or the lease expires.
             item = held[0]
