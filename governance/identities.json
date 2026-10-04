@@ -1,0 +1,10 @@
+{
+  "_comment": "Seat -> GitHub login map for authenticated reviews (lane C100). Logins are filled in by the owner when the machine users exist; an empty list means that seat has no authenticated identity yet. The shared owner/automation login is deliberately NOT a seat and never counts as a reviewer.",
+  "owner": ["Aarogaming"],
+  "seats": {
+    "claude": [],
+    "mimo": [],
+    "codex": [],
+    "gemini": []
+  }
+}

@@ -12,6 +12,10 @@ Inputs are attestation records, never prose:
   names: ``repo`` and ``pr`` must equal the subject, otherwise it is reported as malformed.
 * Legacy (heuristic, reported separately, never counted as covered): existing REVIEW PACKET prose.
 
+* Formal GitHub reviews (authenticated, lane C100): an APPROVED or CHANGES_REQUESTED review whose
+  commit equals the PR head, by a login mapped to a seat in an identity map, counts like a whole-diff
+  record. The map never lists the shared owner login as a seat, so shared-account reviews never count.
+
 Usage:
   review_coverage.py --snapshot FILE.json                       offline, deterministic (the tests)
   review_coverage.py --repo OWNER/NAME --repo-dir CHECKOUT      live read via the gh CLI (read only);
@@ -124,6 +128,52 @@ def evaluate(head, merge_base, records, is_ancestor):
     return {"covered": ok, "reasons": reasons, "accepts_at_head": len(at_head)}
 
 
+def load_identities(path):
+    """Return {login_lower: seat} from governance/identities.json ({"seats": {seat: [logins]}})."""
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    mapping = {}
+    for seat, logins in data.get("seats", {}).items():
+        for login in logins:
+            mapping[login.lower()] = seat
+    return mapping
+
+
+def reviews_to_records(reviews, repo, number, head, merge_base, implementers, login_to_seat):
+    """Turn GitHub PR reviews into attestation-shaped records, plus problems explaining skips.
+
+    Only reviews at the current head by a mapped seat are used. Approval is whole-diff by GitHub's own
+    binding of a review to a commit. Implementers must be known, or independence cannot be shown.
+    """
+    records, problems = [], []
+    for review in reviews:
+        login = (review.get("user") or {}).get("login", "")
+        state = review.get("state", "")
+        if state not in ("APPROVED", "CHANGES_REQUESTED") or review.get("commit_id") != head:
+            continue
+        seat = login_to_seat.get(login.lower())
+        if not seat:
+            problems.append({"review": review.get("id"), "problem": f"login {login!r} is not a mapped seat"})
+            continue
+        if not implementers:
+            problems.append({"review": review.get("id"), "problem": "implementers unknown; independence unproven"})
+            continue
+        records.append(
+            {
+                "repo": repo,
+                "pr": number,
+                "head": head,
+                "base_sha": merge_base,
+                "scope": "whole",
+                "reviewer": seat,
+                "implementers": list(implementers),
+                "verdict": "accept" if state == "APPROVED" else "changes_requested",
+                "source": "github_review",
+            }
+        )
+    return records, problems
+
+
 def pairs_ancestry(pairs):
     known = {(a, b) for a, b in pairs}
     return lambda a, b: a == b or (a, b) in known
@@ -138,7 +188,7 @@ def split_subject(records, repo, number):
     return mine, other
 
 
-def report_snapshot(snapshot, is_ancestor=None):
+def report_snapshot(snapshot, is_ancestor=None, identities=None):
     repo = snapshot.get("repo")
     if not repo:
         raise ValueError("snapshot needs a top-level 'repo' (OWNER/NAME) naming the subject repository")
@@ -154,8 +204,13 @@ def report_snapshot(snapshot, is_ancestor=None):
                     f"does not match {repo}#{pr['number']}",
                 }
             )
+        formal, formal_problems = reviews_to_records(
+            pr.get("reviews", []), repo, pr["number"], pr["head"], pr["merge_base"],
+            pr.get("implementers", []), identities or {},
+        )
+        problems = problems + formal_problems
         ancestry = is_ancestor or pairs_ancestry(pr.get("ancestry", []))
-        decision = evaluate(pr["head"], pr["merge_base"], structured, ancestry)
+        decision = evaluate(pr["head"], pr["merge_base"], structured + formal, ancestry)
         rows.append(
             {
                 "pr": pr["number"],
@@ -164,6 +219,8 @@ def report_snapshot(snapshot, is_ancestor=None):
                 "covered": decision["covered"],
                 "reasons": decision["reasons"],
                 "structured_attestations": len(structured),
+                "authenticated_reviews": len(formal),
+                "trust": "authenticated" if any(r["verdict"] == "accept" for r in formal) else "attested-only",
                 "malformed": problems,
                 "legacy_packets_not_counted": len(legacy),
             }
@@ -217,6 +274,9 @@ def live_snapshot(repo, repo_dir):
                 "base": item["baseRefName"],
                 "merge_base": mb,
                 "comments": flatten_pages(pages),
+                "reviews": flatten_pages(
+                    gh_json("api", f"repos/{repo}/pulls/{item['number']}/reviews", "--paginate", "--slurp")
+                ),
             }
         )
     return {"repo": repo, "prs": prs}
@@ -227,12 +287,12 @@ def live_ancestry(repo_dir):
 
 
 def render(rows):
-    lines = ["PR    head      covered  structured  legacy(not counted)  reasons"]
+    lines = ["PR    head      covered  structured  auth  legacy(not counted)  reasons"]
     for r in rows:
         reasons = "; ".join(r["reasons"]) or "-"
         lines.append(
             f"#{r['pr']:<4} {r['head'][:8]}  {str(r['covered']):<7}  {r['structured_attestations']:<10}"
-            f"  {r['legacy_packets_not_counted']:<19}  {reasons}"
+            f"  {r.get('authenticated_reviews', 0):<4}  {r['legacy_packets_not_counted']:<19}  {reasons}"
         )
     return "\n".join(lines)
 
@@ -244,6 +304,7 @@ def main(argv):
     parser.add_argument("--repo-dir", help="clone of --repo; required with --repo")
     parser.add_argument("--pr", type=int, help="only report this PR")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--identities", help="identity map JSON (seat -> logins); enables formal reviews")
     args = parser.parse_args(argv)
     if bool(args.snapshot) == bool(args.repo):
         parser.error("give exactly one of --snapshot or --repo")
@@ -258,7 +319,8 @@ def main(argv):
         ancestry = live_ancestry(args.repo_dir)
     if args.pr:
         snapshot["prs"] = [p for p in snapshot["prs"] if p["number"] == args.pr]
-    rows = report_snapshot(snapshot, ancestry)
+    identities = load_identities(args.identities) if args.identities else None
+    rows = report_snapshot(snapshot, ancestry, identities)
     print(json.dumps(rows, indent=2) if args.json else render(rows))
     return 0
 

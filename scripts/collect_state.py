@@ -71,9 +71,8 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
     return {"now": now, "agents": [{"name": a} for a in agents], "prs": prs, "backlog": backlog}
 
 
-def collect(repo, repo_dir, agents, backlog):
+def collect(repo, repo_dir, agents, backlog, identities=None):
     snapshot = rc.live_snapshot(repo, repo_dir)
-    rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir))
     meta = {
         p["number"]: p
         for p in rc.gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
@@ -85,6 +84,8 @@ def collect(repo, repo_dir, agents, backlog):
     for p in snapshot["prs"]:
         log = rc.git(repo_dir, "log", "--format=%B", f"origin/{p['base']}..{p['head']}").stdout
         seats[p["number"]] = seat_from_trailers(log, meta[p["number"]].get("headRefName", ""))
+        p["implementers"] = [seats[p["number"]]] if seats[p["number"]] else []
+    rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir), identities)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now)
 
@@ -95,6 +96,7 @@ def main(argv):
     parser.add_argument("--repo-dir", required=True)
     parser.add_argument("--agents", default="claude,mimo,codex,gemini")
     parser.add_argument("--backlog", help="JSON file: list of {id, task, acceptance}")
+    parser.add_argument("--identities", help="identity map JSON (governance/identities.json)")
     args = parser.parse_args(argv)
     remote = rc.git(args.repo_dir, "remote", "get-url", "origin")
     if remote.returncode != 0 or not rc.checkout_matches(remote.stdout, args.repo):
@@ -103,7 +105,8 @@ def main(argv):
     if args.backlog:
         with open(args.backlog, encoding="utf-8") as handle:
             backlog = json.load(handle)
-    state = collect(args.repo, args.repo_dir, [a for a in args.agents.split(",") if a], backlog)
+    identities = rc.load_identities(args.identities) if args.identities else None
+    state = collect(args.repo, args.repo_dir, [a for a in args.agents.split(",") if a], backlog, identities)
     print(json.dumps(state, indent=1))
     return 0
 
