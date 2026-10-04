@@ -8,7 +8,8 @@ Inputs are attestation records, never prose:
 
 * Structured (authoritative): a fenced block in a PR comment, tagged ``attestation``, holding one JSON
   object with the fields in the spec (``repo``, ``pr``, ``head``, ``base_sha``, ``scope``, ``from``,
-  ``reviewer``, ``implementers`` (non-empty list), ``verdict``).
+  ``reviewer``, ``implementers`` (non-empty list), ``verdict``). A record counts only for the repository and PR it
+  names: ``repo`` and ``pr`` must equal the subject, otherwise it is reported as malformed.
 * Legacy (heuristic, reported separately, never counted as covered): existing REVIEW PACKET prose.
 
 Usage:
@@ -128,10 +129,31 @@ def pairs_ancestry(pairs):
     return lambda a, b: a == b or (a, b) in known
 
 
+def split_subject(records, repo, number):
+    """Keep only records that name this repository and PR; the rest are reported, never counted."""
+    mine, other = [], []
+    for record in records:
+        same = record["repo"] == repo and str(record["pr"]) == str(number)
+        (mine if same else other).append(record)
+    return mine, other
+
+
 def report_snapshot(snapshot, is_ancestor=None):
+    repo = snapshot.get("repo")
+    if not repo:
+        raise ValueError("snapshot needs a top-level 'repo' (OWNER/NAME) naming the subject repository")
     rows = []
     for pr in snapshot["prs"]:
-        structured, problems, legacy = parse_attestations(pr.get("comments", []))
+        parsed, problems, legacy = parse_attestations(pr.get("comments", []))
+        structured, foreign = split_subject(parsed, repo, pr["number"])
+        for record in foreign:
+            problems.append(
+                {
+                    "comment": record["comment"],
+                    "problem": f"attestation subject {record['repo']}#{record['pr']} "
+                    f"does not match {repo}#{pr['number']}",
+                }
+            )
         ancestry = is_ancestor or pairs_ancestry(pr.get("ancestry", []))
         decision = evaluate(pr["head"], pr["merge_base"], structured, ancestry)
         rows.append(
@@ -197,7 +219,7 @@ def live_snapshot(repo, repo_dir):
                 "comments": flatten_pages(pages),
             }
         )
-    return {"prs": prs}
+    return {"repo": repo, "prs": prs}
 
 
 def live_ancestry(repo_dir):

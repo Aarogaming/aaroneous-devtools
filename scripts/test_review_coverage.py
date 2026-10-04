@@ -18,10 +18,11 @@ def never(_a, _b):
     return False
 
 
-def rec(head, scope="whole", verdict="accept", reviewer="mimo", base=MB, frm=None, impl=("claude",)):
+def rec(head, scope="whole", verdict="accept", reviewer="mimo", base=MB, frm=None,
+        impl=("claude",), repo="o/r", pr=1):
     record = {
-        "repo": "o/r",
-        "pr": 1,
+        "repo": repo,
+        "pr": pr,
         "head": head,
         "base_sha": base,
         "scope": scope,
@@ -32,6 +33,10 @@ def rec(head, scope="whole", verdict="accept", reviewer="mimo", base=MB, frm=Non
     if frm:
         record["from"] = frm
     return record
+
+
+def block(value):
+    return {"body": "```attestation\n" + json.dumps(value) + "\n```"}
 
 
 def ev(head, records, anc=always, mb=MB):
@@ -80,9 +85,6 @@ class Coverage(unittest.TestCase):
 
 
 class Parsing(unittest.TestCase):
-    def block(self, value):
-        return {"body": "```attestation\n" + json.dumps(value) + "\n```"}
-
     def test_structured_block_is_parsed_and_prose_is_not_counted(self):
         comments = [
             {"body": "intro\n```attestation\n" + json.dumps(rec(H1)) + "\n```\nVERDICT: ACCEPT"},
@@ -95,8 +97,8 @@ class Parsing(unittest.TestCase):
     def test_malformed_blocks_are_reported_not_counted(self):
         comments = [
             {"body": "```attestation\n{not json}\n```"},
-            self.block({"head": H1}),
-            self.block(rec(H2, "delta")),
+            block({"head": H1}),
+            block(rec(H2, "delta")),
         ]
         structured, problems, _ = rc.parse_attestations(comments)
         self.assertEqual(structured, [])
@@ -107,13 +109,12 @@ class Parsing(unittest.TestCase):
         del no_impl["implementers"]
         empty = rec(H1)
         empty["implementers"] = []
-        structured, problems, _ = rc.parse_attestations([self.block(no_impl), self.block(empty)])
+        structured, problems, _ = rc.parse_attestations([block(no_impl), block(empty)])
         self.assertEqual(structured, [])
         self.assertEqual(len(problems), 2)
 
     def test_non_object_json_is_malformed_not_a_crash(self):
-        comments = [self.block(None), self.block([]), self.block("text"), self.block(5)]
-        structured, problems, _ = rc.parse_attestations(comments)
+        structured, problems, _ = rc.parse_attestations([block(None), block([]), block("text"), block(5)])
         self.assertEqual(structured, [])
         self.assertEqual(len(problems), 4)
         self.assertIn("not a JSON object", problems[0]["problem"])
@@ -121,7 +122,8 @@ class Parsing(unittest.TestCase):
 
 class Plumbing(unittest.TestCase):
     def test_flatten_pages_merges_slurped_arrays(self):
-        self.assertEqual(rc.flatten_pages([[{"a": 1}], [{"a": 2}, {"a": 3}], []]), [{"a": 1}, {"a": 2}, {"a": 3}])
+        pages = [[{"a": 1}], [{"a": 2}, {"a": 3}], []]
+        self.assertEqual(rc.flatten_pages(pages), [{"a": 1}, {"a": 2}, {"a": 3}])
 
     def test_pr_list_requests_every_open_pr(self):
         args = rc.pr_list_args("o/r")
@@ -129,9 +131,10 @@ class Plumbing(unittest.TestCase):
         self.assertGreaterEqual(int(args[args.index("--limit") + 1]), 1000)
 
     def test_checkout_matches_the_named_repository(self):
-        self.assertTrue(rc.checkout_matches("https://github.com/Aarogaming/aaroneous-devtools.git\n", "Aarogaming/aaroneous-devtools"))
-        self.assertTrue(rc.checkout_matches("git@github.com:Aarogaming/aaroneous-devtools.git", "Aarogaming/aaroneous-devtools"))
-        self.assertFalse(rc.checkout_matches("https://github.com/Aarogaming/aaroneous.git", "Aarogaming/aaroneous-devtools"))
+        name = "Aarogaming/aaroneous-devtools"
+        self.assertTrue(rc.checkout_matches("https://github.com/" + name + ".git\n", name))
+        self.assertTrue(rc.checkout_matches("git@github.com:" + name + ".git", name))
+        self.assertFalse(rc.checkout_matches("https://github.com/Aarogaming/aaroneous.git", name))
 
     def test_repo_requires_an_explicit_checkout(self):
         with self.assertRaises(SystemExit):
@@ -141,6 +144,7 @@ class Plumbing(unittest.TestCase):
 class Snapshot(unittest.TestCase):
     def test_report_marks_prose_only_prs_uncovered_and_counts_legacy(self):
         snapshot = {
+            "repo": "o/r",
             "prs": [
                 {
                     "number": 7,
@@ -148,13 +152,8 @@ class Snapshot(unittest.TestCase):
                     "merge_base": MB,
                     "comments": [{"body": "whole-diff accept at " + H1 + "\nVERDICT: ACCEPT"}],
                 },
-                {
-                    "number": 8,
-                    "head": H1,
-                    "merge_base": MB,
-                    "comments": [{"body": "```attestation\n" + json.dumps(rec(H1)) + "\n```"}],
-                },
-            ]
+                {"number": 8, "head": H1, "merge_base": MB, "comments": [block(rec(H1, pr=8))]},
+            ],
         }
         rows = {r["pr"]: r for r in rc.report_snapshot(snapshot)}
         self.assertFalse(rows[7]["covered"])
@@ -163,15 +162,40 @@ class Snapshot(unittest.TestCase):
         self.assertIn("#8", rc.render(list(rows.values())))
 
     def test_snapshot_ancestry_pairs_gate_delta_chains(self):
-        comments = [
-            {"body": "```attestation\n" + json.dumps(rec(H1)) + "\n```"},
-            {"body": "```attestation\n" + json.dumps(rec(H2, "delta", frm=H1)) + "\n```"},
-        ]
-        pr = {"number": 9, "head": H2, "merge_base": MB, "comments": comments}
-        flattened = rc.report_snapshot({"prs": [dict(pr, ancestry=[])]})[0]
-        linked = rc.report_snapshot({"prs": [dict(pr, ancestry=[[H1, H2]])]})[0]
+        comments = [block(rec(H1)), block(rec(H2, "delta", frm=H1))]
+        pr = {"number": 1, "head": H2, "merge_base": MB, "comments": comments}
+        flattened = rc.report_snapshot({"repo": "o/r", "prs": [dict(pr, ancestry=[])]})[0]
+        linked = rc.report_snapshot({"repo": "o/r", "prs": [dict(pr, ancestry=[[H1, H2]])]})[0]
         self.assertFalse(flattened["covered"])
         self.assertTrue(linked["covered"])
+
+
+class Subject(unittest.TestCase):
+    def snapshot(self, record, number=46):
+        pr = {"number": number, "head": H1, "merge_base": MB, "comments": [block(record)]}
+        return {"repo": "right/repo", "prs": [pr]}
+
+    def test_matching_repo_and_pr_counts(self):
+        row = rc.report_snapshot(self.snapshot(rec(H1, repo="right/repo", pr=46)))[0]
+        self.assertTrue(row["covered"])
+
+    def test_attestation_for_another_repository_is_not_counted(self):
+        row = rc.report_snapshot(self.snapshot(rec(H1, repo="wrong/repo", pr=46)))[0]
+        self.assertFalse(row["covered"])
+        self.assertIn("does not match", row["malformed"][0]["problem"])
+
+    def test_attestation_for_another_pr_is_not_counted(self):
+        row = rc.report_snapshot(self.snapshot(rec(H1, repo="right/repo", pr=999)))[0]
+        self.assertFalse(row["covered"])
+        self.assertEqual(len(row["malformed"]), 1)
+
+    def test_pr_number_as_string_still_matches(self):
+        row = rc.report_snapshot(self.snapshot(rec(H1, repo="right/repo", pr="46")))[0]
+        self.assertTrue(row["covered"])
+
+    def test_snapshot_without_a_repository_is_rejected(self):
+        with self.assertRaises(ValueError):
+            rc.report_snapshot({"prs": []})
 
 
 if __name__ == "__main__":
