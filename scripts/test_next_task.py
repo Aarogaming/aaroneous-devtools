@@ -76,8 +76,34 @@ class Cards(unittest.TestCase):
                 self.assertIn("do not invent work", card["acceptance"])
 
     def test_periodic_audit_every_nth_tick_when_healthy(self):
-        audits = [t for t in range(0, 13) if nt.build_cards(state([]), t)[0]["inputs"]["kind"] == "audit"]
+        s = state([])
+        s["repo"] = "o/r"
+        s["last_merged"] = {"number": 19, "head": "h" * 40, "merge_commit": "m" * 40}
+        audits = [t for t in range(0, 13) if nt.build_cards(s, t)[0]["inputs"]["kind"] == "audit"]
         self.assertEqual(audits, [0, 6, 12])
+        task = nt.build_cards(s, 0)[0]["task"]
+        self.assertIn("o/r#19", task)
+        self.assertIn("mmmmmmmmmmmm", task)
+
+    def test_audit_without_an_explicit_subject_is_not_issued(self):
+        for tick in (0, 6):
+            kinds = {c["inputs"]["kind"] for c in nt.build_cards(state([]), tick)}
+            self.assertEqual(kinds, {"healthy_idle"})
+
+    def test_highest_priority_item_is_taken_first_regardless_of_tick(self):
+        s = state([pr(1, threads_unresolved=2, seat="claude"), pr(2, seat="other"), pr(3, seat="other")],
+                  backlog=[{"id": "b", "task": "backlog work", "acceptance": "x"}])
+        for tick in range(0, 8):
+            cards = nt.build_cards(s, tick)
+            owner = next(c for c in cards if c["agent"] == "claude")
+            self.assertEqual(owner["inputs"]["kind"], "fix_threads", tick)
+            self.assertFalse(any("backlog work" in c["task"] for c in cards), tick)
+
+    def test_stale_overlay_on_a_ready_pr_does_not_clear_owner_blocked(self):
+        old = pr(3, covered=True, updated_at="2026-09-20T00:00:00Z")
+        kinds = {i["kind"] for i in nt.work_items(state([old]))}
+        self.assertEqual(kinds, {"ready_to_merge"})
+        self.assertTrue(all(c["owner_blocked"] for c in nt.build_cards(state([old]), 0)))
 
     def test_urgent_work_is_never_hidden_by_idle(self):
         for tick in range(0, 7):
@@ -88,6 +114,22 @@ class Cards(unittest.TestCase):
         s = state([pr(1, seat="other"), pr(2, seat="other"), pr(3, seat="other")])
         reviews = [c["task"] for c in nt.build_cards(s, 0) if "independent whole-diff review" in c["task"]]
         self.assertEqual(len(reviews), len(set(reviews)))
+
+    def test_a_completed_card_for_the_same_head_is_not_reissued(self):
+        s = state([pr(8, covered=True)])
+        first = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "ready_to_merge"]
+        self.assertTrue(first)
+        marker = first[0]["marker"]
+        self.assertTrue(marker.startswith("[card:ready_to_merge:8:"))
+        s["done"] = [marker[len("[card:"):-1]]
+        after = nt.build_cards(s, 0)
+        self.assertFalse(any(c["inputs"]["kind"] == "ready_to_merge" for c in after))
+
+    def test_a_new_head_reissues_the_card(self):
+        s = state([pr(8, covered=True)])
+        s["done"] = [nt.item_key("ready_to_merge", 8, "a" * 40)]
+        s["prs"][0]["head"] = "b" * 40
+        self.assertTrue(any(c["inputs"]["kind"] == "ready_to_merge" for c in nt.build_cards(s, 0)))
 
     def test_backlog_items_are_used_after_urgent_work(self):
         backlog = [{"id": "b1", "task": "Normalise verdict wording in review_coverage.py", "acceptance": "tests pass"}]
