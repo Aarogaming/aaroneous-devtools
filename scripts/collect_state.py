@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(__file__))
 import review_coverage as rc  # noqa: E402
 
+MARKER = re.compile(r"\[card:([a-z_]+:\d+:[0-9a-f]{8})\]")
+BRIEF = re.compile(r"OWNER MERGE BRIEF", re.I)
 KNOWN_SEATS = ("claude", "codex", "gemini", "mimo", "qwen")
 SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
 
@@ -48,6 +50,20 @@ def unresolved_by_pr(graphql):
     }
 
 
+def done_keys(snapshot):
+    """Keys of cards already completed: explicit [card:...] markers in comments, plus merge briefs that
+    name the PR head (so briefs posted before markers existed still count)."""
+    keys = set()
+    for p in snapshot["prs"]:
+        head8 = p["head"][:8]
+        for comment in p.get("comments", []):
+            body = comment.get("body", "") if isinstance(comment, dict) else ""
+            keys.update(MARKER.findall(body))
+            if BRIEF.search(body) and head8 in body:
+                keys.add(f"ready_to_merge:{p['number']}:{head8}")
+    return sorted(keys)
+
+
 def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now):
     covered = {r["pr"]: r["covered"] for r in coverage_rows}
     prs = []
@@ -68,7 +84,8 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
                 "covered": covered.get(n, False),
             }
         )
-    return {"now": now, "agents": [{"name": a} for a in agents], "prs": prs, "backlog": backlog}
+    return {"now": now, "agents": [{"name": a} for a in agents], "prs": prs, "backlog": backlog,
+            "done": done_keys(snapshot)}
 
 
 def collect(repo, repo_dir, agents, backlog, identities=None):

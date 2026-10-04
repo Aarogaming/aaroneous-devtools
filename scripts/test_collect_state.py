@@ -40,5 +40,22 @@ class Build(unittest.TestCase):
         self.assertNotIn("independent whole-diff review of PR #7", implementer["task"])
 
 
+class Done(unittest.TestCase):
+    def snap(self, body, head="a" * 40):
+        return {"prs": [{"number": 9, "head": head, "comments": [{"body": body}]}]}
+
+    def test_explicit_marker_marks_the_card_done(self):
+        keys = cs.done_keys(self.snap("done [card:needs_review:9:aaaaaaaa]"))
+        self.assertIn("needs_review:9:aaaaaaaa", keys)
+
+    def test_merge_brief_naming_the_head_counts_as_done(self):
+        keys = cs.done_keys(self.snap("OWNER MERGE BRIEF ... head aaaaaaaa..."))
+        self.assertIn("ready_to_merge:9:aaaaaaaa", keys)
+
+    def test_merge_brief_for_an_older_head_does_not_count(self):
+        keys = cs.done_keys(self.snap("OWNER MERGE BRIEF ... head cccccccc...", head="b" * 40))
+        self.assertEqual(keys, [])
+
+
 if __name__ == "__main__":
     unittest.main()
