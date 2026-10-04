@@ -26,9 +26,13 @@ Exit status is 0 for a produced report: this check never blocks anything.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import attest_sig  # noqa: E402
 
 FENCE = re.compile(r"```attestation\s*\n(.*?)\n```", re.DOTALL)
 FULL_SHA = re.compile(r"\b[0-9a-f]{40}\b")
@@ -60,7 +64,7 @@ def parse_attestations(comments):
     for index, comment in enumerate(comments):
         body = comment.get("body", "") if isinstance(comment, dict) else ""
         found = False
-        for raw in FENCE.findall(body):
+        for raw, signature in attest_sig.pairs(body):
             found = True
             try:
                 record = json.loads(raw)
@@ -71,6 +75,8 @@ def parse_attestations(comments):
             if problem:
                 problems.append({"comment": index, "problem": problem})
                 continue
+            record["_canon"] = attest_sig.canonical(record)
+            record["_sig"] = signature
             record["comment"] = index
             structured.append(record)
         if not found and re.search(r"\bVERDICT\b", body):
@@ -128,12 +134,19 @@ def evaluate(head, merge_base, records, is_ancestor):
     return {"covered": ok, "reasons": reasons, "accepts_at_head": len(at_head)}
 
 
+def load_keys(path):
+    """Return the raw identities data (seat -> logins/keys) for signature verification."""
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
 def load_identities(path):
     """Return {login_lower: seat} from governance/identities.json ({"seats": {seat: [logins]}})."""
     with open(path, encoding="utf-8") as handle:
         data = json.load(handle)
     mapping = {}
-    for seat, logins in data.get("seats", {}).items():
+    for seat, entry in data.get("seats", {}).items():
+        logins = entry.get("logins", []) if isinstance(entry, dict) else entry
         for login in logins:
             mapping[login.lower()] = seat
     return mapping
@@ -188,13 +201,24 @@ def split_subject(records, repo, number):
     return mine, other
 
 
-def report_snapshot(snapshot, is_ancestor=None, identities=None):
+def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, require_signatures=False):
     repo = snapshot.get("repo")
     if not repo:
         raise ValueError("snapshot needs a top-level 'repo' (OWNER/NAME) naming the subject repository")
     rows = []
     for pr in snapshot["prs"]:
         parsed, problems, legacy = parse_attestations(pr.get("comments", []))
+        allowed = attest_sig.allowed_signers(keys) if keys else ""
+        for record in parsed:
+            record["verified"] = bool(record.get("_sig")) and attest_sig.verify(
+                record["_canon"], record["_sig"], record["reviewer"], allowed
+            )
+        if require_signatures:
+            for record in [r for r in parsed if not r["verified"]]:
+                problems.append(
+                    {"comment": record["comment"], "problem": "unsigned or unverifiable attestation (signatures required)"}
+                )
+            parsed = [r for r in parsed if r["verified"]]
         structured, foreign = split_subject(parsed, repo, pr["number"])
         for record in foreign:
             problems.append(
@@ -220,7 +244,14 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None):
                 "reasons": decision["reasons"],
                 "structured_attestations": len(structured),
                 "authenticated_reviews": len(formal),
-                "trust": "authenticated" if any(r["verdict"] == "accept" for r in formal) else "attested-only",
+                "signed_attestations": sum(1 for r in structured if r.get("verified")),
+                "trust": (
+                    "signed"
+                    if any(r.get("verified") and r["verdict"] == "accept" and r["head"] == pr["head"] for r in structured)
+                    else "authenticated"
+                    if any(r["verdict"] == "accept" for r in formal)
+                    else "attested-only"
+                ),
                 "malformed": problems,
                 "legacy_packets_not_counted": len(legacy),
             }
@@ -309,7 +340,9 @@ def main(argv):
     parser.add_argument("--repo-dir", help="clone of --repo; required with --repo")
     parser.add_argument("--pr", type=int, help="only report this PR")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--identities", help="identity map JSON (seat -> logins); enables formal reviews")
+    parser.add_argument("--identities", help="identity map JSON (seat -> logins/keys); enables formal reviews and signature checks")
+    parser.add_argument("--require-signatures", action="store_true",
+                        help="enforcement mode: only attestations signed by the reviewer seat's key count")
     args = parser.parse_args(argv)
     if bool(args.snapshot) == bool(args.repo):
         parser.error("give exactly one of --snapshot or --repo")
@@ -325,7 +358,10 @@ def main(argv):
     if args.pr:
         snapshot["prs"] = [p for p in snapshot["prs"] if p["number"] == args.pr]
     identities = load_identities(args.identities) if args.identities else None
-    rows = report_snapshot(snapshot, ancestry, identities)
+    keys = load_keys(args.identities) if args.identities else None
+    if args.require_signatures and not keys:
+        parser.error("--require-signatures needs --identities")
+    rows = report_snapshot(snapshot, ancestry, identities, keys, args.require_signatures)
     print(json.dumps(rows, indent=2) if args.json else render(rows))
     return 0
 
