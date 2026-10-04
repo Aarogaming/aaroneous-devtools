@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Deterministic task-card generator (lane C98, report-only).
+"""Deterministic task-card generator (lane C99, report-only).
 
 Static scheduled prompts make agents converge on identical "nothing changed" reports. This script
 turns real state into one specific task card per agent per tick, so the prompt an agent receives is
 generated from what is actually open, uncovered, stale or blocked.
 
 It never edits the queue, claims a lane, posts a comment or merges. It reads a state snapshot and
-prints cards. A card is never "idle": when no urgent work exists the work ladder falls through to a
-ranked backlog, and when even that is empty to a deterministic audit task.
+prints cards. When urgent work exists the cards name it; when it does not, the work ladder falls
+through to a ranked backlog. If the snapshot is genuinely healthy (nothing urgent, no backlog) the
+result is an explicit ``healthy_idle`` card carrying the evidence that was checked, which is a valid
+outcome (STEWARD_HEARTBEAT.md: a verified healthy no-op, never invented work). A periodic audit
+spot-check is issued every ``AUDIT_EVERY`` ticks so healthy state is re-verified, not merely assumed.
 
 State snapshot (JSON), per PR: number, title, head, base, draft, mergeable_state, updated_at (ISO),
 seat (the implementing seat), threads_unresolved (int), covered (bool, from review_coverage.py),
@@ -24,6 +27,7 @@ import sys
 from datetime import datetime, timezone
 
 STALE_HOURS = 72
+AUDIT_EVERY = 6
 DEFAULT_ROLES = ["implementer", "reviewer", "auditor", "skeptic"]
 
 
@@ -103,7 +107,30 @@ def audit_item(state, tick):
         "rank": 8,
         "task": "Re-run review_coverage.py against the newest merged PR and compare its structured verdict with the prose verdicts in its comments; report any disagreement",
         "acceptance": "a comment or report listing agreements and disagreements, each with the comment id and head SHA",
-        "detail": "no urgent work: deterministic audit task so the tick produces an artifact",
+        "detail": f"periodic audit (every {AUDIT_EVERY} ticks): re-verify healthy state",
+    }
+
+
+def healthy_idle_card(agent, role, tick, state):
+    prs = state["prs"]
+    return {
+        "agent": agent["name"],
+        "role": role,
+        "tick": tick,
+        "priority": 9,
+        "task": "Healthy idle: no action required this tick",
+        "why_now": "verified healthy: nothing urgent and no backlog",
+        "inputs": {"pr": None, "kind": "healthy_idle"},
+        "evidence": {
+            "open_prs": len(prs),
+            "covered": sum(1 for p in prs if p.get("covered")),
+            "unresolved_threads": sum(p.get("threads_unresolved", 0) for p in prs),
+            "not_clean": sum(1 for p in prs if p.get("mergeable_state") != "CLEAN"),
+            "backlog": len(state.get("backlog", [])),
+        },
+        "acceptance": "no artifact required; do not invent work or notify",
+        "if_blocked": "not applicable; if state changes the next card will say so; do not report 'pending' as the outcome",
+        "owner_blocked": False,
     }
 
 
@@ -113,6 +140,11 @@ def build_cards(state, tick):
     only_owner_left = bool(urgent) and all(i["kind"] in ("ready_to_merge", "draft") for i in urgent)
     ladder = list(urgent) + [dict(i, kind="backlog", rank=7) for i in backlog_items(state)]
     if not ladder:
+        if tick % AUDIT_EVERY != 0:
+            return [
+                healthy_idle_card(agent, (agent.get("roles") or DEFAULT_ROLES)[(tick + i) % len(agent.get("roles") or DEFAULT_ROLES)], tick, state)
+                for i, agent in enumerate(agents)
+            ]
         ladder = [audit_item(state, tick)]
     cards = []
     for index, agent in enumerate(agents):

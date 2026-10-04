@@ -67,13 +67,22 @@ class Cards(unittest.TestCase):
         roles = {nt.build_cards(s, tick)[0]["role"] for tick in range(4)}
         self.assertEqual(len(roles), 4)
 
-    def test_no_work_yields_a_ladder_task_never_an_idle_card(self):
-        for tick in range(6):
+    def test_healthy_state_yields_explicit_healthy_idle_with_evidence(self):
+        # A covered CLEAN PR would be ready_to_merge, so a healthy state here is "no open PRs at all".
+        for tick in (1, 2, 3, 4, 5):
             for card in nt.build_cards(state([]), tick):
-                self.assertTrue(card["task"])
-                self.assertNotIn("idle", card["task"].lower())
-                self.assertNotIn("nothing", card["task"].lower())
-                self.assertEqual(card["why_now"].startswith("no urgent work"), True)
+                self.assertEqual(card["inputs"]["kind"], "healthy_idle")
+                self.assertEqual(card["evidence"]["open_prs"], 0)
+                self.assertIn("do not invent work", card["acceptance"])
+
+    def test_periodic_audit_every_nth_tick_when_healthy(self):
+        audits = [t for t in range(0, 13) if nt.build_cards(state([]), t)[0]["inputs"]["kind"] == "audit"]
+        self.assertEqual(audits, [0, 6, 12])
+
+    def test_urgent_work_is_never_hidden_by_idle(self):
+        for tick in range(0, 7):
+            kinds = {c["inputs"]["kind"] for c in nt.build_cards(state([pr(1)]), tick)}
+            self.assertNotIn("healthy_idle", kinds)
 
     def test_backlog_items_are_used_after_urgent_work(self):
         backlog = [{"id": "b1", "task": "Normalise verdict wording in review_coverage.py", "acceptance": "tests pass"}]
