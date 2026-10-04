@@ -1,0 +1,95 @@
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(__file__))
+import next_task as nt  # noqa: E402
+
+NOW = "2026-10-04T12:00:00Z"
+AGENTS = [
+    {"name": "claude", "roles": ["implementer", "reviewer", "auditor", "skeptic"]},
+    {"name": "mimo"},
+    {"name": "codex"},
+]
+
+
+def pr(number, **kw):
+    base = {
+        "number": number,
+        "title": f"pr {number}",
+        "head": "a" * 40,
+        "draft": False,
+        "mergeable_state": "CLEAN",
+        "updated_at": "2026-10-04T11:00:00Z",
+        "seat": "claude",
+        "threads_unresolved": 0,
+        "covered": False,
+    }
+    base.update(kw)
+    return base
+
+
+def state(prs, backlog=None):
+    return {"now": NOW, "agents": AGENTS, "prs": prs, "backlog": backlog or []}
+
+
+class Cards(unittest.TestCase):
+    def test_uncovered_pr_goes_to_a_reviewer_who_is_not_the_implementer(self):
+        cards = nt.build_cards(state([pr(1)]), 0)
+        reviewers = [c for c in cards if "independent whole-diff review of PR #1" in c["task"]]
+        self.assertTrue(reviewers)
+        self.assertNotIn("claude", [c["agent"] for c in reviewers])
+
+    def test_unresolved_threads_are_the_implementers_task_first(self):
+        cards = nt.build_cards(state([pr(2, threads_unresolved=3, covered=True)]), 0)
+        owner = next(c for c in cards if c["agent"] == "claude")
+        self.assertIn("unresolved review thread", owner["task"] + owner["why_now"])
+        self.assertEqual(owner["priority"], 1)
+
+    def test_blocked_on_owner_produces_a_merge_brief_not_a_pending_report(self):
+        ready = [pr(3, covered=True), pr(4, covered=True)]
+        cards = nt.build_cards(state(ready), 0)
+        self.assertTrue(all(c["owner_blocked"] for c in cards))
+        self.assertTrue(any("owner merge brief" in c["task"] for c in cards))
+
+    def test_draft_pr_gets_a_ready_for_review_task(self):
+        cards = nt.build_cards(state([pr(5, draft=True, covered=True)]), 0)
+        self.assertTrue(any("ready for review" in c["task"] for c in cards))
+
+    def test_stale_pr_is_triaged(self):
+        stale = pr(6, covered=True, updated_at="2026-09-28T00:00:00Z", mergeable_state="DIRTY")
+        kinds = {i["kind"] for i in nt.work_items(state([stale]))}
+        self.assertIn("stale", kinds)
+        self.assertIn("not_mergeable", kinds)
+
+    def test_roles_rotate_across_ticks(self):
+        s = state([pr(1)])
+        roles = {nt.build_cards(s, tick)[0]["role"] for tick in range(4)}
+        self.assertEqual(len(roles), 4)
+
+    def test_no_work_yields_a_ladder_task_never_an_idle_card(self):
+        for tick in range(6):
+            for card in nt.build_cards(state([]), tick):
+                self.assertTrue(card["task"])
+                self.assertNotIn("idle", card["task"].lower())
+                self.assertNotIn("nothing", card["task"].lower())
+                self.assertEqual(card["why_now"].startswith("no urgent work"), True)
+
+    def test_backlog_items_are_used_after_urgent_work(self):
+        backlog = [{"id": "b1", "task": "Normalise verdict wording in review_coverage.py", "acceptance": "tests pass"}]
+        cards = nt.build_cards(state([], backlog), 0)
+        self.assertTrue(any("Normalise verdict wording" in c["task"] for c in cards))
+
+    def test_cards_change_with_state(self):
+        a = [c["task"] for c in nt.build_cards(state([pr(1)]), 0)]
+        b = [c["task"] for c in nt.build_cards(state([pr(1, covered=True)]), 0)]
+        self.assertNotEqual(a, b)
+
+    def test_every_card_states_acceptance_and_a_blocked_action(self):
+        for card in nt.build_cards(state([pr(1), pr(2, threads_unresolved=1)]), 2):
+            self.assertTrue(card["acceptance"])
+            self.assertIn("do not report 'pending'", card["if_blocked"])
+
+
+if __name__ == "__main__":
+    unittest.main()
