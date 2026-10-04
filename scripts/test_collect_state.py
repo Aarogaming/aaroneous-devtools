@@ -50,6 +50,7 @@ class Build(unittest.TestCase):
         meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
         state = cs.build_state(snapshot, [{"pr": 7, "covered": False}], meta, {7: 0}, {7: "claude"},
                                ["claude", "mimo"], [], "2026-10-04T12:00:00Z")
+        self.assertEqual(state["default_branch"], "main")
         cards = nt.build_cards(state, 0)
         self.assertEqual({c["agent"] for c in cards}, {"claude", "mimo"})
         reviewer = next(c for c in cards if c["agent"] == "mimo")

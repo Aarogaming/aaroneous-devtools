@@ -81,7 +81,7 @@ def done_keys(snapshot):
     return sorted(keys)
 
 
-def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now):
+def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now, default_branch="main"):
     covered = {r["pr"]: r["covered"] for r in coverage_rows}
     prs = []
     for p in snapshot["prs"]:
@@ -102,7 +102,7 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
             }
         )
     return {"now": now, "agents": [{"name": a} for a in agents], "prs": prs, "backlog": backlog,
-            "done": done_keys(snapshot)}
+            "done": done_keys(snapshot), "default_branch": default_branch}
 
 
 def collect(repo, repo_dir, agents, backlog, identities=None):
@@ -122,7 +122,8 @@ def collect(repo, repo_dir, agents, backlog, identities=None):
         p["implementers"] = every
     rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir), identities)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now)
+    default = rc.gh_json("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
+    return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now, default)
 
 
 def main(argv):
