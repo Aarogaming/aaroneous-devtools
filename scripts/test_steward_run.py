@@ -1,0 +1,141 @@
+import json
+import os
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(__file__))
+import steward_run as sr  # noqa: E402
+
+NOW = "2026-10-04T12:00:00Z"
+AGENTS = [{"name": "claude"}, {"name": "mimo"}, {"name": "codex"}]
+
+
+def state(prs):
+    return {"now": NOW, "agents": AGENTS, "prs": prs, "backlog": [], "done": []}
+
+
+def pr(number, head="a" * 40, **kw):
+    base = {
+        "number": number, "title": "t", "head": head, "draft": False, "mergeable_state": "CLEAN",
+        "updated_at": "2026-10-04T11:00:00Z", "seat": "claude", "threads_unresolved": 0, "covered": False,
+    }
+    base.update(kw)
+    return base
+
+
+def snap(comments_by_pr):
+    return {"prs": [{"number": n, "comments": c} for n, c in comments_by_pr.items()]}
+
+
+def read_lines(path):
+    with open(path, encoding="utf-8") as handle:
+        return handle.read().splitlines()
+
+
+def write_lines(path, lines):
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(chr(10).join(lines) + chr(10))
+
+
+def tmp_log():
+    handle = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False)
+    handle.close()
+    os.unlink(handle.name)
+    return handle.name
+
+
+class Chain(unittest.TestCase):
+    def test_appended_events_form_a_verifiable_chain(self):
+        path = tmp_log()
+        for i in range(3):
+            sr.append_event(path, "x", {"i": i}, NOW)
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+        os.unlink(path)
+
+    def test_editing_an_event_breaks_the_chain(self):
+        path = tmp_log()
+        for i in range(3):
+            sr.append_event(path, "x", {"i": i}, NOW)
+        lines = read_lines(path)
+        lines[1] = lines[1].replace('"i": 1', '"i": 99').replace('"i":1', '"i":99')
+        write_lines(path, lines)
+        ok, problem = sr.verify_chain(path)
+        self.assertFalse(ok)
+        self.assertIn("chain broken", problem)
+        os.unlink(path)
+
+    def test_removing_an_event_breaks_the_chain(self):
+        path = tmp_log()
+        for i in range(3):
+            sr.append_event(path, "x", {"i": i}, NOW)
+        lines = read_lines(path)
+        write_lines(path, [lines[0], lines[2]])
+        self.assertFalse(sr.verify_chain(path)[0])
+        os.unlink(path)
+
+
+class Ingest(unittest.TestCase):
+    def test_seat_is_read_from_the_text(self):
+        self.assertEqual(sr.seat_from_comment("REVIEW PACKET\nSeat / agent: Mimo (x)"), "mimo")
+        self.assertEqual(sr.seat_from_comment("Codex independent review at abc"), "codex")
+        self.assertEqual(sr.seat_from_comment("### Review\n- **Reviewer**: Gemini / Antigravity"), "gemini")
+        self.assertEqual(sr.seat_from_comment("random words"), "")
+
+    def test_new_comments_are_counted_once_per_seat(self):
+        path = tmp_log()
+        comments = {1: [{"id": 10, "body": "Codex independent review"}, {"id": 11, "body": "Seat / agent: Mimo"}]}
+        first = sr.run_tick(state([pr(1)]), snap(comments), path, 1, NOW)
+        self.assertEqual(first["ingest"]["per_seat"], {"codex": 1, "mimo": 1})
+        second = sr.run_tick(state([pr(1)]), snap(comments), path, 2, NOW)
+        self.assertEqual(second["ingest"]["comment_ids"], [])
+        os.unlink(path)
+
+    def test_unattributed_comments_are_counted_separately(self):
+        path = tmp_log()
+        result = sr.run_tick(state([pr(1)]), snap({1: [{"id": 5, "body": "plain note"}]}), path, 1, NOW)
+        self.assertEqual(result["ingest"]["unattributed"], 1)
+        os.unlink(path)
+
+
+class Stalls(unittest.TestCase):
+    def ticks(self, path, produced_by_tick, total):
+        results = []
+        for tick in range(1, total + 1):
+            body = produced_by_tick.get(tick)
+            comments = {1: [{"id": 100 + tick, "body": body}]} if body else {1: []}
+            results.append(sr.run_tick(state([pr(1)]), snap(comments), path, tick, NOW, stall_after=3))
+        return results
+
+    def test_a_seat_that_never_produces_is_escalated_after_k_ticks(self):
+        path = tmp_log()
+        results = self.ticks(path, {}, 3)
+        escalated = {e["agent"] for e in results[-1]["escalations"]}
+        self.assertEqual(escalated, {"claude", "mimo", "codex"})
+        self.assertFalse(results[0]["escalations"])
+        os.unlink(path)
+
+    def test_producing_one_artifact_clears_the_stall(self):
+        path = tmp_log()
+        results = self.ticks(path, {3: "Mimo independent review"}, 3)
+        escalated = {e["agent"] for e in results[-1]["escalations"]}
+        self.assertNotIn("mimo", escalated)
+        self.assertIn("codex", escalated)
+        os.unlink(path)
+
+    def test_escalation_demands_an_artifact_or_a_named_blocker(self):
+        path = tmp_log()
+        card = self.ticks(path, {}, 3)[-1]["escalations"][0]
+        self.assertIn("name the blocker", card["task"])
+        self.assertIn("silence", card["if_blocked"])
+        os.unlink(path)
+
+    def test_the_log_stays_verifiable_after_ticks(self):
+        path = tmp_log()
+        self.ticks(path, {2: "Codex review"}, 4)
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+        os.unlink(path)
+
+
+if __name__ == "__main__":
+    unittest.main()
