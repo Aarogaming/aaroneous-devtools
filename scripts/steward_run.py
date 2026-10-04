@@ -114,7 +114,7 @@ def lease_table(events, tick, done):
         data = event["data"]
         if event["type"] == "lease_grant":
             granted[data["key"]] = {"agent": data["agent"], "expires": data["expires"]}
-        elif event["type"] in ("lease_done", "lease_expired"):
+        elif event["type"] in ("lease_done", "lease_expired", "lease_released"):
             granted.pop(data["key"], None)
     active, expired, completed = {}, {}, {}
     for key, lease in granted.items():
@@ -200,6 +200,11 @@ def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after
     }, now)
     events = read_events(log_path)
     names = [a["name"] for a in snapshot_state["agents"]]
+    carried = {(c["agent"], c["lease"]["key"]) for c in cards if c.get("lease")}
+    for key, lease in active.items():
+        if (lease["agent"], key) not in carried:
+            append_event(log_path, "lease_released", {"tick": tick, "key": key, "agent": lease["agent"],
+                                                       "reason": "no longer eligible for its holder"}, now)
     escalations = []
     expired_agents = {lease["agent"] for lease in expired.values()}
     weak = attribution_weak(events, stall_after)

@@ -211,6 +211,23 @@ class Leases(unittest.TestCase):
         self.assertTrue(any(e["type"] == "lease_expired" for e in events))
         os.unlink(path)
 
+    def test_a_lease_the_holder_is_no_longer_eligible_for_is_released_not_left_to_expire(self):
+        path = tmp_log()
+        owned = state([pr(1, threads_unresolved=2, seat="mimo")])
+        run1 = sr.run_tick(owned, snap({1: []}), path, 1, NOW)
+        holder = next(c["agent"] for c in run1["cards"] if c["inputs"]["kind"] == "fix_threads")
+        self.assertEqual(holder, "mimo")
+        # Ownership is corrected: the PR belongs to codex now, so mimo's lease is invalid.
+        fixed = state([pr(1, threads_unresolved=2, seat="codex")])
+        run2 = sr.run_tick(fixed, snap({1: []}), path, 2, NOW)
+        owner = next(c["agent"] for c in run2["cards"] if c["inputs"]["kind"] == "fix_threads")
+        self.assertEqual(owner, "codex")
+        events = sr.read_events(path)
+        self.assertTrue(any(e["type"] == "lease_released" and e["data"]["agent"] == "mimo" for e in events))
+        run3 = sr.run_tick(fixed, snap({1: []}), path, 3, NOW)
+        self.assertEqual(run3["leases"]["expired"], [])
+        os.unlink(path)
+
     def test_the_log_with_leases_still_verifies(self):
         path = tmp_log()
         for t in range(1, 9):
