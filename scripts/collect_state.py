@@ -26,15 +26,32 @@ KNOWN_SEATS = ("claude", "codex", "gemini", "mimo", "qwen")
 SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
 
 
-def seat_from_trailers(text, branch=""):
-    """Best-effort implementing seat from commit trailers and branch prefix; '' when unknown."""
+def seats_from_trailers(text, branch=""):
+    """Every implementing seat found, deduplicated in order: a seat-named branch prefix first (the
+    branch owner), then every seat named in a co-author or contribution trailer anywhere in the range.
+    Independence needs the whole list, not just the first match."""
+    seats = []
+
+    def add(name):
+        name = name.lower()
+        if name not in seats:
+            seats.append(name)
+
+    prefix = SEAT_PATTERN.match(branch.split("/", 1)[0]) if branch else None
+    if prefix:
+        add(prefix.group(1))
     for line in text.splitlines():
         if line.lower().startswith(("co-authored-by:", "contribution-id:")):
-            found = SEAT_PATTERN.search(line)
-            if found:
-                return found.group(1).lower()
-    found = SEAT_PATTERN.match(branch.split("/", 1)[0]) if branch else None
-    return found.group(1).lower() if found else ""
+            for found in SEAT_PATTERN.finditer(line):
+                add(found.group(1))
+    return seats
+
+
+def seat_from_trailers(text, branch=""):
+    """Primary implementing seat (the branch owner when the branch names one, else the first trailer
+    seat); '' when unknown."""
+    seats = seats_from_trailers(text, branch)
+    return seats[0] if seats else ""
 
 
 THREADS_QUERY = (
@@ -100,8 +117,9 @@ def collect(repo, repo_dir, agents, backlog, identities=None):
     seats = {}
     for p in snapshot["prs"]:
         log = rc.git(repo_dir, "log", "--format=%B", f"origin/{p['base']}..{p['head']}").stdout
-        seats[p["number"]] = seat_from_trailers(log, meta[p["number"]].get("headRefName", ""))
-        p["implementers"] = [seats[p["number"]]] if seats[p["number"]] else []
+        every = seats_from_trailers(log, meta[p["number"]].get("headRefName", ""))
+        seats[p["number"]] = every[0] if every else ""
+        p["implementers"] = every
     rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir), identities)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now)

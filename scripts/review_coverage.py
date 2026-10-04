@@ -101,6 +101,8 @@ def evaluate(head, merge_base, records, is_ancestor):
     coverage only when its ``from`` is a covered head AND an ancestor of the delta's own head, so a
     rebased or flattened head cannot inherit coverage by naming an old SHA.
     """
+    if merge_base in (None, "", "unknown"):
+        return {"covered": False, "reasons": ["merge-base unresolved: coverage cannot be judged"], "accepts_at_head": 0}
     at_head = [r for r in records if r["head"] == head]
     blockers = [r for r in at_head if r["verdict"] in REJECT and r["base_sha"] == merge_base]
     reasons = []
@@ -161,7 +163,15 @@ def reviews_to_records(reviews, repo, number, head, merge_base, implementers, lo
     skipped: the diff it reviewed is no longer base...head, so only an attestation may restate it.
     """
     records, problems = [], []
-    for review in reviews:
+    if merge_base in (None, "", "unknown"):
+        return records, [{"review": None, "problem": "merge-base unresolved (checkout lacks the PR head?); formal reviews cannot be bound"}]
+    # GitHub lists every review chronologically. Only each reviewer's latest decision stands: a later
+    # APPROVED supersedes an earlier CHANGES_REQUESTED, and a DISMISSED review is no decision at all.
+    latest = {}
+    for review in sorted(reviews, key=lambda r: (r.get("submitted_at", ""), r.get("id", 0))):
+        if review.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+            latest[(review.get("user") or {}).get("login", "").lower()] = review
+    for review in latest.values():
         login = (review.get("user") or {}).get("login", "")
         state = review.get("state", "")
         if state not in ("APPROVED", "CHANGES_REQUESTED") or review.get("commit_id") != head:

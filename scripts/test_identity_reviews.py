@@ -66,6 +66,34 @@ class FormalReviews(unittest.TestCase):
         r = rc.report_snapshot(snapshot([review("mimo-bot")], base_events=["2026-10-04T09:00:00Z"]), None, MAP)[0]
         self.assertTrue(r["covered"])
 
+    def test_a_later_approval_supersedes_an_earlier_changes_requested_by_the_same_reviewer(self):
+        reviews = [review("mimo-bot", "CHANGES_REQUESTED", rid=1, submitted="2026-10-04T09:00:00Z"),
+                   review("mimo-bot", "APPROVED", rid=2, submitted="2026-10-04T10:00:00Z")]
+        self.assertTrue(row(reviews)["covered"])
+
+    def test_a_later_changes_requested_supersedes_an_earlier_approval(self):
+        reviews = [review("mimo-bot", "APPROVED", rid=1, submitted="2026-10-04T09:00:00Z"),
+                   review("mimo-bot", "CHANGES_REQUESTED", rid=2, submitted="2026-10-04T10:00:00Z")]
+        r = row(reviews)
+        self.assertFalse(r["covered"])
+        self.assertIn("changes_requested", " ".join(r["reasons"]))
+
+    def test_a_dismissed_review_is_no_decision(self):
+        reviews = [review("mimo-bot", "APPROVED", rid=1, submitted="2026-10-04T09:00:00Z"),
+                   review("mimo-bot", "DISMISSED", rid=2, submitted="2026-10-04T10:00:00Z")]
+        self.assertFalse(row(reviews)["covered"])
+
+    def test_different_reviewers_each_keep_their_own_latest_decision(self):
+        reviews = [review("mimo-bot", "APPROVED", rid=1), review("codex-bot", "CHANGES_REQUESTED", rid=2)]
+        self.assertFalse(row(reviews)["covered"])
+
+    def test_an_unresolved_merge_base_never_yields_coverage(self):
+        snap = snapshot([review("mimo-bot")])
+        snap["prs"][0]["merge_base"] = "unknown"
+        r = rc.report_snapshot(snap, None, MAP)[0]
+        self.assertFalse(r["covered"])
+        self.assertTrue(any("merge-base unresolved" in x for x in r["reasons"] + [m["problem"] for m in r["malformed"]]))
+
     def test_login_matching_is_case_insensitive(self):
         self.assertTrue(row([review("MIMO-BOT")])["covered"])
 

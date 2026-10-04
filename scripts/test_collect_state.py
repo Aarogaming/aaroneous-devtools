@@ -19,6 +19,24 @@ class Seats(unittest.TestCase):
         self.assertEqual(cs.seat_from_trailers("plain commit", "feature/thing"), "")
 
 
+class AllSeats(unittest.TestCase):
+    def test_every_seat_in_the_range_is_collected_and_deduplicated(self):
+        text = "\n".join([
+            "feat: a", "", "Co-Authored-By: Claude Sonnet 5.5 <n@a.com>",
+            "---", "fix: b", "", "Co-Authored-By: Codex <c@a.com>", "Contribution-ID: C1/gemini-v1",
+            "---", "fix: c", "", "Co-Authored-By: Claude Sonnet 5.5 <n@a.com>",
+        ])
+        self.assertEqual(cs.seats_from_trailers(text), ["claude", "codex", "gemini"])
+
+    def test_the_branch_owner_comes_first_and_is_not_duplicated(self):
+        text = "Co-Authored-By: Claude Sonnet 5.5 <n@a.com>\nCo-Authored-By: Codex <c@a.com>"
+        self.assertEqual(cs.seats_from_trailers(text, "codex/foundry"), ["codex", "claude"])
+
+    def test_primary_seat_is_the_first_of_the_list(self):
+        self.assertEqual(cs.seat_from_trailers("Co-Authored-By: Mimo <m@a.com>", ""), "mimo")
+        self.assertEqual(cs.seat_from_trailers("plain", "feature/x"), "")
+
+
 class Build(unittest.TestCase):
     def test_unresolved_threads_are_counted_per_pr(self):
         graphql = {"data": {"repository": {"pullRequests": {"nodes": [
