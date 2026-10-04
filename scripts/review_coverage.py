@@ -248,12 +248,17 @@ def pr_list_args(repo):
 
 
 def gh_json(*args):
-    out = subprocess.run(["gh", *args], capture_output=True, text=True, check=True)
+    out = subprocess.run(
+        ["gh", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True
+    )
     return json.loads(out.stdout)
 
 
 def git(repo_dir, *args):
-    return subprocess.run(["git", "-C", repo_dir, *args], capture_output=True, text=True, check=False)
+    return subprocess.run(
+        ["git", "-C", repo_dir, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        check=False,
+    )
 
 
 def live_snapshot(repo, repo_dir):

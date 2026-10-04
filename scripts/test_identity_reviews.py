@@ -82,5 +82,19 @@ class IdentityMap(unittest.TestCase):
         self.assertNotIn("aarogaming", mapping)
 
 
+class Encoding(unittest.TestCase):
+    def test_subprocess_helpers_decode_utf8_not_the_console_codepage(self):
+        # Review and comment bodies contain non-ASCII (emoji, arrows); cp1252 decoding crashed live runs.
+        import subprocess
+        from unittest import mock
+
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout='[{"b": "ok → done"}]', stderr="")
+        with mock.patch.object(subprocess, "run", return_value=completed) as run:
+            self.assertEqual(rc.gh_json("api", "x"), [{"b": "ok → done"}])
+            self.assertEqual(run.call_args.kwargs["encoding"], "utf-8")
+            rc.git(".", "status")
+            self.assertEqual(run.call_args.kwargs["encoding"], "utf-8")
+
+
 if __name__ == "__main__":
     unittest.main()
