@@ -15,6 +15,10 @@ class Seats(unittest.TestCase):
     def test_branch_prefix_is_the_fallback(self):
         self.assertEqual(cs.seat_from_trailers("no trailers", "codex/maintenance-progress-lane"), "codex")
 
+    def test_a_seat_named_branch_wins_over_coauthor_trailers(self):
+        text = "x" + chr(10) + chr(10) + "Co-Authored-By: Claude Sonnet 5.5 <n@a.com>" + chr(10)
+        self.assertEqual(cs.seat_from_trailers(text, "codex/foundry-transition"), "codex")
+
     def test_unknown_seat_is_empty_not_a_guess(self):
         self.assertEqual(cs.seat_from_trailers("plain commit", "feature/thing"), "")
 

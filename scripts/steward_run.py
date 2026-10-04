@@ -127,6 +127,15 @@ def lease_table(events, tick, done):
     return active, expired, completed
 
 
+def attribution_weak(events, window, minimum=3):
+    """True when most recently ingested comments could not be attributed to a seat, so a missing
+    artifact is not evidence of a stall (the text heuristic cannot see it)."""
+    ingests = [e for e in events if e["type"] == "ingest"][-window:]
+    attributed = sum(sum(e["data"].get("per_seat", {}).values()) for e in ingests)
+    total = attributed + sum(e["data"].get("unattributed", 0) for e in ingests)
+    return total >= minimum and attributed / total < 0.5
+
+
 def stalled_seats(events, agents, stall_after):
     """Seats that were issued cards in each of the last K ticks but ingested no artifact in them."""
     ticks = {}
@@ -193,13 +202,16 @@ def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after
     names = [a["name"] for a in snapshot_state["agents"]]
     escalations = []
     expired_agents = {lease["agent"] for lease in expired.values()}
-    for agent in sorted(set(stalled_seats(events, names, stall_after)) | expired_agents):
+    weak = attribution_weak(events, stall_after)
+    stalled = [] if weak else stalled_seats(events, names, stall_after)
+    for agent in sorted(set(stalled) | expired_agents):
         mine = [c["task"] for c in cards if c["agent"] == agent]
         escalations.append(escalation_card(agent, stall_after, mine, agent in expired_agents))
         append_event(log_path, "stall", {"tick": tick, "agent": agent, "after": stall_after,
                                          "expired_lease": agent in expired_agents}, now)
     return {"cards": cards, "escalations": escalations, "ingest": ingested,
-            "leases": {"active": len(active), "completed": sorted(completed), "expired": sorted(expired)}}
+            "leases": {"active": len(active), "completed": sorted(completed), "expired": sorted(expired)},
+            "attribution_weak": weak}
 
 
 def render(result):
@@ -208,6 +220,8 @@ def render(result):
         out.append(f"[{e['agent']}] ESCALATION\n  TASK: {e['task']}\n  ACCEPT: {e['acceptance']}")
     per = ", ".join(f"{s}={n}" for s, n in sorted(result["ingest"]["per_seat"].items())) or "none"
     out.append(f"INGESTED new artifacts by seat: {per}; unattributed: {result['ingest']['unattributed']}")
+    if result.get("attribution_weak"):
+        out.append("NOTE: most recent comments could not be attributed to a seat; engagement stalls are not judged this tick (have seats put 'Seat / agent: NAME' or a card marker in their comments)")
     lz = result["leases"]
     out.append(f"LEASES active={lz['active']} completed={len(lz['completed'])} expired={len(lz['expired'])}")
     return "\n\n".join(out)

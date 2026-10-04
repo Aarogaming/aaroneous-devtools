@@ -138,6 +138,28 @@ class Stalls(unittest.TestCase):
         os.unlink(path)
 
 
+class Attribution(unittest.TestCase):
+    def test_weak_attribution_suppresses_stall_escalation(self):
+        path = tmp_log()
+        results = []
+        for tick in range(1, 4):
+            comments = {1: [{"id": 200 + tick * 10 + n, "body": "plain note with no seat"} for n in range(3)]}
+            results.append(sr.run_tick(state([pr(1)]), snap(comments), path, tick, NOW, stall_after=3))
+        self.assertTrue(results[-1]["attribution_weak"])
+        self.assertEqual(results[-1]["escalations"], [])
+        os.unlink(path)
+
+    def test_good_attribution_still_escalates(self):
+        path = tmp_log()
+        results = []
+        for tick in range(1, 4):
+            comments = {1: [{"id": 300 + tick, "body": "Gemini independent review"}]}
+            results.append(sr.run_tick(state([pr(1)]), snap(comments), path, tick, NOW, stall_after=3))
+        self.assertFalse(results[-1]["attribution_weak"])
+        self.assertTrue({e["agent"] for e in results[-1]["escalations"]} >= {"claude", "mimo", "codex"})
+        os.unlink(path)
+
+
 class Leases(unittest.TestCase):
     def two_prs(self, **kw):
         s = state([pr(1, seat="other"), pr(2, seat="other")])
