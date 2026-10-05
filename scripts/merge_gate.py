@@ -36,7 +36,9 @@ import tomllib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import review_coverage as rc  # noqa: E402
 
-PROTECTED = ("AGENTS.md", ".github/workflows/", ".github/settings", "SECURITY.md")
+# One list of owner-only paths, used by both the default decision (f) and the checklist (box 0).
+TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "governance/AUTOMATED_MERGE_POLICY.md")
+PROTECTED = TIER_A_PATHS
 DOCS_ALLOWLIST = ("governance/", "docs/", "architecture/")
 FULL_GATE = [
     ["git", "diff", "--check"],
@@ -52,7 +54,7 @@ LIGHT_GATE = [
 
 
 def touches_protected(paths):
-    return [p for p in paths if p == "AGENTS.md" or any(p.startswith(x) for x in PROTECTED if x != "AGENTS.md")]
+    return [p for p in paths if any(p == x or p.startswith(x) for x in PROTECTED)]
 
 
 def gate_plan(paths):
@@ -61,7 +63,6 @@ def gate_plan(paths):
     return {"level": "light" if docs_only else "full", "commands": LIGHT_GATE if docs_only else FULL_GATE}
 
 
-TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "governance/AUTOMATED_MERGE_POLICY.md")
 TRUST_NEEDED = 5
 
 

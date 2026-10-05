@@ -42,11 +42,18 @@ class Decision(unittest.TestCase):
         self.assertTrue(any(r.startswith("d:") for r in d["reasons"]))
 
     def test_protected_paths_need_owner_confirmation(self):
-        for path in ("AGENTS.md", ".github/workflows/ci.yml"):
+        for path in ("AGENTS.md", ".github/workflows/ci.yml", "SECURITY.md", "CONTRIBUTING.md",
+                     ".github/CODEOWNERS", "governance/AUTOMATED_MERGE_POLICY.md"):
             d = mg.decide(COVERED, [path], "main", True)
             self.assertFalse(d["eligible"], path)
             self.assertTrue(any(r.startswith("f:") for r in d["reasons"]))
         self.assertTrue(mg.decide(COVERED, ["AGENTS.md"], "main", True, owner_confirmed_protected=True)["eligible"])
+
+    def test_the_decision_path_and_the_checklist_share_one_owner_only_list(self):
+        self.assertIs(mg.PROTECTED, mg.TIER_A_PATHS)
+        for path in mg.TIER_A_PATHS:
+            self.assertTrue(mg.touches_protected([path]), path)
+            self.assertEqual(mg.tier_of([path])[0], "A", path)
 
     def test_every_blocking_reason_is_reported_together(self):
         d = mg.decide(UNCOVERED, ["AGENTS.md"], "codex/x", False)
