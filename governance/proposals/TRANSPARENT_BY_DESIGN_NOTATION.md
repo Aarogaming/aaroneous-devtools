@@ -4,7 +4,7 @@ purpose: Proposal for transparent-by-design notation, meta-tagging and a graph/r
 authority: propose
 status: proposal, advisory, grants nothing
 relations:
-  - informs: doc:architecture/FOUNDRY_CONTROL_TRANSITION.md
+  - informs: pr:Aarogaming/aaroneous-devtools#20@4ffeb68049b96893bb7884b5932a653f33c44ac6
   - informs: doc:architecture/SYSTEM_COMPOSITION_BLUEPRINT.md
   - depends-on: doc:governance/PLATFORM_SPEC.md
 checked-by: none yet (see "Experiments"; most are NOT RUN)
@@ -65,24 +65,30 @@ Anything derived from notation names its source. A fact with no source location 
 
 ### 4.1 Rust: structured doc attributes
 
-One fact per attribute, with a reserved prefix `notation:v1 `. Everything else in a doc attribute is ordinary
-documentation and is ignored by the extractor.
+Grammar: `notation:v1 <key>[.<id>]=<value>`. The prefix `notation:v1 ` is reserved and everything else in a doc
+attribute is ordinary documentation that the extractor ignores. `<key>` is one of the fixed keys below. The
+optional `<id>` is `[a-z0-9_]+` and binds related attributes on the same item. `<value>` is the rest of the
+attribute taken literally: it is one fact, may not contain a newline, and has no separators or escaping, so
+there are no multi-field attributes.
 
 ```rust
 #![doc = "notation:v1 purpose=Decide which work item each seat gets next"]
 #![doc = "notation:v1 authority=propose"]
 #![doc = "notation:v1 relation=depends-on crate:paths"]
 
-#[doc = "notation:v1 contract=same input gives the same output; checked-by=tests::same_input_same_output"]
+#[doc = "notation:v1 contract.c1=same input gives the same output"]
+#[doc = "notation:v1 checked-by.c1=tests::same_input_same_output"]
 pub fn next_card(input: u32) -> u32 { /* ... */ }
 ```
 
 Keys in v1: `purpose`, `boundary`, `input`, `output`, `contract`, `authority`, `checked-by`, `evidence`,
-`relation`, `provenance`. A `contract` without `checked-by` is reported as unchecked. The `notation:v1` prefix
-carries the version; an unknown version is reported, not guessed at.
+`relation`, `provenance`. A `contract.<id>` is **checked** only when a `checked-by.<id>` exists on the same item
+and its target resolves; otherwise it is reported as unchecked. The `notation:v1` prefix carries the version; an
+unknown version is reported, not guessed at.
 
-**Verified in a scratch crate (not committed):** with `#![deny(warnings)]`, doc attributes in this form pass
-`cargo check` and `cargo test`, and `cargo doc` renders them as visible text in the crate index and item pages.
+**Verified in a scratch crate (not committed):** with `#![deny(warnings)]`, doc attributes in this form (including
+the one-fact-per-attribute `contract.c1` and `checked-by.c1` pair above) pass `cargo check` and `cargo test`, and
+`cargo doc` renders them as visible text in the crate index and item pages.
 They are inert at runtime. **Alternative, also verified in the same crate:** an attribute written
 `#[cfg_attr(any(), notation(v1, authority = "read-only"))]` compiles, runs and is *not* rendered by rustdoc. The
 trade-off is visibility (transparent in rendered docs) versus tidiness (machine-only). See open question 1.
@@ -146,15 +152,20 @@ A **reference** is how a claim points at evidence, and each type has a resolver 
 Every claim in a case-file entry carries typed references. A deterministic resolver checks each one and records
 `ref_checked` as `resolved`, `dangling` or `stale`. A dangling reference is shown as NOT VERIFIED.
 
-A claim whose only support is another model's entry is **hearsay**. Its **depth** is one plus the depth of what it
-cites; it is **grounded** only if every chain ends at a non-entry reference. A cluster of entries that cite each
-other with no such landmark is **ungrounded hearsay** and cannot be promoted automatically. This is the "ant
-mill" failure (a circle of agents following each other's traces); the cure in nature is an external landmark,
-and here it is a repository revision or ledger hash that the resolver can check.
+A claim whose only support is another model's entry is **hearsay**. Treat citations as a directed graph over
+entries. An entry's **grounding distance** is the length of the shortest citation path from it to a non-entry
+reference (a revision, ledger hash, command log or PR head); it is finite exactly when such a path exists. An
+entry with no such path, including every member of a cycle of entries that cite only each other, is
+**ungrounded**: its distance is reported as `none`, never as a number, and it cannot be promoted automatically.
+Shortest-path distance is well defined on cyclic graphs, so cycles need no special case beyond having no path to
+a landmark. A display also shows how many of an entry's cited entries are themselves ungrounded. This is the
+"ant mill" failure (a circle of agents following each other's traces); the cure in nature is an external
+landmark, and here it is a repository revision or ledger hash that the resolver can check.
 
-Experiment from Round Table entry 12 (Gemini), NOT RUN: given a synthetic log with circular cross-model citations
-and no grounding revision, the projection tags the cluster as ungrounded hearsay at depth greater than 1 and
-blocks automatic promotion.
+Experiment from Round Table entry 12 (Gemini, who phrased it as depth greater than 1; grounding distance
+replaces depth so it is defined on cycles), NOT RUN: given a synthetic log where A cites B and B cites A with no
+landmark, both are ungrounded (`none`) and promotion is blocked; adding one landmark citation to A makes both
+grounded, with distances 1 (A) and 2 (B).
 
 ## 8. Overlay tags (devtools side)
 
@@ -236,5 +247,7 @@ interface; no change to AGENTS.md, workflows or settings.
   form B. Toolchain: cargo and rustc 1.98.1. The scratch crate is not part of any repository.
 - E2: `git ls-files '*Cargo.toml'` filtered to files containing `[package]` gives 48; filtered to
   `metadata.cratify` gives 0, at Aaroneous `09ed595b`.
+- The Foundry transition document is in unmerged PR #20, so the front matter pins it by revision instead of by
+  path; a path would be dangling on `main`.
 - Precedent for inert doc-attribute markers: AGENTS.md section 3 already allows `#[doc = "hot_path"]`.
 - Base36 caution: SYSTEM_COMPOSITION_BLUEPRINT.md section 6.
