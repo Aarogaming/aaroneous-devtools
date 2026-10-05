@@ -136,7 +136,7 @@ class Checklist(unittest.TestCase):
                                       {"status": "COMPLETED", "conclusion": "FAILURE"}])["state"], "failure")
 
     def test_tier_a_paths_are_owner_only(self):
-        for path in (".github/workflows/ci.yml", "AGENTS.md", "governance/AUTOMATED_MERGE_POLICY.md"):
+        for path in (".github/workflows/ci.yml", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "governance/AUTOMATED_MERGE_POLICY.md"):
             self.assertEqual(mg.tier_of([path])[0], "A", path)
             lines, ok, first = mg.checklist(good_facts(tier=mg.tier_of([path])))
             self.assertFalse(ok)

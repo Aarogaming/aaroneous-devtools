@@ -61,7 +61,7 @@ def gate_plan(paths):
     return {"level": "light" if docs_only else "full", "commands": LIGHT_GATE if docs_only else FULL_GATE}
 
 
-TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "governance/AUTOMATED_MERGE_POLICY.md")
+TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "governance/AUTOMATED_MERGE_POLICY.md")
 TRUST_NEEDED = 5
 
 

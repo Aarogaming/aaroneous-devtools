@@ -60,8 +60,10 @@ def work_items(state):
         if threads:
             items.append(dict(base, kind="fix_threads", rank=1, owner_seat=pr.get("seat"),
                               detail=f"{threads} unresolved review thread(s)"))
-        elif not pr.get("covered", False) and not draft:
-            items.append(dict(base, kind="needs_review", rank=2, detail="no covered whole-diff accept at the current head"))
+        elif not pr.get("covered", False):
+            where = " (a draft: flipping it ready waits until it is covered)" if draft else ""
+            items.append(dict(base, kind="needs_review", rank=2,
+                              detail="no covered whole-diff accept at the current head" + where))
         elif draft:
             items.append(dict(base, kind="draft", rank=4, detail="draft: merge option hidden until ready for review"))
         elif pr.get("covered") and clean and pr.get("base", default_branch) != default_branch:

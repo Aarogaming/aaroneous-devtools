@@ -157,6 +157,14 @@ class Cards(unittest.TestCase):
         s["default_branch"] = "main"
         self.assertEqual({i["kind"] for i in nt.work_items(s)}, {"ready_to_merge"})
 
+    def test_an_uncovered_draft_gets_a_review_card_not_a_flip_ready_card(self):
+        items = nt.work_items(state([pr(9, draft=True, covered=False)]))
+        self.assertEqual({i["kind"] for i in items}, {"needs_review"})
+        self.assertIn("draft", items[0]["detail"])
+
+    def test_a_covered_draft_still_gets_the_flip_ready_card(self):
+        self.assertEqual({i["kind"] for i in nt.work_items(state([pr(9, draft=True, covered=True)]))}, {"draft"})
+
     def test_cards_change_with_state(self):
         a = [c["task"] for c in nt.build_cards(state([pr(1)]), 0)]
         b = [c["task"] for c in nt.build_cards(state([pr(1, covered=True)]), 0)]
