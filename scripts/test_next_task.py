@@ -220,13 +220,16 @@ class Cards(unittest.TestCase):
         self.assertEqual(self.review_card(s)["agent"], "mimo")
 
     def test_agents_that_finish_work_are_served_first(self):
-        s = state([pr(1, seat="claude", implementers=["claude"], head="1" * 40),
-                   pr(2, seat="claude", implementers=["claude"], head="2" * 40)])
-        s["agents"] = [{"name": "claude"}, {"name": "mimo"}, {"name": "gemini"}]
+        # One free item, two eligible agents listed with the unreliable one first: the one that finishes work wins.
+        s = state([pr(1, seat="claude", implementers=["claude"], head="1" * 40)])
+        s["agents"] = [{"name": "mimo"}, {"name": "gemini"}]
         s["history"] = {"agents": {"gemini": {"done": 4, "expired": 0}, "mimo": {"done": 0, "expired": 3}}}
-        cards = {c["agent"]: c for c in nt.build_cards(s, 0) if c["inputs"].get("kind") == "needs_review"}
-        self.assertEqual(cards["gemini"]["inputs"]["pr"], 1)
-        self.assertEqual(cards["mimo"]["inputs"]["pr"], 2)
+        cards = {c["agent"]: c for c in nt.build_cards(s, 0)}
+        self.assertEqual(cards["gemini"]["inputs"]["kind"], "needs_review")
+        self.assertEqual(cards["mimo"]["inputs"]["kind"], "standby")
+        s["history"] = {}
+        cards = {c["agent"]: c for c in nt.build_cards(s, 0)}
+        self.assertEqual(cards["mimo"]["inputs"]["kind"], "needs_review")
 
     def test_the_card_carries_exact_shas_and_commands_but_never_a_pasteable_verdict(self):
         card = self.review_card(self.review_state())
