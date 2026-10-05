@@ -276,7 +276,9 @@ def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after
         append_event(log_path, "lease_done", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
     for key, lease in expired.items():
         append_event(log_path, "lease_expired", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
-    snapshot_state = dict(snapshot_state, leases=active, history=history_from_events(events))
+    # Replay AFTER the completion/expiry events above are appended, so a lease that expires this tick already
+    # counts as burned and the item rotates to another seat instead of going straight back to its holder.
+    snapshot_state = dict(snapshot_state, leases=active, history=history_from_events(read_events(log_path)))
     cards = nt.build_cards(snapshot_state, tick)
     for card in cards:
         lease = card.get("lease")

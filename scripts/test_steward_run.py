@@ -339,6 +339,23 @@ class Delivery(unittest.TestCase):
             sr.write_outbox(out, {"cards": cards[:1], "escalations": []}, "2026-10-05T01:10:00Z")
             self.assertIn("01:10:00Z", open(os.path.join(out, "gemini.md"), encoding="utf-8").read())
 
+    def test_an_item_whose_lease_expires_this_tick_rotates_to_another_seat(self):
+        agents = [{"name": "mimo"}, {"name": "gemini"}]
+
+        def review_state():
+            return {"now": NOW, "agents": agents, "prs": [pr(1, seat="claude", implementers=["claude"])],
+                    "backlog": [], "done": []}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "events.jsonl")
+            first = sr.run_tick(review_state(), snap({1: []}), path, 1, NOW)
+            holder = next(c["agent"] for c in first["cards"] if c["inputs"]["kind"] == "needs_review")
+            expiry_tick = next(c["lease"]["expires_tick"] for c in first["cards"] if c.get("lease"))
+            later = sr.run_tick(review_state(), snap({1: []}), path, expiry_tick, NOW)
+            self.assertEqual(later["leases"]["expired"], ["needs_review:1:" + "a" * 8])
+            reviewer = next(c["agent"] for c in later["cards"] if c["inputs"]["kind"] == "needs_review")
+            self.assertNotEqual(reviewer, holder)
+
     def test_history_replays_handouts_expiries_and_completions(self):
         events = [
             {"type": "lease_grant", "data": {"agent": "gemini", "key": "needs_review:51:aaaaaaaa", "tick": 1, "expires": 7}},
