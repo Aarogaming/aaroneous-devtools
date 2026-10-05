@@ -29,8 +29,9 @@ in chat the same day and are inputs, not open questions:
 3. Enforcement is a ratchet that starts at crate level (a warning with a baseline that may only decrease).
 4. Retrieval is structural first; semantic search is only a hint and never settles a fact.
 
-Round Table entries 11 and 12 (topic nodes as case files; Gemini's constraints on edge validation and
-conflicting edges) are folded in below with credit.
+Round Table entries 11, 12 and 13 (topic nodes as case files; Gemini's constraints on edge validation and
+conflicting edges; Codex's separation of resolution from support and its evidence-lineage rule) are folded in
+below with credit.
 
 ## 2. The base requirement: what "transparent" means
 
@@ -167,6 +168,23 @@ replaces depth so it is defined on cycles), NOT RUN: given a synthetic log where
 landmark, both are ungrounded (`none`) and promotion is blocked; adding one landmark citation to A makes both
 grounded, with distances 1 (A) and 2 (B).
 
+**Resolving is not supporting (Codex, entry 13).** A pinned reference can resolve while its contents contradict the
+claim. A case file therefore shows four things separately for every claim, and never collapses them into one
+"verified" flag:
+
+| Level | Question | Who or what answers it |
+| --- | --- | --- |
+| 1. Reference identity | does the reference resolve? | the resolver (mechanical) |
+| 2. Claim support | does the content actually support the claim? | a named seat, attributed |
+| 3. Exercised behaviour | was something run, with an exit code, or only read? | a `cmd:` reference |
+| 4. Authorized decision | did the owner decide? | the owner only |
+
+**Evidence lineage (Codex, entry 13).** Several entries that copy one source are one lineage, not independent
+corroboration. Corroboration counts distinct lineages. Two entries share a lineage when one cites the other or
+their groundings reach the same landmark only through the same entry. How to detect "same source" beyond
+citations is open question 9. Codex suggests W3C PROV-DM as a vocabulary for lineage; I have not checked it
+against this design.
+
 ## 8. Overlay tags (devtools side)
 
 Overlay tags are `tag_add` events in devtools' ledger. A tag names a target by **pinned anchor**: repository,
@@ -227,6 +245,10 @@ interface; no change to AGENTS.md, workflows or settings.
 7. **Naming.** If the steward graduates as Guild, do these events belong to it or to a separate crate?
 8. **Privacy.** What must never appear in a note or tag (secrets, local paths)? Proposed: the extractor rejects
    absolute local paths and token-shaped strings.
+9. **Lineage detection.** Citations show explicit copying only. How should two entries that restate one unseen
+   source be recognised as one lineage, and is W3C PROV-DM the right vocabulary?
+10. **Support versus resolution.** Level 2 (claim support) is human or model judgement and cannot be mechanical.
+    How should disagreement between seats on support be shown without implying a verdict?
 
 ## 14. Experiments
 
@@ -238,6 +260,7 @@ interface; no change to AGENTS.md, workflows or settings.
 | E4 | extract notation from one real crate and compare with a hand reading | NOT RUN |
 | E5 | move a symbol; the tag must go stale, not follow silently | NOT RUN |
 | E6 | reducer: conflicting edges stay as branches; a `depends-on` cycle is reported | NOT RUN |
+| E7 | a reference that resolves but contradicts its claim is shown as resolved at level 1 and unsupported at level 2, never as verified; two entries copying one landmark count as one lineage | NOT RUN |
 
 ## 15. Evidence for what was verified
 
