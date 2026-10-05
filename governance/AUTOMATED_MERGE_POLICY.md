@@ -40,14 +40,24 @@ containing generated `unsafe` code, anything changing branch protection,
 **any CI/CD workflow file, unconditionally** (added, modified, or
 removed — there is no carve-out for a new workflow file, below or
 anywhere else in this document), credentials, dependency-admission
-verdicts, or this policy document itself. Matches the existing high-risk
-allowlist pattern in `LOCAL_MODEL_AUTONOMY_POLICY.md`'s Tier 2. No
-trust-building period changes this tier — it is a permanent floor, not a
-starting point. (A new workflow file is exactly the case Aaroneous
-`AGENTS.md` section 6 flags post-#89: adding one without its matching
-local gate and drift test silently reopens the CI/local-gate coverage gap
-that section exists to close, so it stays owner-only rather than earning
-a carve-out.)
+verdicts, **any repository "constitution" or protected file** — `AGENTS.md`,
+`SECURITY.md`, `CONTRIBUTING.md` (any file whose rules section restates
+AGENTS.md's content), and any settings or permissions file under
+`.github/` (workflows, `settings.yml`, CODEOWNERS, anything governing who
+can do what) — or this policy document itself. Matches the existing high-risk allowlist pattern
+in `LOCAL_MODEL_AUTONOMY_POLICY.md`'s Tier 2. No trust-building period
+changes this tier — it is a permanent floor, not a starting point. (A new
+workflow file is exactly the case Aaroneous `AGENTS.md` section 6 flags
+post-#89: adding one without its matching local gate and drift test
+silently reopens the CI/local-gate coverage gap that section exists to
+close, so it stays owner-only rather than earning a carve-out. The
+constitution-file carve-in matches `scripts/merge_gate.py`'s (`#51`)
+existing `TIER_A_PATHS`/`PROTECTED` lists (`AGENTS.md`, `SECURITY.md`,
+`.github/workflows/`, `.github/settings`) — that code was already ahead
+of this document; without this carve-in, Tier B's "documentation,
+governance process docs" sweep would have made `AGENTS.md` itself
+auto-mergeable, which is exactly the "change the constitution via a
+doc-tier merge" case this policy cannot allow.)
 
 **Tier B — auto-mergeable once the checks below pass.** Everything else:
 documentation, governance process docs, `control`/`presentation`/`tooling`
@@ -78,7 +88,13 @@ For a given PR head commit, before anything merges it automatically:
    earlier whole-diff accept that delta chains from, exactly as the
    existing review-packet convention already records.
 4. **Zero open red-circle / blocking-labelled review threads** from any
-   bot or human reviewer at that head. Optional/nit findings do not block.
+   bot or human reviewer at that head. Optional/nit findings do not
+   block. GitHub itself only exposes resolved/unresolved on a review
+   thread, not a severity label, so the checker treats every *unresolved*
+   thread as blocking by default (stricter than the stated rule, not
+   looser) unless the thread's own content is legibly marked
+   optional/nit per the labelling convention `CROSS_AGENT_COORDINATION_PROTOCOL.md`
+   and `REVIEW_RUBRIC.md` already use.
 5. **Evidence retained, not asserted.** Every accept verdict cites the
    exact command and exit code it ran, per the standing evidence rule —
    a verdict without that is not counted toward condition 3.
@@ -242,4 +258,21 @@ This is infrastructure to build, not yet built as of this document:
   recent merge history alone would suggest. Worth it for the bar this
   closes, but the pacing is real and owner-adjustable if it's too slow.
 - Who owns building the checker tool itself and on what timeline —
-  tracked as a queue item, not committed to in this document.
+  tracked as a queue item, not committed to in this document. A
+  report-only implementation already exists in `scripts/merge_gate.py`
+  (`#51`, `--checklist` mode) and renders this policy's boxes; whether it
+  becomes *the* checker or a second one gets built is still open.
+- Box 8 (trust-building threshold) has no machine-readable source today —
+  the counter lives as prose in `DECISIONS.md`, which a checker can't
+  parse, so box 8 would stay `[ ]` forever as written. Needs a small
+  structured counter (one file per category) before any category can
+  actually clear the bar.
+- Condition 3's ≥2-accept bar is a tightening versus today's typical
+  single-accept practice (e.g. `PLATFORM_SPEC.md`'s merged convention) —
+  intentional per the pacing note above, but it's an owner decision that
+  should be recorded as such (here) rather than left implicit.
+- The "Mechanism" section has the cloud-agent PR-babysitting loop press
+  merge itself via its existing GitHub access. That's a real grant of
+  merge authority to an agent, distinct from a local, signed-identity
+  checker just reporting pass/fail — which executes the merge is still
+  open and is the owner's call, not assumed by this document.
