@@ -1,0 +1,84 @@
+[
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "mimo",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "skeptic",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 3,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Include the marker [card:needs_review:8:08080808] in your comment so this task is not re-issued.",
+    "agent": "gemini",
+    "attempt": 1,
+    "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "needs_review",
+      "pr": 8
+    },
+    "lease": {
+      "expires_tick": 9,
+      "key": "needs_review:8:08080808",
+      "renewed": true
+    },
+    "lens": "direct",
+    "lens_text": "Do the task as stated.",
+    "marker": "[card:needs_review:8:08080808]",
+    "new_since_last": "same head 08080808 as your last card; do not repeat the same output, use the lens below",
+    "owner_blocked": false,
+    "priority": 2,
+    "recipe": [
+      "git fetch --prune origin && git fetch origin pull/8/head   # head must be 0808080808080808080808080808080808080808",
+      "git diff --check bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...0808080808080808080808080808080808080808   # expect exit 0",
+      "git merge-tree --write-tree origin/main 0808080808080808080808080808080808080808   # expect exit 0 (clean trial merge)",
+      "run the PR's own tests if it changes code (python -m unittest discover -s scripts -p 'test_*.py')",
+      "post ONE attestation block with fields: repo, pr=8, head=0808080808080808080808080808080808080808, base_sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, scope=whole, reviewer=<your seat>, implementers=['claude'], verdict"
+    ],
+    "role": "implementer",
+    "state": "PR #8 head 080808080808 on main; +10/-2 in 1 file(s); mergeable=CLEAN; implementers=claude",
+    "task": "Post an independent whole-diff review of PR #8 at its current head, with an attestation block",
+    "then": "no further item is free for you; stand by",
+    "tick": 3,
+    "why_now": "no covered whole-diff accept at the current head"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "codex",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "reviewer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 3,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "claude",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "auditor",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 3,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  }
+]

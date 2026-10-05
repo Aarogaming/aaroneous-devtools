@@ -1,0 +1,52 @@
+[
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "mimo",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "implementer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Include the marker [card:needs_review:11:11111111] in your comment so this task is not re-issued.",
+    "agent": "gemini",
+    "attempt": 1,
+    "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "needs_review",
+      "pr": 11
+    },
+    "lease": {
+      "expires_tick": 6,
+      "key": "needs_review:11:11111111",
+      "renewed": false
+    },
+    "lens": "direct",
+    "lens_text": "Do the task as stated.",
+    "marker": "[card:needs_review:11:11111111]",
+    "new_since_last": "first time this seat is handed this PR",
+    "owner_blocked": false,
+    "priority": 2,
+    "recipe": [
+      "git fetch --prune origin && git fetch origin pull/11/head   # head must be 1111111111111111111111111111111111111111",
+      "git diff --check bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...1111111111111111111111111111111111111111   # expect exit 0",
+      "git merge-tree --write-tree origin/main 1111111111111111111111111111111111111111   # expect exit 0 (clean trial merge)",
+      "run the PR's own tests if it changes code (python -m unittest discover -s scripts -p 'test_*.py')",
+      "post ONE attestation block with fields: repo, pr=11, head=1111111111111111111111111111111111111111, base_sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, scope=whole, reviewer=<your seat>, implementers=['claude'], verdict"
+    ],
+    "role": "reviewer",
+    "state": "PR #11 head 111111111111 on main; +10/-2 in 1 file(s); mergeable=CLEAN; implementers=claude",
+    "task": "Post an independent whole-diff review of PR #11 at its current head, with an attestation block",
+    "then": "no further item is free for you; stand by",
+    "tick": 0,
+    "why_now": "no covered whole-diff accept at the current head"
+  }
+]
