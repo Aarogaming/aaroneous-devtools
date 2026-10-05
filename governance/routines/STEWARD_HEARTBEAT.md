@@ -1,7 +1,7 @@
 # Routine: steward-heartbeat
 
-Version: 2 (2026-10-03). Status: **proposal until independently reviewed and merged**; the live trigger
-keeps its interim inline prompt until this file is on `main`.
+Version: 2 (2026-10-03). Status: **live** (merged to `main` via #44); the scheduled trigger is the thin pointer
+described in "Trigger contract" below.
 
 This is the single source of truth for what the steward heartbeat does. The scheduled trigger only names
 this routine; it does not restate it (see "Trigger contract"). Change behaviour by editing this file
