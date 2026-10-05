@@ -10,15 +10,22 @@ pattern documented in AUDIT_2026-09-26_DOCUMENTATION_AND_PROCESS.md (Finding
 5: repeated unevidenced "Done"/"gate PASS" claims) fail a CI check instead of
 waiting for the next reviewer to notice by hand.
 
+It also rejects an added or edited lane row whose status is not in governance/QUEUE_STATUSES.json. The native
+queue parser (foundation_cli multithreader.rs queue_ids) silently skips a row with any other status, so such a row
+never enters its existing-ID set; the check reads the rule the same way the parser does (split on every `|`).
+
 Usage: check_coordination_evidence.py <base-ref> <head-ref>
-Exits 1 and prints each offending line/block if a claim lacks evidence.
+Exits 1 and prints each offending line/block if a claim lacks evidence or a lane row uses an unrecognised status.
 """
 
+import json
 import re
 import subprocess
 import sys
 
 TARGET_FILE = "governance/COORDINATION_QUEUE.md"
+VOCABULARY_FILE = "governance/QUEUE_STATUSES.json"
+LANE_ID = re.compile(r"C\d+")
 
 CLAIM_TABLE_ROW = re.compile(r"^\+\s*\|.*\|\s*Done\s*\|", re.IGNORECASE)
 CLAIM_PHRASES = re.compile(r"\b(Done|PASS(ED)?|gate green|100%\s*green)\b", re.IGNORECASE)
@@ -36,6 +43,56 @@ def get_diff(base: str, head: str) -> str:
         check=True,
     )
     return result.stdout
+
+
+def lane_status(row: str):
+    """(lane id, status) for a lane row, read exactly as multithreader.rs queue_ids reads it: the row must start with
+    `|`, is split on every `|`, needs at least five columns, the id is column 1 and the status column 3. None for
+    anything that is not a lane row (headers, separators, prose)."""
+    if not row.startswith("|"):
+        return None
+    cols = [c.strip() for c in row.split("|")]
+    if len(cols) < 5 or not LANE_ID.fullmatch(cols[1]):
+        return None
+    return cols[1], cols[3]
+
+
+def status_violations(diff_lines: list[str], statuses) -> list[tuple]:
+    """Added lane rows whose status is not one of `statuses`: (lane id, status, row). Removed and context lines
+    are ignored, so an untouched row is never flagged, but editing one means fixing its status (touch it, fix it)."""
+    found = []
+    for line in diff_lines:
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        parsed = lane_status(line[1:])
+        if parsed and parsed[1] not in statuses:
+            found.append((parsed[0], parsed[1], line[1:]))
+    return found
+
+
+def load_statuses(head: str):
+    """The allowed status words at `head`, or None when that revision has no readable vocabulary file."""
+    result = subprocess.run(["git", "show", f"{head}:{VOCABULARY_FILE}"], capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    try:
+        statuses = json.loads(result.stdout)["statuses"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    return statuses if isinstance(statuses, list) and statuses else None
+
+
+def existing_violations(head: str, statuses) -> list[tuple]:
+    """Lane rows already at `head` that use an unrecognised status (information only)."""
+    result = subprocess.run(["git", "show", f"{head}:{TARGET_FILE}"], capture_output=True, text=True)
+    if result.returncode != 0:
+        return []
+    found = []
+    for line in result.stdout.splitlines():
+        parsed = lane_status(line)
+        if parsed and parsed[1] not in statuses:
+            found.append(parsed)
+    return found
 
 
 def check_table_rows(diff_lines: list[str]) -> list[str]:
@@ -104,12 +161,34 @@ def main() -> int:
     diff_lines = diff.splitlines()
     offenders = check_table_rows(diff_lines) + check_prose_blocks(diff_lines)
 
+    statuses = load_statuses(head)
+    bad_status = []
+    if statuses is None:
+        print(f"WARNING (not a failure): no readable {VOCABULARY_FILE} at {head}; lane statuses were not checked.", file=sys.stderr)
+    else:
+        bad_status = status_violations(diff_lines, statuses)
+        old = existing_violations(head, statuses)
+        if old:
+            print("INFO: lane rows already at this revision with a status the queue parser skips (fixed when edited): "
+                  + ", ".join(f"{i} ({s!r})" for i, s in old), file=sys.stderr)
+
     for row in review_rows_without_contribution_id(diff_lines):
         print(
             "WARNING (not a failure): added Review row has no Contribution-ID: "
             f"{row[:100]}",
             file=sys.stderr,
         )
+
+    if bad_status:
+        print(f"Queue status check failed: {len(bad_status)} added or edited lane row(s) in {TARGET_FILE} use a status "
+              f"that is not in {VOCABULARY_FILE} (allowed: {', '.join(statuses)}). The native queue parser skips such "
+              "a row, so its lane ID never enters the existing-ID set.\n")
+        for lane, status, row in bad_status:
+            hint = " (a `|` inside a cell shifts the columns; the parser does not honour `\\|`)" if status.endswith("\\") else ""
+            print(f"  {lane}: status {status!r}{hint}")
+        print(f"\nUse a listed status, or change {VOCABULARY_FILE} together with the Rust parser and a protocol amendment.")
+        if not offenders:
+            return 1
 
     if offenders:
         print(
