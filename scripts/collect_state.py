@@ -97,6 +97,8 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
                 "mergeable_state": m["mergeStateStatus"],
                 "updated_at": m["updatedAt"],
                 "seat": seats.get(n, ""),
+                "base_sha": p.get("merge_base") or "",
+                "size": f"+{m.get('additions', 0)}/-{m.get('deletions', 0)} in {m.get('changedFiles', 0)} file(s)",
                 "implementers": list(p.get("implementers") or ([seats[n]] if seats.get(n) else [])),
                 "threads_unresolved": unresolved.get(n, 0),
                 "covered": covered.get(n, False),
@@ -111,7 +113,7 @@ def collect(repo, repo_dir, agents, backlog, identities=None):
     meta = {
         p["number"]: p
         for p in rc.gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
-                            "number,title,isDraft,mergeStateStatus,updatedAt,headRefName")
+                            "number,title,isDraft,mergeStateStatus,updatedAt,headRefName,additions,deletions,changedFiles")
     }
     owner, name = repo.split("/", 1)
     graphql = rc.gh_json("api", "graphql", "-f", f"query={THREADS_QUERY}", "-F", f"owner={owner}", "-F", f"name={name}")

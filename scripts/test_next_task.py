@@ -172,6 +172,86 @@ class Cards(unittest.TestCase):
             if card["inputs"].get("kind") == "needs_review":
                 self.assertEqual(card["agent"], "gemini")
 
+    # ---- rotation, variation and fresh evidence (owner direction 2026-10-05)
+
+    def review_state(self, history=None, leases=None, **kw):
+        s = state([pr(9, seat="claude", implementers=["claude"], head="c" * 40, base="main",
+                      base_sha="b" * 40, size="+10/-2 in 1 file(s)", **kw)])
+        s["agents"] = [{"name": "claude"}, {"name": "mimo"}, {"name": "gemini"}]
+        if history:
+            s["history"] = history
+        if leases:
+            s["leases"] = leases
+        return s
+
+    def review_card(self, s, tick=0):
+        cards = [c for c in nt.build_cards(s, tick) if c["inputs"].get("kind") == "needs_review"]
+        self.assertEqual(len(cards), 1)
+        return cards[0]
+
+    def test_the_framing_changes_every_time_the_same_item_is_handed_out(self):
+        key = "needs_review:9:cccccccc"
+        seen = []
+        for handed in range(5):
+            card = self.review_card(self.review_state(history={"item_attempts": {key: handed}}))
+            seen.append((card["lens"], card["attempt"]))
+        self.assertEqual([lens for lens, _ in seen], ["direct", "skeptic", "minimal", "handoff", "direct"])
+        self.assertEqual([n for _, n in seen], [1, 2, 3, 4, 5])
+
+    def test_a_held_lease_keeps_its_framing_instead_of_advancing(self):
+        key = "needs_review:9:cccccccc"
+        first = self.review_card(self.review_state(history={"item_attempts": {key: 0}}))
+        holder = first["agent"]
+        held = self.review_card(self.review_state(
+            history={"item_attempts": {key: 1}}, leases={key: {"agent": holder, "expires": 6}}))
+        self.assertEqual((held["agent"], held["lens"]), (holder, first["lens"]))
+
+    def test_an_agent_that_let_the_lease_expire_is_not_handed_the_same_item_again(self):
+        key = "needs_review:9:cccccccc"
+        first = self.review_card(self.review_state())
+        burned = first["agent"]
+        again = self.review_card(self.review_state(history={"expired": {f"{burned}|{key}": 1}}))
+        self.assertNotEqual(again["agent"], burned)
+
+    def test_the_only_eligible_agent_still_gets_it_when_nobody_else_can(self):
+        key = "needs_review:9:cccccccc"
+        s = self.review_state(history={"expired": {f"mimo|{key}": 1}})
+        s["agents"] = [{"name": "claude"}, {"name": "mimo"}]
+        self.assertEqual(self.review_card(s)["agent"], "mimo")
+
+    def test_agents_that_finish_work_are_served_first(self):
+        s = state([pr(1, seat="claude", implementers=["claude"], head="1" * 40),
+                   pr(2, seat="claude", implementers=["claude"], head="2" * 40)])
+        s["agents"] = [{"name": "claude"}, {"name": "mimo"}, {"name": "gemini"}]
+        s["history"] = {"agents": {"gemini": {"done": 4, "expired": 0}, "mimo": {"done": 0, "expired": 3}}}
+        cards = {c["agent"]: c for c in nt.build_cards(s, 0) if c["inputs"].get("kind") == "needs_review"}
+        self.assertEqual(cards["gemini"]["inputs"]["pr"], 1)
+        self.assertEqual(cards["mimo"]["inputs"]["pr"], 2)
+
+    def test_the_card_carries_exact_shas_and_commands_but_never_a_pasteable_verdict(self):
+        card = self.review_card(self.review_state())
+        recipe = "\n".join(card["recipe"])
+        self.assertIn("c" * 40, recipe)
+        self.assertIn("b" * 40, recipe)
+        self.assertIn("git merge-tree --write-tree origin/main", recipe)
+        self.assertIn("+10/-2 in 1 file(s)", card["state"])
+        self.assertNotIn("```", nt.render([card]))
+        self.assertNotIn('"verdict": "accept"', nt.render([card]))
+
+    def test_the_card_says_what_changed_since_this_agent_last_saw_the_pr(self):
+        base = self.review_card(self.review_state())
+        agent = base["agent"]
+        moved = self.review_card(self.review_state(history={"last_head": {f"{agent}|9": "aaaaaaaa"}}))
+        self.assertIn("head moved aaaaaaaa -> cccccccc", moved["new_since_last"])
+        same = self.review_card(self.review_state(history={"last_head": {f"{agent}|9": "cccccccc"}}))
+        self.assertIn("same head", same["new_since_last"])
+        self.assertIn("first time", base["new_since_last"])
+
+    def test_the_brief_is_forward_formatted(self):
+        text = nt.render([self.review_card(self.review_state())])
+        for label in ("TASK:", "STATE NOW:", "NEW SINCE YOUR LAST CARD:", "APPROACH:", "STEP 1:", "DONE WHEN:", "IF BLOCKED:"):
+            self.assertIn(label, text)
+
     def test_cards_change_with_state(self):
         a = [c["task"] for c in nt.build_cards(state([pr(1)]), 0)]
         b = [c["task"] for c in nt.build_cards(state([pr(1, covered=True)]), 0)]

@@ -31,6 +31,19 @@ AUDIT_EVERY = 6
 LEASE_TTL = 6
 DEFAULT_ROLES = ["implementer", "reviewer", "auditor", "skeptic"]
 
+# Each time the same item is handed out again (by anyone) the framing changes, so a repeat is never the
+# same prompt: the lens index is the number of times the item has already been handed out.
+LENSES = ("direct", "skeptic", "minimal", "handoff")
+LENS_TEXT = {
+    "direct": "Do the task as stated.",
+    "skeptic": "Earlier handouts of this item did not finish. Assume the obvious path hides a problem: find the "
+               "two weakest claims in the diff or thread and verify each by running something, not reading.",
+    "minimal": "Produce the smallest artifact that changes the state (one comment, one command output, one "
+               "attestation) and stop. Do not widen scope.",
+    "handoff": "Write for a seat with no memory of this PR: starting state, what you ran with exit codes, what "
+               "remains. Leave it continuable.",
+}
+
 
 def parse_time(text):
     return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(timezone.utc)
@@ -57,7 +70,9 @@ def work_items(state):
         threads = pr.get("threads_unresolved", 0)
         age_h = (now - parse_time(pr["updated_at"])).total_seconds() / 3600
         base = {"pr": number, "title": pr.get("title", ""), "seat": pr.get("seat", ""), "head": pr.get("head", ""),
-                "implementers": list(pr.get("implementers") or ([pr["seat"]] if pr.get("seat") else []))}
+                "implementers": list(pr.get("implementers") or ([pr["seat"]] if pr.get("seat") else [])),
+                "base_ref": pr.get("base", default_branch), "base_sha": pr.get("base_sha", ""),
+                "size": pr.get("size", ""), "mergeable_state": pr.get("mergeable_state", "")}
         if threads:
             items.append(dict(base, kind="fix_threads", rank=1, owner_seat=pr.get("seat"),
                               detail=f"{threads} unresolved review thread(s)"))
@@ -121,6 +136,55 @@ def card_for(agent, role, tick, item):
         "acceptance": acceptance + (" Include the marker " + f"[card:{item_key(kind, pr, item.get('head', ''))}]" + " in your comment so this task is not re-issued." if pr else ""),
         "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
     }
+
+
+def recipe_for(item):
+    """Exact commands for the item with the real SHAs filled in. Never contains a pasteable attestation block:
+    a pasted block counts as that seat's verdict, so only the field names are listed."""
+    pr, head, base_ref, base_sha = item.get("pr"), item.get("head", ""), item.get("base_ref", "main"), item.get("base_sha", "")
+    if item["kind"] == "needs_review" and pr:
+        return [
+            f"git fetch --prune origin && git fetch origin pull/{pr}/head   # head must be {head}",
+            f"git diff --check {base_sha or '<merge-base>'}...{head}   # expect exit 0",
+            f"git merge-tree --write-tree origin/{base_ref} {head}   # expect exit 0 (clean trial merge)",
+            "run the PR's own tests if it changes code (python -m unittest discover -s scripts -p 'test_*.py')",
+            f"post ONE attestation block with fields: repo, pr={pr}, head={head}, base_sha={base_sha or '<merge-base>'}, "
+            f"scope=whole, reviewer=<your seat>, implementers={item.get('implementers', [])}, verdict",
+        ]
+    if item["kind"] == "fix_threads" and pr:
+        return ["list the unresolved threads on the PR", "fix each in a commit",
+                "reply on each thread naming the commit; resolve only what is addressed"]
+    return []
+
+
+def enrich_card(card, item, name, state, renewed, upcoming):
+    """Fresh, forward-format context: where the item stands now, what changed since this agent last saw it, the
+    exact commands, a framing that differs from every earlier handout of the same item, and what comes next."""
+    history = state.get("history", {})
+    key = item_key(item["kind"], item["pr"], item.get("head", "")) if item.get("pr") else None
+    handed = history.get("item_attempts", {}).get(key, 0) if key else 0
+    index = max(handed - 1, 0) if renewed else handed
+    card["lens"] = LENSES[index % len(LENSES)]
+    card["lens_text"] = LENS_TEXT[card["lens"]]
+    card["attempt"] = index + 1
+    if item.get("pr"):
+        head8 = item.get("head", "")[:8]
+        card["state"] = (f"PR #{item['pr']} head {item.get('head', '')[:12]} on {item.get('base_ref', 'main')}; "
+                         f"{item.get('size') or 'size unknown'}; mergeable={item.get('mergeable_state') or '?'}; "
+                         f"implementers={','.join(item.get('implementers') or []) or 'unknown'}")
+        last = history.get("last_head", {}).get(f"{name}|{item['pr']}")
+        if last is None:
+            card["new_since_last"] = "first time this seat is handed this PR"
+        elif last != head8:
+            card["new_since_last"] = f"head moved {last} -> {head8} since your last card for this PR; earlier accepts do not carry"
+        else:
+            card["new_since_last"] = f"same head {head8} as your last card; do not repeat the same output, use the lens below"
+    else:
+        card["state"] = item.get("detail", "")
+        card["new_since_last"] = ""
+    card["recipe"] = recipe_for(item)
+    card["then"] = upcoming
+    return card
 
 
 def audit_item(state, tick):
@@ -202,18 +266,38 @@ def build_cards(state, tick):
             return False
         return not (item["kind"] == "fix_threads" and item.get("owner_seat") not in (None, "", name))
 
+    history = state.get("history", {})
+
+    def burned(item, name):
+        """This agent already let a lease on this exact item expire."""
+        k = key_of(item)
+        return bool(k) and history.get("expired", {}).get(f"{name}|{k}", 0) >= 1
+
+    def someone_else_can(item, name):
+        return any(a["name"] != name and allowed(item, a["name"]) and not burned(item, a["name"]) for a in agents)
+
+    def score(agent):
+        rec = history.get("agents", {}).get(agent["name"], {})
+        return rec.get("done", 0) - rec.get("expired", 0)
+
     # Ignore leases whose holder is no longer allowed to hold the item (ownership or role changed).
     leases = {k: v for k, v in leases.items()
               if not any(key_of(i) == k and not allowed(i, v["agent"]) for i in ladder)}
 
-    for index, agent in enumerate(agents):
+    # Agents that actually finish work are served first (done minus expired leases); ties keep list order.
+    order = sorted(range(len(agents)), key=lambda i: (-score(agents[i]), i))
+    for index in order:
+        agent = agents[index]
         roles = agent.get("roles") or DEFAULT_ROLES
         role = roles[(tick + index) % len(roles)]
         name = agent["name"]
         leased_to_others = {id(i) for i in ladder if key_of(i) in leases and leases[key_of(i)]["agent"] != name}
         eligible = [
             item for item in ladder
+            # Rotation: an agent that let this item's lease expire does not get it again while another
+            # eligible agent exists; it is not handed the same thing twice.
             if id(item) not in leased_to_others and allowed(item, name)
+            and not (burned(item, name) and someone_else_can(item, name))
         ]
         # A lease is honoured only while the item is still eligible for its holder (ownership or role may
         # have changed since it was granted); otherwise the holder just draws a fresh card.
@@ -233,28 +317,44 @@ def build_cards(state, tick):
             if item is None:
                 card = standby_card(agent, role, tick)
                 card["owner_blocked"] = only_owner_left
-                cards.append(card)
+                cards.append((index, card))
                 continue
         taken.add(id(item))
         card = card_for(agent, role, tick, item)
         card["owner_blocked"] = only_owner_left
         key = key_of(item)
+        later = [i for i in ladder if id(i) not in taken and id(i) not in leased_to_others and allowed(i, name)]
+        upcoming = (f"{later[0]['kind']} on PR #{later[0]['pr']}" if later and later[0].get("pr")
+                    else "no further item is free for you; stand by")
+        enrich_card(card, item, name, state, bool(key and key in leases and leases[key]["agent"] == name), upcoming)
         if key:
             lease = leases.get(key)
             card["lease"] = {"key": key, "expires_tick": lease["expires"] if lease else tick + ttl,
                              "renewed": bool(lease)}
-        cards.append(card)
-    return cards
+        cards.append((index, card))
+    return [card for _, card in sorted(cards, key=lambda pair: pair[0])]
 
 
 def render(cards):
     out = []
     for c in cards:
-        out.append(
-            f"[{c['agent']}] role={c['role']} tick={c['tick']} p{c['priority']}"
-            + (f" lease->tick {c['lease']['expires_tick']}" if c.get('lease') else "") + "\n"
-            f"  TASK: {c['task']}\n  WHY NOW: {c['why_now']}\n  ACCEPT: {c['acceptance']}\n  IF BLOCKED: {c['if_blocked']}"
-        )
+        head = (f"[{c['agent']}] role={c['role']} tick={c['tick']} p{c['priority']}"
+                + (f" lens={c['lens']} attempt={c['attempt']}" if c.get("lens") else "")
+                + (f" lease->tick {c['lease']['expires_tick']}" if c.get("lease") else ""))
+        lines = [head, f"  TASK: {c['task']}"]
+        if c.get("state"):
+            lines.append(f"  STATE NOW: {c['state']}")
+        if c.get("new_since_last"):
+            lines.append(f"  NEW SINCE YOUR LAST CARD: {c['new_since_last']}")
+        if c.get("lens_text"):
+            lines.append(f"  APPROACH: {c['lens_text']}")
+        for n, step in enumerate(c.get("recipe") or [], 1):
+            lines.append(f"  STEP {n}: {step}")
+        lines.append(f"  DONE WHEN: {c['acceptance']}")
+        if c.get("then"):
+            lines.append(f"  THEN: {c['then']}")
+        lines.append(f"  IF BLOCKED: {c['if_blocked']}")
+        out.append("\n".join(lines))
     return "\n\n".join(out)
 
 

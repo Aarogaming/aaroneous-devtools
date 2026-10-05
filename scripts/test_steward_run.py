@@ -305,5 +305,53 @@ class Leases(unittest.TestCase):
         os.unlink(path)
 
 
+class Delivery(unittest.TestCase):
+    def test_a_persistent_log_numbers_its_own_ticks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = os.path.join(tmp, "events.jsonl")
+            self.assertEqual(sr.next_tick(sr.read_events(log)), 1)
+            sr.append_event(log, "cards", {"tick": 1, "agents": [], "tasks": []}, "2026-10-05T00:00:00Z")
+            sr.append_event(log, "cards", {"tick": 2, "agents": [], "tasks": []}, "2026-10-05T00:10:00Z")
+            self.assertEqual(sr.next_tick(sr.read_events(log)), 3)
+
+    def test_each_seat_gets_only_its_own_card_and_no_pasteable_attestation(self):
+        cards = [
+            {"agent": "gemini", "role": "reviewer", "tick": 4, "priority": 2, "task": "Review PR #51",
+             "why_now": "x", "acceptance": "an attestation", "if_blocked": "say who",
+             "recipe": ["git diff --check A...B"], "lens": "skeptic", "attempt": 2},
+            {"agent": "codex", "role": "auditor", "tick": 4, "priority": 1, "task": "Fix threads on PR #47",
+             "why_now": "x", "acceptance": "replies", "if_blocked": "say who"},
+        ]
+        result = {"cards": cards, "escalations": [{"agent": "codex", "task": "no output for 3 ticks", "acceptance": "post"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "outbox")
+            paths = sr.write_outbox(out, result, "2026-10-05T01:00:00Z")
+            self.assertEqual(sorted(os.path.basename(p) for p in paths), ["codex.md", "gemini.md"])
+            gemini = open(os.path.join(out, "gemini.md"), encoding="utf-8").read()
+            codex = open(os.path.join(out, "codex.md"), encoding="utf-8").read()
+            self.assertIn("Review PR #51", gemini)
+            self.assertIn("lens=skeptic attempt=2", gemini)
+            self.assertNotIn("Fix threads", gemini)
+            self.assertIn("ESCALATION", codex)
+            self.assertNotIn("ESCALATION", gemini)
+            for text in (gemini, codex):
+                self.assertNotIn("```attestation", text)
+            sr.write_outbox(out, {"cards": cards[:1], "escalations": []}, "2026-10-05T01:10:00Z")
+            self.assertIn("01:10:00Z", open(os.path.join(out, "gemini.md"), encoding="utf-8").read())
+
+    def test_history_replays_handouts_expiries_and_completions(self):
+        events = [
+            {"type": "lease_grant", "data": {"agent": "gemini", "key": "needs_review:51:aaaaaaaa", "tick": 1, "expires": 7}},
+            {"type": "lease_expired", "data": {"agent": "gemini", "key": "needs_review:51:aaaaaaaa", "tick": 7}},
+            {"type": "lease_grant", "data": {"agent": "mimo", "key": "needs_review:51:aaaaaaaa", "tick": 7, "expires": 13}},
+            {"type": "lease_done", "data": {"agent": "mimo", "key": "needs_review:51:aaaaaaaa", "tick": 9}},
+        ]
+        h = sr.history_from_events(events)
+        self.assertEqual(h["item_attempts"]["needs_review:51:aaaaaaaa"], 2)
+        self.assertEqual(h["expired"]["gemini|needs_review:51:aaaaaaaa"], 1)
+        self.assertEqual(h["agents"]["mimo"], {"done": 1, "expired": 0})
+        self.assertEqual(h["last_head"]["gemini|51"], "aaaaaaaa")
+
+
 if __name__ == "__main__":
     unittest.main()

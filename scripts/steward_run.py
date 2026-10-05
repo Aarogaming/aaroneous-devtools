@@ -160,6 +160,32 @@ def lease_table(events, tick, done):
     return active, expired, completed
 
 
+def history_from_events(events):
+    """Replay the log into what the dispatcher needs to vary and rotate: how often each item was handed out, who
+    let a lease expire, who finishes work, and the last head each agent was given per PR."""
+    history = {"attempts": {}, "expired": {}, "item_attempts": {}, "last_head": {}, "agents": {}}
+    for event in events:
+        data = event["data"]
+        kind = event["type"]
+        if kind not in ("lease_grant", "lease_expired", "lease_done"):
+            continue
+        agent, key = data["agent"], data["key"]
+        rec = history["agents"].setdefault(agent, {"done": 0, "expired": 0})
+        pair = f"{agent}|{key}"
+        if kind == "lease_grant":
+            history["attempts"][pair] = history["attempts"].get(pair, 0) + 1
+            history["item_attempts"][key] = history["item_attempts"].get(key, 0) + 1
+            parts = key.split(":")
+            if len(parts) == 3:
+                history["last_head"][f"{agent}|{parts[1]}"] = parts[2]
+        elif kind == "lease_expired":
+            history["expired"][pair] = history["expired"].get(pair, 0) + 1
+            rec["expired"] += 1
+        else:
+            rec["done"] += 1
+    return history
+
+
 def attribution_weak(events, window, minimum=3):
     """True when most recently ingested comments could not be attributed to a seat, so a missing
     artifact is not evidence of a stall (the text heuristic cannot see it)."""
@@ -209,6 +235,37 @@ def escalation_card(agent, stall_after, last_cards, expired_lease=False):
     }
 
 
+def next_tick(events):
+    """The tick after the last one recorded in the log (1 for a fresh log), so a persistent log numbers its own
+    ticks and leases expire on a real clock instead of on whatever the caller types."""
+    ticks = [e["data"].get("tick", 0) for e in events if e["type"] == "cards"]
+    return (max(ticks) + 1) if ticks else 1
+
+
+def write_outbox(outbox_dir, result, now):
+    """One file per seat holding only that seat's current card (plus its escalation, if any), replaced
+    atomically each tick. A seat's loop prompt can be one line: read <outbox>/<seat>.md and do what it says.
+    The outbox is delivery only; it grants nothing and the log stays the record."""
+    os.makedirs(outbox_dir, exist_ok=True)
+    escalations = {e["agent"]: e for e in result["escalations"]}
+    written = []
+    for card in result["cards"]:
+        seat = card["agent"]
+        parts = [f"Steward card for {seat}, generated {now}, tick {card['tick']}.",
+                 "This replaces any earlier card. If it says standby or healthy idle, do nothing and stay quiet.",
+                 "", nt.render([card])]
+        if seat in escalations:
+            esc = escalations[seat]
+            parts += ["", f"ESCALATION: {esc['task']}", f"  ACCEPT: {esc['acceptance']}"]
+        path = os.path.join(outbox_dir, f"{seat}.md")
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n".join(parts) + "\n")
+        os.replace(tmp, path)
+        written.append(path)
+    return written
+
+
 def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after=3):
     """Pure-ish tick: `snapshot_state` is collect_state output, `comments_snapshot` the raw snapshot."""
     events = read_events(log_path)
@@ -219,7 +276,7 @@ def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after
         append_event(log_path, "lease_done", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
     for key, lease in expired.items():
         append_event(log_path, "lease_expired", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
-    snapshot_state = dict(snapshot_state, leases=active)
+    snapshot_state = dict(snapshot_state, leases=active, history=history_from_events(events))
     cards = nt.build_cards(snapshot_state, tick)
     for card in cards:
         lease = card.get("lease")
@@ -274,7 +331,8 @@ def main(argv):
     parser.add_argument("--repo-dir", required=True)
     parser.add_argument("--identities")
     parser.add_argument("--log", required=True)
-    parser.add_argument("--tick", type=int, required=True)
+    parser.add_argument("--tick", type=int, help="default: one after the last tick recorded in --log")
+    parser.add_argument("--outbox", help="directory; writes <seat>.md with each seat's current card")
     parser.add_argument("--stall-after", type=int, default=3)
     parser.add_argument("--expect-tip", help="externally anchored SHA-256 of the log's last line")
     parser.add_argument("--json", action="store_true")
@@ -294,7 +352,10 @@ def main(argv):
     snapshot = cs.rc.live_snapshot(args.repo, args.repo_dir)
     state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    result = run_tick(state, snapshot, args.log, args.tick, now, args.stall_after)
+    tick = args.tick if args.tick is not None else next_tick(read_events(args.log))
+    result = run_tick(state, snapshot, args.log, tick, now, args.stall_after)
+    if args.outbox:
+        result["outbox"] = write_outbox(args.outbox, result, now)
     count, tip = current_tip(args.log)
     result["tip"] = {"count": count, "sha256": tip}
     print(json.dumps(result, indent=2) if args.json else render(result) + f"\n\nLOG TIP seq={count} sha256={tip} (anchor this externally)")
