@@ -29,6 +29,11 @@ def snap(comments_by_pr):
     return {"prs": [{"number": n, "comments": c} for n, c in comments_by_pr.items()]}
 
 
+def read_text(path):
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
 def read_lines(path):
     with open(path, encoding="utf-8") as handle:
         return handle.read().splitlines()
@@ -332,8 +337,8 @@ class Delivery(unittest.TestCase):
             out = os.path.join(tmp, "outbox")
             paths = sr.write_outbox(out, result, "2026-10-05T01:00:00Z")
             self.assertEqual(sorted(os.path.basename(p) for p in paths), ["codex.md", "gemini.md"])
-            gemini = open(os.path.join(out, "gemini.md"), encoding="utf-8").read()
-            codex = open(os.path.join(out, "codex.md"), encoding="utf-8").read()
+            gemini = read_text(os.path.join(out, "gemini.md"))
+            codex = read_text(os.path.join(out, "codex.md"))
             self.assertIn("Review PR #51", gemini)
             self.assertIn("lens=skeptic attempt=2", gemini)
             self.assertNotIn("Fix threads", gemini)
@@ -342,7 +347,7 @@ class Delivery(unittest.TestCase):
             for text in (gemini, codex):
                 self.assertNotIn("```attestation", text)
             sr.write_outbox(out, {"cards": cards[:1], "escalations": []}, "2026-10-05T01:10:00Z")
-            self.assertIn("01:10:00Z", open(os.path.join(out, "gemini.md"), encoding="utf-8").read())
+            self.assertIn("01:10:00Z", read_text(os.path.join(out, "gemini.md")))
 
     def test_an_item_whose_lease_expires_this_tick_rotates_to_another_seat(self):
         agents = [{"name": "mimo"}, {"name": "gemini"}]
