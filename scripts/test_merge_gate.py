@@ -65,6 +65,38 @@ def good_facts(**kw):
     return facts
 
 
+class FactParsing(unittest.TestCase):
+    def test_a_commented_tripped_false_does_not_hide_a_real_trip(self):
+        text = "# tripped = false\ntripped = true\nreason = 'x'\n"
+        self.assertIs(mg.breaker_state(text), True)
+
+    def test_a_real_boolean_is_read_and_everything_else_fails_closed(self):
+        self.assertIs(mg.breaker_state("tripped = false\n"), False)
+        self.assertIs(mg.breaker_state("tripped = true\n"), True)
+        for bad in ("", "reason = 'x'\n", 'tripped = "false"\n', "tripped = 0\n", "tripped = = false",
+                    "# tripped = false\n"):
+            self.assertIsNone(mg.breaker_state(bad), bad)
+
+    @staticmethod
+    def threads(nodes, has_next):
+        info = {} if has_next is None else {"pageInfo": {"hasNextPage": has_next}}
+        return {"data": {"repository": {"pullRequest": {"reviewThreads": dict(info, nodes=nodes)}}}}
+
+    def test_a_truncated_page_of_resolved_threads_is_unknown_not_zero(self):
+        resolved = [{"isResolved": True}] * 100
+        self.assertIsNone(mg.open_threads(self.threads(resolved, True)))
+
+    def test_a_complete_page_is_counted(self):
+        nodes = [{"isResolved": True}, {"isResolved": False}, {"isResolved": False}]
+        self.assertEqual(mg.open_threads(self.threads(nodes, False)), 2)
+        self.assertEqual(mg.open_threads(self.threads([], False)), 0)
+
+    def test_missing_pagination_info_or_a_malformed_response_is_unknown(self):
+        self.assertIsNone(mg.open_threads(self.threads([{"isResolved": True}], None)))
+        self.assertIsNone(mg.open_threads({}))
+        self.assertIsNone(mg.open_threads({"data": None}))
+
+
 class Checklist(unittest.TestCase):
     def test_all_boxes_green_means_would_merge(self):
         lines, ok, first = mg.checklist(good_facts())

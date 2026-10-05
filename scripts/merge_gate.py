@@ -31,6 +31,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import review_coverage as rc  # noqa: E402
@@ -281,6 +282,29 @@ def category_of(paths):
     return "mixed"
 
 
+def breaker_state(text):
+    """True/False from a real TOML boolean `tripped`; None (blocked, fail closed) when the file does not
+    parse or the value is missing or not a boolean. A comment such as `# tripped = false` never counts."""
+    try:
+        value = tomllib.loads(text).get("tripped")
+    except (tomllib.TOMLDecodeError, TypeError, ValueError):
+        return None
+    return value if isinstance(value, bool) else None
+
+
+def open_threads(data):
+    """Unresolved review-thread count from a GraphQL reviewThreads response, or None when the count cannot
+    be trusted: more pages exist (hasNextPage) or the response lacks pagination info. Never counts a
+    truncated first page as complete."""
+    try:
+        threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]
+        if threads["pageInfo"]["hasNextPage"] is not False:
+            return None
+        return sum(1 for n in threads["nodes"] if not n["isResolved"])
+    except (KeyError, TypeError):
+        return None
+
+
 def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
     """Live facts for one PR, read-only. Anything that cannot be read stays None (blocked, fail closed)."""
     facts = {
@@ -300,21 +324,17 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
         facts["ci"] = ci_state(view.get("statusCheckRollup", []))
         owner, name = repo.split("/", 1)
         query = ("query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num)"
-                 "{reviewThreads(first:100){nodes{isResolved}}}}}")
+                 "{reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}")
         data = rc.gh_json("api", "graphql", "-f", f"query={query}", "-F", f"o={owner}", "-F", f"n={name}",
                           "-F", f"num={pr['number']}")
-        nodes = data["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
-        facts["threads_open"] = sum(1 for n in nodes if not n["isResolved"])
+        facts["threads_open"] = open_threads(data)
     except Exception:
         pass
     listing = rc.git(repo_dir, "ls-tree", "-r", "--name-only", "origin/" + default_branch).stdout.split()
     breaker = [f for f in listing if f.endswith("circuit_breaker_override.toml")]
     if breaker:
         text = rc.git(repo_dir, "show", f"origin/{default_branch}:{breaker[0]}").stdout
-        if "tripped = false" in text:
-            facts["breaker_tripped"] = False
-        elif "tripped = true" in text:
-            facts["breaker_tripped"] = True
+        facts["breaker_tripped"] = breaker_state(text)
     return facts
 
 
