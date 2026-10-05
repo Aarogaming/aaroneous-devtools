@@ -155,14 +155,38 @@ class EndToEnd(unittest.TestCase):
             result = self.run_check(repo)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_an_unreadable_rust_parser_warns_loudly_and_does_not_fail(self):
+    def test_losing_a_readable_rust_parser_list_fails_instead_of_switching_the_check_off(self):
         with tempfile.TemporaryDirectory() as repo:
             self.make_repo(repo, STATUSES, STATUSES)
             os.remove(os.path.join(repo, cce.RUST_PARSER))
             self.git(repo, "commit", "-qam", "remove parser")
             result = self.run_check(repo)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("was readable at base but not at HEAD", result.stdout)
+
+    def test_a_parser_nobody_could_read_before_either_warns_loudly_and_does_not_fail(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.make_repo(repo, STATUSES, STATUSES)
+            parser = os.path.join(repo, cce.RUST_PARSER)
+            with open(parser, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write("fn queue_ids() {}\n")
+            self.git(repo, "commit", "-qam", "unreadable shape")
+            self.git(repo, "tag", "-f", "base")
+            with open(os.path.join(repo, "governance", "COORDINATION_QUEUE.md"), "a", encoding="utf-8", newline="\n") as handle:
+                handle.write(row("C3", "Ready") + "\n")
+            self.git(repo, "commit", "-qam", "row")
+            result = self.run_check(repo)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("was not compared with the native parser", result.stderr)
+            self.assertIn("was not compared with the native parser", result.stderr.replace("\n", " "))
+
+    def test_deleting_the_vocabulary_file_fails_instead_of_switching_the_check_off(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.make_repo(repo, STATUSES, STATUSES)
+            os.remove(os.path.join(repo, "governance", "QUEUE_STATUSES.json"))
+            self.git(repo, "commit", "-qam", "delete vocabulary")
+            result = self.run_check(repo)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("readable at base but not at HEAD", result.stdout)
 
     def test_without_a_vocabulary_file_the_check_warns_loudly_and_does_not_fail(self):
         with tempfile.TemporaryDirectory() as repo:

@@ -177,14 +177,22 @@ def main() -> int:
 
     statuses = load_statuses(head)
     bad_status = []
+    if statuses is None and load_statuses(base) is not None:
+        print(f"Queue status check failed: {VOCABULARY_FILE} is readable at {base} but not at {head}. Deleting or breaking the "
+              "vocabulary file would silently switch this check off; restore it, or change it in a reviewed commit that keeps it readable.")
+        return 1
     if statuses is None:
-        print(f"WARNING (not a failure): no readable {VOCABULARY_FILE} at {head}; lane statuses were not checked.", file=sys.stderr)
+        print(f"WARNING (not a failure): no readable {VOCABULARY_FILE} at {head} (and none at {base}); lane statuses were not checked.", file=sys.stderr)
     else:
         bad_status = status_violations(diff_lines, statuses)
         rust = rust_statuses(head)
+        if rust is None and rust_statuses(base) is not None:
+            print(f"Queue status check failed: the status list in {RUST_PARSER} was readable at {base} but not at {head}. A "
+                  "refactor of the parser would silently stop the vocabulary comparison; update this checker's pattern in the same change.")
+            return 1
         if rust is None:
-            print(f"WARNING (not a failure): could not read the status list in {RUST_PARSER} at {head}; the vocabulary "
-                  "was not compared with the native parser.", file=sys.stderr)
+            print(f"WARNING (not a failure): could not read the status list in {RUST_PARSER} at {head} (and none at {base}); the "
+                  "vocabulary was not compared with the native parser.", file=sys.stderr)
         elif sorted(rust) != sorted(statuses):
             print(f"Queue status check failed: {VOCABULARY_FILE} and {RUST_PARSER} disagree. Only in the JSON: "
                   f"{sorted(set(statuses) - set(rust))}; only in the Rust parser: {sorted(set(rust) - set(statuses))}. "
