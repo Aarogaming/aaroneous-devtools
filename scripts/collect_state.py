@@ -164,27 +164,33 @@ def unresolved_by_pr(graphql):
     }
 
 
-def eligible_completer(kind, seat, implementers):
-    """Whether this seat may complete a card of this kind. An unattributed comment never completes a card, an
-    implementer cannot complete a review of its own work, and only the author seat completes its own thread fixes."""
+def eligible_completer(kind, seat, implementers, repair_owners=()):
+    """Whether this seat may complete a card of this kind. It fails closed: an unattributed comment never completes
+    a card; a review needs KNOWN implementers and a seat that is not one of them (unknown ownership must not make
+    every seat, including the author, look independent); only the author seat completes its own thread fixes; and
+    only a seat whose verdict was rejected completes that repair."""
     if not seat:
         return False
     if kind == "needs_review":
-        return seat not in implementers
+        return bool(implementers) and seat not in implementers
     if kind == "fix_threads":
         return bool(implementers) and seat == implementers[0]
+    if kind == "repair_verdict":
+        return seat in repair_owners
     return True
 
 
-def done_keys(snapshot):
+def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
     """Keys of cards completed by an explicit receipt: a comment on that PR that starts with the card marker, names
     the PR's current head, is not marked blocked, and comes from a seat allowed to complete that kind of card.
     Quoted or mid-text markers, a marker for another PR or head, an unattributed comment and a blocked report
-    never complete a card."""
+    never complete a card. repair_owners maps a PR number to the seats whose verdicts were rejected there."""
+    repair_owners = repair_owners or {}
+    implementers_by_pr = implementers_by_pr or {}
     keys = set()
     for p in snapshot["prs"]:
         head8 = p["head"][:8].lower()
-        implementers = p.get("implementers") or []
+        implementers = implementers_by_pr.get(p["number"]) or p.get("implementers") or []
         for comment in p.get("comments", []):
             body = comment.get("body", "") if isinstance(comment, dict) else ""
             match = MARKER_START.match(body)
@@ -193,7 +199,8 @@ def done_keys(snapshot):
             kind, number, marker_head, status = match.group(1), int(match.group(2)), match.group(3).lower(), match.group(4)
             if number != p["number"] or marker_head != head8 or (status or "").lower() == "blocked":
                 continue
-            if not eligible_completer(kind, comment_seat(body, strict=True), implementers):
+            if not eligible_completer(kind, comment_seat(body, strict=True), implementers,
+                                      repair_owners.get(p["number"], ())):
                 continue
             keys.add(f"{kind}:{number}:{marker_head}")
     return sorted(keys)
@@ -202,6 +209,12 @@ def done_keys(snapshot):
 def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now, default_branch="main"):
     covered = {r["pr"]: r["covered"] for r in coverage_rows}
     rows = {r["pr"]: r for r in coverage_rows}
+    implementers_by_pr = {
+        p["number"]: list(p.get("implementers") or ([seats[p["number"]]] if seats.get(p["number"]) else []))
+        for p in snapshot["prs"]
+    }
+    rejected_by_pr = {p["number"]: rejected_verdicts(p, rows.get(p["number"], {})) for p in snapshot["prs"]}
+    repair_owners = {n: {r["seat"] for r in found if r["seat"]} for n, found in rejected_by_pr.items()}
     prs = []
     for p in snapshot["prs"]:
         n = p["number"]
@@ -217,15 +230,15 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
                 "updated_at": m["updatedAt"],
                 "seat": seats.get(n, ""),
                 "base_sha": p.get("merge_base") or "",
-                "rejected_verdicts": rejected_verdicts(p, rows.get(n, {})),
+                "rejected_verdicts": rejected_by_pr[n],
                 "size": f"+{m.get('additions', 0)}/-{m.get('deletions', 0)} in {m.get('changedFiles', 0)} file(s)",
-                "implementers": list(p.get("implementers") or ([seats[n]] if seats.get(n) else [])),
+                "implementers": implementers_by_pr[n],
                 "threads_unresolved": unresolved.get(n, 0),
                 "covered": covered.get(n, False),
             }
         )
     return {"now": now, "agents": [{"name": a} for a in agents], "prs": prs, "backlog": backlog,
-            "done": done_keys(snapshot), "default_branch": default_branch}
+            "done": done_keys(snapshot, repair_owners, implementers_by_pr), "default_branch": default_branch}
 
 
 def collect(repo, repo_dir, agents, backlog, identities=None):

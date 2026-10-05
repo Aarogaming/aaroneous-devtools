@@ -178,6 +178,33 @@ class Done(unittest.TestCase):
         self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa] Claude seat: reviewed", implementers=("claude",))), [])
         self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa] Mimo seat: reviewed", implementers=("claude",))), [self.KEY])
 
+    def test_unknown_implementers_fail_closed_for_reviews(self):
+        body = "[card:needs_review:9:aaaaaaaa] Mimo seat: reviewed"
+        self.assertEqual(cs.done_keys(self.snap(body, implementers=())), [])
+        self.assertEqual(cs.done_keys(self.snap(body, implementers=("claude",))), [self.KEY])
+
+    def test_a_repair_receipt_counts_only_from_the_seat_whose_verdict_was_rejected(self):
+        body = "[card:repair_verdict:9:aaaaaaaa] {} seat: reposted the verdict as JSON"
+        snap = self.snap(body.format("Gemini"))
+        self.assertEqual(cs.done_keys(snap), [])
+        self.assertEqual(cs.done_keys(snap, {9: {"mimo"}}), [])
+        self.assertEqual(cs.done_keys(snap, {9: {"gemini"}}), ["repair_verdict:9:aaaaaaaa"])
+
+    def test_build_state_wires_the_repair_owner_and_the_implementers_into_completion(self):
+        head = "a" * 40
+        comments = [
+            {"id": 1, "body": "Seat / agent: Gemini\nhead aaaaaaaa\nVERDICT: accept"},
+            {"id": 2, "body": "[card:repair_verdict:9:aaaaaaaa] Mimo seat: not mine to repair"},
+        ]
+        snapshot = {"prs": [{"number": 9, "head": head, "base": "main", "comments": comments}]}
+        meta = {9: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
+        rows = [{"pr": 9, "covered": False, "legacy": [{"comment": 0}]}]
+        state = cs.build_state(snapshot, rows, meta, {9: 0}, {9: "claude"}, ["claude", "gemini"], [], "2026-10-04T12:00:00Z")
+        self.assertEqual(state["done"], [])
+        snapshot["prs"][0]["comments"][1]["body"] = "[card:repair_verdict:9:aaaaaaaa] Gemini seat: reposted"
+        state = cs.build_state(snapshot, rows, meta, {9: 0}, {9: "claude"}, ["claude", "gemini"], [], "2026-10-04T12:00:00Z")
+        self.assertEqual(state["done"], ["repair_verdict:9:aaaaaaaa"])
+
     def test_only_the_author_seat_completes_its_own_thread_fixes(self):
         body = "[card:fix_threads:9:aaaaaaaa] {} seat: answered every thread"
         self.assertEqual(cs.done_keys(self.snap(body.format("Mimo"), implementers=("codex",))), [])
