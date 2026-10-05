@@ -56,7 +56,8 @@ def work_items(state):
         clean = pr.get("mergeable_state") == "CLEAN"
         threads = pr.get("threads_unresolved", 0)
         age_h = (now - parse_time(pr["updated_at"])).total_seconds() / 3600
-        base = {"pr": number, "title": pr.get("title", ""), "seat": pr.get("seat", ""), "head": pr.get("head", "")}
+        base = {"pr": number, "title": pr.get("title", ""), "seat": pr.get("seat", ""), "head": pr.get("head", ""),
+                "implementers": list(pr.get("implementers") or ([pr["seat"]] if pr.get("seat") else []))}
         if threads:
             items.append(dict(base, kind="fix_threads", rank=1, owner_seat=pr.get("seat"),
                               detail=f"{threads} unresolved review thread(s)"))
@@ -197,7 +198,7 @@ def build_cards(state, tick):
         return item_key(item["kind"], item["pr"], item.get("head", "")) if item.get("pr") else None
 
     def allowed(item, name):
-        if item["kind"] == "needs_review" and item.get("seat") == name:
+        if item["kind"] == "needs_review" and name in set(item.get("implementers") or []) | {item.get("seat")}:
             return False
         return not (item["kind"] == "fix_threads" and item.get("owner_seat") not in (None, "", name))
 

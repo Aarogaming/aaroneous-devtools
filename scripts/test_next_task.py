@@ -165,6 +165,13 @@ class Cards(unittest.TestCase):
     def test_a_covered_draft_still_gets_the_flip_ready_card(self):
         self.assertEqual({i["kind"] for i in nt.work_items(state([pr(9, draft=True, covered=True)]))}, {"draft"})
 
+    def test_a_co_implementer_is_never_assigned_to_review_the_pr(self):
+        s = state([pr(9, seat="claude", implementers=["claude", "mimo"])])
+        s["agents"] = [{"name": "mimo"}, {"name": "gemini"}, {"name": "claude"}]
+        for card in nt.build_cards(s, 0):
+            if card["inputs"].get("kind") == "needs_review":
+                self.assertEqual(card["agent"], "gemini")
+
     def test_cards_change_with_state(self):
         a = [c["task"] for c in nt.build_cards(state([pr(1)]), 0)]
         b = [c["task"] for c in nt.build_cards(state([pr(1, covered=True)]), 0)]

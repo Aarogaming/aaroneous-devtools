@@ -97,6 +97,7 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
                 "mergeable_state": m["mergeStateStatus"],
                 "updated_at": m["updatedAt"],
                 "seat": seats.get(n, ""),
+                "implementers": list(p.get("implementers") or ([seats[n]] if seats.get(n) else [])),
                 "threads_unresolved": unresolved.get(n, 0),
                 "covered": covered.get(n, False),
             }

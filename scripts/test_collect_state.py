@@ -49,6 +49,13 @@ class Build(unittest.TestCase):
         ]}}}}
         self.assertEqual(cs.unresolved_by_pr(graphql), {1: 2, 2: 0})
 
+    def test_every_implementer_reaches_the_dispatcher_state(self):
+        snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main", "implementers": ["claude", "mimo"]}]}
+        meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
+        state = cs.build_state(snapshot, [{"pr": 7, "covered": False}], meta, {7: 0}, {7: "claude"},
+                               ["claude", "mimo", "gemini"], [], "2026-10-04T12:00:00Z")
+        self.assertEqual(state["prs"][0]["implementers"], ["claude", "mimo"])
+
     def test_state_feeds_the_dispatcher_end_to_end(self):
         snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main"}]}
         meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
