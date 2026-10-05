@@ -25,6 +25,8 @@ import sys
 
 TARGET_FILE = "governance/COORDINATION_QUEUE.md"
 VOCABULARY_FILE = "governance/QUEUE_STATUSES.json"
+RUST_PARSER = "foundation/crates/foundation_cli/src/multithreader.rs"
+RUST_STATUS_LIST = re.compile(r'matches!\(\s*cols\[3\]\s*,((?:\s*"[A-Za-z ]+"\s*\|?)+)\)')
 LANE_ID = re.compile(r"C\d+")
 
 CLAIM_TABLE_ROW = re.compile(r"^\+\s*\|.*\|\s*Done\s*\|", re.IGNORECASE)
@@ -68,6 +70,18 @@ def status_violations(diff_lines: list[str], statuses) -> list[tuple]:
         if parsed and parsed[1] not in statuses:
             found.append((parsed[0], parsed[1], line[1:]))
     return found
+
+
+def parse_rust_statuses(text: str):
+    """The status words in the native parser's `matches!(cols[3], ...)`, or None when that shape is not found."""
+    match = RUST_STATUS_LIST.search(text)
+    return re.findall(r'"([A-Za-z ]+)"', match.group(1)) if match else None
+
+
+def rust_statuses(head: str):
+    """The parser's status list at `head`, or None when the file or the expected shape cannot be read."""
+    result = subprocess.run(["git", "show", f"{head}:{RUST_PARSER}"], capture_output=True, text=True)
+    return parse_rust_statuses(result.stdout) if result.returncode == 0 else None
 
 
 def load_statuses(head: str):
@@ -167,6 +181,15 @@ def main() -> int:
         print(f"WARNING (not a failure): no readable {VOCABULARY_FILE} at {head}; lane statuses were not checked.", file=sys.stderr)
     else:
         bad_status = status_violations(diff_lines, statuses)
+        rust = rust_statuses(head)
+        if rust is None:
+            print(f"WARNING (not a failure): could not read the status list in {RUST_PARSER} at {head}; the vocabulary "
+                  "was not compared with the native parser.", file=sys.stderr)
+        elif sorted(rust) != sorted(statuses):
+            print(f"Queue status check failed: {VOCABULARY_FILE} and {RUST_PARSER} disagree. Only in the JSON: "
+                  f"{sorted(set(statuses) - set(rust))}; only in the Rust parser: {sorted(set(rust) - set(statuses))}. "
+                  "Change both together, or rows using the difference are skipped by the parser.")
+            return 1
         old = existing_violations(head, statuses)
         if old:
             print("INFO: lane rows already at this revision with a status the queue parser skips (fixed when edited): "

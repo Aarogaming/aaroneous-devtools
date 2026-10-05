@@ -72,14 +72,17 @@ class VocabularyMatchesTheNativeParser(unittest.TestCase):
         source = os.path.join(ROOT, "foundation", "crates", "foundation_cli", "src", "multithreader.rs")
         self.assertTrue(os.path.exists(source), "the Rust parser this contract is checked against is missing")
         with open(source, encoding="utf-8") as handle:
-            text = handle.read()
-        match = re.search(r"matches!\(\s*cols\[3\]\s*,((?:\s*\"[A-Za-z ]+\"\s*\|?)+)\)", text)
-        self.assertIsNotNone(match, "multithreader.rs no longer has the matches!(cols[3], ...) status list; update this test")
-        rust = re.findall(r'"([A-Za-z ]+)"', match.group(1))
+            rust = cce.parse_rust_statuses(handle.read())
+        self.assertIsNotNone(rust, "multithreader.rs no longer has the matches!(cols[3], ...) status list; update the checker")
         with open(os.path.join(ROOT, "governance", "QUEUE_STATUSES.json"), encoding="utf-8") as handle:
             declared = json.load(handle)["statuses"]
         self.assertEqual(sorted(rust), sorted(declared))
         self.assertNotIn("Proposed", declared)
+
+    def test_the_rust_list_is_read_from_the_parser_source_text(self):
+        sample = 'if cols.len() < 5 || !matches!(cols[3], "Ready" | "Claimed" | "Review" | "Done" | "Blocked")\n{ continue; }'
+        self.assertEqual(cce.parse_rust_statuses(sample), ["Ready", "Claimed", "Review", "Done", "Blocked"])
+        self.assertIsNone(cce.parse_rust_statuses("fn other() {}"))
 
 
 class EndToEnd(unittest.TestCase):
@@ -118,6 +121,48 @@ class EndToEnd(unittest.TestCase):
             self.git(repo, "commit", "-qam", "blocked")
             passed = self.run_check(repo)
             self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
+
+    def make_repo(self, repo, json_statuses, rust_statuses):
+        os.makedirs(os.path.join(repo, "governance"))
+        os.makedirs(os.path.join(repo, "foundation", "crates", "foundation_cli", "src"))
+        with open(os.path.join(repo, "governance", "QUEUE_STATUSES.json"), "w", encoding="utf-8") as handle:
+            json.dump({"version": 1, "statuses": json_statuses}, handle)
+        listed = " | ".join(f'"{w}"' for w in rust_statuses)
+        parser = os.path.join(repo, cce.RUST_PARSER)
+        with open(parser, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(f"if cols.len() < 5 || !matches!(cols[3], {listed})\n{{ continue; }}\n")
+        with open(os.path.join(repo, "governance", "COORDINATION_QUEUE.md"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(row("C1", "Ready") + "\n")
+        self.git(repo, "init", "-q")
+        self.git(repo, "add", "-A")
+        self.git(repo, "commit", "-qm", "base")
+        self.git(repo, "tag", "base")
+        with open(os.path.join(repo, "governance", "COORDINATION_QUEUE.md"), "a", encoding="utf-8", newline="\n") as handle:
+            handle.write(row("C2", "Ready") + "\n")
+        self.git(repo, "commit", "-qam", "row")
+
+    def test_a_vocabulary_that_disagrees_with_the_rust_parser_fails_the_check(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.make_repo(repo, STATUSES + ["Proposed"], STATUSES)
+            result = self.run_check(repo)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("disagree", result.stdout)
+            self.assertIn("Proposed", result.stdout)
+
+    def test_a_vocabulary_equal_to_the_rust_parser_passes(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.make_repo(repo, STATUSES, list(reversed(STATUSES)))
+            result = self.run_check(repo)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_an_unreadable_rust_parser_warns_loudly_and_does_not_fail(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.make_repo(repo, STATUSES, STATUSES)
+            os.remove(os.path.join(repo, cce.RUST_PARSER))
+            self.git(repo, "commit", "-qam", "remove parser")
+            result = self.run_check(repo)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("was not compared with the native parser", result.stderr)
 
     def test_without_a_vocabulary_file_the_check_warns_loudly_and_does_not_fail(self):
         with tempfile.TemporaryDirectory() as repo:
