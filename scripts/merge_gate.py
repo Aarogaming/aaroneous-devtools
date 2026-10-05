@@ -16,6 +16,11 @@ Conditions (mirroring the routine's step 3, with local equivalents):
   e. no standing changes_requested at the head (part of coverage)
   f. protected paths need explicit owner confirmation: AGENTS.md, .github/workflows, settings
 
+The default output path runs gather_facts() + checklist() for every PR and reconciles both
+verdicts through reconcile(): decide()'s reasons (a/b/d/f) are necessary, the checklist (CI state,
+unresolved threads, circuit breaker, trust threshold, tier) is sufficient, and neither alone can
+print an eligibility verdict. --run-checks remains the extra local-gate layer (condition c) on top.
+
 Usage:
   merge_gate.py --repo OWNER/NAME --repo-dir CLONE --identities governance/identities.json [--pr N]
                 [--run-checks] [--json]
@@ -59,12 +64,39 @@ TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "governance/AUTOMATED_ME
 TRUST_NEEDED = 5
 
 
+SAFE_FAMILIES = (
+    ("governance/", (".md", ".json", ".toml", ".txt")),
+    ("docs/", (".md", ".txt")),
+    ("architecture/", (".md",)),
+    ("scripts/", (".py", ".sh", ".ps1", ".md")),
+    ("inventories/", (".md",)),
+    ("contracts/", (".md", ".json")),
+)
+
+
 def tier_of(paths):
-    """Tier A is owner-only (workflows and branch protection, the policy document itself, AGENTS.md).
-    Kernel-profile crates, unsafe code, credentials and dependency admission cannot be judged from paths
-    alone here, so those are reported as unclassified, never assumed safe."""
+    """Tier A is owner-only. Tier B requires a positively recognised safe family
+    (docs/governance/scripts/contracts/inventories with a safe extension);
+    everything else — kernel/unsafe/credentials/dependency-admission risk, or
+    any path this classifier does not recognise — is unclassified and never
+    assumed safe (the checklist renders it [blocked]). Foundation tooling
+    crates join SAFE_FAMILIES only after the owner records their profiles
+    (C89-style) — the conservative default costs a manual merge, never safety."""
     hits = [p for p in paths if any(p == t or p.startswith(t) for t in TIER_A_PATHS)]
-    return ("A", f"touches owner-only paths: {hits}") if hits else ("B", "")
+    if hits:
+        return ("A", f"touches owner-only paths: {hits}")
+    if not paths:
+        return ("B", "")
+    if all(
+        any(p.startswith(prefix) and p.endswith(exts) for prefix, exts in SAFE_FAMILIES)
+        for p in paths
+    ):
+        return ("B", "")
+    return (
+        "unclassified",
+        "unrecognised or kernel/unsafe/credentials/dependency-admission paths cannot be "
+        "judged from paths alone; owner must classify — never assumed safe",
+    )
 
 
 def box(ok, label, detail=""):
@@ -109,13 +141,26 @@ def checklist(facts):
          f"{(facts.get('trust') or (0, TRUST_NEEDED))[0]}/{(facts.get('trust') or (0, TRUST_NEEDED))[1]}", ""),
     ]
     tier, why = facts.get("tier", ("B", ""))
-    lines = [box(tier == "B", f"0. Tier B (auto-merge eligible)", why)]
+    # B: eligible box; A: unchecked box; unclassified: [blocked: …] (never assumed safe)
+    tier_mark = True if tier == "B" else (False if tier == "A" else None)
+    lines = [box(tier_mark, f"0. Tier B (auto-merge eligible)", why)]
     first = None if tier == "B" else f"0 ({why})"
     for number, ok, label, detail, blocked_reason in checks:
         lines.append(box(ok, f"{number}. {label}", blocked_reason if ok is None else detail))
         if ok is not True and first is None:
             first = number
     return lines, first is None, first
+
+
+def reconcile(decide_ok, facts):
+    """One verdict: decide()'s reasons are necessary, the checklist is sufficient; both must pass.
+
+    Returns (lines, eligible, first_blocker). eligible is True only when decide() said eligible
+    AND every checklist box (tier, CI, conflict, base, accepts, threads, evidence, revertible,
+    breaker, trust) is green — so the default path can never print ELIGIBLE with red CI, open
+    threads, a tripped breaker or an untrusted category, which checklist() would block."""
+    lines, would_merge, first = checklist(facts)
+    return lines, bool(decide_ok) and would_merge, first
 
 
 def decide(pr_row, paths, base_ref, trial_merge_ok, owner_confirmed_protected=False):
@@ -179,12 +224,22 @@ def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks):
     keys = rc.load_keys(identities_path)
     rows = {r["pr"]: r for r in rc.report_snapshot(
         snapshot, rc.live_ancestry(repo_dir), rc.load_identities(identities_path), keys, True)}
+    default = rc.gh_json("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
     decisions = []
     for pr in snapshot["prs"]:
         if only_pr and pr["number"] != only_pr:
             continue
         paths = changed_paths(repo_dir, pr["base"], pr["head"])
-        decision = decide(rows[pr["number"]], paths, pr["base"], trial_merge(repo_dir, pr["base"], pr["head"]))
+        trial = trial_merge(repo_dir, pr["base"], pr["head"])
+        decision = decide(rows[pr["number"]], paths, pr["base"], trial)
+        # One verdict: decide() reasons AND the full checklist (gather_facts is
+        # read-only; anything it cannot read fails closed inside checklist()).
+        facts = gather_facts(repo, repo_dir, pr, rows[pr["number"]], paths, trial, default)
+        lines, eligible, first = reconcile(decision["eligible"], facts)
+        decision["eligible"] = eligible
+        decision["checklist"] = lines
+        if first is not None:
+            decision["reasons"].append(f"blocked on checklist box {first}")
         decision.update({"pr": pr["number"], "head": pr["head"], "paths": paths})
         if do_checks and decision["eligible"]:
             decision["checks"] = run_checks(repo_dir, pr["head"], pr["base"], decision["plan"])
@@ -286,6 +341,8 @@ def main(argv):
         for d in decisions:
             verdict = "ELIGIBLE" if d["eligible"] else "BLOCKED"
             print(f"#{d['pr']} {d['head'][:8]} {verdict} plan={d['plan']['level']} " + ("; ".join(d["reasons"]) or "-"))
+            for line in d.get("checklist", []):
+                print("    " + line)
     return 0
 
 

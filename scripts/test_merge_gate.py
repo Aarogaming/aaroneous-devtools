@@ -121,5 +121,73 @@ class Checklist(unittest.TestCase):
         self.assertEqual(first, "4")
 
 
+class Reconcile(unittest.TestCase):
+    """decide() alone must never print a verdict: the checklist is sufficient to block."""
+
+    def test_tripped_breaker_blocks_an_otherwise_eligible_decide(self):
+        lines, ok, first = mg.reconcile(True, good_facts(breaker_tripped=True))
+        self.assertFalse(ok)
+        self.assertEqual(first, "7")
+
+    def test_missing_ci_fails_closed_even_when_decide_is_ok(self):
+        facts = good_facts(ci={"state": "missing", "detail": "no CI status found"})
+        lines, ok, first = mg.reconcile(True, facts)
+        self.assertFalse(ok)
+        self.assertEqual(first, "1")
+
+    def test_open_threads_block_even_when_decide_is_ok(self):
+        lines, ok, first = mg.reconcile(True, good_facts(threads_open=3))
+        self.assertFalse(ok)
+        self.assertEqual(first, "4")
+
+    def test_green_checklist_cannot_save_a_failed_decide(self):
+        lines, ok, first = mg.reconcile(False, good_facts())
+        self.assertFalse(ok)
+
+    def test_both_green_is_eligible(self):
+        lines, ok, first = mg.reconcile(True, good_facts())
+        self.assertTrue(ok)
+        self.assertIsNone(first)
+
+
+class TierClassification(unittest.TestCase):
+    """tier_of must fail closed: Tier B only for positively recognised safe families."""
+
+    def test_unrecognised_code_paths_are_unclassified_and_blocked(self):
+        tier, why = mg.tier_of(["foundation/crates/foundation_cli/src/main.rs"])
+        self.assertEqual(tier, "unclassified")
+        lines, ok, first = mg.checklist(good_facts(tier=(tier, why)))
+        self.assertFalse(ok)
+        self.assertEqual(first, "0 (%s)" % why)
+        self.assertIn("[blocked:", lines[0])
+
+    def test_safe_doc_and_script_families_stay_tier_b(self):
+        for paths in (
+            ["governance/X.md"],
+            ["governance/IDENTITY_SETUP.md"],
+            ["docs/y/z.md"],
+            ["architecture/spec.md"],
+            ["scripts/tool.py", "scripts/test_tool.py"],
+            ["inventories/REPORT.md"],
+            ["contracts/schema.json"],
+        ):
+            self.assertEqual(mg.tier_of(paths)[0], "B", paths)
+
+    def test_owner_only_paths_still_win_over_safe_families(self):
+        tier, why = mg.tier_of(["governance/X.md", "AGENTS.md"])
+        self.assertEqual(tier, "A")
+        self.assertIn("AGENTS.md", why)
+
+    def test_empty_diff_is_still_classified_b(self):
+        self.assertEqual(mg.tier_of([])[0], "B")
+
+    def test_unclassified_renders_blocked_in_checklist_output(self):
+        tier, why = mg.tier_of(["crates/mystery/src/lib.rs"])
+        lines, ok, first = mg.checklist(good_facts(tier=(tier, why)))
+        self.assertFalse(ok)
+        self.assertTrue(lines[0].startswith("[blocked:"))
+        self.assertIn("never assumed safe", why)
+
+
 if __name__ == "__main__":
     unittest.main()
