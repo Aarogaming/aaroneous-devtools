@@ -74,12 +74,25 @@ def explain_problem(raw):
 LEGACY_REASON = "the comment reads like a verdict but has no fenced attestation block, so nothing was counted"
 
 
+HEX_TOKEN = re.compile(r"\b[0-9a-f]{8,40}\b")
+
+
+def cites_head(body, head):
+    """True when the comment cites this PR head: a hex token of 8 to 40 characters that is a prefix of the full head.
+    A 40-character token must equal the head, so a comment citing a different head that merely shares the first
+    eight characters is not mistaken for one that cites this head."""
+    head = (head or "").lower()
+    if not head:
+        return False
+    return any(head.startswith(token) for token in HEX_TOKEN.findall((body or "").lower()))
+
+
 def rejected_verdicts(pr, row):
     """Verdict comments the coverage tool did not count at the PR's CURRENT head, each attributed to a seat where
     the text explicitly says which. A comment that does not cite the current head is history, not a pending
     repair, and at most the latest MAX_REJECTED_PER_SEAT per seat are kept so a card stays short."""
     comments = pr.get("comments", [])
-    head8 = (pr.get("head") or "")[:8]
+    head = pr.get("head") or ""
     found = []
 
     def entry(index, reason):
@@ -87,7 +100,7 @@ def rejected_verdicts(pr, row):
             return
         comment = comments[index] if isinstance(comments[index], dict) else {}
         body = comment.get("body", "")
-        if not head8 or head8 not in body:
+        if not cites_head(body, head):
             return
         found.append({"comment_id": comment.get("id"), "seat": comment_seat(body, strict=True), "reason": reason,
                       "_index": index})
@@ -158,7 +171,7 @@ def done_keys(snapshot):
         for comment in p.get("comments", []):
             body = comment.get("body", "") if isinstance(comment, dict) else ""
             keys.update(MARKER.findall(body))
-            if BRIEF.search(body) and head8 in body:
+            if BRIEF.search(body) and cites_head(body, p["head"]):
                 keys.add(f"ready_to_merge:{p['number']}:{head8}")
     return sorted(keys)
 

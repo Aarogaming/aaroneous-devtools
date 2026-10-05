@@ -71,6 +71,30 @@ class Rejections(unittest.TestCase):
         pr = {"head": "a" * 40, "comments": [{"id": 1, "body": "Seat / agent: Mimo\nhead bbbbbbbb\nVERDICT: accept"}]}
         self.assertEqual(cs.rejected_verdicts(pr, {"legacy": [{"comment": 0}]}), [])
 
+    def test_a_different_head_sharing_the_first_eight_characters_is_not_this_head(self):
+        head = "a" * 8 + "1" * 32
+        other = "a" * 8 + "2" * 32
+        self.assertTrue(cs.cites_head("see " + head, head))
+        self.assertTrue(cs.cites_head("short form " + head[:8], head))
+        self.assertTrue(cs.cites_head("sha " + head[:12] + " reviewed", head))
+        self.assertFalse(cs.cites_head("reviewed " + other, head))
+        self.assertFalse(cs.cites_head("no sha here", head))
+        self.assertFalse(cs.cites_head("see " + head, ""))
+
+    def test_a_comment_citing_a_colliding_head_is_not_a_repair_for_this_head(self):
+        head = "a" * 8 + "1" * 32
+        other = "a" * 8 + "2" * 32
+        pr = {"head": head, "comments": [{"id": 1, "body": "Seat / agent: Mimo\nhead " + other + "\nVERDICT: accept"}]}
+        self.assertEqual(cs.rejected_verdicts(pr, {"legacy": [{"comment": 0}]}), [])
+        pr["comments"][0]["body"] = "Seat / agent: Mimo\nhead " + head + "\nVERDICT: accept"
+        self.assertEqual(len(cs.rejected_verdicts(pr, {"legacy": [{"comment": 0}]})), 1)
+
+    def test_a_merge_brief_for_a_colliding_head_does_not_mark_this_head_done(self):
+        head = "a" * 8 + "1" * 32
+        other = "a" * 8 + "2" * 32
+        snap = {"prs": [{"number": 5, "head": head, "comments": [{"body": "OWNER MERGE BRIEF for #5 head " + other}]}]}
+        self.assertEqual(cs.done_keys(snap), [])
+
     def test_a_seat_name_further_down_a_comment_does_not_attribute_it(self):
         self.assertEqual(cs.comment_seat("My note.\nMimo reviewed this earlier.\n", strict=True), "")
         self.assertEqual(cs.comment_seat("Mimo reviewed this earlier.\n", strict=False), "mimo")
