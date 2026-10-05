@@ -32,7 +32,7 @@
     "why_now": "no free item; duplicating work or inventing a task would be noise"
   },
   {
-    "acceptance": "every thread has a reply naming the commit that addresses it, and is resolved only if addressed Start your comment with the marker [card:fix_threads:2:02020202] (and name your seat on the first line) so this task is not re-issued; write [card:KEY blocked] instead if you could not complete it.",
+    "acceptance": "every thread has a reply naming the commit that addresses it, and is resolved only if addressed Start your comment with the receipt [done:fix_threads:2:0202020202020202020202020202020202020202] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
     "agent": "codex",
     "attempt": 1,
     "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
@@ -47,7 +47,7 @@
     },
     "lens": "direct",
     "lens_text": "Do the task as stated.",
-    "marker": "[card:fix_threads:2:02020202]",
+    "marker": "[done:fix_threads:2:0202020202020202020202020202020202020202]",
     "new_since_last": "first time this seat is handed this PR",
     "owner_blocked": false,
     "priority": 1,

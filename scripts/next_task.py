@@ -57,7 +57,7 @@ def work_items(state):
     """Ranked list of concrete work items derived from the snapshot. Lower rank is more urgent.
 
     Items already completed for the same PR head (their key is in state["done"], filled from
-    ``[card:...]`` markers agents leave in their output) are skipped, so a finished task is not
+    ``[done:...]`` receipts agents leave in their output) are skipped, so a finished task is not
     handed out again; a new head makes a new key and the item reappears.
     """
     now = parse_time(state["now"])
@@ -144,8 +144,11 @@ def card_for(agent, role, tick, item):
         "task": task,
         "why_now": item.get("detail", "ranked next on the backlog"),
         "inputs": {"pr": pr, "kind": kind},
-        "marker": f"[card:{item_key(kind, pr, item.get('head', ''))}]" if pr else "",
-        "acceptance": acceptance + (" Start your comment with the marker " + f"[card:{item_key(kind, pr, item.get('head', ''))}]" + " (and name your seat on the first line) so this task is not re-issued; write [card:KEY blocked] instead if you could not complete it." if pr else ""),
+        "marker": f"[done:{kind}:{pr}:{item.get('head', '').lower()}]" if pr else "",
+        "acceptance": acceptance + (
+            f" Start your comment with the receipt [done:{kind}:{pr}:{item.get('head', '').lower()}] (the full 40-character head) "
+            "and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use "
+            "that receipt and say what blocked you." if pr else ""),
         "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
     }
 

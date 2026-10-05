@@ -1,6 +1,6 @@
 [
   {
-    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Start your comment with the marker [card:needs_review:10:10101010] (and name your seat on the first line) so this task is not re-issued; write [card:KEY blocked] instead if you could not complete it.",
+    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Start your comment with the receipt [done:needs_review:10:1010101010101010101010101010101010101010] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
     "agent": "mimo",
     "attempt": 1,
     "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
@@ -15,7 +15,7 @@
     },
     "lens": "direct",
     "lens_text": "Do the task as stated.",
-    "marker": "[card:needs_review:10:10101010]",
+    "marker": "[done:needs_review:10:1010101010101010101010101010101010101010]",
     "new_since_last": "head moved aaaaaaaa -> 10101010 since your last card for this PR; earlier accepts do not carry",
     "owner_blocked": false,
     "priority": 2,

@@ -141,85 +141,103 @@ class Build(unittest.TestCase):
         self.assertNotIn("independent whole-diff review of PR #7", implementer["task"])
 
 
-class Done(unittest.TestCase):
-    KEY = "needs_review:9:aaaaaaaa"
+HEAD = "a" * 40
+KEY = "needs_review:9:aaaaaaaa"
 
-    def snap(self, body, head="a" * 40, number=9, implementers=("claude",)):
+
+def receipt(kind="needs_review", pr=9, head=HEAD):
+    return f"[done:{kind}:{pr}:{head}]"
+
+
+class Done(unittest.TestCase):
+    def snap(self, body, head=HEAD, number=9, implementers=("claude",)):
         return {"prs": [{"number": number, "head": head, "implementers": list(implementers),
                          "comments": [{"body": body}]}]}
 
-    def test_a_comment_that_starts_with_the_marker_and_names_its_seat_completes_the_card(self):
-        keys = cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa] Seat / agent: Mimo\nreview posted"))
-        self.assertEqual(keys, [self.KEY])
-        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa done] Gemini seat: review posted")), [self.KEY])
+    def test_an_explicit_receipt_bound_to_the_full_head_from_a_named_seat_completes_the_card(self):
+        self.assertEqual(cs.done_keys(self.snap(receipt() + " Seat / agent: Mimo\nreview posted")), [KEY])
+        self.assertEqual(cs.done_keys(self.snap(receipt("ready_to_merge") + " OWNER MERGE BRIEF (Claude seat)")),
+                         ["ready_to_merge:9:aaaaaaaa"])
 
-    def test_the_marker_in_the_first_line_seat_form_used_by_card_comments_counts(self):
-        keys = cs.done_keys(self.snap("[card:ready_to_merge:9:aaaaaaaa] OWNER MERGE BRIEF (Claude seat, from steward card)"))
-        self.assertEqual(keys, ["ready_to_merge:9:aaaaaaaa"])
+    def test_the_eight_character_card_reference_never_completes_anything(self):
+        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa] Mimo seat: done")), [])
+        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa done] Mimo seat")), [])
 
-    def test_a_blocked_report_completes_nothing(self):
-        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa blocked] Mimo seat: cannot fetch the head")), [])
-
-    def test_a_quoted_or_mid_text_marker_is_a_reference_not_a_receipt(self):
-        for body in ("NOT DONE: please investigate [card:needs_review:9:aaaaaaaa]",
-                     "Seat / agent: Mimo\n> [card:needs_review:9:aaaaaaaa]\nquoting the card",
-                     "Seat / agent: Mimo\nsee `[card:needs_review:9:aaaaaaaa]` above"):
+    def test_a_receipt_quoted_or_mentioned_further_down_is_a_reference_not_a_receipt(self):
+        for body in ("NOT DONE: please investigate " + receipt(),
+                     "Seat / agent: Mimo\n> " + receipt() + "\nquoting the card",
+                     "Seat / agent: Mimo\nsee `" + receipt() + "` above"):
             self.assertEqual(cs.done_keys(self.snap(body)), [], body)
 
-    def test_a_marker_for_another_pr_or_another_head_does_not_complete_this_card(self):
-        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:8:aaaaaaaa] Mimo seat done")), [])
-        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:bbbbbbbb] Mimo seat done")), [])
-        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa] Mimo seat done", head="b" * 40)), [])
+    def test_a_receipt_for_another_pr_or_another_head_does_not_complete_this_card(self):
+        self.assertEqual(cs.done_keys(self.snap(receipt(pr=8) + " Mimo seat done")), [])
+        self.assertEqual(cs.done_keys(self.snap(receipt(head="b" * 40) + " Mimo seat done")), [])
+        self.assertEqual(cs.done_keys(self.snap(receipt() + " Mimo seat done", head="b" * 40)), [])
+
+    def test_a_receipt_whose_first_line_says_the_work_was_not_done_completes_nothing(self):
+        for text in ("Mimo seat: NOT DONE, review incomplete", "Mimo seat: blocked on fetching the head",
+                     "Mimo seat: could not run the tests"):
+            self.assertEqual(cs.done_keys(self.snap(receipt() + " " + text)), [], text)
+
+    def test_contradictory_provenance_a_different_full_head_with_the_same_prefix_completes_nothing(self):
+        current = "12345678" + "a" * 32
+        old = "12345678" + "b" * 32
+        clean = receipt(head=current) + " Mimo seat: reviewed"
+        self.assertEqual(cs.done_keys(self.snap(clean, head=current)), ["needs_review:9:12345678"])
+        mixed = receipt(head=current) + " Mimo seat: reviewed the older head " + old
+        self.assertEqual(cs.done_keys(self.snap(mixed, head=current)), [])
+        probe = receipt(head=current) + " Mimo seat: NOT DONE, reviewed old head " + old
+        self.assertEqual(cs.done_keys(self.snap(probe, head=current)), [])
 
     def test_an_unattributed_comment_never_completes_a_card(self):
-        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa] done")), [])
+        self.assertEqual(cs.done_keys(self.snap(receipt() + " done")), [])
 
     def test_an_implementer_cannot_complete_a_review_of_its_own_work(self):
-        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa] Claude seat: reviewed", implementers=("claude",))), [])
-        self.assertEqual(cs.done_keys(self.snap("[card:needs_review:9:aaaaaaaa] Mimo seat: reviewed", implementers=("claude",))), [self.KEY])
+        self.assertEqual(cs.done_keys(self.snap(receipt() + " Claude seat: reviewed", implementers=("claude",))), [])
+        self.assertEqual(cs.done_keys(self.snap(receipt() + " Mimo seat: reviewed", implementers=("claude",))), [KEY])
 
     def test_unknown_implementers_fail_closed_for_reviews(self):
-        body = "[card:needs_review:9:aaaaaaaa] Mimo seat: reviewed"
+        body = receipt() + " Mimo seat: reviewed"
         self.assertEqual(cs.done_keys(self.snap(body, implementers=())), [])
-        self.assertEqual(cs.done_keys(self.snap(body, implementers=("claude",))), [self.KEY])
+        self.assertEqual(cs.done_keys(self.snap(body, implementers=("claude",))), [KEY])
+
+    def test_only_the_author_seat_completes_its_own_thread_fixes(self):
+        body = receipt("fix_threads") + " {} seat: answered every thread"
+        self.assertEqual(cs.done_keys(self.snap(body.format("Mimo"), implementers=("codex",))), [])
+        self.assertEqual(cs.done_keys(self.snap(body.format("Codex"), implementers=("codex",))), ["fix_threads:9:aaaaaaaa"])
 
     def test_a_repair_receipt_counts_only_from_the_seat_whose_verdict_was_rejected(self):
-        body = "[card:repair_verdict:9:aaaaaaaa] {} seat: reposted the verdict as JSON"
-        snap = self.snap(body.format("Gemini"))
+        snap = self.snap(receipt("repair_verdict") + " Gemini seat: reposted the verdict as JSON")
         self.assertEqual(cs.done_keys(snap), [])
         self.assertEqual(cs.done_keys(snap, {9: {"mimo"}}), [])
         self.assertEqual(cs.done_keys(snap, {9: {"gemini"}}), ["repair_verdict:9:aaaaaaaa"])
 
     def test_build_state_wires_the_repair_owner_and_the_implementers_into_completion(self):
-        head = "a" * 40
         comments = [
             {"id": 1, "body": "Seat / agent: Gemini\nhead aaaaaaaa\nVERDICT: accept"},
-            {"id": 2, "body": "[card:repair_verdict:9:aaaaaaaa] Mimo seat: not mine to repair"},
+            {"id": 2, "body": receipt("repair_verdict") + " Mimo seat: not mine to repair"},
         ]
-        snapshot = {"prs": [{"number": 9, "head": head, "base": "main", "comments": comments}]}
+        snapshot = {"prs": [{"number": 9, "head": HEAD, "base": "main", "comments": comments}]}
         meta = {9: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
         rows = [{"pr": 9, "covered": False, "legacy": [{"comment": 0}]}]
-        state = cs.build_state(snapshot, rows, meta, {9: 0}, {9: "claude"}, ["claude", "gemini"], [], "2026-10-04T12:00:00Z")
-        self.assertEqual(state["done"], [])
-        snapshot["prs"][0]["comments"][1]["body"] = "[card:repair_verdict:9:aaaaaaaa] Gemini seat: reposted"
-        state = cs.build_state(snapshot, rows, meta, {9: 0}, {9: "claude"}, ["claude", "gemini"], [], "2026-10-04T12:00:00Z")
-        self.assertEqual(state["done"], ["repair_verdict:9:aaaaaaaa"])
-
-    def test_only_the_author_seat_completes_its_own_thread_fixes(self):
-        body = "[card:fix_threads:9:aaaaaaaa] {} seat: answered every thread"
-        self.assertEqual(cs.done_keys(self.snap(body.format("Mimo"), implementers=("codex",))), [])
-        self.assertEqual(cs.done_keys(self.snap(body.format("Codex"), implementers=("codex",))), ["fix_threads:9:aaaaaaaa"])
+        args = ({9: 0}, {9: "claude"}, ["claude", "gemini"], [], "2026-10-04T12:00:00Z")
+        self.assertEqual(cs.build_state(snapshot, rows, meta, *args)["done"], [])
+        snapshot["prs"][0]["comments"][1]["body"] = receipt("repair_verdict") + " Gemini seat: reposted"
+        self.assertEqual(cs.build_state(snapshot, rows, meta, *args)["done"], ["repair_verdict:9:aaaaaaaa"])
 
     def test_a_completion_suppresses_only_its_own_card_end_to_end(self):
-        pr = {"number": 9, "title": "t", "head": "a" * 40, "base": "main", "draft": False, "mergeable_state": "CLEAN",
+        pr = {"number": 9, "title": "t", "head": HEAD, "base": "main", "draft": False, "mergeable_state": "CLEAN",
               "updated_at": "2026-10-04T11:00:00Z", "seat": "claude", "implementers": ["claude"],
               "threads_unresolved": 0, "covered": False}
         state = {"now": "2026-10-04T12:00:00Z", "agents": [{"name": "mimo"}], "prs": [pr], "backlog": []}
         self.assertEqual(len(nt.work_items(dict(state, done=[]))), 1)
         reference_only = self.snap("NOT DONE: please investigate [card:needs_review:9:aaaaaaaa]")
         self.assertEqual(len(nt.work_items(dict(state, done=cs.done_keys(reference_only)))), 1)
-        receipt = self.snap("[card:needs_review:9:aaaaaaaa] Mimo seat: review posted")
-        self.assertEqual(nt.work_items(dict(state, done=cs.done_keys(receipt))), [])
+        old = "aaaaaaaa" + "b" * 32
+        contradictory = self.snap(receipt() + " Mimo seat: NOT DONE, reviewed old head " + old)
+        self.assertEqual(len(nt.work_items(dict(state, done=cs.done_keys(contradictory)))), 1)
+        good = self.snap(receipt() + " Mimo seat: review posted")
+        self.assertEqual(nt.work_items(dict(state, done=cs.done_keys(good))), [])
 
 
 if __name__ == "__main__":

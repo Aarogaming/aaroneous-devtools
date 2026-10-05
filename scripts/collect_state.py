@@ -20,9 +20,14 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(__file__))
 import review_coverage as rc  # noqa: E402
 
-# A completion receipt is a comment that STARTS with the card marker. A marker quoted or mentioned further
-# down a comment is a reference, not a receipt. "[card:KEY blocked]" reports a block and completes nothing.
-MARKER_START = re.compile(r"\A\s*\[card:([a-z_]+):(\d+):([0-9a-f]{8})(?:\s+(done|blocked))?\]", re.I)
+# A completion RECEIPT is an explicit, positive statement bound to the exact full head:
+# "[done:KIND:PR:<40-hex head>]" as the first thing in a comment. The 8-character "[card:...]" marker a card shows
+# is only a reference to the task and never completes it. A receipt quoted further down a comment, one for another
+# PR or head, one whose first line says the work was not done, or one in a comment that also names a different
+# full head with the same first eight characters (contradictory provenance) completes nothing.
+RECEIPT_START = re.compile(r"\A\s*\[done:([a-z_]+):(\d+):([0-9a-f]{40})\]", re.I)
+NEGATIVE = re.compile(r"\b(not done|not complete[d]?|blocked|could not|cannot|unable|failed)\b", re.I)
+HEX40 = re.compile(r"\b[0-9a-f]{40}\b")
 SEAT_WORD = re.compile(r"\b(Claude|Mimo|Codex|Gemini|Antigravity)\s+seat\b", re.I)
 KNOWN_SEATS = ("claude", "codex", "gemini", "mimo", "qwen")
 SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
@@ -181,28 +186,33 @@ def eligible_completer(kind, seat, implementers, repair_owners=()):
 
 
 def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
-    """Keys of cards completed by an explicit receipt: a comment on that PR that starts with the card marker, names
-    the PR's current head, is not marked blocked, and comes from a seat allowed to complete that kind of card.
-    Quoted or mid-text markers, a marker for another PR or head, an unattributed comment and a blocked report
-    never complete a card. repair_owners maps a PR number to the seats whose verdicts were rejected there."""
+    """Keys of cards completed by an explicit receipt (see RECEIPT_START): a comment on that PR that starts with
+    [done:KIND:PR:FULL_HEAD] for the PR's current head, says nothing negative on its first line, names no
+    conflicting full head, and comes from a seat allowed to complete that kind of card.
+    repair_owners maps a PR number to the seats whose verdicts were rejected there."""
     repair_owners = repair_owners or {}
     implementers_by_pr = implementers_by_pr or {}
     keys = set()
     for p in snapshot["prs"]:
-        head8 = p["head"][:8].lower()
+        head = p["head"].lower()
         implementers = implementers_by_pr.get(p["number"]) or p.get("implementers") or []
         for comment in p.get("comments", []):
             body = comment.get("body", "") if isinstance(comment, dict) else ""
-            match = MARKER_START.match(body)
+            match = RECEIPT_START.match(body)
             if not match:
                 continue
-            kind, number, marker_head, status = match.group(1), int(match.group(2)), match.group(3).lower(), match.group(4)
-            if number != p["number"] or marker_head != head8 or (status or "").lower() == "blocked":
+            kind, number, receipt_head = match.group(1).lower(), int(match.group(2)), match.group(3).lower()
+            if number != p["number"] or receipt_head != head:
+                continue
+            first = next((line for line in body.splitlines() if line.strip()), "")
+            if NEGATIVE.search(first):
+                continue
+            if any(token != head and token[:8] == head[:8] for token in HEX40.findall(body.lower())):
                 continue
             if not eligible_completer(kind, comment_seat(body, strict=True), implementers,
                                       repair_owners.get(p["number"], ())):
                 continue
-            keys.add(f"{kind}:{number}:{marker_head}")
+            keys.add(f"{kind}:{number}:{head[:8]}")
     return sorted(keys)
 
 

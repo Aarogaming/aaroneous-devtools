@@ -16,7 +16,7 @@
     "why_now": "no free item; duplicating work or inventing a task would be noise"
   },
   {
-    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Start your comment with the marker [card:needs_review:9:09090909] (and name your seat on the first line) so this task is not re-issued; write [card:KEY blocked] instead if you could not complete it.",
+    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Start your comment with the receipt [done:needs_review:9:0909090909090909090909090909090909090909] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
     "agent": "gemini",
     "attempt": 2,
     "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
@@ -31,7 +31,7 @@
     },
     "lens": "skeptic",
     "lens_text": "Earlier handouts of this item did not finish. Assume the obvious path hides a problem: find the two weakest claims in the diff or thread and verify each by running something, not reading.",
-    "marker": "[card:needs_review:9:09090909]",
+    "marker": "[done:needs_review:9:0909090909090909090909090909090909090909]",
     "new_since_last": "first time this seat is handed this PR",
     "owner_blocked": false,
     "priority": 2,

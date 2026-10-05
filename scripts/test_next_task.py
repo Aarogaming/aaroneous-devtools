@@ -120,8 +120,9 @@ class Cards(unittest.TestCase):
         first = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "ready_to_merge"]
         self.assertTrue(first)
         marker = first[0]["marker"]
-        self.assertTrue(marker.startswith("[card:ready_to_merge:8:"))
-        s["done"] = [marker[len("[card:"):-1]]
+        self.assertEqual(marker, "[done:ready_to_merge:8:" + "a" * 40 + "]")
+        self.assertIn(marker, first[0]["acceptance"])
+        s["done"] = [nt.item_key("ready_to_merge", 8, "a" * 40)]
         after = nt.build_cards(s, 0)
         self.assertFalse(any(c["inputs"]["kind"] == "ready_to_merge" for c in after))
 
