@@ -32,7 +32,11 @@ def canonical(record):
 
 
 def pairs(body):
-    """Yield (raw_json_text, signature_text_or_None) for each attestation block in a comment."""
+    """Yield (raw_json_text, signature_text_or_None) for each attestation block in a comment.
+
+    Comments written on Windows arrive with CRLF line endings; normalise them first, otherwise the fence
+    patterns (which expect a bare newline) silently skip the block and the verdict never counts."""
+    body = body.replace("\r\n", "\n").replace("\r", "\n")
     for raw, signature in PAIR.findall(body):
         yield raw, (signature or "").strip() or None
 

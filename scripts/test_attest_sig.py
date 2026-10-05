@@ -112,6 +112,16 @@ class Signatures(unittest.TestCase):
 
 
 class Parsing(unittest.TestCase):
+    def test_blocks_written_with_windows_line_endings_are_still_found(self):
+        lf = "intro\n```attestation\n{\"pr\": 50}\n```\n"
+        crlf = lf.replace("\n", "\r\n")
+        self.assertEqual(list(at.pairs(crlf)), list(at.pairs(lf)))
+        self.assertEqual([r for r, _ in at.pairs(crlf)], ['{"pr": 50}'])
+
+    def test_a_signed_pair_with_windows_line_endings_keeps_its_signature(self):
+        body = "```attestation\r\n{\"pr\": 50}\r\n```\r\n```attestation-sig\r\nSIGDATA\r\n```\r\n"
+        self.assertEqual(list(at.pairs(body)), [('{"pr": 50}', "SIGDATA")])
+
     def test_pairs_extracts_a_signature_when_present_and_none_when_absent(self):
         with_sig = at.blocks(record(), "SIGDATA")
         without = at.blocks(record(), "x").split("```attestation-sig")[0]
