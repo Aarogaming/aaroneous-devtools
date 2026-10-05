@@ -65,6 +65,11 @@ class Golden(unittest.TestCase):
         self.assertNotEqual(cards("expired_holder_rotates_to_another_seat")["mimo"]["inputs"]["kind"], "needs_review")
         self.assertEqual(cards("finishers_are_served_first")["gemini"]["inputs"]["kind"], "needs_review")
         self.assertEqual(cards("healthy_idle")["mimo"]["inputs"]["kind"], "healthy_idle")
+        repair = cards("rejected_verdict_goes_back_to_its_author")
+        self.assertEqual(repair["gemini"]["inputs"]["kind"], "repair_verdict")
+        self.assertEqual(repair["gemini"]["rejected"][0]["comment_id"], 77)
+        self.assertNotEqual(repair["mimo"]["inputs"]["kind"], "repair_verdict")
+
 
 
 if __name__ == "__main__":

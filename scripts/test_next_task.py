@@ -255,6 +255,41 @@ class Cards(unittest.TestCase):
         for label in ("TASK:", "STATE NOW:", "NEW SINCE YOUR LAST CARD:", "APPROACH:", "STEP 1:", "DONE WHEN:", "IF BLOCKED:"):
             self.assertIn(label, text)
 
+    # ---- rejection feedback
+
+    def rejected_state(self, covered=False, seat="gemini"):
+        s = state([pr(9, seat="claude", implementers=["claude"], head="c" * 40, base_sha="b" * 40, covered=covered,
+                      rejected_verdicts=[{"comment_id": 4242, "seat": seat, "reason": "the attestation block is not valid JSON"}])])
+        s["agents"] = [{"name": "claude"}, {"name": "mimo"}, {"name": "gemini"}]
+        return s
+
+    def test_a_rejected_verdict_goes_back_to_its_author_with_the_reason(self):
+        cards = {c["agent"]: c for c in nt.build_cards(self.rejected_state(), 0)}
+        card = cards["gemini"]
+        self.assertEqual(card["inputs"]["kind"], "repair_verdict")
+        self.assertEqual(card["rejected"], [{"comment_id": 4242, "reason": "the attestation block is not valid JSON"}])
+        text = nt.render([card])
+        self.assertIn("REJECTED: comment 4242: the attestation block is not valid JSON", text)
+        self.assertIn("c" * 40, text)
+        self.assertNotIn("```", text)
+        for other in ("claude", "mimo"):
+            self.assertNotEqual(cards[other]["inputs"]["kind"], "repair_verdict")
+
+    def test_nothing_is_asked_of_the_author_once_the_pr_is_covered(self):
+        kinds = {c["inputs"]["kind"] for c in nt.build_cards(self.rejected_state(covered=True), 0)}
+        self.assertNotIn("repair_verdict", kinds)
+
+    def test_an_implementers_rejected_verdict_is_not_worth_repairing(self):
+        s = self.rejected_state(seat="mimo")
+        s["prs"][0]["implementers"] = ["claude", "mimo"]
+        for card in nt.build_cards(s, 0):
+            self.assertNotEqual(card["inputs"]["kind"], "repair_verdict")
+
+    def test_an_unattributed_rejection_becomes_a_note_on_the_review_card(self):
+        card = next(c for c in nt.build_cards(self.rejected_state(seat=""), 0) if c["inputs"]["kind"] == "needs_review")
+        self.assertEqual(card["rejected_note"][0]["comment_id"], 4242)
+        self.assertIn("if it is yours, repost it", nt.render([card]))
+
     def test_cards_change_with_state(self):
         a = [c["task"] for c in nt.build_cards(state([pr(1)]), 0)]
         b = [c["task"] for c in nt.build_cards(state([pr(1, covered=True)]), 0)]

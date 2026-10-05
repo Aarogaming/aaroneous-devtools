@@ -72,7 +72,8 @@ def work_items(state):
         base = {"pr": number, "title": pr.get("title", ""), "seat": pr.get("seat", ""), "head": pr.get("head", ""),
                 "implementers": list(pr.get("implementers") or ([pr["seat"]] if pr.get("seat") else [])),
                 "base_ref": pr.get("base", default_branch), "base_sha": pr.get("base_sha", ""),
-                "size": pr.get("size", ""), "mergeable_state": pr.get("mergeable_state", "")}
+                "size": pr.get("size", ""), "mergeable_state": pr.get("mergeable_state", ""),
+                "rejected_unattributed": [r for r in pr.get("rejected_verdicts", []) if not r.get("seat")]}
         if threads:
             items.append(dict(base, kind="fix_threads", rank=1, owner_seat=pr.get("seat"),
                               detail=f"{threads} unresolved review thread(s)"))
@@ -89,6 +90,15 @@ def work_items(state):
             items.append(dict(base, kind="ready_to_merge", rank=3, detail="covered, CLEAN, no unresolved threads"))
         elif not clean:
             items.append(dict(base, kind="not_mergeable", rank=2, detail=f"mergeable_state={pr.get('mergeable_state')}"))
+        rejected = pr.get("rejected_verdicts", [])
+        # An implementer's verdict can never count, so repairing it would be wasted work: skip those seats.
+        implementers = set(base["implementers"]) | {pr.get("seat")}
+        attributed = sorted({r["seat"] for r in rejected if r.get("seat") and r["seat"] not in implementers})
+        if attributed and not pr.get("covered", False):
+            seat = attributed[0]
+            mine = [r for r in rejected if r.get("seat") == seat]
+            items.append(dict(base, kind="repair_verdict", rank=1, owner_seat=seat, rejected=mine,
+                              detail=f"{len(mine)} verdict comment(s) by {seat} were rejected, so the PR is not covered"))
         if age_h > STALE_HOURS:
             items.append(dict(base, kind="stale", rank=5, detail=f"no update for {int(age_h)}h"))
     items = [i for i in items if item_key(i["kind"], i["pr"], i["head"]) not in done]
@@ -117,6 +127,8 @@ def card_for(agent, role, tick, item):
                            "a one-command merge line with the full head SHA, the evidence for each merge condition, and the order relative to other ready PRs"),
         "draft": ("Ask the author, or prepare the one-line command, to mark " + ref + " ready for review",
                   "the PR is no longer a draft, or a comment names who must flip it"),
+        "repair_verdict": ("Repair your rejected verdict on " + ref + ": the review you posted did not count",
+                           "review_coverage.py reads a structured verdict from you at the current head, or states a different reason"),
         "stale": ("Nudge or triage " + ref + ": " + item.get("detail", ""),
                   "a comment with the specific missing step, the owner of that step and its acceptance condition"),
     }
@@ -151,6 +163,15 @@ def recipe_for(item):
             f"post ONE attestation block with fields: repo, pr={pr}, head={head}, base_sha={base_sha or '<merge-base>'}, "
             f"scope=whole, reviewer=<your seat>, implementers={item.get('implementers', [])}, verdict",
         ]
+    if item["kind"] == "repair_verdict" and pr:
+        return [
+            "read why each of your comments was rejected (REJECTED lines above)",
+            f"post a new comment, built from a file so backslash sequences are not mangled, holding ONE fenced block tagged "
+            f"attestation whose body is a JSON object (not YAML) with exactly these fields: repo (this repository), "
+            f"pr={pr}, head={head}, base_sha={base_sha or '<merge-base>'}, scope=whole, reviewer=<your seat>, "
+            f"implementers={item.get('implementers', [])}, verdict",
+            "keep your analysis as prose above the block",
+        ]
     if item["kind"] == "fix_threads" and pr:
         return ["list the unresolved threads on the PR", "fix each in a commit",
                 "reply on each thread naming the commit; resolve only what is addressed"]
@@ -183,6 +204,11 @@ def enrich_card(card, item, name, state, renewed, upcoming):
         card["state"] = item.get("detail", "")
         card["new_since_last"] = ""
     card["recipe"] = recipe_for(item)
+    if item.get("rejected"):
+        card["rejected"] = [{"comment_id": r.get("comment_id"), "reason": r.get("reason")} for r in item["rejected"]]
+    if item.get("rejected_unattributed") and item["kind"] == "needs_review":
+        card["rejected_note"] = [{"comment_id": r.get("comment_id"), "reason": r.get("reason")}
+                                 for r in item["rejected_unattributed"]]
     card["then"] = upcoming
     return card
 
@@ -264,7 +290,7 @@ def build_cards(state, tick):
     def allowed(item, name):
         if item["kind"] == "needs_review" and name in set(item.get("implementers") or []) | {item.get("seat")}:
             return False
-        return not (item["kind"] == "fix_threads" and item.get("owner_seat") not in (None, "", name))
+        return not (item["kind"] in ("fix_threads", "repair_verdict") and item.get("owner_seat") not in (None, "", name))
 
     history = state.get("history", {})
 
@@ -348,6 +374,10 @@ def render(cards):
             lines.append(f"  NEW SINCE YOUR LAST CARD: {c['new_since_last']}")
         if c.get("lens_text"):
             lines.append(f"  APPROACH: {c['lens_text']}")
+        for r in c.get("rejected") or []:
+            lines.append(f"  REJECTED: comment {r['comment_id']}: {r['reason']}")
+        for r in c.get("rejected_note") or []:
+            lines.append(f"  NOTE: comment {r['comment_id']} on this PR was not counted ({r['reason']}); if it is yours, repost it")
         for n, step in enumerate(c.get("recipe") or [], 1):
             lines.append(f"  STEP {n}: {step}")
         lines.append(f"  DONE WHEN: {c['acceptance']}")

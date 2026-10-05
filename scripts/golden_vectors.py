@@ -68,6 +68,7 @@ SCENARIOS = {
     "finishers_are_served_first": (0, state(
         [pr(11)], agents=[{"name": "mimo"}, {"name": "gemini"}],
         history={"agents": {"gemini": {"done": 4, "expired": 0}, "mimo": {"done": 0, "expired": 3}}})),
+    "rejected_verdict_goes_back_to_its_author": (0, state([pr(14, rejected_verdicts=[{"comment_id": 77, "seat": "gemini", "reason": "the attestation block is not valid JSON; it must be one JSON object, not YAML or prose"}])])),
     "everything_leased_means_standby": (2, state(
         [pr(12)], leases={key("needs_review", 12): {"agent": "mimo", "expires": 9}})),
     "healthy_idle": (1, state([pr(13, covered=True, base="proposal/other")])),

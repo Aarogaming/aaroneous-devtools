@@ -30,7 +30,8 @@ a review card and a covered draft gets the flip-ready card; a PR stacked on a no
 brief; the framing (lens) advances with each hand-out and a held lease keeps its lens; a seat that let a lease
 expire is not handed the same item again while another seat can take it; "head moved" is reported against the
 seat's last card; seats that finish work are served first; everything leased means standby; nothing actionable
-means healthy idle with the evidence that was checked.
+means healthy idle with the evidence that was checked; a verdict the coverage tool rejected goes back to its
+author as a repair card carrying the reason (never to an implementer, and not once the PR is covered).
 
 ## Byte format of the log (decision needed before Guild)
 

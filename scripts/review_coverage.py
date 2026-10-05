@@ -281,6 +281,7 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                 ),
                 "malformed": problems,
                 "legacy_packets_not_counted": len(legacy),
+                "legacy": legacy,
             }
         )
     return rows

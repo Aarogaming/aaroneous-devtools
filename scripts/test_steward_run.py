@@ -305,6 +305,11 @@ class Leases(unittest.TestCase):
         os.unlink(path)
 
 
+class Attribution(unittest.TestCase):
+    def test_the_antigravity_label_is_the_gemini_seat(self):
+        self.assertEqual(sr.seat_from_comment("**Seat / Agent**: Antigravity (Gemini 2.5 Pro)"), "gemini")
+
+
 class Delivery(unittest.TestCase):
     def test_a_persistent_log_numbers_its_own_ticks(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -34,10 +34,7 @@ import collect_state as cs  # noqa: E402
 import next_task as nt  # noqa: E402
 
 GENESIS = "0" * 64
-SEAT_IN_TEXT = re.compile(
-    r"(?:Seat\s*/\s*agent|Reviewer(?:\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini)|^\s*(Claude|Codex|Gemini|Mimo)\b",
-    re.I | re.M,
-)
+SEAT_IN_TEXT = cs.SEAT_IN_TEXT
 
 
 def digest(line):
@@ -109,10 +106,7 @@ def append_event(path, event_type, data, now):
 
 
 def seat_from_comment(body):
-    found = SEAT_IN_TEXT.search(body or "")
-    if not found:
-        return ""
-    return next(g for g in found.groups() if g).lower()
+    return cs.comment_seat(body)
 
 
 def seen_comment_ids(events):

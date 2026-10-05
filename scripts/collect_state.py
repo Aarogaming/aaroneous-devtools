@@ -26,6 +26,88 @@ KNOWN_SEATS = ("claude", "codex", "gemini", "mimo", "qwen")
 SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
 
 
+SEAT_IN_TEXT = re.compile(
+    r"(?:Seat\s*/\s*agent|Reviewer(?:\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)"
+    r"|^\s*(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+    re.I | re.M,
+)
+SEAT_DECLARED = re.compile(r"(?:Seat\s*/\s*agent|Reviewer(?:\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)", re.I)
+ALIASES = {"antigravity": "gemini"}
+MAX_REJECTED_PER_SEAT = 2
+
+
+def comment_seat(body, strict=False):
+    """The seat a comment says it is from ('' when it does not say). Antigravity is the Gemini seat.
+
+    strict=True accepts only an explicit declaration ("Seat / agent: X", "Reviewer: X") or a seat name that opens
+    the comment, so a mention of a seat further down a comment never attributes it."""
+    body = body or ""
+    if strict:
+        first = next((line for line in body.splitlines() if line.strip()), "")
+        found = SEAT_IN_TEXT.search(first) or SEAT_DECLARED.search(body)
+    else:
+        found = SEAT_IN_TEXT.search(body)
+    if not found:
+        return ""
+    name = next(g for g in found.groups() if g).lower()
+    return ALIASES.get(name, name)
+
+
+def explain_problem(raw):
+    """The coverage tool's rejection reason in words an author can act on."""
+    raw = raw or ""
+    if raw.startswith("invalid JSON") or raw.startswith("not a JSON object"):
+        return "the attestation block is not valid JSON; it must be one JSON object, not YAML or prose"
+    if raw.startswith("missing fields"):
+        return "the attestation block is " + raw
+    if raw.startswith("implementers must be"):
+        return 'implementers must be a non-empty list such as ["Claude"]'
+    if raw.startswith("unknown scope"):
+        return 'scope must be "whole" or "delta"'
+    if "does not match" in raw:
+        return "the block names a different repository or PR than the one it was posted on"
+    if raw.startswith("unsigned or unverifiable"):
+        return "signatures are required and this block is unsigned or does not verify against the registered key"
+    return raw
+
+
+LEGACY_REASON = "the comment reads like a verdict but has no fenced attestation block, so nothing was counted"
+
+
+def rejected_verdicts(pr, row):
+    """Verdict comments the coverage tool did not count at the PR's CURRENT head, each attributed to a seat where
+    the text explicitly says which. A comment that does not cite the current head is history, not a pending
+    repair, and at most the latest MAX_REJECTED_PER_SEAT per seat are kept so a card stays short."""
+    comments = pr.get("comments", [])
+    head8 = (pr.get("head") or "")[:8]
+    found = []
+
+    def entry(index, reason):
+        if not isinstance(index, int) or not 0 <= index < len(comments):
+            return
+        comment = comments[index] if isinstance(comments[index], dict) else {}
+        body = comment.get("body", "")
+        if not head8 or head8 not in body:
+            return
+        found.append({"comment_id": comment.get("id"), "seat": comment_seat(body, strict=True), "reason": reason,
+                      "_index": index})
+
+    for problem in row.get("malformed", []):
+        if "comment" in problem:
+            entry(problem["comment"], explain_problem(problem.get("problem", "")))
+    for packet in row.get("legacy", []):
+        entry(packet.get("comment"), LEGACY_REASON)
+    found.sort(key=lambda item: item["_index"])
+    kept, per_seat = [], {}
+    for item in reversed(found):
+        count = per_seat.get(item["seat"], 0)
+        if count < MAX_REJECTED_PER_SEAT:
+            per_seat[item["seat"]] = count + 1
+            kept.append(item)
+    kept.reverse()
+    return [{k: v for k, v in item.items() if k != "_index"} for item in kept]
+
+
 def seats_from_trailers(text, branch=""):
     """Every implementing seat found, deduplicated in order: a seat-named branch prefix first (the
     branch owner), then every seat named in a co-author or contribution trailer anywhere in the range.
@@ -83,6 +165,7 @@ def done_keys(snapshot):
 
 def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now, default_branch="main"):
     covered = {r["pr"]: r["covered"] for r in coverage_rows}
+    rows = {r["pr"]: r for r in coverage_rows}
     prs = []
     for p in snapshot["prs"]:
         n = p["number"]
@@ -98,6 +181,7 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
                 "updated_at": m["updatedAt"],
                 "seat": seats.get(n, ""),
                 "base_sha": p.get("merge_base") or "",
+                "rejected_verdicts": rejected_verdicts(p, rows.get(n, {})),
                 "size": f"+{m.get('additions', 0)}/-{m.get('deletions', 0)} in {m.get('changedFiles', 0)} file(s)",
                 "implementers": list(p.get("implementers") or ([seats[n]] if seats.get(n) else [])),
                 "threads_unresolved": unresolved.get(n, 0),
