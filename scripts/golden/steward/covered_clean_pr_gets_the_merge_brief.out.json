@@ -1,6 +1,6 @@
 [
   {
-    "acceptance": "a one-command merge line with the full head SHA, the evidence for each merge condition, and the order relative to other ready PRs Include the marker [card:ready_to_merge:6:06060606] in your comment so this task is not re-issued.",
+    "acceptance": "a one-command merge line with the full head SHA, the evidence for each merge condition, and the order relative to other ready PRs Start your comment with the marker [card:ready_to_merge:6:06060606] (and name your seat on the first line) so this task is not re-issued; write [card:KEY blocked] instead if you could not complete it.",
     "agent": "mimo",
     "attempt": 1,
     "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",

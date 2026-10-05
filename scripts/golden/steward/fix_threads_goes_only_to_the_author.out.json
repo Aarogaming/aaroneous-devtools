@@ -32,7 +32,7 @@
     "why_now": "no free item; duplicating work or inventing a task would be noise"
   },
   {
-    "acceptance": "every thread has a reply naming the commit that addresses it, and is resolved only if addressed Include the marker [card:fix_threads:2:02020202] in your comment so this task is not re-issued.",
+    "acceptance": "every thread has a reply naming the commit that addresses it, and is resolved only if addressed Start your comment with the marker [card:fix_threads:2:02020202] (and name your seat on the first line) so this task is not re-issued; write [card:KEY blocked] instead if you could not complete it.",
     "agent": "codex",
     "attempt": 1,
     "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",

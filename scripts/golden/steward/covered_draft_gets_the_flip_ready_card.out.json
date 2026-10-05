@@ -1,6 +1,6 @@
 [
   {
-    "acceptance": "the PR is no longer a draft, or a comment names who must flip it Include the marker [card:draft:4:04040404] in your comment so this task is not re-issued.",
+    "acceptance": "the PR is no longer a draft, or a comment names who must flip it Start your comment with the marker [card:draft:4:04040404] (and name your seat on the first line) so this task is not re-issued; write [card:KEY blocked] instead if you could not complete it.",
     "agent": "mimo",
     "attempt": 1,
     "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",

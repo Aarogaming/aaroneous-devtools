@@ -1,6 +1,6 @@
 [
   {
-    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Include the marker [card:needs_review:7:07070707] in your comment so this task is not re-issued.",
+    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Start your comment with the marker [card:needs_review:7:07070707] (and name your seat on the first line) so this task is not re-issued; write [card:KEY blocked] instead if you could not complete it.",
     "agent": "mimo",
     "attempt": 3,
     "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",

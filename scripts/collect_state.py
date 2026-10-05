@@ -20,8 +20,10 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(__file__))
 import review_coverage as rc  # noqa: E402
 
-MARKER = re.compile(r"\[card:([a-z_]+:\d+:[0-9a-f]{8})\]")
-BRIEF = re.compile(r"OWNER MERGE BRIEF", re.I)
+# A completion receipt is a comment that STARTS with the card marker. A marker quoted or mentioned further
+# down a comment is a reference, not a receipt. "[card:KEY blocked]" reports a block and completes nothing.
+MARKER_START = re.compile(r"\A\s*\[card:([a-z_]+):(\d+):([0-9a-f]{8})(?:\s+(done|blocked))?\]", re.I)
+SEAT_WORD = re.compile(r"\b(Claude|Mimo|Codex|Gemini|Antigravity)\s+seat\b", re.I)
 KNOWN_SEATS = ("claude", "codex", "gemini", "mimo", "qwen")
 SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
 
@@ -44,7 +46,7 @@ def comment_seat(body, strict=False):
     body = body or ""
     if strict:
         first = next((line for line in body.splitlines() if line.strip()), "")
-        found = SEAT_IN_TEXT.search(first) or SEAT_DECLARED.search(body)
+        found = SEAT_IN_TEXT.search(first) or SEAT_WORD.search(first) or SEAT_DECLARED.search(body)
     else:
         found = SEAT_IN_TEXT.search(body)
     if not found:
@@ -162,17 +164,38 @@ def unresolved_by_pr(graphql):
     }
 
 
+def eligible_completer(kind, seat, implementers):
+    """Whether this seat may complete a card of this kind. An unattributed comment never completes a card, an
+    implementer cannot complete a review of its own work, and only the author seat completes its own thread fixes."""
+    if not seat:
+        return False
+    if kind == "needs_review":
+        return seat not in implementers
+    if kind == "fix_threads":
+        return bool(implementers) and seat == implementers[0]
+    return True
+
+
 def done_keys(snapshot):
-    """Keys of cards already completed: explicit [card:...] markers in comments, plus merge briefs that
-    name the PR head (so briefs posted before markers existed still count)."""
+    """Keys of cards completed by an explicit receipt: a comment on that PR that starts with the card marker, names
+    the PR's current head, is not marked blocked, and comes from a seat allowed to complete that kind of card.
+    Quoted or mid-text markers, a marker for another PR or head, an unattributed comment and a blocked report
+    never complete a card."""
     keys = set()
     for p in snapshot["prs"]:
-        head8 = p["head"][:8]
+        head8 = p["head"][:8].lower()
+        implementers = p.get("implementers") or []
         for comment in p.get("comments", []):
             body = comment.get("body", "") if isinstance(comment, dict) else ""
-            keys.update(MARKER.findall(body))
-            if BRIEF.search(body) and cites_head(body, p["head"]):
-                keys.add(f"ready_to_merge:{p['number']}:{head8}")
+            match = MARKER_START.match(body)
+            if not match:
+                continue
+            kind, number, marker_head, status = match.group(1), int(match.group(2)), match.group(3).lower(), match.group(4)
+            if number != p["number"] or marker_head != head8 or (status or "").lower() == "blocked":
+                continue
+            if not eligible_completer(kind, comment_seat(body, strict=True), implementers):
+                continue
+            keys.add(f"{kind}:{number}:{marker_head}")
     return sorted(keys)
 
 

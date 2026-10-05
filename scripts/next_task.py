@@ -145,7 +145,7 @@ def card_for(agent, role, tick, item):
         "why_now": item.get("detail", "ranked next on the backlog"),
         "inputs": {"pr": pr, "kind": kind},
         "marker": f"[card:{item_key(kind, pr, item.get('head', ''))}]" if pr else "",
-        "acceptance": acceptance + (" Include the marker " + f"[card:{item_key(kind, pr, item.get('head', ''))}]" + " in your comment so this task is not re-issued." if pr else ""),
+        "acceptance": acceptance + (" Start your comment with the marker " + f"[card:{item_key(kind, pr, item.get('head', ''))}]" + " (and name your seat on the first line) so this task is not re-issued; write [card:KEY blocked] instead if you could not complete it." if pr else ""),
         "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
     }
 
