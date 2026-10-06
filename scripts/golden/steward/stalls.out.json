@@ -1,0 +1,55 @@
+[
+  {
+    "attribution_weak": false,
+    "stalled": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ]
+  },
+  {
+    "attribution_weak": false,
+    "stalled": [
+      "claude",
+      "codex",
+      "gemini"
+    ]
+  },
+  {
+    "attribution_weak": false,
+    "stalled": []
+  },
+  {
+    "attribution_weak": false,
+    "stalled": [
+      "mimo"
+    ]
+  },
+  {
+    "attribution_weak": true,
+    "stalled": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ]
+  },
+  {
+    "attribution_weak": false,
+    "stalled": [
+      "claude",
+      "codex",
+      "gemini"
+    ]
+  },
+  {
+    "attribution_weak": false,
+    "stalled": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ]
+  }
+]

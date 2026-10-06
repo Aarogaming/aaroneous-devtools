@@ -11,6 +11,13 @@ component) must reproduce. They are plain JSON, so the contract does not depend 
 | `<scenario>.out.json` | the exact list of cards expected for that input |
 | `chain.in.json` | events (`type`, `data`, `now`) appended in order to an empty log |
 | `chain.out.json` | the exact log lines and the SHA-256 of the last line (the tip) |
+| `attribution.*` | `[{body, strict}]` and the seat `comment_seat` returns for each (`""` when none) |
+| `heads.*` | `[{body, head}]` and whether `cites_head` is true: an 8 to 40 character prefix of the head, never a different full head |
+| `receipts.*` | `[{name, snapshot, repair_owners, implementers_by_pr}]` and `done_receipts`: `{card key: completing seat}` |
+| `rejected.*` | `[{name, pr, row}]` and `rejected_verdicts`: the repair entries, at most two per seat, current head only |
+| `stalls.*` | `[{name, events, agents, stall_after, window}]` and `{stalled, attribution_weak}` |
+| `coverage.*` | `[{name, head, merge_base, records, ancestry}]` and `review_coverage.evaluate`: `{covered, reasons, accepts_at_head}` |
+| `audit.in.json`, `audit.out.json` | a healthy state and, for ticks 0-13, the tasks issued: the periodic audit on every 6th tick only |
 
 ## How an implementation uses them
 
@@ -43,7 +50,11 @@ be a breaking, versioned contract change; deciding between the two is an open qu
 
 ## Not covered yet
 
-These parts of the steward have no vectors and are therefore not yet shown to be replicable:
-`collect_state` (the GitHub read adapter), `review_coverage.evaluate` (the head-bound coverage rules),
-`merge_gate` (the checklist), the outbox text layout, and the lease/stall logic inside `run_tick`. Coverage
-rules are the next most important vectors, because merge safety depends on them.
+These parts of the steward have no vectors and are therefore not yet shown to be replicable: the GitHub read
+adapter itself (`collect_state.collect`, `review_coverage.live_snapshot`), `merge_gate` (the checklist), the
+outbox text layout, the signed-attestation path, the commit-trailer and Qwen/Mimo independence additions (not on
+this branch), and lease replay inside `run_tick` (expiry, rotation by history are covered through the card
+scenarios, but `lease_table` itself is not). The rule vectors above pin the decisions merge safety depends on:
+what counts as a completion, who may complete what, which head a comment cites, when a seat is stalled, and
+when a head is covered. A mutation probe (16 one-line changes to the Python) is caught by these vectors where the
+original 30 card vectors caught 1.

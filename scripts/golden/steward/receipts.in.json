@@ -1,0 +1,334 @@
+[
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "author seat completes thread fixes",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: all threads answered",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "a negative first line is not a completion",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: blocked by the owner",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "NOT DONE is negative in any case",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: NOT DONE",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "a quoted receipt is not a posted one",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "> [done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: ok",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "a receipt for another head does not complete the card",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:7:dddddddddddddddddddddddddddddddddddddddd] Claude seat: ok",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "a different head sharing the first eight characters conflicts",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: ok ccccccccdddddddddddddddddddddddddddddddd",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "a receipt naming another PR does not count",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:8:cccccccccccccccccccccccccccccccccccccccc] Claude seat: ok",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "only the author completes thread fixes",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc] Codex seat: ok",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "an unattributed receipt never completes",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc] all threads answered",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "a reviewer who is not an implementer completes a review",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Gemini seat: reviewed",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "an implementer cannot complete a review",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: reviewed",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": []
+    },
+    "name": "unknown implementers fail closed for reviews",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Gemini seat: reviewed",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "only the seat whose verdict was rejected completes the repair",
+    "repair_owners": {
+      "7": [
+        "gemini"
+      ]
+    },
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:repair_verdict:7:cccccccccccccccccccccccccccccccccccccccc] Gemini seat: reposted",
+              "id": 1
+            },
+            {
+              "body": "[done:repair_verdict:7:cccccccccccccccccccccccccccccccccccccccc] Mimo seat: reposted",
+              "id": 2
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "the first eligible receipt names the seat",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Gemini seat: first",
+              "id": 1
+            },
+            {
+              "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Codex seat: second",
+              "id": 2
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  }
+]

@@ -9,11 +9,14 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import collect_state as cs  # noqa: E402
 import golden_vectors as gv  # noqa: E402
 import next_task as nt  # noqa: E402
+import review_coverage as rc  # noqa: E402
 import steward_run as sr  # noqa: E402
 
 DIR = gv.DIR
+RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "coverage", "audit")
 
 
 def load(name):
@@ -25,10 +28,91 @@ class Golden(unittest.TestCase):
     def test_every_scenario_input_reproduces_its_committed_cards_exactly(self):
         inputs = sorted(glob.glob(os.path.join(DIR, "*.in.json")))
         names = [os.path.basename(p)[: -len(".in.json")] for p in inputs if not p.endswith("chain.in.json")]
+        names = [n for n in names if n not in RULE_FAMILIES]
         self.assertGreaterEqual(len(names), 10)
         for name in names:
             case = load(f"{name}.in.json")
             self.assertEqual(nt.build_cards(case["state"], case["tick"]), load(f"{name}.out.json"), name)
+
+    def test_every_rule_vector_reproduces_its_committed_results_exactly(self):
+        attribution = load("attribution.in.json")
+        self.assertEqual([cs.comment_seat(c["body"], strict=c["strict"]) for c in attribution], load("attribution.out.json"))
+        heads = load("heads.in.json")
+        self.assertEqual([cs.cites_head(c["body"], c["head"]) for c in heads], load("heads.out.json"))
+        receipts = load("receipts.in.json")
+        self.assertEqual(
+            [cs.done_receipts(c["snapshot"], {int(k): v for k, v in c["repair_owners"].items()},
+                              {int(k): v for k, v in c["implementers_by_pr"].items()}) for c in receipts],
+            load("receipts.out.json"))
+        rejected = load("rejected.in.json")
+        self.assertEqual([cs.rejected_verdicts(c["pr"], c["row"]) for c in rejected], load("rejected.out.json"))
+        stalls = load("stalls.in.json")
+        self.assertEqual(
+            [{"stalled": sr.stalled_seats(c["events"], c["agents"], c["stall_after"]),
+              "attribution_weak": sr.attribution_weak([e for e in c["events"] if e["type"] == "ingest"], c["window"])}
+             for c in stalls], load("stalls.out.json"))
+        coverage = load("coverage.in.json")
+        results = []
+        for c in coverage:
+            pairs = {(a, b) for a, b in c["ancestry"]}
+            results.append(rc.evaluate(c["head"], c["merge_base"], c["records"], lambda a, b: a == b or (a, b) in pairs))
+        self.assertEqual(results, load("coverage.out.json"))
+        audit = load("audit.in.json")
+        self.assertEqual(
+            [{"tick": t, "tasks": [x["task"] for x in nt.build_cards(json.loads(json.dumps(audit["state"])), t)]}
+             for t in audit["ticks"]], load("audit.out.json"))
+
+    def test_the_rule_vectors_pin_the_decisions_merge_safety_depends_on(self):
+        out = {name: load(f"{name}.out.json") for name in RULE_FAMILIES}
+        cases = {name: load(f"{name}.in.json") for name in RULE_FAMILIES}
+        by_name = lambda family: {c["name"]: o for c, o in zip(cases[family], out[family]) if isinstance(c, dict) and "name" in c}  # noqa: E731
+        # a receipt completes a card only for the right head, from an eligible seat, with no negative first line
+        receipts = by_name("receipts")
+        self.assertEqual(receipts["author seat completes thread fixes"], {"fix_threads:7:cccccccc": "claude"})
+        for refused in ("a negative first line is not a completion", "NOT DONE is negative in any case",
+                        "a quoted receipt is not a posted one", "a receipt for another head does not complete the card",
+                        "a different head sharing the first eight characters conflicts",
+                        "a receipt naming another PR does not count", "only the author completes thread fixes",
+                        "an unattributed receipt never completes", "an implementer cannot complete a review",
+                        "unknown implementers fail closed for reviews"):
+            self.assertEqual(receipts[refused], {}, refused)
+        self.assertEqual(receipts["the first eligible receipt names the seat"], {"needs_review:7:cccccccc": "gemini"})
+        self.assertEqual(receipts["only the seat whose verdict was rejected completes the repair"],
+                         {"repair_verdict:7:cccccccc": "gemini"})
+        # attribution
+        self.assertEqual(out["attribution"][2], "")  # a seat named below the first line is not the author
+        self.assertEqual(out["attribution"][6], "")  # a bot footer is not a seat
+        self.assertEqual(out["attribution"][7], "gemini")  # Antigravity is the Gemini seat
+        # head citation
+        self.assertEqual(out["heads"], [True, False, True, False, True, False, False])
+        # rejected verdicts: history is not repaired, at most two per seat
+        rejected = by_name("rejected")
+        self.assertEqual(len(rejected["a legacy comment citing the current head goes back to its seat"]), 1)
+        self.assertEqual(rejected["a comment that does not cite the current head is history"], [])
+        self.assertEqual(rejected["a head sharing eight characters is not this head"], [])
+        self.assertEqual(len(rejected["at most the latest two per seat are kept"]), 2)
+        # stalls and weak attribution
+        stalls = by_name("stalls")
+        self.assertEqual(stalls["three silent ticks stall every seat that was issued cards"]["stalled"],
+                         ["claude", "mimo", "codex", "gemini"])
+        self.assertNotIn("mimo", stalls["one artifact in the last tick clears that seat"]["stalled"])
+        self.assertEqual(stalls["fewer ticks than the window judges nobody"]["stalled"], [])
+        self.assertTrue(stalls["unattributed comments make attribution weak"]["attribution_weak"])
+        self.assertFalse(stalls["exactly half attributed is not weak"]["attribution_weak"])
+        self.assertFalse(stalls["fewer than three comments is never weak"]["attribution_weak"])
+        # coverage
+        coverage = by_name("coverage")
+        for covered in ("a whole accept at the head covers", "a delta chained from a whole accept covers",
+                        "two chained deltas cover"):
+            self.assertTrue(coverage[covered]["covered"], covered)
+        for refused in ("a delta with no whole origin does not cover", "a delta whose from is not an ancestor does not cover",
+                        "an accept at an older head does not carry", "an implementer cannot accept its own work",
+                        "a standing needs_revision at the head blocks", "a record bound to another merge base is invalid",
+                        "a moved merge base invalidates the record"):
+            self.assertFalse(coverage[refused]["covered"], refused)
+        # the audit card appears on multiples of AUDIT_EVERY and only then
+        audit_ticks = [o["tick"] for o in out["audit"] if any("Re-run review_coverage.py" in t for t in o["tasks"])]
+        self.assertEqual(audit_ticks, [t for t in range(14) if t % 6 == 0])  # the contract says every 6th tick
 
     def test_the_log_chain_reproduces_its_exact_bytes_and_tip(self):
         events = load("chain.in.json")

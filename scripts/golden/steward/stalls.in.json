@@ -1,0 +1,414 @@
+[
+  {
+    "agents": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ],
+    "events": [
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 1,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 1
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 2,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 2
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 3,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 3
+        },
+        "type": "cards"
+      }
+    ],
+    "name": "three silent ticks stall every seat that was issued cards",
+    "stall_after": 3,
+    "window": 3
+  },
+  {
+    "agents": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ],
+    "events": [
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 1,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 1
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 2,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 2
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {
+            "mimo": 1
+          },
+          "tick": 3,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 3
+        },
+        "type": "cards"
+      }
+    ],
+    "name": "one artifact in the last tick clears that seat",
+    "stall_after": 3,
+    "window": 3
+  },
+  {
+    "agents": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ],
+    "events": [
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 1,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 1
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 2,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 2
+        },
+        "type": "cards"
+      }
+    ],
+    "name": "fewer ticks than the window judges nobody",
+    "stall_after": 3,
+    "window": 3
+  },
+  {
+    "agents": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ],
+    "events": [
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 1,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "mimo"
+          ],
+          "tick": 1
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 2,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 2
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 3,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 3
+        },
+        "type": "cards"
+      }
+    ],
+    "name": "a seat that was not issued a card in every tick is not stalled",
+    "stall_after": 3,
+    "window": 3
+  },
+  {
+    "agents": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ],
+    "events": [
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 1,
+          "unattributed": 3
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 1
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 2,
+          "unattributed": 3
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 2
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 3,
+          "unattributed": 3
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 3
+        },
+        "type": "cards"
+      }
+    ],
+    "name": "unattributed comments make attribution weak",
+    "stall_after": 3,
+    "window": 3
+  },
+  {
+    "agents": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ],
+    "events": [
+      {
+        "data": {
+          "per_seat": {
+            "mimo": 3
+          },
+          "tick": 1,
+          "unattributed": 3
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 1
+        },
+        "type": "cards"
+      }
+    ],
+    "name": "exactly half attributed is not weak",
+    "stall_after": 1,
+    "window": 1
+  },
+  {
+    "agents": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ],
+    "events": [
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 1,
+          "unattributed": 2
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 1
+        },
+        "type": "cards"
+      }
+    ],
+    "name": "fewer than three comments is never weak",
+    "stall_after": 1,
+    "window": 1
+  }
+]
