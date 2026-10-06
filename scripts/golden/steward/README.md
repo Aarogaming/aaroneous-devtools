@@ -18,6 +18,12 @@ component) must reproduce. They are plain JSON, so the contract does not depend 
 | `stalls.*` | `[{name, events, agents, stall_after, window}]` and `{stalled, attribution_weak}` |
 | `coverage.*` | `[{name, head, merge_base, records, ancestry}]` and `review_coverage.evaluate`: `{covered, reasons, accepts_at_head}` |
 | `audit.in.json`, `audit.out.json` | a healthy state and, for ticks 0-13, the tasks issued: the periodic audit on every 6th tick only |
+| `gate_tier.*` | `[{name, paths}]` and `{tier, protected, plan_level, category}`: owner-only paths (a prefix match, so a lookalike also counts), tier B only for a recognised safe family, everything else unclassified |
+| `gate_ci.*` | `[{name, rollup}]` and `ci_state`: missing, pending, failure and success; skipped is not success |
+| `gate_breaker.*` | `[{name, text}]` and `breaker_state`: a real TOML boolean, otherwise `null` (blocked) |
+| `gate_threads.*` | `[{name, data}]` and `open_threads`: a count, or `null` when a page is truncated, pagination info is missing or the response is malformed |
+| `gate_checklist.*` | `{green, cases: [{name, override}]}` and `{lines, would_merge, first_blocker}` for the nine-box checklist; a box that cannot be evaluated is blocked and fails the gate |
+| `gate_decide.*` | `[{name, row, paths, base, trial, owner}]` and `{decide, reconciled_with_all_green_checklist}` |
 
 ## How an implementation uses them
 
@@ -51,10 +57,10 @@ be a breaking, versioned contract change; deciding between the two is an open qu
 ## Not covered yet
 
 These parts of the steward have no vectors and are therefore not yet shown to be replicable: the GitHub read
-adapter itself (`collect_state.collect`, `review_coverage.live_snapshot`), `merge_gate` (the checklist), the
+adapter itself (`collect_state.collect`, `review_coverage.live_snapshot`, `merge_gate.gather_facts`), the
 outbox text layout, the signed-attestation path, the commit-trailer and Qwen/Mimo independence additions (not on
 this branch), and lease replay inside `run_tick` (expiry, rotation by history are covered through the card
 scenarios, but `lease_table` itself is not). The rule vectors above pin the decisions merge safety depends on:
 what counts as a completion, who may complete what, which head a comment cites, when a seat is stalled, and
-when a head is covered. A mutation probe (16 one-line changes to the Python) is caught by these vectors where the
-original 30 card vectors caught 1.
+when a head is covered. Two mutation probes of 16 one-line changes each (the steward rules, then the merge-gate checklist) are caught 16 of 16 by
+these vectors; the original 30 card vectors caught 1 and 0.

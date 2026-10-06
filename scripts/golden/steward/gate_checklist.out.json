@@ -1,0 +1,322 @@
+[
+  {
+    "first_blocker": null,
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": true
+  },
+  {
+    "first_blocker": "1",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[ ] 1. CI green on head hhhhhhhhhhhh (1 failed)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "1",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[blocked: no CI status found] 1. CI green on head hhhhhhhhhhhh",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "1",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[ ] 1. CI green on head hhhhhhhhhhhh (checks still running)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "2",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[ ] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "2a",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. proposal/x tip tttttttttttt",
+      "[ ] 2a. Base branch is the repository default branch (base=proposal/x)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "3",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[ ] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "3",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[ ] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "4",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[ ] 4. Zero open blocking threads (count checked: 1)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "4",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[blocked: thread count unavailable] 4. Zero open blocking threads",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "4",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[ ] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "5",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[ ] 5. Each counted verdict cites command + exit code (counted: 0)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "5",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[ ] 5. Each counted verdict cites command + exit code (verdicts missing evidence: [3])",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "6",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[blocked: needs a human classification] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "7",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[ ] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "7",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[blocked: circuit breaker file not found or unparseable (fail closed)] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "8",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[ ] 8. Category scripts/*.py has cleared trust-building threshold (4/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "8",
+    "lines": [
+      "[x] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[ ] 8. Category scripts/*.py has cleared trust-building threshold (0/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "0 (touches owner-only paths: ['AGENTS.md'])",
+    "lines": [
+      "[ ] 0. Tier B (auto-merge eligible) (touches owner-only paths: ['AGENTS.md'])",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  },
+  {
+    "first_blocker": "0 (unrecognised paths)",
+    "lines": [
+      "[blocked: unrecognised paths] 0. Tier B (auto-merge eligible)",
+      "[x] 1. CI green on head hhhhhhhhhhhh (3 checks: SUCCESS)",
+      "[x] 2. No merge conflict vs. main tip tttttttttttt",
+      "[x] 2a. Base branch is the repository default branch (base=main)",
+      "[x] 3. >=2 independent accept verdicts at hhhhhhhhhhhh, seats: codex, gemini",
+      "[x] 4. Zero open blocking threads (count checked: 0)",
+      "[x] 5. Each counted verdict cites command + exit code (counted: 2)",
+      "[x] 6. Revertible via plain `git revert` (no migration/external side effect)",
+      "[x] 7. circuit_breaker_override.toml: tripped = false",
+      "[x] 8. Category scripts/*.py has cleared trust-building threshold (5/5)"
+    ],
+    "would_merge": false
+  }
+]

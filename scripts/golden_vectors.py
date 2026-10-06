@@ -15,6 +15,11 @@ scripts/golden/steward/ so the contract does not depend on Python:
   receipts     collect_state.done_receipts   rejected   collect_state.rejected_verdicts
   stalls       steward_run.stalled_seats and attribution_weak
   coverage     review_coverage.evaluate      audit      next_task.build_cards across ticks
+  Merge-gate vectors (the owner-facing eligibility decision):
+  gate_tier    merge_gate.tier_of, touches_protected, gate_plan, category_of
+  gate_ci      merge_gate.ci_state           gate_breaker   merge_gate.breaker_state
+  gate_threads merge_gate.open_threads       gate_checklist merge_gate.checklist
+  gate_decide  merge_gate.decide and reconcile
 
 `golden_vectors.py --write` regenerates the files from the scenarios below; `--check` fails if the committed
 files are not what the current code produces. Regenerating is a deliberate act: a changed vector is a contract
@@ -29,6 +34,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import collect_state as cs  # noqa: E402
+import merge_gate as mg  # noqa: E402
 import next_task as nt  # noqa: E402
 import review_coverage as rc  # noqa: E402
 import steward_run as sr  # noqa: E402
@@ -282,8 +288,143 @@ def audit_scenario(tick):
                  last_merged={"number": 54, "merge_commit": "m" * 40, "head": "h" * 40}), tick
 
 
+GATE_TIER = [
+    {"name": "docs and governance markdown is tier B with the light gate", "paths": ["governance/NOTES.md", "docs/x.md"]},
+    {"name": "AGENTS.md is owner-only", "paths": ["AGENTS.md"]},
+    {"name": "workflow files are owner-only", "paths": [".github/workflows/ci.yml", "scripts/a.py"]},
+    {"name": "an owner-only path wins over a safe family", "paths": ["governance/AUTOMATED_MERGE_POLICY.md", "docs/a.md"]},
+    {"name": "scripts are tier B but get the full gate", "paths": ["scripts/steward_run.py", "scripts/test_steward_run.py"]},
+    {"name": "Rust sources are unclassified, never assumed safe", "paths": ["foundation/crates/foundation_cli/src/main.rs"]},
+    {"name": "one unrecognised path makes the whole change unclassified", "paths": ["docs/a.md", "Cargo.toml"]},
+    {"name": "a doc extension outside the family is not trusted", "paths": ["docs/diagram.png"]},
+    {"name": "an unlisted directory is not trusted for the light gate", "paths": ["notes/x.md"]},
+    {"name": "no paths is tier B and a full gate", "paths": []},
+    {"name": "mixed directories report mixed", "paths": ["docs/a.md", "governance/b.md"]},
+    {"name": "a lookalike prefix is also owner-only (prefix match, fails closed)", "paths": ["AGENTS.md.bak"]},
+]
+
+GATE_CI = [
+    {"name": "no rollup is missing", "rollup": []},
+    {"name": "all successful", "rollup": [{"status": "COMPLETED", "conclusion": "SUCCESS"}] * 3},
+    {"name": "one failure fails", "rollup": [{"status": "COMPLETED", "conclusion": "SUCCESS"},
+                                              {"status": "COMPLETED", "conclusion": "FAILURE"}]},
+    {"name": "a running check is pending", "rollup": [{"status": "COMPLETED", "conclusion": "SUCCESS"},
+                                                       {"status": "IN_PROGRESS", "conclusion": ""}]},
+    {"name": "a queued check is pending", "rollup": [{"status": "QUEUED"}]},
+    {"name": "skipped is not success", "rollup": [{"status": "COMPLETED", "conclusion": "SKIPPED"}]},
+    {"name": "lower-case conclusions are read", "rollup": [{"status": "completed", "conclusion": "success"}]},
+]
+
+GATE_BREAKER = [
+    {"name": "tripped = false", "text": "tripped = false\n"},
+    {"name": "tripped = true", "text": "tripped = true\n"},
+    {"name": "a comment is not the value", "text": "# tripped = false\ntripped = true\n"},
+    {"name": "only a comment is blocked", "text": "# tripped = false\n"},
+    {"name": "a string is not a boolean", "text": "tripped = \"false\"\n"},
+    {"name": "invalid TOML is blocked", "text": "tripped = = false"},
+    {"name": "an empty file is blocked", "text": ""},
+]
+
+
+def threads_response(resolved, unresolved, has_next):
+    nodes = [{"isResolved": True}] * resolved + [{"isResolved": False}] * unresolved
+    page = {"nodes": nodes}
+    if has_next is not None:
+        page["pageInfo"] = {"hasNextPage": has_next}
+    return {"data": {"repository": {"pullRequest": {"reviewThreads": page}}}}
+
+
+GATE_THREADS = [
+    {"name": "a complete page with two open", "data": threads_response(3, 2, False)},
+    {"name": "a complete page with none open", "data": threads_response(4, 0, False)},
+    {"name": "a full page that has a next page is unknown", "data": threads_response(100, 0, True)},
+    {"name": "missing pagination info is unknown", "data": threads_response(2, 0, None)},
+    {"name": "a malformed response is unknown", "data": {"data": {}}},
+]
+
+GATE_GREEN = {
+    "head": "h" * 40, "ci": {"state": "success", "detail": "3 checks: SUCCESS"}, "trial_merge_ok": True, "base_ref": "main",
+    "default_branch": "main", "base_tip": "t" * 40, "accept_seats": ["codex", "gemini"], "covered": True, "threads_open": 0,
+    "standing_changes_requested": False, "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
+    "breaker_tripped": False, "trust": [5, 5], "category": "scripts/*.py", "tier": ["B", ""],
+}
+GATE_CHECKLIST = [
+    {"name": "every box green would merge", "override": {}},
+    {"name": "red CI blocks", "override": {"ci": {"state": "failure", "detail": "1 failed"}}},
+    {"name": "missing CI is blocked, not green", "override": {"ci": {"state": "missing", "detail": "no CI status found"}}},
+    {"name": "pending CI blocks", "override": {"ci": {"state": "pending", "detail": "checks still running"}}},
+    {"name": "a merge conflict blocks", "override": {"trial_merge_ok": False}},
+    {"name": "a stacked base blocks", "override": {"base_ref": "proposal/x"}},
+    {"name": "one accept seat is not enough", "override": {"accept_seats": ["codex"]}},
+    {"name": "two seats but not covered", "override": {"covered": False}},
+    {"name": "an open thread blocks", "override": {"threads_open": 1}},
+    {"name": "an unknown thread count is blocked", "override": {"threads_open": None}},
+    {"name": "a standing changes-requested blocks", "override": {"standing_changes_requested": True}},
+    {"name": "no counted verdict blocks", "override": {"counted_verdicts": 0}},
+    {"name": "a verdict without evidence blocks", "override": {"verdicts_missing_evidence": [3]}},
+    {"name": "an unclassified revertibility is blocked", "override": {"revertible": None}},
+    {"name": "a tripped breaker blocks", "override": {"breaker_tripped": True}},
+    {"name": "an unreadable breaker is blocked", "override": {"breaker_tripped": None}},
+    {"name": "trust below the threshold blocks", "override": {"trust": [4, 5]}},
+    {"name": "no trust counter fails", "override": {"trust": None}},
+    {"name": "tier A is owner-only", "override": {"tier": ["A", "touches owner-only paths: ['AGENTS.md']"]}},
+    {"name": "an unclassified tier is blocked", "override": {"tier": ["unclassified", "unrecognised paths"]}},
+]
+
+GATE_DECIDE = [
+    {"name": "covered clean docs PR on main is eligible", "row": {"covered": True}, "paths": ["governance/N.md"],
+     "base": "main", "trial": True, "owner": False},
+    {"name": "uncovered is blocked with condition a", "row": {"covered": False}, "paths": ["governance/N.md"],
+     "base": "main", "trial": True, "owner": False},
+    {"name": "a conflicting trial merge is blocked with condition b", "row": {"covered": True}, "paths": ["docs/a.md"],
+     "base": "main", "trial": False, "owner": False},
+    {"name": "a stacked base is blocked with condition d", "row": {"covered": True}, "paths": ["docs/a.md"],
+     "base": "proposal/x", "trial": True, "owner": False},
+    {"name": "protected paths need owner confirmation (f)", "row": {"covered": True}, "paths": ["AGENTS.md"],
+     "base": "main", "trial": True, "owner": False},
+    {"name": "owner confirmation lifts only condition f", "row": {"covered": True}, "paths": ["AGENTS.md"],
+     "base": "main", "trial": True, "owner": True},
+    {"name": "every blocking reason is reported together", "row": {"covered": False}, "paths": [".github/workflows/x.yml"],
+     "base": "proposal/x", "trial": False, "owner": False},
+]
+
+
+def gate_case(case):
+    facts = json.loads(json.dumps(GATE_GREEN))
+    facts.update(case["override"])
+    lines, would, first = mg.checklist(facts)
+    return {"lines": lines, "would_merge": would, "first_blocker": first}
+
+
+def gate_decide_case(case):
+    result = mg.decide(case["row"], case["paths"], case["base"], case["trial"], case["owner"])
+    green = json.loads(json.dumps(GATE_GREEN))
+    _, eligible, first = mg.reconcile(result["eligible"], green)
+    return {"decide": result, "reconciled_with_all_green_checklist": {"eligible": eligible, "first_blocker": first}}
+
+
+def build_gate_vectors():
+    out = {}
+    out["gate_tier.in.json"] = GATE_TIER
+    out["gate_tier.out.json"] = [
+        {"tier": list(mg.tier_of(c["paths"])), "protected": mg.touches_protected(c["paths"]),
+         "plan_level": mg.gate_plan(c["paths"])["level"], "category": mg.category_of(c["paths"])} for c in GATE_TIER]
+    out["gate_ci.in.json"] = GATE_CI
+    out["gate_ci.out.json"] = [mg.ci_state(c["rollup"]) for c in GATE_CI]
+    out["gate_breaker.in.json"] = GATE_BREAKER
+    out["gate_breaker.out.json"] = [mg.breaker_state(c["text"]) for c in GATE_BREAKER]
+    out["gate_threads.in.json"] = GATE_THREADS
+    out["gate_threads.out.json"] = [mg.open_threads(c["data"]) for c in GATE_THREADS]
+    out["gate_checklist.in.json"] = {"green": GATE_GREEN, "cases": GATE_CHECKLIST}
+    out["gate_checklist.out.json"] = [gate_case(c) for c in GATE_CHECKLIST]
+    out["gate_decide.in.json"] = GATE_DECIDE
+    out["gate_decide.out.json"] = [gate_decide_case(c) for c in GATE_DECIDE]
+    return out
+
+
 def build_rule_vectors():
     out = {}
+    out.update(build_gate_vectors())
     out["attribution.in.json"] = ATTRIBUTION
     out["attribution.out.json"] = [cs.comment_seat(c["body"], strict=c["strict"]) for c in ATTRIBUTION]
     out["heads.in.json"] = HEADS

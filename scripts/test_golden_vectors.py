@@ -11,12 +11,14 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import collect_state as cs  # noqa: E402
 import golden_vectors as gv  # noqa: E402
+import merge_gate as mg  # noqa: E402
 import next_task as nt  # noqa: E402
 import review_coverage as rc  # noqa: E402
 import steward_run as sr  # noqa: E402
 
 DIR = gv.DIR
-RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "coverage", "audit")
+RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "coverage", "audit",
+                 "gate_tier", "gate_ci", "gate_breaker", "gate_threads", "gate_checklist", "gate_decide")
 
 
 def load(name):
@@ -61,6 +63,75 @@ class Golden(unittest.TestCase):
         self.assertEqual(
             [{"tick": t, "tasks": [x["task"] for x in nt.build_cards(json.loads(json.dumps(audit["state"])), t)]}
              for t in audit["ticks"]], load("audit.out.json"))
+
+    def test_every_merge_gate_vector_reproduces_its_committed_results_exactly(self):
+        tier = load("gate_tier.in.json")
+        self.assertEqual(
+            [{"tier": list(mg.tier_of(c["paths"])), "protected": mg.touches_protected(c["paths"]),
+              "plan_level": mg.gate_plan(c["paths"])["level"], "category": mg.category_of(c["paths"])} for c in tier],
+            load("gate_tier.out.json"))
+        self.assertEqual([mg.ci_state(c["rollup"]) for c in load("gate_ci.in.json")], load("gate_ci.out.json"))
+        self.assertEqual([mg.breaker_state(c["text"]) for c in load("gate_breaker.in.json")], load("gate_breaker.out.json"))
+        self.assertEqual([mg.open_threads(c["data"]) for c in load("gate_threads.in.json")], load("gate_threads.out.json"))
+        checklist = load("gate_checklist.in.json")
+        results = []
+        for case in checklist["cases"]:
+            facts = json.loads(json.dumps(checklist["green"]))
+            facts.update(case["override"])
+            lines, would, first = mg.checklist(facts)
+            results.append({"lines": lines, "would_merge": would, "first_blocker": first})
+        self.assertEqual(results, load("gate_checklist.out.json"))
+        decided = []
+        for c in load("gate_decide.in.json"):
+            result = mg.decide(c["row"], c["paths"], c["base"], c["trial"], c["owner"])
+            _, eligible, first = mg.reconcile(result["eligible"], json.loads(json.dumps(checklist["green"])))
+            decided.append({"decide": result, "reconciled_with_all_green_checklist": {"eligible": eligible, "first_blocker": first}})
+        self.assertEqual(decided, load("gate_decide.out.json"))
+
+    def test_the_merge_gate_vectors_pin_what_makes_a_pr_eligible_to_merge(self):
+        def named(family):
+            return {c["name"]: o for c, o in zip(load(f"{family}.in.json")["cases"] if family == "gate_checklist"
+                                                 else load(f"{family}.in.json"), load(f"{family}.out.json"))}
+
+        checklist = named("gate_checklist")
+        self.assertTrue(checklist["every box green would merge"]["would_merge"])
+        for blocked in [n for n in checklist if n != "every box green would merge"]:
+            self.assertFalse(checklist[blocked]["would_merge"], blocked)
+        self.assertEqual(checklist["red CI blocks"]["first_blocker"], "1")
+        self.assertEqual(checklist["a merge conflict blocks"]["first_blocker"], "2")
+        self.assertEqual(checklist["a stacked base blocks"]["first_blocker"], "2a")
+        self.assertEqual(checklist["one accept seat is not enough"]["first_blocker"], "3")
+        self.assertEqual(checklist["an open thread blocks"]["first_blocker"], "4")
+        self.assertEqual(checklist["a tripped breaker blocks"]["first_blocker"], "7")
+        self.assertEqual(checklist["trust below the threshold blocks"]["first_blocker"], "8")
+        self.assertTrue(checklist["tier A is owner-only"]["first_blocker"].startswith("0"))
+        tier = named("gate_tier")
+        self.assertEqual(tier["AGENTS.md is owner-only"]["tier"][0], "A")
+        self.assertEqual(tier["workflow files are owner-only"]["tier"][0], "A")
+        self.assertEqual(tier["Rust sources are unclassified, never assumed safe"]["tier"][0], "unclassified")
+        self.assertEqual(tier["docs and governance markdown is tier B with the light gate"]["plan_level"], "light")
+        self.assertEqual(tier["scripts are tier B but get the full gate"]["plan_level"], "full")
+        self.assertEqual(tier["a lookalike prefix is also owner-only (prefix match, fails closed)"]["protected"], ["AGENTS.md.bak"])
+        ci = named("gate_ci")
+        self.assertEqual(ci["no rollup is missing"]["state"], "missing")
+        self.assertEqual(ci["all successful"]["state"], "success")
+        self.assertEqual(ci["skipped is not success"]["state"], "failure")
+        self.assertEqual(ci["a running check is pending"]["state"], "pending")
+        breaker = named("gate_breaker")
+        self.assertIs(breaker["tripped = false"], False)
+        self.assertIs(breaker["a comment is not the value"], True)
+        for unreadable in ("only a comment is blocked", "a string is not a boolean", "invalid TOML is blocked",
+                           "an empty file is blocked"):
+            self.assertIsNone(breaker[unreadable], unreadable)
+        threads = named("gate_threads")
+        self.assertEqual(threads["a complete page with two open"], 2)
+        for unknown in ("a full page that has a next page is unknown", "missing pagination info is unknown",
+                        "a malformed response is unknown"):
+            self.assertIsNone(threads[unknown], unknown)
+        decide = named("gate_decide")
+        self.assertTrue(decide["covered clean docs PR on main is eligible"]["decide"]["eligible"])
+        self.assertEqual(len(decide["every blocking reason is reported together"]["decide"]["reasons"]), 4)
+        self.assertTrue(decide["owner confirmation lifts only condition f"]["decide"]["eligible"])
 
     def test_the_rule_vectors_pin_the_decisions_merge_safety_depends_on(self):
         out = {name: load(f"{name}.out.json") for name in RULE_FAMILIES}
