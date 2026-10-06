@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 import tempfile
 import unittest
 
@@ -178,25 +179,56 @@ class Locking(unittest.TestCase):
                 with sr.exclusive(path, wait=0.2):
                     pass
         self.assertIn(path + ".lock", str(caught.exception))
-        self.assertFalse(os.path.exists(path + ".lock"))
 
-    def test_a_dead_runs_stale_lock_is_broken_and_a_fresh_one_is_not(self):
+    def test_a_live_holder_is_not_displaced_by_age_or_by_a_clock_jump(self):
         path = tmp_log()
-        lock = path + ".lock"
-        with open(lock, "w") as handle:
-            handle.write("dead run")
-        old = os.path.getmtime(lock) - 10_000
-        os.utime(lock, (old, old))
+        with sr.exclusive(path):
+            for jump in (601, 10_000_000):
+                with self.assertRaises(SystemExit):
+                    with sr.exclusive(path, wait=0.2, clock=lambda jump=jump: time.time() + jump):
+                        self.fail("a second owner entered while the first still held the lock")
+
+    def test_one_owner_leaving_does_not_release_another_owners_lock(self):
+        path = tmp_log()
+        first = sr.exclusive(path)
+        first.__enter__()
+        with self.assertRaises(SystemExit):
+            with sr.exclusive(path, wait=0.2):
+                pass
+        first.__exit__(None, None, None)
         with sr.exclusive(path, wait=1):
-            self.assertTrue(os.path.exists(lock))
-        self.assertFalse(os.path.exists(lock))
+            with self.assertRaises(SystemExit):
+                with sr.exclusive(path, wait=0.2):
+                    pass
 
     def test_the_lock_is_released_when_the_body_raises(self):
         path = tmp_log()
         with self.assertRaises(RuntimeError):
             with sr.exclusive(path):
                 raise RuntimeError("boom")
-        self.assertFalse(os.path.exists(path + ".lock"))
+        with sr.exclusive(path, wait=1):
+            pass
+
+    def test_a_crashed_holder_releases_the_lock_without_any_cleanup(self):
+        import subprocess
+        path = tmp_log()
+        code = ("import sys, time; sys.path.insert(0, %r); import steward_run as sr\n"
+                "ctx = sr.exclusive(%r); ctx.__enter__(); print('locked', flush=True); time.sleep(120)\n"
+                % (os.path.dirname(os.path.abspath(__file__)), path))
+        child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "locked")
+            with self.assertRaises(SystemExit):
+                with sr.exclusive(path, wait=0.3):
+                    pass
+            child.kill()
+            child.wait(timeout=10)
+            with sr.exclusive(path, wait=10):
+                pass
+        finally:
+            if child.poll() is None:
+                child.kill()
+            child.stdout.close()
 
     def test_a_whole_tick_waits_for_the_lock_and_numbers_itself_after_the_holder(self):
         path = tmp_log()

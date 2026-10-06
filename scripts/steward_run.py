@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import contextlib
+import errno
 import hashlib
 import json
 import os
@@ -44,42 +45,71 @@ def digest(line):
 
 
 LOCK_WAIT_SECONDS = 120
-LOCK_STALE_SECONDS = 600
+
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
+try:
+    import msvcrt
+except ImportError:  # POSIX
+    msvcrt = None
+
+
+def _try_lock(fd):
+    """Take the OS lock on `fd` without blocking. True when taken, False when another holder has it. Any other error
+    (no locking support, a permission problem) is raised, never reported as "busy"."""
+    if fcntl is not None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            return False
+    if msvcrt is None:
+        raise SystemExit("no OS file locking is available on this platform; refusing to run without a single-writer lock")
+    os.lseek(fd, 0, os.SEEK_SET)
+    try:
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        return True
+    except OSError as error:
+        if error.errno in (errno.EACCES, errno.EDEADLK, errno.EAGAIN):
+            return False
+        raise
+
+
+def _unlock(fd):
+    if fcntl is not None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    else:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
 
 
 @contextlib.contextmanager
-def exclusive(log_path, wait=LOCK_WAIT_SECONDS, stale=LOCK_STALE_SECONDS, sleep=time.sleep, clock=time.time):
-    """One writer at a time for a log: ``<log>.lock`` created exclusively, removed on exit. `append_event` reads the
-    last line and appends after it, so two overlapping runs would write the same seq with the same previous digest,
-    fork the chain, and every later run would then refuse to start with a tamper message. A lock older than `stale`
-    seconds belongs to a run that died and is broken; if two waiters break the same stale lock at the same instant
-    one of them can remove the other's fresh lock, which needs a crashed run plus an exact tie. Waiting longer than
-    `wait` seconds stops with a message naming the lock file."""
+def exclusive(log_path, wait=LOCK_WAIT_SECONDS, sleep=time.sleep, clock=time.time):
+    """One writer at a time for a log. `append_event` reads the last line and appends after it, so two overlapping
+    runs would write the same seq with the same previous digest, fork the chain, and every later run would then refuse
+    to start with a tamper message.
+
+    The lock is an OS lock held on an open handle to ``<log>.lock`` (``flock`` on POSIX, a byte-range lock on Windows).
+    It belongs to the holder's handle: the OS releases it when the process exits or crashes, nothing is ever deleted
+    or reclaimed by age, a holder that is merely slow or suspended or a wall-clock jump cannot lose it, and one run
+    cannot release another's. `clock` and `sleep` only bound how long a waiter waits; after `wait` seconds the
+    waiter stops with a message naming the lock file. The lock file itself is left in place (it is empty and harmless)."""
     lock = log_path + ".lock"
-    deadline = clock() + wait
-    while True:
-        try:
-            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            break
-        except FileExistsError:
-            try:
-                age = clock() - os.path.getmtime(lock)
-            except OSError:
-                continue
-            if age > stale:
-                with contextlib.suppress(OSError):
-                    os.remove(lock)
-                continue
-            if clock() >= deadline:
-                raise SystemExit(f"another steward run holds {lock} (waited {wait}s); if no run is active, delete that file")
-            sleep(0.05)
+    handle = os.open(lock, os.O_RDWR | os.O_CREAT)
     try:
-        os.write(handle, f"{os.getpid()} {clock()}\n".encode("ascii"))
-        os.close(handle)
-        yield
+        deadline = clock() + wait
+        while not _try_lock(handle):
+            if clock() >= deadline:
+                raise SystemExit(f"another steward run holds {lock} (waited {wait}s); it is released when that run ends")
+            sleep(0.05)
+        try:
+            yield
+        finally:
+            _unlock(handle)
     finally:
-        with contextlib.suppress(OSError):
-            os.remove(lock)
+        os.close(handle)
 
 
 def read_events(path):
