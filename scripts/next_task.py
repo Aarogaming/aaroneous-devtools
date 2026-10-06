@@ -153,6 +153,18 @@ def card_for(agent, role, tick, item):
     }
 
 
+def implementers_field(item, base_sha, head):
+    """What a reviewer should put in `implementers`. A known list is printed as before. When the implementers are not
+    known the old text printed `implementers=[]`, which the coverage tool rejects ("implementers must be a non-empty
+    list"), so a seat that followed the card posted a review that could never count. Say how to find them instead."""
+    names = item.get("implementers") or []
+    if names:
+        return repr(list(names))
+    return ("<NOT KNOWN, so find them: git log --format=%(trailers:key=Co-Authored-By,key=Contribution-ID,only=true,unfold=true) "
+            f"{base_sha or '<merge-base>'}..{head}, plus a seat-named branch prefix; the list must not be empty, so if git "
+            "names no seat, post a comment saying the implementers are unknown instead of an accept block>")
+
+
 def recipe_for(item):
     """Exact commands for the item with the real SHAs filled in. Never contains a pasteable attestation block:
     a pasted block counts as that seat's verdict, so only the field names are listed."""
@@ -164,7 +176,7 @@ def recipe_for(item):
             f"git merge-tree --write-tree origin/{base_ref} {head}   # expect exit 0 (clean trial merge)",
             "run the PR's own tests if it changes code (python -m unittest discover -s scripts -p 'test_*.py')",
             f"post ONE attestation block with fields: repo, pr={pr}, head={head}, base_sha={base_sha or '<merge-base>'}, "
-            f"scope=whole, reviewer=<your seat>, implementers={item.get('implementers', [])}, verdict",
+            f"scope=whole, reviewer=<your seat>, implementers={implementers_field(item, base_sha, head)}, verdict",
         ]
     if item["kind"] == "repair_verdict" and pr:
         return [
@@ -172,7 +184,7 @@ def recipe_for(item):
             f"post a new comment, built from a file so backslash sequences are not mangled, holding ONE fenced block tagged "
             f"attestation whose body is a JSON object (not YAML) with exactly these fields: repo (this repository), "
             f"pr={pr}, head={head}, base_sha={base_sha or '<merge-base>'}, scope=whole, reviewer=<your seat>, "
-            f"implementers={item.get('implementers', [])}, verdict",
+            f"implementers={implementers_field(item, base_sha, head)}, verdict",
             "keep your analysis as prose above the block",
         ]
     if item["kind"] == "fix_threads" and pr:

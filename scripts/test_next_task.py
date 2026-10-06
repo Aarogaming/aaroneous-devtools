@@ -166,6 +166,23 @@ class Cards(unittest.TestCase):
     def test_a_covered_draft_still_gets_the_flip_ready_card(self):
         self.assertEqual({i["kind"] for i in nt.work_items(state([pr(9, draft=True, covered=True)]))}, {"draft"})
 
+    def review_recipe(self, implementers):
+        s = state([pr(63, seat="", implementers=implementers, head="a" * 40, base_sha="b" * 40)])
+        s["agents"] = [{"name": "gemini"}]
+        card = [c for c in nt.build_cards(s, 0) if c["inputs"].get("kind") == "needs_review"][0]
+        return [step for step in card["recipe"] if step.startswith("post ONE attestation block")][0]
+
+    def test_unknown_implementers_are_not_printed_as_an_empty_list_the_tool_would_reject(self):
+        step = self.review_recipe([])
+        self.assertNotIn("implementers=[]", step)
+        self.assertIn("NOT KNOWN", step)
+        self.assertIn("git log --format=%(trailers:key=Co-Authored-By,key=Contribution-ID", step)
+        self.assertIn("b" * 40 + ".." + "a" * 40, step)
+        self.assertIn("instead of an accept block", step)
+
+    def test_known_implementers_are_printed_exactly_as_before(self):
+        self.assertIn("implementers=['claude'], verdict", self.review_recipe(["claude"]))
+
     def test_a_co_implementer_is_never_assigned_to_review_the_pr(self):
         s = state([pr(9, seat="claude", implementers=["claude", "mimo"])])
         s["agents"] = [{"name": "mimo"}, {"name": "gemini"}, {"name": "claude"}]
