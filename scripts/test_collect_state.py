@@ -179,6 +179,30 @@ class Build(unittest.TestCase):
         ]}}}}
         self.assertEqual(cs.unresolved_by_pr(graphql), {1: 2, 2: 0})
 
+    def graphql(self, prs, more_prs=False):
+        return {"data": {"repository": {"pullRequests": {"pageInfo": {"hasNextPage": more_prs}, "nodes": prs}}}}
+
+    def pr_threads(self, number, resolved, unresolved, more):
+        nodes = [{"isResolved": True}] * resolved + [{"isResolved": False}] * unresolved
+        return {"number": number, "reviewThreads": {"pageInfo": {"hasNextPage": more}, "nodes": nodes}}
+
+    def test_a_pr_with_a_further_page_of_threads_is_never_reported_as_having_none(self):
+        full_page_all_resolved = self.pr_threads(1, 100, 0, True)
+        self.assertEqual(cs.unresolved_by_pr(self.graphql([full_page_all_resolved])), {1: 1})
+        self.assertEqual(cs.unresolved_by_pr(self.graphql([self.pr_threads(2, 97, 3, True)])), {2: 4})
+
+    def test_a_complete_page_is_counted_exactly(self):
+        self.assertEqual(cs.unresolved_by_pr(self.graphql([self.pr_threads(1, 99, 1, False), self.pr_threads(2, 0, 0, False)])),
+                         {1: 1, 2: 0})
+
+    def test_more_than_a_hundred_open_prs_stops_instead_of_dropping_the_rest(self):
+        with self.assertRaises(SystemExit) as caught:
+            cs.unresolved_by_pr(self.graphql([self.pr_threads(1, 0, 0, False)], more_prs=True))
+        self.assertIn("100 open pull requests", str(caught.exception))
+
+    def test_the_threads_query_asks_for_both_page_infos(self):
+        self.assertEqual(cs.THREADS_QUERY.count("pageInfo{hasNextPage}"), 2)
+
     def test_every_implementer_reaches_the_dispatcher_state(self):
         snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main", "implementers": ["claude", "mimo"]}]}
         meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}

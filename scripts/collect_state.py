@@ -199,15 +199,28 @@ def seat_from_trailers(text, branch=""):
 
 THREADS_QUERY = (
     'query($owner:String!,$name:String!){repository(owner:$owner,name:$name){'
-    "pullRequests(states:OPEN,first:100){nodes{number reviewThreads(first:100){nodes{isResolved}}}}}}"
+    "pullRequests(states:OPEN,first:100){pageInfo{hasNextPage} nodes{number "
+    "reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}}"
 )
 
 
 def unresolved_by_pr(graphql):
-    nodes = graphql["data"]["repository"]["pullRequests"]["nodes"]
-    return {
-        n["number"]: sum(1 for t in n["reviewThreads"]["nodes"] if not t["isResolved"]) for n in nodes
-    }
+    """Unresolved review threads per open PR. The query reads the first 100 PRs and the first 100 threads of each, so a
+    larger answer is truncated and must not be read as "no more unresolved threads": more than 100 PRs stops with a
+    message (a missing PR would read as zero threads and look ready to merge), and a PR with a further page of threads
+    counts one extra, so it is never reported as having none. `merge_gate.open_threads` already fails closed the same way.
+    A response without `pageInfo` is read as complete, as older fixtures are."""
+    pull_requests = graphql["data"]["repository"]["pullRequests"]
+    if (pull_requests.get("pageInfo") or {}).get("hasNextPage"):
+        raise SystemExit("more than 100 open pull requests: unresolved-thread counts would be missing for the rest; "
+                         "paginate the threads query before trusting them")
+    counts = {}
+    for n in pull_requests["nodes"]:
+        threads = n["reviewThreads"]
+        counts[n["number"]] = sum(1 for t in threads["nodes"] if not t["isResolved"])
+        if (threads.get("pageInfo") or {}).get("hasNextPage"):
+            counts[n["number"]] += 1  # at least one more thread exists that this page did not show
+    return counts
 
 
 def eligible_completer(kind, seat, implementers, repair_owners=()):
