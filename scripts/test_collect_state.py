@@ -89,6 +89,28 @@ class Rejections(unittest.TestCase):
         pr["comments"][0]["body"] = "Seat / agent: Mimo\nhead " + head + "\nVERDICT: accept"
         self.assertEqual(len(cs.rejected_verdicts(pr, {"legacy": [{"comment": 0}]})), 1)
 
+    def test_a_mistyped_head_that_names_no_commit_is_reported_back_to_its_author(self):
+        head = "ce3a58c6f8324020e942ecddc86dd7c2dfff87b0"
+        typo = "ce3a58cf0b4458f7cfd36a83a0ee1cf7bcba4c10"
+        body = "**Reviewer / Seat**: Antigravity\n**Head Reviewed**: `" + typo + "`\n```attestation\n{\"version\": 1}\n```\n"
+        pr = {"head": head, "comments": [{"id": 9, "body": body}]}
+        row = {"malformed": [{"comment": 0, "problem": "missing fields: ['head']"}]}
+        self.assertEqual(cs.rejected_verdicts(pr, row), [])  # no existence check supplied: unchanged behaviour
+        found = cs.rejected_verdicts(pr, row, commit_exists=lambda token: False)
+        self.assertEqual([(f["comment_id"], f["seat"]) for f in found], [(9, "gemini")])
+        self.assertIn(typo, found[0]["reason"])
+        self.assertIn(head, found[0]["reason"])
+
+    def test_a_near_miss_that_is_a_real_commit_or_a_different_prefix_stays_history(self):
+        head = "ce3a58c6f8324020e942ecddc86dd7c2dfff87b0"
+        real_other = "ce3a58cf0b4458f7cfd36a83a0ee1cf7bcba4c10"
+        unrelated = "1234567890abcdef1234567890abcdef12345678"
+        row = {"legacy": [{"comment": 0}]}
+        pr = {"head": head, "comments": [{"id": 1, "body": "Seat / agent: Mimo\nhead " + real_other + "\nVERDICT: accept"}]}
+        self.assertEqual(cs.rejected_verdicts(pr, row, commit_exists=lambda token: True), [])
+        pr = {"head": head, "comments": [{"id": 2, "body": "Seat / agent: Mimo\nhead " + unrelated + "\nVERDICT: accept"}]}
+        self.assertEqual(cs.rejected_verdicts(pr, row, commit_exists=lambda token: False), [])
+
     def test_a_seat_name_further_down_a_comment_does_not_attribute_it(self):
         self.assertEqual(cs.comment_seat("My note.\nMimo reviewed this earlier.\n", strict=True), "")
         self.assertEqual(cs.comment_seat("Mimo reviewed this earlier.\n", strict=False), "mimo")

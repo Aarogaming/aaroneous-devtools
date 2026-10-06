@@ -94,10 +94,32 @@ def cites_head(body, head):
     return any(head.startswith(token) for token in HEX_TOKEN.findall((body or "").lower()))
 
 
-def rejected_verdicts(pr, row):
+NEAR_MISS_PREFIX = 7
+
+
+def phantom_head(body, head, commit_exists):
+    """A full 40-character token in the comment that agrees with the PR's current head in its first
+    NEAR_MISS_PREFIX characters, differs after that, and names no commit that exists: a mistyped or invented head,
+    which is not the same thing as a genuine older head (two real commits agreeing in seven hex characters is
+    about one in 2.7e8). Returns that token, or None. Needs `commit_exists`; without it nothing is flagged."""
+    head = (head or "").lower()
+    if commit_exists is None or not head:
+        return None
+    for token in HEX40.findall((body or "").lower()):
+        agree = 0
+        while agree < len(head) and token[agree] == head[agree]:
+            agree += 1
+        if token != head and agree >= NEAR_MISS_PREFIX and not commit_exists(token):
+            return token
+    return None
+
+
+def rejected_verdicts(pr, row, commit_exists=None):
     """Verdict comments the coverage tool did not count at the PR's CURRENT head, each attributed to a seat where
     the text explicitly says which. A comment that does not cite the current head is history, not a pending
-    repair, and at most the latest MAX_REJECTED_PER_SEAT per seat are kept so a card stays short."""
+    repair, and at most the latest MAX_REJECTED_PER_SEAT per seat are kept so a card stays short. The exception
+    is a comment citing a head that does not exist but almost matches the current one (see `phantom_head`): that
+    is a mistyped head, not history, so its author is told."""
     comments = pr.get("comments", [])
     head = pr.get("head") or ""
     found = []
@@ -108,7 +130,11 @@ def rejected_verdicts(pr, row):
         comment = comments[index] if isinstance(comments[index], dict) else {}
         body = comment.get("body", "")
         if not cites_head(body, head):
-            return
+            phantom = phantom_head(body, head, commit_exists)
+            if not phantom:
+                return
+            reason = (f"it cites {phantom}, which is not a commit in this repository; the PR's current head is {head} "
+                      f"(only the first characters match, so it looks mistyped). Copy the head from the card. Also: {reason}")
         found.append({"comment_id": comment.get("id"), "seat": comment_seat(body, strict=True), "reason": reason,
                       "_index": index})
 
@@ -216,14 +242,15 @@ def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
     return sorted(keys)
 
 
-def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now, default_branch="main"):
+def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now, default_branch="main",
+                commit_exists=None):
     covered = {r["pr"]: r["covered"] for r in coverage_rows}
     rows = {r["pr"]: r for r in coverage_rows}
     implementers_by_pr = {
         p["number"]: list(p.get("implementers") or ([seats[p["number"]]] if seats.get(p["number"]) else []))
         for p in snapshot["prs"]
     }
-    rejected_by_pr = {p["number"]: rejected_verdicts(p, rows.get(p["number"], {})) for p in snapshot["prs"]}
+    rejected_by_pr = {p["number"]: rejected_verdicts(p, rows.get(p["number"], {}), commit_exists) for p in snapshot["prs"]}
     repair_owners = {n: {r["seat"] for r in found if r["seat"]} for n, found in rejected_by_pr.items()}
     prs = []
     for p in snapshot["prs"]:
@@ -269,7 +296,10 @@ def collect(repo, repo_dir, agents, backlog, identities=None):
     rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir), identities)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     default = rc.gh_json("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
-    return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now, default)
+    def commit_exists(token):
+        return rc.git(repo_dir, "cat-file", "-e", f"{token}^{{commit}}").returncode == 0
+
+    return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now, default, commit_exists)
 
 
 def main(argv):
