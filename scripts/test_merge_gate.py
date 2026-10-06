@@ -9,6 +9,52 @@ COVERED = {"covered": True}
 UNCOVERED = {"covered": False}
 
 
+class ChangedPaths(unittest.TestCase):
+    """changed_paths against a real throwaway repository: the protected path must survive a rename."""
+
+    def make_repo(self):
+        import subprocess
+        import tempfile
+        directory = tempfile.mkdtemp(prefix="merge-gate-test-")
+        self.addCleanup(__import__("shutil").rmtree, directory, True)
+
+        def git(*args):
+            result = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", directory, *args],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout.strip()
+
+        git("init", "-q", "-b", "main")
+        os.makedirs(os.path.join(directory, "governance"))
+        with open(os.path.join(directory, "governance", "identities.json"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write('{"seats": {}, "padding": "' + "x" * 300 + '"}\n')
+        git("add", ".")
+        git("commit", "-q", "-m", "base")
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        git("checkout", "-q", "-b", "pr")
+        return directory, git
+
+    def test_renaming_an_owner_only_file_still_reports_the_protected_source_path(self):
+        directory, git = self.make_repo()
+        git("mv", "governance/identities.json", "governance/other.json")
+        git("commit", "-q", "-m", "rename")
+        paths = mg.changed_paths(directory, "main", git("rev-parse", "HEAD"))
+        self.assertIn("governance/identities.json", paths)
+        self.assertIn("governance/other.json", paths)
+        self.assertEqual(mg.tier_of(paths)[0], "A")
+        self.assertFalse(mg.decide(COVERED, paths, "main", True)["eligible"])
+
+    def test_an_ordinary_edit_is_listed_once_and_stays_tier_b(self):
+        directory, git = self.make_repo()
+        with open(os.path.join(directory, "governance", "notes.md"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("notes\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "notes")
+        paths = mg.changed_paths(directory, "main", git("rev-parse", "HEAD"))
+        self.assertEqual(paths, ["governance/notes.md"])
+        self.assertEqual(mg.tier_of(paths)[0], "B")
+
+
 class Plan(unittest.TestCase):
     def test_docs_only_changes_get_the_light_gate(self):
         self.assertEqual(mg.gate_plan(["governance/PLATFORM_SPEC.md", "governance/identities.json"])["level"], "light")

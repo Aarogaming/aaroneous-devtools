@@ -185,7 +185,10 @@ def decide(pr_row, paths, base_ref, trial_merge_ok, owner_confirmed_protected=Fa
 
 
 def changed_paths(repo_dir, base_ref, head):
-    out = rc.git(repo_dir, "diff", "--name-only", f"origin/{base_ref}...{head}").stdout
+    """Every path the PR touches, both sides of a rename. With rename detection on (git's default) a moved file is
+    listed only under its new name, so renaming an owner-only file to an ordinary path would hide the protected source
+    path from `tier_of` and `touches_protected` (Codex P1 on #91)."""
+    out = rc.git(repo_dir, "diff", "--name-only", "--no-renames", f"origin/{base_ref}...{head}").stdout
     return [line for line in out.splitlines() if line]
 
 
