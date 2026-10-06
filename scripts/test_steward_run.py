@@ -244,6 +244,42 @@ class Locking(unittest.TestCase):
         os.unlink(sr.tip_path(path))
 
 
+class CompletionAtANewerHead(unittest.TestCase):
+    """A thread fix pushes a new head, and a card key ends in the head. The receipt for the new head must close the
+    old card as done; before this it was logged as a release, so the seat that actually fixed things was credited
+    with nothing in the history that orders seats by who finishes work."""
+
+    OLD, NEW = "a" * 40, "b" * 40
+
+    def lease_events(self, path):
+        return [e for e in sr.read_events(path) if e["type"] in ("lease_done", "lease_released")]
+
+    def run_two_ticks(self, done_at_new_head):
+        path = tmp_log()
+        first = state([pr(1, head=self.OLD, threads_unresolved=1, seat="claude")])
+        sr.run_tick(first, snap({1: []}), path, 1, NOW, stall_after=99)
+        second = state([pr(1, head=self.NEW, threads_unresolved=1, seat="claude")])
+        second["done"] = [f"fix_threads:1:{self.NEW[:8]}"] if done_at_new_head else []
+        sr.run_tick(second, snap({1: []}), path, 2, NOW, stall_after=99)
+        return path
+
+    def test_a_receipt_for_the_fix_at_the_new_head_closes_the_old_card_as_done(self):
+        path = self.run_two_ticks(True)
+        events = self.lease_events(path)
+        self.assertEqual([(e["type"], e["data"]["key"], e["data"]["agent"]) for e in events],
+                         [("lease_done", f"fix_threads:1:{self.OLD[:8]}", "claude")])
+        self.assertTrue(events[0]["data"]["at_newer_head"])
+        self.assertEqual(sr.history_from_events(sr.read_events(path))["agents"]["claude"]["done"], 1)
+        os.unlink(path)
+
+    def test_without_that_receipt_the_old_card_is_still_just_released(self):
+        path = self.run_two_ticks(False)
+        events = self.lease_events(path)
+        self.assertEqual([e["type"] for e in events], ["lease_released"])
+        self.assertEqual(sr.history_from_events(sr.read_events(path))["agents"].get("claude", {}).get("done", 0), 0)
+        os.unlink(path)
+
+
 class Ingest(unittest.TestCase):
     def test_seat_is_read_from_the_text(self):
         self.assertEqual(sr.seat_from_comment("REVIEW PACKET\nSeat / agent: Mimo (x)"), "mimo")
