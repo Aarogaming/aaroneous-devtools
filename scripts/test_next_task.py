@@ -188,6 +188,20 @@ class Cards(unittest.TestCase):
         kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "threads_unresolved": 3})
         self.assertEqual(kinds["claude"], "fix_threads")
 
+    def test_a_resolve_receipt_does_not_hide_threads_that_are_still_open(self):
+        s = state([pr(40, seat="claude", implementers=["claude"], threads_unresolved=2, threads_unanswered=0,
+                      head="a" * 40)])
+        s["done"] = ["resolve_threads:40:aaaaaaaa"]
+        s["agents"] = [{"name": "claude"}, {"name": "gemini"}]
+        kinds = {c["agent"]: c["inputs"]["kind"] for c in nt.build_cards(s, 0)}
+        self.assertEqual(kinds["gemini"], "resolve_threads")
+
+    def test_a_fix_receipt_still_closes_a_fix_card_for_that_head(self):
+        s = state([pr(40, seat="claude", implementers=["claude"], threads_unresolved=2, threads_unanswered=2,
+                      head="a" * 40)])
+        s["done"] = ["fix_threads:40:aaaaaaaa"]
+        self.assertEqual({i["kind"] for i in nt.work_items(s)} & {"fix_threads"}, set())
+
     def test_a_co_implementer_never_resolves_the_threads_on_its_own_pr(self):
         kinds = self.cards_for({"seat": "claude", "implementers": ["claude", "mimo"], "threads_unresolved": 1,
                                 "threads_unanswered": 0})

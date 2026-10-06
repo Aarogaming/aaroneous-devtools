@@ -108,7 +108,9 @@ def work_items(state):
                               detail=f"{len(mine)} verdict comment(s) by {seat} were rejected, so the PR is not covered"))
         if age_h > STALE_HOURS:
             items.append(dict(base, kind="stale", rank=5, detail=f"no update for {int(age_h)}h"))
-    items = [i for i in items if item_key(i["kind"], i["pr"], i["head"]) not in done]
+    # A receipt closes a card for a head, but resolving threads is observable on GitHub: the item disappears when the
+    # threads are resolved, and a receipt must not hide it while one is still open.
+    items = [i for i in items if i["kind"] == "resolve_threads" or item_key(i["kind"], i["pr"], i["head"]) not in done]
     # A stale overlay on a PR that already has its primary action (merge brief or draft flip) is noise.
     primary = {i["pr"] for i in items if i["kind"] in ("ready_to_merge", "draft", "stacked")}
     items = [i for i in items if not (i["kind"] == "stale" and i["pr"] in primary)]

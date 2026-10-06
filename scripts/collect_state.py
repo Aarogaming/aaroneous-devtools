@@ -202,7 +202,7 @@ def seat_from_trailers(text, branch=""):
 THREADS_QUERY = (
     'query($owner:String!,$name:String!){repository(owner:$owner,name:$name){'
     "pullRequests(states:OPEN,first:100){pageInfo{hasNextPage} nodes{number "
-    "reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved comments(last:1){totalCount nodes{author{login}}}}}}}}}"
+    "reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved comments(last:1){totalCount nodes{author{login} body}}}}}}}}"
 )
 
 
@@ -225,22 +225,31 @@ def unresolved_by_pr(graphql):
     return counts
 
 
-def thread_unanswered(thread):
-    """True when nobody on the PR's side has replied to the thread: a single comment, or a last comment from a bot (the
-    review connectors). A thread with at least two comments whose last one is from a person or a seat has been answered
-    and waits for a reviewer to resolve it. Unknown comment data counts as unanswered, the old behaviour."""
+def thread_unanswered(thread, author_seats=()):
+    """True unless the PR's own side has the last word in the thread. Every seat and the owner post from one shared
+    login, so a person-versus-bot test cannot tell an author's answer from a reviewer's "still missing". The last comment
+    is therefore attributed to a seat by its text (`comment_seat`, strict), and the thread counts as answered only when
+    that seat is one of the PR's implementers (`author_seats`). A single comment, a bot, a reviewer seat, a comment that
+    names no seat, unknown comment data, or no known implementers all count as unanswered: the author keeps the fix card,
+    which is the old behaviour and the safe direction."""
     comments = thread.get("comments") or {}
     if "totalCount" not in comments or "nodes" not in comments:
         return True
     if comments["totalCount"] <= 1 or not comments["nodes"]:
         return True
-    login = (comments["nodes"][-1].get("author") or {}).get("login", "")
-    return login == "" or login.endswith("[bot]")
+    last = comments["nodes"][-1]
+    login = (last.get("author") or {}).get("login", "")
+    if login == "" or login.endswith("[bot]"):
+        return True
+    seat = comment_seat(last.get("body") or "", strict=True)
+    return not (seat and seat in {s.lower() for s in author_seats})
 
 
-def unanswered_by_pr(graphql):
-    """Unresolved review threads nobody has answered yet, per open PR (see `thread_unanswered`). The same truncation
-    rules as `unresolved_by_pr`: a further page of threads counts one extra, so it is never reported as none."""
+def unanswered_by_pr(graphql, implementers_by_pr=None):
+    """Unresolved review threads the PR's side has not answered, per open PR (see `thread_unanswered`; the PR's
+    implementers come from `implementers_by_pr`). The same truncation rules as `unresolved_by_pr`: a further page of
+    threads counts one extra, so it is never reported as none."""
+    implementers_by_pr = implementers_by_pr or {}
     pull_requests = graphql["data"]["repository"]["pullRequests"]
     if (pull_requests.get("pageInfo") or {}).get("hasNextPage"):
         raise SystemExit("more than 100 open pull requests: unresolved-thread counts would be missing for the rest; "
@@ -248,7 +257,8 @@ def unanswered_by_pr(graphql):
     counts = {}
     for n in pull_requests["nodes"]:
         threads = n["reviewThreads"]
-        counts[n["number"]] = sum(1 for t in threads["nodes"] if not t["isResolved"] and thread_unanswered(t))
+        authors = implementers_by_pr.get(n["number"], ())
+        counts[n["number"]] = sum(1 for t in threads["nodes"] if not t["isResolved"] and thread_unanswered(t, authors))
         if (threads.get("pageInfo") or {}).get("hasNextPage"):
             counts[n["number"]] += 1
     return counts
@@ -366,7 +376,8 @@ def collect(repo, repo_dir, agents, backlog, identities=None):
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     default = rc.gh_json("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
     return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now, default,
-                       git_commit_exists(repo_dir), unanswered_by_pr(graphql))
+                       git_commit_exists(repo_dir),
+                       unanswered_by_pr(graphql, {p["number"]: p["implementers"] for p in snapshot["prs"]}))
 
 
 def main(argv):

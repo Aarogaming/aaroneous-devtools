@@ -213,28 +213,44 @@ class Build(unittest.TestCase):
             cs.unresolved_by_pr(self.graphql([self.pr_threads(1, 0, 0, False)], more_prs=True))
         self.assertIn("100 open pull requests", str(caught.exception))
 
-    def thread(self, resolved, total, last_login):
-        comments = {"totalCount": total, "nodes": [{"author": {"login": last_login}}]} if last_login is not None else {}
+    AUTHOR_REPLY = "Claude Sonnet 5.5 (author). Valid, fixed at abc1234: the format is now quoted."
+    REVIEWER_FOLLOW_UP = "Reviewer / Seat: Codex. Still missing: the case with an empty list is not covered."
+
+    def thread(self, resolved, total, last_login, body=None):
+        node = {"author": {"login": last_login}}
+        if body is not None:
+            node["body"] = body
+        comments = {"totalCount": total, "nodes": [node]} if last_login is not None else {}
         return {"isResolved": resolved, "comments": comments}
 
-    def test_a_thread_is_answered_when_a_person_or_seat_replied_last(self):
-        self.assertTrue(cs.thread_unanswered(self.thread(False, 1, "Aarogaming")))  # only the opener
-        self.assertTrue(cs.thread_unanswered(self.thread(False, 3, "chatgpt-codex-connector[bot]")))  # bot spoke last
-        self.assertFalse(cs.thread_unanswered(self.thread(False, 2, "Aarogaming")))  # answered
-        self.assertTrue(cs.thread_unanswered({"isResolved": False}))  # unknown comment data: the old behaviour
-        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "")))
+    def test_a_thread_is_answered_only_when_the_pr_sides_seat_has_the_last_word(self):
+        author = ("claude",)
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 1, "Aarogaming", self.AUTHOR_REPLY), author))  # only the opener
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 3, "chatgpt-codex-connector[bot]", "x"), author))  # bot last
+        self.assertFalse(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", self.AUTHOR_REPLY), author))  # author answered
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 3, "Aarogaming", self.REVIEWER_FOLLOW_UP), author))  # reviewer last
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", "Still not fixed, see line 12"), author))  # no seat
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", self.AUTHOR_REPLY), ()))  # implementers unknown
+        self.assertTrue(cs.thread_unanswered({"isResolved": False}, author))  # unknown comment data: the old behaviour
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "", "x"), author))
 
-    def test_unanswered_counts_only_unresolved_threads_nobody_replied_to(self):
-        threads = [self.thread(True, 2, "Aarogaming"), self.thread(False, 2, "Aarogaming"), self.thread(False, 1, "x[bot]"),
-                   self.thread(False, 2, "copilot[bot]")]
+    def test_a_co_implementer_answer_also_counts_as_the_pr_sides(self):
+        reply = "Mimo seat: fixed in abc1234."
+        self.assertFalse(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", reply), ("claude", "mimo")))
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", reply), ("claude",)))
+
+    def test_unanswered_counts_only_unresolved_threads_the_pr_side_has_not_answered(self):
+        threads = [self.thread(True, 2, "Aarogaming", self.AUTHOR_REPLY), self.thread(False, 2, "Aarogaming", self.AUTHOR_REPLY),
+                   self.thread(False, 1, "x[bot]", "p"), self.thread(False, 3, "Aarogaming", self.REVIEWER_FOLLOW_UP)]
         graphql = self.graphql([{"number": 1, "reviewThreads": {"pageInfo": {"hasNextPage": False}, "nodes": threads}}])
         self.assertEqual(cs.unresolved_by_pr(graphql), {1: 3})
-        self.assertEqual(cs.unanswered_by_pr(graphql), {1: 2})
+        self.assertEqual(cs.unanswered_by_pr(graphql, {1: ["claude"]}), {1: 2})
+        self.assertEqual(cs.unanswered_by_pr(graphql), {1: 3})  # without implementers nothing is answered
 
     def test_a_further_page_of_threads_counts_one_extra_unanswered_thread(self):
         graphql = self.graphql([{"number": 1, "reviewThreads": {"pageInfo": {"hasNextPage": True},
-                                                                  "nodes": [self.thread(False, 2, "Aarogaming")]}}])
-        self.assertEqual(cs.unanswered_by_pr(graphql), {1: 1})
+                                                                  "nodes": [self.thread(False, 2, "Aarogaming", self.AUTHOR_REPLY)]}}])
+        self.assertEqual(cs.unanswered_by_pr(graphql, {1: ["claude"]}), {1: 1})
 
     def test_the_state_carries_the_unanswered_count_and_defaults_to_the_old_behaviour(self):
         snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main", "implementers": ["claude"]}]}
