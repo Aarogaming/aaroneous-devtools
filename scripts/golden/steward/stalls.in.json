@@ -219,6 +219,118 @@
       {
         "data": {
           "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 1
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 2,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 2
+        },
+        "type": "cards"
+      },
+      {
+        "data": {
+          "per_seat": {},
+          "pushes": {
+            "claude": 1
+          },
+          "tick": 3,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 3
+        },
+        "type": "cards"
+      }
+    ],
+    "name": "a push in the last tick clears that seat",
+    "stall_after": 3,
+    "window": 3
+  },
+  {
+    "agents": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ],
+    "events": [
+      {
+        "data": {
+          "per_seat": {},
+          "pushes": {
+            "claude": 3
+          },
+          "tick": 1,
+          "unattributed": 3
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
+            "claude",
+            "mimo",
+            "codex",
+            "gemini"
+          ],
+          "tick": 1
+        },
+        "type": "cards"
+      }
+    ],
+    "name": "pushes do not make unattributed comments look attributed",
+    "stall_after": 1,
+    "window": 1
+  },
+  {
+    "agents": [
+      "claude",
+      "mimo",
+      "codex",
+      "gemini"
+    ],
+    "events": [
+      {
+        "data": {
+          "per_seat": {},
+          "tick": 1,
+          "unattributed": 0
+        },
+        "type": "ingest"
+      },
+      {
+        "data": {
+          "agents": [
             "mimo"
           ],
           "tick": 1

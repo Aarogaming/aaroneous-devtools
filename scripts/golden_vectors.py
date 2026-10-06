@@ -227,8 +227,10 @@ def stall_events(spec):
     """spec: one entry per tick, {"issued": [...], "produced": {seat: n}, "unattributed": n}."""
     events = []
     for tick, entry in enumerate(spec, 1):
-        events.append({"type": "ingest", "data": {"tick": tick, "per_seat": entry.get("produced", {}),
-                                                 "unattributed": entry.get("unattributed", 0)}})
+        data = {"tick": tick, "per_seat": entry.get("produced", {}), "unattributed": entry.get("unattributed", 0)}
+        if "pushes" in entry:
+            data["pushes"] = entry["pushes"]
+        events.append({"type": "ingest", "data": data})
         events.append({"type": "cards", "data": {"tick": tick, "agents": entry.get("issued", [])}})
     return events
 
@@ -258,6 +260,12 @@ STALLS = [
      "agents": EVERYONE, "stall_after": 3, "window": 3},
     {"name": "fewer ticks than the window judges nobody",
      "events": stall_events([{"issued": EVERYONE}] * 2), "agents": EVERYONE, "stall_after": 3, "window": 3},
+    {"name": "a push in the last tick clears that seat",
+     "events": stall_events([{"issued": EVERYONE}, {"issued": EVERYONE}, {"issued": EVERYONE, "pushes": {"claude": 1}}]),
+     "agents": EVERYONE, "stall_after": 3, "window": 3},
+    {"name": "pushes do not make unattributed comments look attributed",
+     "events": stall_events([{"issued": EVERYONE, "unattributed": 3, "pushes": {"claude": 3}}]),
+     "agents": EVERYONE, "stall_after": 1, "window": 1},
     {"name": "a seat that was not issued a card in every tick is not stalled",
      "events": stall_events([{"issued": ["mimo"]}, {"issued": EVERYONE}, {"issued": EVERYONE}]),
      "agents": EVERYONE, "stall_after": 3, "window": 3},

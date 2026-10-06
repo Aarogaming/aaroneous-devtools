@@ -23,6 +23,22 @@
   {
     "attribution_weak": false,
     "stalled": [
+      "mimo",
+      "codex",
+      "gemini"
+    ]
+  },
+  {
+    "attribution_weak": true,
+    "stalled": [
+      "mimo",
+      "codex",
+      "gemini"
+    ]
+  },
+  {
+    "attribution_weak": false,
+    "stalled": [
       "mimo"
     ]
   },

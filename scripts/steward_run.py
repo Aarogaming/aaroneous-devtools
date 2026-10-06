@@ -244,9 +244,10 @@ def ingest(snapshot, events, state_prs=()):
             fresh.append({"id": cid, "pr": pr["number"], "seat": seat})
             if seat:
                 per_seat[seat] = per_seat.get(seat, 0) + 1
+    # Pushes are kept apart from comment counts: `attribution_weak` is a ratio over comments, and a push is always
+    # attributed, so folding pushes into per_seat would raise the ratio and re-enable stall detection while the
+    # comments still cannot be assigned (Codex P2 on #89). `stalled_seats` reads both.
     heads, pushed = pushes(state_prs, last_heads(events))
-    for seat, count in pushed.items():
-        per_seat[seat] = per_seat.get(seat, 0) + count
     return {"comment_ids": [f["id"] for f in fresh] + bots, "per_seat": per_seat,
             "unattributed": sum(1 for f in fresh if not f["seat"]), "bots": len(bots),
             "pushes": pushed, "heads": heads}
@@ -319,7 +320,8 @@ def stalled_seats(events, agents, stall_after):
         if event["type"] == "cards":
             slot["issued"].update(event["data"].get("agents", []))
         if event["type"] == "ingest":
-            slot["produced"].update(s for s, n in event["data"].get("per_seat", {}).items() if n)
+            for key in ("per_seat", "pushes"):
+                slot["produced"].update(s for s, n in event["data"].get(key, {}).items() if n)
     recent = sorted(ticks)[-stall_after:]
     if len(recent) < stall_after:
         return []
@@ -444,7 +446,8 @@ def render(result):
     for e in result["escalations"]:
         out.append(f"[{e['agent']}] ESCALATION\n  TASK: {e['task']}\n  ACCEPT: {e['acceptance']}")
     per = ", ".join(f"{s}={n}" for s, n in sorted(result["ingest"]["per_seat"].items())) or "none"
-    out.append(f"INGESTED new artifacts by seat: {per}; unattributed: {result['ingest']['unattributed']}")
+    pushed = ", ".join(f"{s}={n}" for s, n in sorted(result["ingest"].get("pushes", {}).items())) or "none"
+    out.append(f"INGESTED new artifacts by seat: {per}; pushes: {pushed}; unattributed: {result['ingest']['unattributed']}")
     if result.get("attribution_weak"):
         out.append("NOTE: most recent comments could not be attributed to a seat; engagement stalls are not judged this tick (have seats put 'Seat / agent: NAME' or a card marker in their comments)")
     lz = result["leases"]
