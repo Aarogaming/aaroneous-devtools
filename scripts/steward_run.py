@@ -119,20 +119,34 @@ def seen_comment_ids(events):
     return seen
 
 
+def is_bot(comment):
+    """A GitHub bot account (a status or review-summary comment), by the author recorded on the comment."""
+    user = comment.get("user") or {}
+    return user.get("type") == "Bot" or str(user.get("login", "")).lower().endswith("[bot]")
+
+
 def ingest(snapshot, events):
-    """New comments since the last ingest, attributed to a seat where the text says which."""
+    """New comments since the last ingest, attributed to a seat where the text says which.
+
+    Bot comments are remembered as seen but are nobody's artifact and are left out of the attribution-quality
+    denominator: counted as unattributed they would push `attribution_weak` over its minimum and switch off every
+    seat's stall detection."""
     seen = seen_comment_ids(events)
-    fresh, per_seat = [], {}
+    fresh, per_seat, bots = [], {}, []
     for pr in snapshot["prs"]:
         for comment in pr.get("comments", []):
             cid = comment.get("id")
             if cid is None or cid in seen:
                 continue
+            if is_bot(comment):
+                bots.append(cid)
+                continue
             seat = seat_from_comment(comment.get("body", ""))
             fresh.append({"id": cid, "pr": pr["number"], "seat": seat})
             if seat:
                 per_seat[seat] = per_seat.get(seat, 0) + 1
-    return {"comment_ids": [f["id"] for f in fresh], "per_seat": per_seat, "unattributed": sum(1 for f in fresh if not f["seat"])}
+    return {"comment_ids": [f["id"] for f in fresh] + bots, "per_seat": per_seat,
+            "unattributed": sum(1 for f in fresh if not f["seat"]), "bots": len(bots)}
 
 
 def lease_table(events, tick, done):

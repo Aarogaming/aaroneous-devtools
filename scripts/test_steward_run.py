@@ -164,12 +164,16 @@ class Ingest(unittest.TestCase):
                   "**Reviewer / Seat**: Antigravity (`gemini-3.8-flash`)\n**Head Reviewed**: `240c9e1d`\n")
         self.assertEqual(sr.seat_from_comment(packet), "gemini")
 
-    def test_a_bot_comment_does_not_hide_a_stalled_seat(self):
+    def test_a_bot_comment_is_nobodys_artifact_and_not_counted_as_unattributed(self):
         path = tmp_log()
-        bot = {"id": 77, "body": "## Summary\n\nCodex reacts with an eyes emoji while any review is running.\n"}
+        bot = {"id": 77, "user": {"login": "chatgpt-codex-connector[bot]", "type": "Bot"},
+               "body": "## Summary\n\nCodex reacts with an eyes emoji while any review is running.\n"}
         result = sr.run_tick(state([pr(1)]), snap({1: [bot]}), path, 1, NOW)
         self.assertEqual(result["ingest"]["per_seat"], {})
-        self.assertEqual(result["ingest"]["unattributed"], 1)
+        self.assertEqual(result["ingest"]["unattributed"], 0)
+        self.assertEqual(result["ingest"]["bots"], 1)
+        again = sr.run_tick(state([pr(1)]), snap({1: [bot]}), path, 2, NOW)
+        self.assertEqual(again["ingest"]["bots"], 0)
         os.unlink(path)
 
     def test_new_comments_are_counted_once_per_seat(self):
@@ -232,6 +236,23 @@ class Stalls(unittest.TestCase):
 
 
 class Attribution(unittest.TestCase):
+    def test_bot_status_comments_in_every_tick_do_not_switch_off_stall_detection(self):
+        path = tmp_log()
+        results = []
+        for tick in range(1, 4):
+            bot = {"id": 400 + tick, "user": {"login": "chatgpt-codex-connector[bot]", "type": "Bot"},
+                   "body": "## Review summary\n\nCodex reacts with an eyes emoji while any review is running.\n"}
+            results.append(sr.run_tick(three_open(), snap({1: [bot]}), path, tick, NOW, stall_after=3))
+        self.assertFalse(results[-1]["attribution_weak"])
+        self.assertEqual({e["agent"] for e in results[-1]["escalations"]}, {"claude", "mimo", "codex"})
+        os.unlink(path)
+
+    def test_a_bot_login_is_recognised_by_type_or_by_the_bot_suffix(self):
+        self.assertTrue(sr.is_bot({"user": {"login": "x", "type": "Bot"}}))
+        self.assertTrue(sr.is_bot({"user": {"login": "copilot-pull-request-reviewer[bot]"}}))
+        self.assertFalse(sr.is_bot({"user": {"login": "Aarogaming", "type": "User"}}))
+        self.assertFalse(sr.is_bot({"body": "no author recorded"}))
+
     def test_weak_attribution_suppresses_stall_escalation(self):
         path = tmp_log()
         results = []
@@ -329,7 +350,7 @@ class Leases(unittest.TestCase):
         os.unlink(path)
 
 
-class Attribution(unittest.TestCase):
+class AttributionLabels(unittest.TestCase):
     def test_the_antigravity_label_is_the_gemini_seat(self):
         self.assertEqual(sr.seat_from_comment("**Seat / Agent**: Antigravity (Gemini 2.5 Pro)"), "gemini")
 
