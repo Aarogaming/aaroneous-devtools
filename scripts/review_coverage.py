@@ -292,6 +292,9 @@ def live_ancestry(repo_dir):
     return lambda a, b: a == b or git(repo_dir, "merge-base", "--is-ancestor", a, b).returncode == 0
 
 
+MAX_PROBLEM_LINES = 5
+
+
 def render(rows):
     lines = ["PR    head      covered  structured  legacy(not counted)  reasons"]
     for r in rows:
@@ -300,6 +303,18 @@ def render(rows):
             f"#{r['pr']:<4} {r['head'][:8]}  {str(r['covered']):<7}  {r['structured_attestations']:<10}"
             f"  {r['legacy_packets_not_counted']:<19}  {reasons}"
         )
+    # A rejected attestation used to appear only in --json, so the default report said "no accept at the current head" and
+    # nothing about the block that was dropped and why (Codex P2 on #95). The table above is unchanged.
+    for r in rows:
+        problems = r.get("malformed") or []
+        if not problems:
+            continue
+        lines.append(f"#{r['pr']}: {len(problems)} attestation block(s) not counted")
+        for problem in problems[:MAX_PROBLEM_LINES]:
+            where = problem.get("comment", problem.get("review"))
+            lines.append(f"    comment {where}: {problem['problem']}")
+        if len(problems) > MAX_PROBLEM_LINES:
+            lines.append(f"    ... and {len(problems) - MAX_PROBLEM_LINES} more (see --json)")
     return "\n".join(lines)
 
 

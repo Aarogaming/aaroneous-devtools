@@ -160,6 +160,27 @@ class Parsing(unittest.TestCase):
         self.assertFalse(row["covered"])
         self.assertEqual(len(row["malformed"]), 1)
 
+    def test_the_default_report_names_every_rejected_block_not_only_json(self):
+        placeholder = dict(rec(H1), head="<full 40-char head SHA>")
+        snapshot = {"repo": "o/r", "prs": [
+            {"number": 1, "head": H1, "merge_base": MB, "implementers": ["claude"],
+             "comments": [block(placeholder), {"body": "```attestation\nreviewer: Gemini\nverdict: ACCEPT\n```"}]},
+            {"number": 2, "head": H2, "merge_base": MB, "implementers": ["claude"], "comments": [block(rec(H2, pr=2))]}]}
+        text = rc.render(rc.report_snapshot(snapshot, is_ancestor=always))
+        self.assertIn("#1: 2 attestation block(s) not counted", text)
+        self.assertIn("head must be a full 40-character lowercase SHA", text)
+        self.assertIn("invalid JSON", text)
+        self.assertNotIn("#2: ", text.replace("#2    ", ""))
+        self.assertTrue(text.startswith("PR    head      covered  structured  legacy(not counted)  reasons"))
+
+    def test_the_default_report_caps_the_lines_per_pr(self):
+        comments = [block(dict(rec(H1), head="x")) for _ in range(rc.MAX_PROBLEM_LINES + 3)]
+        snapshot = {"repo": "o/r", "prs": [{"number": 1, "head": H1, "merge_base": MB, "implementers": ["claude"],
+                                            "comments": comments}]}
+        text = rc.render(rc.report_snapshot(snapshot, is_ancestor=always))
+        self.assertIn("... and 3 more (see --json)", text)
+        self.assertEqual(text.count("    comment "), rc.MAX_PROBLEM_LINES)
+
     def test_a_placeholder_or_short_sha_is_reported_never_counted(self):
         # The template comment on #46 (5981785915) is an attestation-labelled block whose head and base_sha are
         # "<full 40-char head SHA>" and "<full merge-base SHA>"; it parsed as a structured record.
