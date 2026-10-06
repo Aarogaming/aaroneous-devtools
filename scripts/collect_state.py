@@ -306,6 +306,12 @@ def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
     return sorted(done_receipts(snapshot, repair_owners, implementers_by_pr))
 
 
+# Cards whose completion is visible on GitHub itself (a thread is resolved, a rejecting verdict stops standing). A
+# receipt for one of these would complete the lease while the item is still open, and the dispatcher would lease the same
+# key again on the next tick, so receipts for them are not read.
+OBSERVABLE_KINDS = ("resolve_threads", "address_review")
+
+
 def done_receipts(snapshot, repair_owners=None, implementers_by_pr=None):
     """The same completions as `done_keys`, as {key: the seat whose receipt completed it}. The first eligible receipt
     for a key names the seat. A lease holder is credited with a completion only when it is that seat."""
@@ -321,6 +327,8 @@ def done_receipts(snapshot, repair_owners=None, implementers_by_pr=None):
             if not match:
                 continue
             kind, number, receipt_head = match.group(1).lower(), int(match.group(2)), match.group(3).lower()
+            if kind in OBSERVABLE_KINDS:
+                continue
             if number != p["number"] or receipt_head != head:
                 continue
             first = next((line for line in body.splitlines() if line.strip()), "")

@@ -1,0 +1,82 @@
+[
+  {
+    "acceptance": "a comment naming each implementing seat with the git evidence (trailer or branch), or stating that none can be established; until the implementers are known no review, fix or resolve card is issued for this PR Start your comment with the receipt [done:identify_implementers:18:1818181818181818181818181818181818181818] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
+    "agent": "mimo",
+    "attempt": 1,
+    "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "identify_implementers",
+      "pr": 18
+    },
+    "lease": {
+      "expires_tick": 6,
+      "key": "identify_implementers:18:18181818",
+      "renewed": false
+    },
+    "lens": "direct",
+    "lens_text": "Do the task as stated.",
+    "marker": "[done:identify_implementers:18:1818181818181818181818181818181818181818]",
+    "new_since_last": "first time this seat is handed this PR",
+    "owner_blocked": false,
+    "priority": 1,
+    "recipe": [
+      "git log --format='%(trailers:key=Co-Authored-By,key=Contribution-ID,only=true,unfold=true)' bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..1818181818181818181818181818181818181818   # trailers naming a seat",
+      "read the head branch name: a seat-named prefix such as codex/ names its owner",
+      "post a comment naming each implementing seat with that evidence, or saying none can be established; the author may add a Co-Authored-By trailer in a new commit"
+    ],
+    "role": "implementer",
+    "state": "PR #18 head 181818181818 on main; +10/-2 in 1 file(s); mergeable=CLEAN; implementers=unknown",
+    "task": "Identify who implemented PR #18 from git, or say it cannot be established",
+    "then": "no further item is free for you; stand by",
+    "tick": 0,
+    "why_now": "implementers unknown (no seat trailer, no seat-named branch): author-only and independence-dependent cards are withheld until they are known"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "gemini",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "reviewer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "codex",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "auditor",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "claude",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "skeptic",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  }
+]

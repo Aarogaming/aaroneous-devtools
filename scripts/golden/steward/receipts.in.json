@@ -310,7 +310,7 @@
         "claude"
       ]
     },
-    "name": "a reviewer completes a thread resolution and the author cannot",
+    "name": "receipts for cards that complete on GitHub are not read",
     "repair_owners": {},
     "snapshot": {
       "prs": [

@@ -32,7 +32,7 @@
     "why_now": "no free item; duplicating work or inventing a task would be noise"
   },
   {
-    "acceptance": "a new head that fixes what the reviewer found, or a reply naming each finding and the commit or evidence that answers it; the card clears when the new head is reviewed Start your comment with the receipt [done:address_review:17:1717171717171717171717171717171717171717] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
+    "acceptance": "a new head that fixes what the reviewer found, or a reply naming each finding and the commit or evidence that answers it; the card clears when the new head is reviewed",
     "agent": "codex",
     "attempt": 1,
     "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",

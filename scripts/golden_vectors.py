@@ -90,6 +90,8 @@ SCENARIOS = {
         [pr(15, threads_unresolved=2, threads_unanswered=0, seat="claude", implementers=["claude"])])),
     "a_standing_rejecting_verdict_goes_to_the_author_not_to_another_review": (0, state(
         [pr(17, seat="codex", implementers=["codex"], standing_blocker={"verdict": "needs_revision", "by": "Claude"})])),
+    "unknown_implementers_get_an_identify_card_not_an_author_or_review_card": (0, state(
+        [pr(18, seat="", implementers=[], threads_unresolved=1, threads_unanswered=1)])),
     "unanswered_threads_still_go_to_the_author": (0, state(
         [pr(16, threads_unresolved=2, threads_unanswered=1, seat="codex", implementers=["codex"])])),
 }
@@ -185,7 +187,7 @@ RECEIPTS = [
      "snapshot": snapshot_for(7, [receipt("repair_verdict", 7, H, "Gemini seat: reposted"),
                                   receipt("repair_verdict", 7, H, "Mimo seat: reposted")]),
      "repair_owners": {"7": ["gemini"]}, "implementers_by_pr": {"7": ["claude"]}},
-    {"name": "a reviewer completes a thread resolution and the author cannot",
+    {"name": "receipts for cards that complete on GitHub are not read",
      "snapshot": snapshot_for(7, [receipt("resolve_threads", 7, H, "Claude seat: resolved"),
                                   receipt("resolve_threads", 7, H, "Gemini seat: resolved")]),
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},

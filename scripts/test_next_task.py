@@ -231,6 +231,39 @@ class Cards(unittest.TestCase):
         s["done"] = ["address_review:41:aaaaaaaa"]
         self.assertEqual([i["kind"] for i in nt.work_items(s)], ["address_review"])
 
+    def test_unknown_implementers_never_hand_an_author_only_or_review_card_to_an_arbitrary_seat(self):
+        for kwargs in ({"threads_unresolved": 1, "threads_unanswered": 1},
+                       {"threads_unresolved": 1, "threads_unanswered": 0},
+                       {"standing_blocker": {"verdict": "needs_revision", "by": "Codex"}},
+                       {}):
+            kinds = self.cards_for(dict(seat="", implementers=[], **kwargs))
+            self.assertEqual({k for k in kinds.values()} & {"fix_threads", "resolve_threads", "address_review", "needs_review"},
+                             set(), kwargs)
+            self.assertIn("identify_implementers", set(kinds.values()), kwargs)
+
+    def test_known_primary_co_implementer_and_rejecting_reviewer_controls(self):
+        known = self.cards_for({"seat": "claude", "implementers": ["claude"],
+                                "standing_blocker": {"verdict": "needs_revision", "by": "Codex"}})
+        self.assertEqual(known["claude"], "address_review")
+        self.assertNotIn("identify_implementers", set(known.values()))
+        co = self.cards_for({"seat": "claude", "implementers": ["claude", "mimo"], "threads_unresolved": 1, "threads_unanswered": 1})
+        self.assertEqual(co["claude"], "fix_threads")
+        self.assertNotEqual(co["mimo"], "fix_threads")
+
+    def test_a_covered_clean_pr_with_unknown_implementers_still_gets_its_merge_brief(self):
+        kinds = self.cards_for({"seat": "", "implementers": [], "covered": True})
+        self.assertIn("ready_to_merge", set(kinds.values()))
+
+    def test_no_receipt_is_requested_for_a_card_that_completes_on_github(self):
+        s = state([pr(41, seat="claude", implementers=["claude"],
+                      standing_blocker={"verdict": "needs_revision", "by": "Codex"})])
+        s["agents"] = [{"name": "claude"}]
+        card = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "address_review"][0]
+        self.assertNotIn("[done:", card["acceptance"])
+        fix = state([pr(42, seat="claude", implementers=["claude"], threads_unresolved=1, threads_unanswered=1)])
+        fix["agents"] = [{"name": "claude"}]
+        self.assertIn("[done:fix_threads:", [c for c in nt.build_cards(fix, 0)][0]["acceptance"])
+
     def test_a_co_implementer_never_resolves_the_threads_on_its_own_pr(self):
         kinds = self.cards_for({"seat": "claude", "implementers": ["claude", "mimo"], "threads_unresolved": 1,
                                 "threads_unanswered": 0})
@@ -238,10 +271,11 @@ class Cards(unittest.TestCase):
         self.assertEqual(kinds["gemini"], "resolve_threads")
 
     def review_recipe(self, implementers):
-        s = state([pr(63, seat="", implementers=implementers, head="a" * 40, base_sha="b" * 40)])
-        s["agents"] = [{"name": "gemini"}]
-        card = [c for c in nt.build_cards(s, 0) if c["inputs"].get("kind") == "needs_review"][0]
-        return [step for step in card["recipe"] if step.startswith("post ONE attestation block")][0]
+        # work_items now withholds a review card while the implementers are unknown, so the recipe's own defence is
+        # exercised directly.
+        item = {"kind": "needs_review", "pr": 63, "head": "a" * 40, "base_sha": "b" * 40, "base_ref": "main",
+                "implementers": implementers}
+        return [step for step in nt.recipe_for(item) if step.startswith("post ONE attestation block")][0]
 
     def test_unknown_implementers_are_not_printed_as_an_empty_list_the_tool_would_reject(self):
         step = self.review_recipe([])

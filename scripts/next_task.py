@@ -76,6 +76,7 @@ def work_items(state):
                 "size": pr.get("size", ""), "mergeable_state": pr.get("mergeable_state", ""),
                 "rejected_unattributed": [r for r in pr.get("rejected_verdicts", []) if not r.get("seat")]}
         unanswered = pr.get("threads_unanswered", threads)
+        chain_start = len(items)
         if threads and unanswered:
             items.append(dict(base, kind="fix_threads", rank=1, owner_seat=pr.get("seat"),
                               detail=f"{unanswered} of {threads} unresolved review thread(s) not yet answered"))
@@ -103,6 +104,15 @@ def work_items(state):
             items.append(dict(base, kind="ready_to_merge", rank=3, detail="covered, CLEAN, no unresolved threads"))
         elif not clean:
             items.append(dict(base, kind="not_mergeable", rank=2, detail=f"mergeable_state={pr.get('mergeable_state')}"))
+        if not base["implementers"]:
+            # Nobody is known to have written this PR. An author-only card would go to whichever seat is first, and a
+            # review card could go to the real author. Withhold those and ask for the facts instead.
+            chain = items[chain_start:]
+            if any(i["kind"] in NEEDS_KNOWN_IMPLEMENTERS for i in chain):
+                items[chain_start:] = [i for i in chain if i["kind"] not in NEEDS_KNOWN_IMPLEMENTERS]
+                items.append(dict(base, kind="identify_implementers", rank=1, owner_seat=None,
+                                  detail="implementers unknown (no seat trailer, no seat-named branch): "
+                                         "author-only and independence-dependent cards are withheld until they are known"))
         rejected = pr.get("rejected_verdicts", [])
         # An implementer's verdict can never count, so repairing it would be wasted work: skip those seats.
         implementers = set(base["implementers"]) | {pr.get("seat")}
@@ -139,6 +149,9 @@ def card_for(agent, role, tick, item):
                            + " by " + str((item.get("blocker") or {}).get("by", "a reviewer")) + " on " + ref,
                            "a new head that fixes what the reviewer found, or a reply naming each finding and the commit or evidence that answers it; "
                            "the card clears when the new head is reviewed"),
+        "identify_implementers": ("Identify who implemented " + ref + " from git, or say it cannot be established",
+                                  "a comment naming each implementing seat with the git evidence (trailer or branch), or stating that none can be "
+                                  "established; until the implementers are known no review, fix or resolve card is issued for this PR"),
         "resolve_threads": ("Check the replies on every unresolved review thread of " + ref + " and resolve each one that is addressed",
                             "every thread is resolved after you checked the commit its reply names, or carries your reply saying what is still missing"),
         "needs_review": ("Post an independent whole-diff review of " + ref + " at its current head, with an attestation block",
@@ -170,9 +183,16 @@ def card_for(agent, role, tick, item):
         "acceptance": acceptance + (
             f" Start your comment with the receipt [done:{kind}:{pr}:{item.get('head', '').lower()}] (the full 40-character head) "
             "and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use "
-            "that receipt and say what blocked you." if pr else ""),
+            "that receipt and say what blocked you." if pr and kind not in OBSERVABLE_KINDS else ""),
         "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
     }
+
+
+# Kinds whose completion is visible on GitHub (see collect_state.OBSERVABLE_KINDS); no receipt is requested for them.
+OBSERVABLE_KINDS = ("resolve_threads", "address_review")
+# Kinds that are meaningless without a known author or known independence: they are withheld while the implementers
+# are unknown, and an identify_implementers item takes their place.
+NEEDS_KNOWN_IMPLEMENTERS = ("fix_threads", "resolve_threads", "address_review", "needs_review")
 
 
 def implementers_field(item, base_sha, head):
@@ -211,6 +231,12 @@ def recipe_for(item):
             f"implementers={implementers_field(item, base_sha, head)}, verdict",
             "keep your analysis as prose above the block",
         ]
+    if item["kind"] == "identify_implementers" and pr:
+        return [f"git log --format='%(trailers:key=Co-Authored-By,key=Contribution-ID,only=true,unfold=true)' "
+                f"{base_sha or '<merge-base>'}..{head}   # trailers naming a seat",
+                "read the head branch name: a seat-named prefix such as codex/ names its owner",
+                "post a comment naming each implementing seat with that evidence, or saying none can be established; "
+                "the author may add a Co-Authored-By trailer in a new commit"]
     if item["kind"] == "address_review" and pr:
         return ["read the reviewer's latest comment on the PR and list each finding it names",
                 "fix each finding in a commit, or reply with the evidence that answers it",

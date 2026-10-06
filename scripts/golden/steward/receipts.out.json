@@ -18,9 +18,7 @@
   {
     "repair_verdict:7:cccccccc": "gemini"
   },
-  {
-    "resolve_threads:7:cccccccc": "gemini"
-  },
+  {},
   {
     "needs_review:7:cccccccc": "gemini"
   }

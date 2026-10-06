@@ -1,6 +1,6 @@
 [
   {
-    "acceptance": "every thread is resolved after you checked the commit its reply names, or carries your reply saying what is still missing Start your comment with the receipt [done:resolve_threads:15:1515151515151515151515151515151515151515] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
+    "acceptance": "every thread is resolved after you checked the commit its reply names, or carries your reply saying what is still missing",
     "agent": "mimo",
     "attempt": 1,
     "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",

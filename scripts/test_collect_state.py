@@ -279,6 +279,16 @@ class Build(unittest.TestCase):
         self.assertFalse(cs.eligible_completer("address_review", "claude", ["codex"]))
         self.assertFalse(cs.eligible_completer("address_review", "codex", []))
 
+    def test_receipts_for_cards_that_complete_on_github_are_not_read(self):
+        head = "c" * 40
+        for kind, seat in (("resolve_threads", "Gemini"), ("address_review", "Codex")):
+            body = f"[done:{kind}:7:{head}] {seat} seat: done"
+            snapshot = {"prs": [{"number": 7, "head": head, "comments": [{"id": 1, "body": body}]}]}
+            self.assertEqual(cs.done_receipts(snapshot, {}, {7: ["codex" if kind == "resolve_threads" else "codex"]}), {}, kind)
+        body = f"[done:fix_threads:7:{head}] Claude seat: done"
+        snapshot = {"prs": [{"number": 7, "head": head, "comments": [{"id": 1, "body": body}]}]}
+        self.assertEqual(cs.done_receipts(snapshot, {}, {7: ["claude"]}), {f"fix_threads:7:{head[:8]}": "claude"})
+
     def test_only_a_non_implementer_completes_a_resolve_threads_card(self):
         self.assertTrue(cs.eligible_completer("resolve_threads", "gemini", ["claude"]))
         self.assertFalse(cs.eligible_completer("resolve_threads", "claude", ["claude"]))
