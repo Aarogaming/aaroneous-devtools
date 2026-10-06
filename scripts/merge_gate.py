@@ -37,7 +37,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import review_coverage as rc  # noqa: E402
 
 # One list of owner-only paths, used by both the default decision (f) and the checklist (box 0).
-TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "governance/AUTOMATED_MERGE_POLICY.md")
+# governance/identities.json maps logins to seats and holds the public keys signed attestations are verified against: it
+# decides who counts as an independent reviewer. IDENTITY_SETUP.md calls registering a key "a reviewed PR,
+# owner-approved", but as a governance .json it classified as Tier B, so a PR adding a login or key could auto-merge on
+# two verdicts and then make its own forged verdicts count.
+TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "governance/AUTOMATED_MERGE_POLICY.md",
+                "governance/identities.json")
 PROTECTED = TIER_A_PATHS
 DOCS_ALLOWLIST = ("governance/", "docs/", "architecture/")
 FULL_GATE = [
@@ -180,7 +185,10 @@ def decide(pr_row, paths, base_ref, trial_merge_ok, owner_confirmed_protected=Fa
 
 
 def changed_paths(repo_dir, base_ref, head):
-    out = rc.git(repo_dir, "diff", "--name-only", f"origin/{base_ref}...{head}").stdout
+    """Every path the PR touches, both sides of a rename. With rename detection on (git's default) a moved file is
+    listed only under its new name, so renaming an owner-only file to an ordinary path would hide the protected source
+    path from `tier_of` and `touches_protected` (Codex P1 on #91)."""
+    out = rc.git(repo_dir, "diff", "--name-only", "--no-renames", f"origin/{base_ref}...{head}").stdout
     return [line for line in out.splitlines() if line]
 
 

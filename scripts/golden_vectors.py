@@ -350,6 +350,8 @@ GATE_TIER = [
     {"name": "no paths is tier B and a full gate", "paths": []},
     {"name": "mixed directories report mixed", "paths": ["docs/a.md", "governance/b.md"]},
     {"name": "a lookalike prefix is also owner-only (prefix match, fails closed)", "paths": ["AGENTS.md.bak"]},
+    {"name": "the seat identity map is owner-only", "paths": ["governance/identities.json"]},
+    {"name": "another governance json file is still tier B", "paths": ["governance/other.json"]},
 ]
 
 GATE_CI = [
