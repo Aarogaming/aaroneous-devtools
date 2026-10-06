@@ -419,6 +419,28 @@ class Ingest(unittest.TestCase):
         self.assertTrue(sr.attribution_weak(ingests, 3))
         os.unlink(path)
 
+    def test_a_push_by_an_author_under_a_standing_rejection_clears_the_stall_but_neither_completes_nor_covers(self):
+        # Codex's cross-case for the #87 + #89 integration: push credit is engagement only. The address_review card must
+        # still be issued at the new head, no lease may complete, and the state's coverage is untouched.
+        path = tmp_log()
+
+        def rejected(head):
+            return state([pr(1, head=head, seat="claude", implementers=["claude"], covered=False,
+                             standing_blocker={"verdict": "needs_revision", "by": "Codex"})])
+
+        sr.run_tick(rejected("a" * 40), snap({}), path, 1, NOW)
+        moved = rejected("b" * 40)
+        result = sr.run_tick(moved, snap({}), path, 2, NOW)
+        self.assertEqual(result["ingest"]["pushes"], {"claude": 1})
+        self.assertEqual(result["ingest"]["per_seat"], {}, "a push is not a comment")
+        kinds = {c["agent"]: c["inputs"].get("kind") for c in result["cards"]}
+        self.assertEqual(kinds["claude"], "address_review", "the rejection still stands, so the card is still issued")
+        events = sr.read_events(path)
+        self.assertNotIn("lease_done", [e["type"] for e in events], "a push never completes a card")
+        self.assertEqual(moved["done"], [])
+        self.assertFalse(moved["prs"][0]["covered"], "a push never creates coverage")
+        os.unlink(path)
+
     def test_a_push_clears_the_seats_stall_and_only_that_seats(self):
         path = tmp_log()
         sr.run_tick(three_open(), snap({}), path, 1, NOW, stall_after=3)
