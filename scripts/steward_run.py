@@ -197,12 +197,14 @@ def is_bot(comment):
 
 
 def last_heads(events):
-    """{pr number (str): head} from the newest ingest events that recorded heads, or None before the first one."""
+    """{pr number (str): head} from the newest ingest event that recorded heads, or None before the first one. Each
+    snapshot REPLACES the previous one, an empty map included: a PR that closed is gone from the next snapshot, so one
+    reopened later at the same head reads as new and credits its seat (Codex P2 on #90). Merging snapshots would keep the
+    closed PR's old head forever and hide the reopening."""
     heads = None
     for event in events:
         if event["type"] == "ingest" and "heads" in event["data"]:
-            heads = dict(heads or {})
-            heads.update(event["data"]["heads"])
+            heads = dict(event["data"]["heads"])
     return heads
 
 

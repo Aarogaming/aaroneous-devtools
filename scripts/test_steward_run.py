@@ -397,6 +397,23 @@ class Ingest(unittest.TestCase):
         self.assertEqual(opened["ingest"]["unattributed"], 0, "a push with no seat must not weaken attribution quality")
         os.unlink(path)
 
+    def test_a_pr_that_closes_and_reopens_at_the_same_head_is_credited_when_it_reopens(self):
+        path = tmp_log()
+        sr.run_tick(state([pr(1, head="a" * 40, seat="claude"), pr(2, seat="codex")]), snap({}), path, 1, NOW)
+        closed = sr.run_tick(state([pr(2, seat="codex")]), snap({}), path, 2, NOW)
+        self.assertEqual(closed["ingest"]["pushes"], {})
+        self.assertEqual(closed["ingest"]["heads"], {"2": "a" * 40})
+        reopened = sr.run_tick(state([pr(1, head="a" * 40, seat="claude"), pr(2, seat="codex")]), snap({}), path, 3, NOW)
+        self.assertEqual(reopened["ingest"]["pushes"], {"claude": 1})
+        os.unlink(path)
+
+    def test_every_open_prs_snapshot_replaces_the_last_even_when_empty(self):
+        path = tmp_log()
+        sr.append_event(path, "ingest", {"tick": 1, "per_seat": {}, "unattributed": 0, "heads": {"1": "a" * 40}}, NOW)
+        sr.append_event(path, "ingest", {"tick": 2, "per_seat": {}, "unattributed": 0, "heads": {}}, NOW)
+        self.assertEqual(sr.last_heads(sr.read_events(path)), {})
+        os.unlink(path)
+
     def test_a_log_from_before_pushes_were_recorded_credits_nothing_on_its_first_run(self):
         path = tmp_log()
         sr.append_event(path, "ingest", {"tick": 1, "per_seat": {"mimo": 1}, "unattributed": 0, "comment_ids": [5]}, NOW)
