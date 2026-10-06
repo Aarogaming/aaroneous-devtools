@@ -14,6 +14,7 @@ scripts/golden/steward/ so the contract does not depend on Python:
   attribution  collect_state.comment_seat    heads      collect_state.cites_head
   receipts     collect_state.done_receipts   rejected   collect_state.rejected_verdicts
   stalls       steward_run.stalled_seats and attribution_weak
+  pushes       steward_run.pushes (heads recorded, seats credited with a moved or new head)
   coverage     review_coverage.evaluate      audit      next_task.build_cards across ticks
   Merge-gate vectors (the owner-facing eligibility decision):
   gate_tier    merge_gate.tier_of, touches_protected, gate_plan, category_of
@@ -230,12 +231,30 @@ def stall_events(spec):
     """spec: one entry per tick, {"issued": [...], "produced": {seat: n}, "unattributed": n}."""
     events = []
     for tick, entry in enumerate(spec, 1):
-        events.append({"type": "ingest", "data": {"tick": tick, "per_seat": entry.get("produced", {}),
-                                                 "unattributed": entry.get("unattributed", 0)}})
+        data = {"tick": tick, "per_seat": entry.get("produced", {}), "unattributed": entry.get("unattributed", 0)}
+        if "pushes" in entry:
+            data["pushes"] = entry["pushes"]
+        events.append({"type": "ingest", "data": data})
         events.append({"type": "cards", "data": {"tick": tick, "agents": entry.get("issued", [])}})
     return events
 
 
+PUSHES = [
+    {"name": "no earlier record credits nobody and records every head", "previous": None,
+     "prs": [{"number": 1, "head": "a" * 40, "seat": "claude"}, {"number": 2, "head": "b" * 40, "seat": "codex"}]},
+    {"name": "an unchanged head is not a push", "previous": {"1": "a" * 40},
+     "prs": [{"number": 1, "head": "a" * 40, "seat": "claude"}]},
+    {"name": "a moved head credits the PR's seat", "previous": {"1": "a" * 40},
+     "prs": [{"number": 1, "head": "c" * 40, "seat": "claude"}]},
+    {"name": "a new PR credits its seat", "previous": {"1": "a" * 40},
+     "prs": [{"number": 1, "head": "a" * 40, "seat": "claude"}, {"number": 2, "head": "b" * 40, "seat": "codex"}]},
+    {"name": "two moved heads of one seat count twice", "previous": {"1": "a" * 40, "2": "b" * 40},
+     "prs": [{"number": 1, "head": "c" * 40, "seat": "claude"}, {"number": 2, "head": "d" * 40, "seat": "claude"}]},
+    {"name": "a moved head with no known seat is recorded and credits nobody", "previous": {"1": "a" * 40},
+     "prs": [{"number": 1, "head": "c" * 40, "seat": ""}]},
+    {"name": "the seat is lower-cased", "previous": {"1": "a" * 40},
+     "prs": [{"number": 1, "head": "c" * 40, "seat": "Claude"}]},
+]
 EVERYONE = ["claude", "mimo", "codex", "gemini"]
 STALLS = [
     {"name": "three silent ticks stall every seat that was issued cards",
@@ -245,6 +264,12 @@ STALLS = [
      "agents": EVERYONE, "stall_after": 3, "window": 3},
     {"name": "fewer ticks than the window judges nobody",
      "events": stall_events([{"issued": EVERYONE}] * 2), "agents": EVERYONE, "stall_after": 3, "window": 3},
+    {"name": "a push in the last tick clears that seat",
+     "events": stall_events([{"issued": EVERYONE}, {"issued": EVERYONE}, {"issued": EVERYONE, "pushes": {"claude": 1}}]),
+     "agents": EVERYONE, "stall_after": 3, "window": 3},
+    {"name": "pushes do not make unattributed comments look attributed",
+     "events": stall_events([{"issued": EVERYONE, "unattributed": 3, "pushes": {"claude": 3}}]),
+     "agents": EVERYONE, "stall_after": 1, "window": 1},
     {"name": "a seat that was not issued a card in every tick is not stalled",
      "events": stall_events([{"issued": ["mimo"]}, {"issued": EVERYONE}, {"issued": EVERYONE}]),
      "agents": EVERYONE, "stall_after": 3, "window": 3},
@@ -456,6 +481,8 @@ def build_rule_vectors():
         {"stalled": sr.stalled_seats(c["events"], c["agents"], c["stall_after"]),
          "attribution_weak": sr.attribution_weak(
              [e for e in c["events"] if e["type"] == "ingest"], c["window"])} for c in STALLS]
+    out["pushes.in.json"] = PUSHES
+    out["pushes.out.json"] = [dict(zip(("heads", "credited"), sr.pushes(c["prs"], c["previous"]))) for c in PUSHES]
     out["coverage.in.json"] = COVERAGE
     out["coverage.out.json"] = [evaluate_case(c) for c in COVERAGE]
     out["audit.in.json"] = {"ticks": AUDIT_TICKS, "state": audit_scenario(0)[0]}

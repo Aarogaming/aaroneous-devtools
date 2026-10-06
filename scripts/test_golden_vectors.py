@@ -17,7 +17,7 @@ import review_coverage as rc  # noqa: E402
 import steward_run as sr  # noqa: E402
 
 DIR = gv.DIR
-RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "coverage", "audit",
+RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "pushes", "coverage", "audit",
                  "gate_tier", "gate_ci", "gate_breaker", "gate_threads", "gate_checklist", "gate_decide")
 
 
@@ -53,6 +53,9 @@ class Golden(unittest.TestCase):
             [{"stalled": sr.stalled_seats(c["events"], c["agents"], c["stall_after"]),
               "attribution_weak": sr.attribution_weak([e for e in c["events"] if e["type"] == "ingest"], c["window"])}
              for c in stalls], load("stalls.out.json"))
+        pushes = load("pushes.in.json")
+        self.assertEqual([dict(zip(("heads", "credited"), sr.pushes(c["prs"], c["previous"]))) for c in pushes],
+                         load("pushes.out.json"))
         coverage = load("coverage.in.json")
         results = []
         for c in coverage:
@@ -162,6 +165,11 @@ class Golden(unittest.TestCase):
         self.assertEqual(rejected["a comment that does not cite the current head is history"], [])
         self.assertEqual(rejected["a head sharing eight characters is not this head"], [])
         self.assertEqual(len(rejected["at most the latest two per seat are kept"]), 2)
+        pushed = {c["name"]: r for c, r in zip(load("pushes.in.json"), load("pushes.out.json"))}
+        self.assertEqual(pushed["no earlier record credits nobody and records every head"]["credited"], {})
+        self.assertEqual(pushed["a moved head credits the PR's seat"]["credited"], {"claude": 1})
+        self.assertEqual(pushed["two moved heads of one seat count twice"]["credited"], {"claude": 2})
+        self.assertEqual(pushed["a moved head with no known seat is recorded and credits nobody"]["credited"], {})
         # stalls and weak attribution
         stalls = by_name("stalls")
         self.assertEqual(stalls["three silent ticks stall every seat that was issued cards"]["stalled"],

@@ -196,8 +196,36 @@ def is_bot(comment):
     return user.get("type") == "Bot" or str(user.get("login", "")).lower().endswith("[bot]")
 
 
-def ingest(snapshot, events):
-    """New comments since the last ingest, attributed to a seat where the text says which.
+def last_heads(events):
+    """{pr number (str): head} from the newest ingest events that recorded heads, or None before the first one."""
+    heads = None
+    for event in events:
+        if event["type"] == "ingest" and "heads" in event["data"]:
+            heads = dict(heads or {})
+            heads.update(event["data"]["heads"])
+    return heads
+
+
+def pushes(state_prs, previous):
+    """Seats credited with a push: a PR whose head moved, or that opened, since the previous ingest, credited to the
+    PR's own seat. Engagement was measured from comments only, so a seat that pushed fixes and opened PRs (but whose
+    comments the log had already seen) was escalated as "no artifact" while it was visibly working. ``previous`` None
+    means no earlier record: the heads are recorded and nothing is credited, so the first run after an upgrade does not
+    credit every open PR. A PR with no known seat is recorded but credits nobody."""
+    heads, credited = {}, {}
+    for item in state_prs:
+        number, head = str(item["number"]), item.get("head", "")
+        heads[number] = head
+        if previous is None or previous.get(number) == head:
+            continue
+        seat = (item.get("seat") or "").lower()
+        if seat:
+            credited[seat] = credited.get(seat, 0) + 1
+    return heads, credited
+
+
+def ingest(snapshot, events, state_prs=()):
+    """New comments since the last ingest, attributed to a seat where the text says which; plus pushes (see `pushes`).
 
     Bot comments are remembered as seen but are nobody's artifact and are left out of the attribution-quality
     denominator: counted as unattributed they would push `attribution_weak` over its minimum and switch off every
@@ -216,8 +244,13 @@ def ingest(snapshot, events):
             fresh.append({"id": cid, "pr": pr["number"], "seat": seat})
             if seat:
                 per_seat[seat] = per_seat.get(seat, 0) + 1
+    # Pushes are kept apart from comment counts: `attribution_weak` is a ratio over comments, and a push is always
+    # attributed, so folding pushes into per_seat would raise the ratio and re-enable stall detection while the
+    # comments still cannot be assigned (Codex P2 on #89). `stalled_seats` reads both.
+    heads, pushed = pushes(state_prs, last_heads(events))
     return {"comment_ids": [f["id"] for f in fresh] + bots, "per_seat": per_seat,
-            "unattributed": sum(1 for f in fresh if not f["seat"]), "bots": len(bots)}
+            "unattributed": sum(1 for f in fresh if not f["seat"]), "bots": len(bots),
+            "pushes": pushed, "heads": heads}
 
 
 def lease_table(events, tick, done):
@@ -287,7 +320,8 @@ def stalled_seats(events, agents, stall_after):
         if event["type"] == "cards":
             slot["issued"].update(event["data"].get("agents", []))
         if event["type"] == "ingest":
-            slot["produced"].update(s for s, n in event["data"].get("per_seat", {}).items() if n)
+            for key in ("per_seat", "pushes"):
+                slot["produced"].update(s for s, n in event["data"].get(key, {}).items() if n)
     recent = sorted(ticks)[-stall_after:]
     if len(recent) < stall_after:
         return []
@@ -350,7 +384,7 @@ def write_outbox(outbox_dir, result, now):
 def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after=3):
     """Pure-ish tick: `snapshot_state` is collect_state output, `comments_snapshot` the raw snapshot."""
     events = read_events(log_path)
-    ingested = ingest(comments_snapshot, events)
+    ingested = ingest(comments_snapshot, events, snapshot_state.get("prs", []))
     append_event(log_path, "ingest", dict(ingested, tick=tick), now)
     active, expired, completed = lease_table(events, tick, set(snapshot_state.get("done", [])))
     for key, lease in completed.items():
@@ -412,7 +446,8 @@ def render(result):
     for e in result["escalations"]:
         out.append(f"[{e['agent']}] ESCALATION\n  TASK: {e['task']}\n  ACCEPT: {e['acceptance']}")
     per = ", ".join(f"{s}={n}" for s, n in sorted(result["ingest"]["per_seat"].items())) or "none"
-    out.append(f"INGESTED new artifacts by seat: {per}; unattributed: {result['ingest']['unattributed']}")
+    pushed = ", ".join(f"{s}={n}" for s, n in sorted(result["ingest"].get("pushes", {}).items())) or "none"
+    out.append(f"INGESTED new artifacts by seat: {per}; pushes: {pushed}; unattributed: {result['ingest']['unattributed']}")
     if result.get("attribution_weak"):
         out.append("NOTE: most recent comments could not be attributed to a seat; engagement stalls are not judged this tick (have seats put 'Seat / agent: NAME' or a card marker in their comments)")
     lz = result["leases"]

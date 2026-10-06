@@ -375,6 +375,61 @@ class Ingest(unittest.TestCase):
         self.assertEqual(second["ingest"]["comment_ids"], [])
         os.unlink(path)
 
+    def test_a_head_that_moved_credits_the_prs_seat_with_a_push(self):
+        path = tmp_log()
+        first = sr.run_tick(state([pr(1, head="a" * 40, seat="claude")]), snap({}), path, 1, NOW)
+        self.assertEqual(first["ingest"]["pushes"], {}, "the first run records heads and credits nobody")
+        self.assertEqual(first["ingest"]["heads"], {"1": "a" * 40})
+        same = sr.run_tick(state([pr(1, head="a" * 40, seat="claude")]), snap({}), path, 2, NOW)
+        self.assertEqual(same["ingest"]["pushes"], {})
+        moved = sr.run_tick(state([pr(1, head="b" * 40, seat="claude")]), snap({}), path, 3, NOW)
+        self.assertEqual(moved["ingest"]["pushes"], {"claude": 1})
+        self.assertEqual(moved["ingest"]["per_seat"], {}, "a push is not a comment")
+        again = sr.run_tick(state([pr(1, head="b" * 40, seat="claude")]), snap({}), path, 4, NOW)
+        self.assertEqual(again["ingest"]["pushes"], {}, "a push is credited once")
+        os.unlink(path)
+
+    def test_a_new_pr_is_a_push_but_one_with_no_known_seat_credits_nobody(self):
+        path = tmp_log()
+        sr.run_tick(state([pr(1)]), snap({}), path, 1, NOW)
+        opened = sr.run_tick(state([pr(1), pr(2, seat="codex"), pr(3, seat="")]), snap({}), path, 2, NOW)
+        self.assertEqual(opened["ingest"]["pushes"], {"codex": 1})
+        self.assertEqual(opened["ingest"]["unattributed"], 0, "a push with no seat must not weaken attribution quality")
+        os.unlink(path)
+
+    def test_a_log_from_before_pushes_were_recorded_credits_nothing_on_its_first_run(self):
+        path = tmp_log()
+        sr.append_event(path, "ingest", {"tick": 1, "per_seat": {"mimo": 1}, "unattributed": 0, "comment_ids": [5]}, NOW)
+        result = sr.run_tick(state([pr(1), pr(2, seat="codex")]), snap({}), path, 2, NOW)
+        self.assertEqual(result["ingest"]["pushes"], {})
+        os.unlink(path)
+
+    def test_pushes_do_not_raise_the_comment_attribution_ratio(self):
+        # Three pushes plus three comments nobody can be assigned: the ratio over comments is 0, so attribution stays
+        # weak and stall detection stays off. Folded into per_seat it would read 3 of 6 and switch detection back on.
+        path = tmp_log()
+        sr.run_tick(state([pr(1, seat="claude"), pr(2, seat="codex"), pr(3, seat="mimo")]), snap({}), path, 1, NOW)
+        moved = state([pr(1, head="b" * 40, seat="claude"), pr(2, head="b" * 40, seat="codex"),
+                       pr(3, head="b" * 40, seat="mimo")])
+        comments = {1: [{"id": 10 + i, "body": "plain note"} for i in range(3)]}
+        result = sr.run_tick(moved, snap(comments), path, 2, NOW)
+        self.assertEqual(result["ingest"]["pushes"], {"claude": 1, "codex": 1, "mimo": 1})
+        self.assertEqual(result["ingest"]["unattributed"], 3)
+        ingests = [e for e in sr.read_events(path) if e["type"] == "ingest"]
+        self.assertTrue(sr.attribution_weak(ingests, 3))
+        os.unlink(path)
+
+    def test_a_push_clears_the_seats_stall_and_only_that_seats(self):
+        path = tmp_log()
+        sr.run_tick(three_open(), snap({}), path, 1, NOW, stall_after=3)
+        sr.run_tick(three_open(), snap({}), path, 2, NOW, stall_after=3)
+        moved = state([pr(1, head="b" * 40, seat="claude"), pr(2, seat="other"), pr(3, seat="other")])
+        result = sr.run_tick(moved, snap({}), path, 3, NOW, stall_after=3)
+        escalated = {e["agent"] for e in result["escalations"]}
+        self.assertNotIn("claude", escalated)
+        self.assertEqual(escalated, {"mimo", "codex"})
+        os.unlink(path)
+
     def test_unattributed_comments_are_counted_separately(self):
         path = tmp_log()
         result = sr.run_tick(state([pr(1)]), snap({1: [{"id": 5, "body": "plain note"}]}), path, 1, NOW)
