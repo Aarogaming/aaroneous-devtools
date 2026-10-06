@@ -80,12 +80,43 @@ def parse_attestations(comments):
     return structured, problems, legacy
 
 
-def independent(record):
-    return record["reviewer"] not in record["implementers"]
+SEAT_NAMES = re.compile(r"\b(claude|codex|gemini|antigravity|mimo|qwen)\b", re.I)
+SEAT_ALIASES = {"antigravity": "gemini"}
 
 
-def evaluate(head, merge_base, records, is_ancestor):
+def seat_key(name):
+    """A seat name in comparable form: case-insensitive, and Antigravity is the Gemini seat."""
+    key = str(name).strip().lower()
+    return SEAT_ALIASES.get(key, key)
+
+
+def trailer_seats(log_text, branch=""):
+    """Seats the repository itself names as implementers of a range: a seat-named branch prefix (`codex/...`), and
+    every seat named in a Co-Authored-By or Contribution-ID trailer. A seat name elsewhere in a commit message (a
+    subject line, a body) does not count. The attestation's own `implementers` list is the reviewer's claim; this is
+    the part of it git can check."""
+    seats = set()
+    prefix = branch.split("/", 1)[0].lower() if branch else ""
+    if SEAT_NAMES.fullmatch(prefix):
+        seats.add(seat_key(prefix))
+    for line in (log_text or "").splitlines():
+        if line.lower().startswith(("co-authored-by:", "contribution-id:")):
+            seats.update(seat_key(found.group(1)) for found in SEAT_NAMES.finditer(line))
+    return seats
+
+
+def independent(record, git_implementers=()):
+    """The reviewer is not among the attested implementers nor among the implementers git names (case-insensitive)."""
+    named = {seat_key(i) for i in record["implementers"]} | {seat_key(i) for i in git_implementers}
+    return seat_key(record["reviewer"]) not in named
+
+
+def evaluate(head, merge_base, records, is_ancestor, git_implementers=()):
     """Pure coverage decision for one PR head.
+
+    ``git_implementers`` are the seats the PR's own commits name as implementers (`trailer_seats`); they are added to
+    each record's attested implementers before the independence check, so a self-accept cannot count by omitting itself
+    from its own attestation. With none supplied the check is attested-only, as before.
 
     ``is_ancestor(a, b)`` says whether commit a is an ancestor of commit b. A delta accept extends
     coverage only when its ``from`` is a covered head AND an ancestor of the delta's own head, so a
@@ -100,8 +131,13 @@ def evaluate(head, merge_base, records, is_ancestor):
     valid = [
         r
         for r in records
-        if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base
+        if r["verdict"] in ACCEPT and independent(r, git_implementers) and r["base_sha"] == merge_base
     ]
+    for r in records:
+        if (r["verdict"] in ACCEPT and r["base_sha"] == merge_base and independent(r)
+                and not independent(r, git_implementers)):
+            reasons.append(f"accept by {r['reviewer']} not counted: {seat_key(r['reviewer'])} is named as an implementer in "
+                           "this PR's commit trailers or branch prefix, although the attestation omits it")
     # Only a `whole` accept seeds coverage (governance/PLATFORM_SPEC.md section 3: "Delta accepts compose only when
     # chained from a whole-diff accept"). A delta that starts at the merge base reviewed the whole PR diff, but its
     # author must say so by labelling it `whole`; the tool tells them (see the reason below) and does not guess.
@@ -162,7 +198,8 @@ def report_snapshot(snapshot, is_ancestor=None):
                 }
             )
         ancestry = is_ancestor or pairs_ancestry(pr.get("ancestry", []))
-        decision = evaluate(pr["head"], pr["merge_base"], structured, ancestry)
+        git_implementers = set(pr.get("trailer_implementers", []))
+        decision = evaluate(pr["head"], pr["merge_base"], structured, ancestry, git_implementers)
         rows.append(
             {
                 "pr": pr["number"],
@@ -173,6 +210,7 @@ def report_snapshot(snapshot, is_ancestor=None):
                 "structured_attestations": len(structured),
                 "malformed": problems,
                 "legacy_packets_not_counted": len(legacy),
+                "implementers_from_git": sorted(git_implementers),
             }
         )
     return rows
@@ -194,7 +232,7 @@ def checkout_matches(remote_url, repo):
 
 def pr_list_args(repo):
     return ["pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
-            "number,headRefOid,baseRefName"]
+            "number,headRefOid,baseRefName,headRefName"]
 
 
 def gh_json(*args):
@@ -217,12 +255,14 @@ def live_snapshot(repo, repo_dir):
         pages = gh_json("api", f"repos/{repo}/issues/{item['number']}/comments", "--paginate", "--slurp")
         base = f"origin/{item['baseRefName']}"
         mb = git(repo_dir, "merge-base", base, item["headRefOid"]).stdout.strip() or "unknown"
+        log = git(repo_dir, "log", "--format=%B", f"{mb}..{item['headRefOid']}").stdout if mb != "unknown" else ""
         prs.append(
             {
                 "number": item["number"],
                 "head": item["headRefOid"],
                 "base": item["baseRefName"],
                 "merge_base": mb,
+                "trailer_implementers": sorted(trailer_seats(log, item.get("headRefName", ""))),
                 "comments": flatten_pages(pages),
             }
         )

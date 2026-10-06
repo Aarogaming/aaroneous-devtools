@@ -186,6 +186,43 @@ class Snapshot(unittest.TestCase):
         self.assertTrue(linked["covered"])
 
 
+class Independence(unittest.TestCase):
+    def test_a_reviewer_named_with_different_case_is_still_an_implementer(self):
+        self.assertFalse(ev(H1, [rec(H1, reviewer="claude", impl=("Claude",))])["covered"])
+        self.assertFalse(ev(H1, [rec(H1, reviewer="CODEX", impl=("codex",))])["covered"])
+
+    def test_antigravity_is_the_gemini_seat(self):
+        self.assertFalse(ev(H1, [rec(H1, reviewer="Antigravity", impl=("gemini",))])["covered"])
+        self.assertTrue(ev(H1, [rec(H1, reviewer="Antigravity", impl=("claude",))])["covered"])
+
+    def test_an_implementer_git_names_is_added_to_the_attested_list(self):
+        lie = rec(H1, reviewer="claude", impl=("codex",))
+        self.assertTrue(rc.evaluate(H1, MB, [lie], always)["covered"])  # attested-only: the lie stands
+        decision = rc.evaluate(H1, MB, [lie], always, {"claude"})
+        self.assertFalse(decision["covered"])
+        self.assertIn("commit trailers", " ".join(decision["reasons"]))
+
+    def test_git_implementers_do_not_disturb_a_genuinely_independent_accept(self):
+        self.assertTrue(rc.evaluate(H1, MB, [rec(H1, reviewer="mimo", impl=("claude",))], always, {"claude"})["covered"])
+
+    def test_trailer_seats_reads_trailers_and_branch_prefix_only(self):
+        log = ("fix: thing\n\nCo-Authored-By: Claude Sonnet 5.5 <n@a.com>\n"
+               "Contribution-ID: C99/codex-v1\n\nThis reuses an idea from Mimo and Gemini.\n"
+               "Co-authored-by: Antigravity <x@y.z>\n")
+        self.assertEqual(rc.trailer_seats(log), {"claude", "codex", "gemini"})
+        self.assertEqual(rc.trailer_seats("no trailers", "qwen/local"), {"qwen"})
+        self.assertEqual(rc.trailer_seats("no trailers", "proposal/c99-x"), set())
+        self.assertEqual(rc.trailer_seats(None), set())
+
+    def test_the_snapshot_carries_the_git_implementers_into_the_decision(self):
+        record = rec(H1, reviewer="claude", impl=("codex",), repo="o/r", pr=1)
+        pr = {"number": 1, "head": H1, "merge_base": MB, "comments": [block(record)]}
+        row = rc.report_snapshot({"repo": "o/r", "prs": [dict(pr, trailer_implementers=["claude"])]})[0]
+        self.assertFalse(row["covered"])
+        self.assertEqual(row["implementers_from_git"], ["claude"])
+        self.assertTrue(rc.report_snapshot({"repo": "o/r", "prs": [pr]})[0]["covered"])
+
+
 class Subject(unittest.TestCase):
     def snapshot(self, record, number=46):
         pr = {"number": number, "head": H1, "merge_base": MB, "comments": [block(record)]}
