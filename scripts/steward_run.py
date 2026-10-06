@@ -196,8 +196,36 @@ def is_bot(comment):
     return user.get("type") == "Bot" or str(user.get("login", "")).lower().endswith("[bot]")
 
 
-def ingest(snapshot, events):
-    """New comments since the last ingest, attributed to a seat where the text says which.
+def last_heads(events):
+    """{pr number (str): head} from the newest ingest events that recorded heads, or None before the first one."""
+    heads = None
+    for event in events:
+        if event["type"] == "ingest" and "heads" in event["data"]:
+            heads = dict(heads or {})
+            heads.update(event["data"]["heads"])
+    return heads
+
+
+def pushes(state_prs, previous):
+    """Seats credited with a push: a PR whose head moved, or that opened, since the previous ingest, credited to the
+    PR's own seat. Engagement was measured from comments only, so a seat that pushed fixes and opened PRs (but whose
+    comments the log had already seen) was escalated as "no artifact" while it was visibly working. ``previous`` None
+    means no earlier record: the heads are recorded and nothing is credited, so the first run after an upgrade does not
+    credit every open PR. A PR with no known seat is recorded but credits nobody."""
+    heads, credited = {}, {}
+    for item in state_prs:
+        number, head = str(item["number"]), item.get("head", "")
+        heads[number] = head
+        if previous is None or previous.get(number) == head:
+            continue
+        seat = (item.get("seat") or "").lower()
+        if seat:
+            credited[seat] = credited.get(seat, 0) + 1
+    return heads, credited
+
+
+def ingest(snapshot, events, state_prs=()):
+    """New comments since the last ingest, attributed to a seat where the text says which; plus pushes (see `pushes`).
 
     Bot comments are remembered as seen but are nobody's artifact and are left out of the attribution-quality
     denominator: counted as unattributed they would push `attribution_weak` over its minimum and switch off every
@@ -216,8 +244,12 @@ def ingest(snapshot, events):
             fresh.append({"id": cid, "pr": pr["number"], "seat": seat})
             if seat:
                 per_seat[seat] = per_seat.get(seat, 0) + 1
+    heads, pushed = pushes(state_prs, last_heads(events))
+    for seat, count in pushed.items():
+        per_seat[seat] = per_seat.get(seat, 0) + count
     return {"comment_ids": [f["id"] for f in fresh] + bots, "per_seat": per_seat,
-            "unattributed": sum(1 for f in fresh if not f["seat"]), "bots": len(bots)}
+            "unattributed": sum(1 for f in fresh if not f["seat"]), "bots": len(bots),
+            "pushes": pushed, "heads": heads}
 
 
 def lease_table(events, tick, done):
@@ -350,7 +382,7 @@ def write_outbox(outbox_dir, result, now):
 def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after=3):
     """Pure-ish tick: `snapshot_state` is collect_state output, `comments_snapshot` the raw snapshot."""
     events = read_events(log_path)
-    ingested = ingest(comments_snapshot, events)
+    ingested = ingest(comments_snapshot, events, snapshot_state.get("prs", []))
     append_event(log_path, "ingest", dict(ingested, tick=tick), now)
     active, expired, completed = lease_table(events, tick, set(snapshot_state.get("done", [])))
     for key, lease in completed.items():
