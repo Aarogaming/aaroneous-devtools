@@ -8,7 +8,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(__file__))
 import review_coverage as rc  # noqa: E402
 
-MB = "m" * 40
+MB = "d" * 40
 H1, H2, H3 = "a" * 40, "b" * 40, "c" * 40
 
 
@@ -159,6 +159,26 @@ class Parsing(unittest.TestCase):
         row = rc.report_snapshot(snapshot, is_ancestor=always)[0]
         self.assertFalse(row["covered"])
         self.assertEqual(len(row["malformed"]), 1)
+
+    def test_a_placeholder_or_short_sha_is_reported_never_counted(self):
+        # The template comment on #46 (5981785915) is an attestation-labelled block whose head and base_sha are
+        # "<full 40-char head SHA>" and "<full merge-base SHA>"; it parsed as a structured record.
+        for field in ("head", "base_sha"):
+            for bad in ("<full 40-char head SHA>", "abcdef12", "a" * 39, "a" * 41, "", None, 7):
+                structured, problems, _ = rc.parse_attestations([block(dict(rec(H1), **{field: bad}))])
+                self.assertEqual(structured, [], (field, bad))
+                self.assertEqual(len(problems), 1, (field, bad))
+                self.assertIn(field + " must be a full 40-character lowercase SHA", problems[0]["problem"])
+        structured, problems, _ = rc.parse_attestations([block(rec(H2, "delta", frm="<covered head>"))])
+        self.assertEqual((structured, len(problems)), ([], 1))
+        self.assertIn("from must be", problems[0]["problem"])
+
+    def test_an_upper_case_sha_is_the_same_commit_and_now_matches(self):
+        upper = dict(rec(H1), head=H1.upper(), base_sha=MB.upper())
+        structured, problems, _ = rc.parse_attestations([block(upper)])
+        self.assertEqual(problems, [])
+        self.assertEqual((structured[0]["head"], structured[0]["base_sha"]), (H1, MB))
+        self.assertTrue(ev(H1, structured)["covered"])
 
     def test_an_accept_in_the_wrong_case_is_reported_and_never_covers(self):
         # Gemini's blocks on #62 and #64 used ACCEPT. It parsed, matched nothing and produced no problem: the PR kept
