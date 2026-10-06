@@ -1,0 +1,16 @@
+{
+  "contribution_id": "C107/M11-recovery-v1",
+  "signed_off_by": "Codex session 01a0f30a-4d6b-7703-9859-662e36299ca4",
+  "utc": "2026-10-06",
+  "role": "author",
+  "runtime_base_sha256": "7fc1bc24a2c46fd722f2fdecdca1f6aea80d2f1dc655584faaf0c6dcbb1736be",
+  "packaging_delta": "explicit --support-directory replaces ambient machine path; Windows-only lease tests declare platform scope",
+  "files": {
+    "board.py": "e12da9b03d7dce84800052fd78a41467836562f452e803e9f792646bf55f82cf",
+    "recovery.py": "710cb7f717cc3488e58db9a8d486d23091117b32c083c3b13b23c7c885a42b7a",
+    "test_recovery.py": "664be4868236f516c0fd36b9a5e038a1c1cf88597b2b5cb8a4ae18bc7530a316"
+  },
+  "verification": "verification.json: 11 Windows tests, exit code 0",
+  "review": "pending independent review",
+  "rollout": false
+}
