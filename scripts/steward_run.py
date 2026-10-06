@@ -357,6 +357,18 @@ def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after
         append_event(log_path, "lease_done", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
     for key, lease in expired.items():
         append_event(log_path, "lease_expired", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
+    # Fixing a thread normally pushes a new head, and a card key ends in the head, so the finished card's key is replaced
+    # by a new one. A receipt for the same fix at the newer head, from the seat that holds the lease, is that card's
+    # completion. It is recorded here, before the cards are built, so it counts toward this tick's ordering; a receipt
+    # from another seat is not the holder's completion and the lease is released below as before.
+    fixed_by = {tuple(k.split(":")[:2]): seat for k, seat in snapshot_state.get("done_by", {}).items()
+                if k.startswith("fix_threads:")}
+    for key, lease in list(active.items()):
+        parts = key.split(":")
+        if len(parts) == 3 and parts[0] == "fix_threads" and fixed_by.get(tuple(parts[:2])) == lease["agent"]:
+            append_event(log_path, "lease_done", {"tick": tick, "key": key, "agent": lease["agent"],
+                                                   "at_newer_head": True}, now)
+            del active[key]
     # Replay AFTER the completion/expiry events above are appended, so a lease that expires this tick already
     # counts as burned and the item rotates to another seat instead of going straight back to its holder.
     snapshot_state = dict(snapshot_state, leases=active, history=history_from_events(read_events(log_path)))
@@ -377,18 +389,10 @@ def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after
     events = read_events(log_path)
     names = [a["name"] for a in snapshot_state["agents"]]
     carried = {(c["agent"], c["lease"]["key"]) for c in cards if c.get("lease")}
-    # Fixing a thread normally pushes a new head, and a card key ends in the head, so the finished card's key is
-    # replaced by a new one. A receipt for the same fix at the newer head is that card's completion, not a release.
-    fixed_at_newer_head = {tuple(d.split(":")[:2]) for d in snapshot_state.get("done", []) if d.startswith("fix_threads:")}
     for key, lease in active.items():
         if (lease["agent"], key) not in carried:
-            parts = key.split(":")
-            if len(parts) == 3 and parts[0] == "fix_threads" and tuple(parts[:2]) in fixed_at_newer_head:
-                append_event(log_path, "lease_done", {"tick": tick, "key": key, "agent": lease["agent"],
-                                                       "at_newer_head": True}, now)
-            else:
-                append_event(log_path, "lease_released", {"tick": tick, "key": key, "agent": lease["agent"],
-                                                           "reason": "no longer eligible for its holder"}, now)
+            append_event(log_path, "lease_released", {"tick": tick, "key": key, "agent": lease["agent"],
+                                                       "reason": "no longer eligible for its holder"}, now)
     escalations = []
     expired_agents = {lease["agent"] for lease in expired.values()}
     weak = attribution_weak(events, stall_after)

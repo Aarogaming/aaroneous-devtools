@@ -254,12 +254,13 @@ class CompletionAtANewerHead(unittest.TestCase):
     def lease_events(self, path):
         return [e for e in sr.read_events(path) if e["type"] in ("lease_done", "lease_released")]
 
-    def run_two_ticks(self, done_at_new_head):
+    def run_two_ticks(self, done_at_new_head, completer="claude"):
         path = tmp_log()
         first = state([pr(1, head=self.OLD, threads_unresolved=1, seat="claude")])
         sr.run_tick(first, snap({1: []}), path, 1, NOW, stall_after=99)
         second = state([pr(1, head=self.NEW, threads_unresolved=1, seat="claude")])
         second["done"] = [f"fix_threads:1:{self.NEW[:8]}"] if done_at_new_head else []
+        second["done_by"] = {f"fix_threads:1:{self.NEW[:8]}": completer} if done_at_new_head else {}
         sr.run_tick(second, snap({1: []}), path, 2, NOW, stall_after=99)
         return path
 
@@ -270,6 +271,20 @@ class CompletionAtANewerHead(unittest.TestCase):
                          [("lease_done", f"fix_threads:1:{self.OLD[:8]}", "claude")])
         self.assertTrue(events[0]["data"]["at_newer_head"])
         self.assertEqual(sr.history_from_events(sr.read_events(path))["agents"]["claude"]["done"], 1)
+        os.unlink(path)
+
+    def test_a_receipt_from_another_seat_is_not_the_holders_completion(self):
+        path = self.run_two_ticks(True, completer="codex")
+        events = self.lease_events(path)
+        self.assertEqual([e["type"] for e in events], ["lease_released"])
+        self.assertEqual(sr.history_from_events(sr.read_events(path))["agents"].get("claude", {}).get("done", 0), 0)
+        os.unlink(path)
+
+    def test_the_completion_is_recorded_before_the_ticks_cards_are_built(self):
+        path = self.run_two_ticks(True)
+        types = [e["type"] for e in sr.read_events(path) if e["data"].get("tick") == 2]
+        self.assertIn("lease_done", types)
+        self.assertLess(types.index("lease_done"), types.index("cards"))
         os.unlink(path)
 
     def test_without_that_receipt_the_old_card_is_still_just_released(self):

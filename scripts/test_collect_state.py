@@ -44,6 +44,16 @@ class AllSeats(unittest.TestCase):
         self.assertEqual(cs.seat_from_trailers("plain", "feature/x"), "")
 
 
+class DoneReceipts(unittest.TestCase):
+    def test_done_receipts_names_the_seat_that_completed_each_card_and_done_keys_is_unchanged(self):
+        head = "c" * 40
+        body = f"[done:fix_threads:7:{head}] Claude seat: all threads answered"
+        snapshot = {"prs": [{"number": 7, "head": head, "comments": [{"id": 1, "body": body}]}]}
+        self.assertEqual(cs.done_receipts(snapshot, {}, {7: ["claude"]}), {f"fix_threads:7:{head[:8]}": "claude"})
+        self.assertEqual(cs.done_keys(snapshot, {}, {7: ["claude"]}), [f"fix_threads:7:{head[:8]}"])
+        self.assertEqual(cs.done_receipts(snapshot, {}, {7: ["codex"]}), {})
+
+
 class Rejections(unittest.TestCase):
     def test_a_comment_is_attributed_to_the_seat_it_says_it_is_from(self):
         self.assertEqual(cs.comment_seat("### Review\n**Seat / Agent**: Antigravity (Gemini 2.5 Pro)\n"), "gemini")

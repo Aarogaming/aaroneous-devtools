@@ -231,9 +231,15 @@ def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
     [done:KIND:PR:FULL_HEAD] for the PR's current head, says nothing negative on its first line, names no
     conflicting full head, and comes from a seat allowed to complete that kind of card.
     repair_owners maps a PR number to the seats whose verdicts were rejected there."""
+    return sorted(done_receipts(snapshot, repair_owners, implementers_by_pr))
+
+
+def done_receipts(snapshot, repair_owners=None, implementers_by_pr=None):
+    """The same completions as `done_keys`, as {key: the seat whose receipt completed it}. The first eligible receipt
+    for a key names the seat. A lease holder is credited with a completion only when it is that seat."""
     repair_owners = repair_owners or {}
     implementers_by_pr = implementers_by_pr or {}
-    keys = set()
+    keys = {}
     for p in snapshot["prs"]:
         head = p["head"].lower()
         implementers = implementers_by_pr.get(p["number"]) or p.get("implementers") or []
@@ -250,11 +256,11 @@ def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
                 continue
             if any(token != head and token[:8] == head[:8] for token in HEX40.findall(body.lower())):
                 continue
-            if not eligible_completer(kind, comment_seat(body, strict=True), implementers,
-                                      repair_owners.get(p["number"], ())):
+            seat = comment_seat(body, strict=True)
+            if not eligible_completer(kind, seat, implementers, repair_owners.get(p["number"], ())):
                 continue
-            keys.add(f"{kind}:{number}:{head[:8]}")
-    return sorted(keys)
+            keys.setdefault(f"{kind}:{number}:{head[:8]}", seat)
+    return keys
 
 
 def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now, default_branch="main",
@@ -290,7 +296,8 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
             }
         )
     return {"now": now, "agents": [{"name": a} for a in agents], "prs": prs, "backlog": backlog,
-            "done": done_keys(snapshot, repair_owners, implementers_by_pr), "default_branch": default_branch}
+            "done": done_keys(snapshot, repair_owners, implementers_by_pr),
+            "done_by": done_receipts(snapshot, repair_owners, implementers_by_pr), "default_branch": default_branch}
 
 
 def collect(repo, repo_dir, agents, backlog, identities=None):
