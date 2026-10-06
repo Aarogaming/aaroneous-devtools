@@ -146,6 +146,72 @@ class HealthyIdle(unittest.TestCase):
         os.unlink(sr.tip_path(path))
 
 
+def _append_many(path, count, start_event):
+    start_event.wait()
+    for i in range(count):
+        with sr.exclusive(path):
+            sr.append_event(path, "stall", {"tick": i, "pid": os.getpid()}, NOW)
+
+
+class Locking(unittest.TestCase):
+    def test_overlapping_writers_cannot_fork_the_chain(self):
+        import multiprocessing
+        path = tmp_log()
+        start = multiprocessing.Event()
+        workers = [multiprocessing.Process(target=_append_many, args=(path, 20, start)) for _ in range(4)]
+        for worker in workers:
+            worker.start()
+        start.set()
+        for worker in workers:
+            worker.join()
+        events = sr.read_events(path)
+        self.assertEqual(len(events), 80)
+        self.assertEqual([e["seq"] for e in events], list(range(1, 81)))
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+        for leftover in (path, sr.tip_path(path)):
+            os.unlink(leftover)
+
+    def test_a_held_lock_stops_a_second_run_with_a_message_that_names_the_lock(self):
+        path = tmp_log()
+        with sr.exclusive(path):
+            with self.assertRaises(SystemExit) as caught:
+                with sr.exclusive(path, wait=0.2):
+                    pass
+        self.assertIn(path + ".lock", str(caught.exception))
+        self.assertFalse(os.path.exists(path + ".lock"))
+
+    def test_a_dead_runs_stale_lock_is_broken_and_a_fresh_one_is_not(self):
+        path = tmp_log()
+        lock = path + ".lock"
+        with open(lock, "w") as handle:
+            handle.write("dead run")
+        old = os.path.getmtime(lock) - 10_000
+        os.utime(lock, (old, old))
+        with sr.exclusive(path, wait=1):
+            self.assertTrue(os.path.exists(lock))
+        self.assertFalse(os.path.exists(lock))
+
+    def test_the_lock_is_released_when_the_body_raises(self):
+        path = tmp_log()
+        with self.assertRaises(RuntimeError):
+            with sr.exclusive(path):
+                raise RuntimeError("boom")
+        self.assertFalse(os.path.exists(path + ".lock"))
+
+    def test_a_whole_tick_waits_for_the_lock_and_numbers_itself_after_the_holder(self):
+        path = tmp_log()
+        with sr.exclusive(path):
+            with self.assertRaises(SystemExit):
+                sr.tick_under_lock(path, state([pr(1)]), snap({1: []}), None, NOW, 3, wait=0.2)
+        sr.tick_under_lock(path, state([pr(1)]), snap({1: []}), None, NOW, 3)
+        self.assertEqual(sr.next_tick(sr.read_events(path)), 2)
+        sr.tick_under_lock(path, state([pr(1)]), snap({1: []}), None, NOW, 3)
+        self.assertEqual(sr.next_tick(sr.read_events(path)), 3)
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+        os.unlink(path)
+        os.unlink(sr.tip_path(path))
+
+
 class Ingest(unittest.TestCase):
     def test_seat_is_read_from_the_text(self):
         self.assertEqual(sr.seat_from_comment("REVIEW PACKET\nSeat / agent: Mimo (x)"), "mimo")

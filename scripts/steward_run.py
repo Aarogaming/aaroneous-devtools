@@ -22,11 +22,13 @@ Usage:
 """
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -39,6 +41,45 @@ SEAT_IN_TEXT = cs.SEAT_IN_TEXT
 
 def digest(line):
     return hashlib.sha256(line.encode("utf-8")).hexdigest()
+
+
+LOCK_WAIT_SECONDS = 120
+LOCK_STALE_SECONDS = 600
+
+
+@contextlib.contextmanager
+def exclusive(log_path, wait=LOCK_WAIT_SECONDS, stale=LOCK_STALE_SECONDS, sleep=time.sleep, clock=time.time):
+    """One writer at a time for a log: ``<log>.lock`` created exclusively, removed on exit. `append_event` reads the
+    last line and appends after it, so two overlapping runs would write the same seq with the same previous digest,
+    fork the chain, and every later run would then refuse to start with a tamper message. A lock older than `stale`
+    seconds belongs to a run that died and is broken; if two waiters break the same stale lock at the same instant
+    one of them can remove the other's fresh lock, which needs a crashed run plus an exact tie. Waiting longer than
+    `wait` seconds stops with a message naming the lock file."""
+    lock = log_path + ".lock"
+    deadline = clock() + wait
+    while True:
+        try:
+            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            try:
+                age = clock() - os.path.getmtime(lock)
+            except OSError:
+                continue
+            if age > stale:
+                with contextlib.suppress(OSError):
+                    os.remove(lock)
+                continue
+            if clock() >= deadline:
+                raise SystemExit(f"another steward run holds {lock} (waited {wait}s); if no run is active, delete that file")
+            sleep(0.05)
+    try:
+        os.write(handle, f"{os.getpid()} {clock()}\n".encode("ascii"))
+        os.close(handle)
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(lock)
 
 
 def read_events(path):
@@ -337,6 +378,28 @@ def render(result):
     return "\n\n".join(out)
 
 
+def tick_under_lock(log_path, state, snapshot, tick, now, stall_after, outbox=None, expect_tip=None,
+                    wait=LOCK_WAIT_SECONDS):
+    """Verify the log, number the tick, run it, write the outbox and read the tip as one step no other run can
+    interleave with. The slow part (reading GitHub) happens before this and holds no lock."""
+    with exclusive(log_path, wait=wait):
+        if os.path.exists(log_path):
+            ok, problem = verify_chain(log_path)
+            if not ok:
+                raise SystemExit(f"event log failed verification: {problem}")
+            ok, problem = verify_tip(log_path, expect_tip)
+            if not ok:
+                raise SystemExit(f"event log failed verification: {problem}")
+        if tick is None:
+            tick = next_tick(read_events(log_path))
+        result = run_tick(state, snapshot, log_path, tick, now, stall_after)
+        if outbox:
+            result["outbox"] = write_outbox(outbox, result, now)
+        count, tip = current_tip(log_path)
+        result["tip"] = {"count": count, "sha256": tip}
+        return result
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", required=True)
@@ -349,13 +412,6 @@ def main(argv):
     parser.add_argument("--expect-tip", help="externally anchored SHA-256 of the log's last line")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
-    if os.path.exists(args.log):
-        ok, problem = verify_chain(args.log)
-        if not ok:
-            raise SystemExit(f"event log failed verification: {problem}")
-        ok, problem = verify_tip(args.log, args.expect_tip)
-        if not ok:
-            raise SystemExit(f"event log failed verification: {problem}")
     remote = cs.rc.git(args.repo_dir, "remote", "get-url", "origin")
     if remote.returncode != 0 or not cs.rc.checkout_matches(remote.stdout, args.repo):
         raise SystemExit(f"--repo-dir {args.repo_dir!r} is not a clone of {args.repo}")
@@ -364,12 +420,8 @@ def main(argv):
     snapshot = cs.rc.live_snapshot(args.repo, args.repo_dir)
     state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    tick = args.tick if args.tick is not None else next_tick(read_events(args.log))
-    result = run_tick(state, snapshot, args.log, tick, now, args.stall_after)
-    if args.outbox:
-        result["outbox"] = write_outbox(args.outbox, result, now)
-    count, tip = current_tip(args.log)
-    result["tip"] = {"count": count, "sha256": tip}
+    result = tick_under_lock(args.log, state, snapshot, args.tick, now, args.stall_after, args.outbox, args.expect_tip)
+    count, tip = result["tip"]["count"], result["tip"]["sha256"]
     print(json.dumps(result, indent=2) if args.json else render(result) + f"\n\nLOG TIP seq={count} sha256={tip} (anchor this externally)")
     return 0
 
