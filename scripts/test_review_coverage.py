@@ -55,6 +55,19 @@ class Coverage(unittest.TestCase):
         self.assertFalse(decision["covered"])
         self.assertIn("not chained", " ".join(decision["reasons"]))
 
+    def test_a_delta_from_the_merge_base_is_a_whole_diff_review_and_covers(self):
+        self.assertTrue(ev(H2, [rec(H2, "delta", frm=MB)])["covered"])
+
+    def test_a_delta_from_the_merge_base_still_needs_an_independent_reviewer_and_the_right_base(self):
+        self.assertFalse(ev(H2, [rec(H2, "delta", frm=MB, reviewer="claude")])["covered"])
+        self.assertFalse(ev(H2, [rec(H2, "delta", frm=MB, base="d" * 40)])["covered"])
+        self.assertFalse(ev(H2, [rec(H2, "delta", frm=MB, verdict="needs_revision")])["covered"])
+
+    def test_a_delta_from_the_merge_base_at_an_older_head_does_not_carry(self):
+        decision = ev(H3, [rec(H2, "delta", frm=MB)])
+        self.assertFalse(decision["covered"])
+        self.assertIn("no accept at the current head", decision["reasons"])
+
     def test_accept_at_an_older_head_does_not_carry(self):
         decision = ev(H2, [rec(H1)])
         self.assertFalse(decision["covered"])
