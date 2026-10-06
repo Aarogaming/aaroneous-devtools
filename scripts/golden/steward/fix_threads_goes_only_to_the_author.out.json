@@ -61,7 +61,7 @@
     "task": "Fix and answer every unresolved review thread on PR #2",
     "then": "no further item is free for you; stand by",
     "tick": 0,
-    "why_now": "2 unresolved review thread(s)"
+    "why_now": "2 of 2 unresolved review thread(s) not yet answered"
   },
   {
     "acceptance": "no artifact required; take the next free card when a lease completes or expires",

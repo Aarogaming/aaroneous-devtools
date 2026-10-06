@@ -86,6 +86,10 @@ SCENARIOS = {
     "everything_leased_means_standby": (2, state(
         [pr(12)], leases={key("needs_review", 12): {"agent": "mimo", "expires": 9}})),
     "healthy_idle": (1, state([pr(13, covered=True, base="proposal/other")])),
+    "answered_threads_go_to_a_reviewer_to_resolve": (0, state(
+        [pr(15, threads_unresolved=2, threads_unanswered=0, seat="claude", implementers=["claude"])])),
+    "unanswered_threads_still_go_to_the_author": (0, state(
+        [pr(16, threads_unresolved=2, threads_unanswered=1, seat="codex", implementers=["codex"])])),
 }
 
 CHAIN_EVENTS = [
@@ -179,6 +183,10 @@ RECEIPTS = [
      "snapshot": snapshot_for(7, [receipt("repair_verdict", 7, H, "Gemini seat: reposted"),
                                   receipt("repair_verdict", 7, H, "Mimo seat: reposted")]),
      "repair_owners": {"7": ["gemini"]}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a reviewer completes a thread resolution and the author cannot",
+     "snapshot": snapshot_for(7, [receipt("resolve_threads", 7, H, "Claude seat: resolved"),
+                                  receipt("resolve_threads", 7, H, "Gemini seat: resolved")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "the first eligible receipt names the seat",
      "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini seat: first"),
                                   receipt("needs_review", 7, H, "Codex seat: second")]),

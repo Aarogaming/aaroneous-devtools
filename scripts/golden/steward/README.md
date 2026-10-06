@@ -45,6 +45,8 @@ expire is not handed the same item again while another seat can take it; "head m
 seat's last card; seats that finish work are served first; everything leased means standby; nothing actionable
 means healthy idle with the evidence that was checked; a verdict the coverage tool rejected goes back to its
 author as a repair card carrying the reason (never to an implementer, and not once the PR is covered).
+Unresolved threads that nobody on the PR's side has answered are a fix card for the author only; threads that all have an
+answer are a `resolve_threads` card for a seat that is not an implementer (the author cannot complete it).
 
 ## Byte format of the log (decision needed before Guild)
 

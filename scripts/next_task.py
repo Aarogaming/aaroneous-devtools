@@ -75,9 +75,15 @@ def work_items(state):
                 "base_ref": pr.get("base", default_branch), "base_sha": pr.get("base_sha", ""),
                 "size": pr.get("size", ""), "mergeable_state": pr.get("mergeable_state", ""),
                 "rejected_unattributed": [r for r in pr.get("rejected_verdicts", []) if not r.get("seat")]}
-        if threads:
+        unanswered = pr.get("threads_unanswered", threads)
+        if threads and unanswered:
             items.append(dict(base, kind="fix_threads", rank=1, owner_seat=pr.get("seat"),
-                              detail=f"{threads} unresolved review thread(s)"))
+                              detail=f"{unanswered} of {threads} unresolved review thread(s) not yet answered"))
+        elif threads:
+            # Every open thread has an answer from the PR's side: nothing is left for the author to fix. What remains is
+            # a reviewer reading the replies and resolving. Handing the author the same card every tick never completes.
+            items.append(dict(base, kind="resolve_threads", rank=2, owner_seat=None,
+                              detail=f"{threads} unresolved review thread(s), all answered; waiting for a reviewer to resolve"))
         elif not pr.get("covered", False):
             where = " (a draft: flipping it ready waits until it is covered)" if draft else ""
             items.append(dict(base, kind="needs_review", rank=2,
@@ -120,6 +126,8 @@ def card_for(agent, role, tick, item):
     tasks = {
         "fix_threads": ("Fix and answer every unresolved review thread on " + ref,
                         "every thread has a reply naming the commit that addresses it, and is resolved only if addressed"),
+        "resolve_threads": ("Check the replies on every unresolved review thread of " + ref + " and resolve each one that is addressed",
+                            "every thread is resolved after you checked the commit its reply names, or carries your reply saying what is still missing"),
         "needs_review": ("Post an independent whole-diff review of " + ref + " at its current head, with an attestation block",
                          "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason"),
         "not_mergeable": ("Make " + ref + " mergeable: " + item.get("detail", ""),
@@ -190,6 +198,10 @@ def recipe_for(item):
             f"implementers={implementers_field(item, base_sha, head)}, verdict",
             "keep your analysis as prose above the block",
         ]
+    if item["kind"] == "resolve_threads" and pr:
+        return ["list the unresolved threads on the PR with their replies",
+                "for each thread, read the reply and open the commit it names",
+                "resolve the thread only if it is actually addressed; otherwise reply with what is still missing"]
     if item["kind"] == "fix_threads" and pr:
         return ["list the unresolved threads on the PR", "fix each in a commit",
                 "reply on each thread naming the commit; resolve only what is addressed"]
@@ -306,7 +318,7 @@ def build_cards(state, tick):
         return item_key(item["kind"], item["pr"], item.get("head", "")) if item.get("pr") else None
 
     def allowed(item, name):
-        if item["kind"] == "needs_review" and name in set(item.get("implementers") or []) | {item.get("seat")}:
+        if item["kind"] in ("needs_review", "resolve_threads") and name in set(item.get("implementers") or []) | {item.get("seat")}:
             return False
         return not (item["kind"] in ("fix_threads", "repair_verdict") and item.get("owner_seat") not in (None, "", name))
 

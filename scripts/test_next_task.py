@@ -166,6 +166,34 @@ class Cards(unittest.TestCase):
     def test_a_covered_draft_still_gets_the_flip_ready_card(self):
         self.assertEqual({i["kind"] for i in nt.work_items(state([pr(9, draft=True, covered=True)]))}, {"draft"})
 
+    def cards_for(self, pr_kwargs):
+        s = state([pr(40, **pr_kwargs)])
+        s["agents"] = [{"name": "claude"}, {"name": "gemini"}, {"name": "mimo"}]
+        return {c["agent"]: c["inputs"]["kind"] for c in nt.build_cards(s, 0)}
+
+    def test_threads_the_author_has_answered_go_to_a_reviewer_to_resolve_not_back_to_the_author(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "threads_unresolved": 2, "threads_unanswered": 0})
+        self.assertNotEqual(kinds["claude"], "resolve_threads")
+        self.assertNotEqual(kinds["claude"], "fix_threads")
+        self.assertIn("resolve_threads", set(kinds.values()))
+        self.assertEqual({a for a, k in kinds.items() if k == "resolve_threads"} & {"claude"}, set())
+
+    def test_unanswered_threads_still_go_only_to_the_author(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "threads_unresolved": 2, "threads_unanswered": 1})
+        self.assertEqual(kinds["claude"], "fix_threads")
+        self.assertNotIn("fix_threads", {k for a, k in kinds.items() if a != "claude"})
+        self.assertNotIn("resolve_threads", set(kinds.values()))
+
+    def test_without_the_unanswered_count_every_open_thread_is_a_fix_for_the_author(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "threads_unresolved": 3})
+        self.assertEqual(kinds["claude"], "fix_threads")
+
+    def test_a_co_implementer_never_resolves_the_threads_on_its_own_pr(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude", "mimo"], "threads_unresolved": 1,
+                                "threads_unanswered": 0})
+        self.assertNotEqual(kinds["mimo"], "resolve_threads")
+        self.assertEqual(kinds["gemini"], "resolve_threads")
+
     def review_recipe(self, implementers):
         s = state([pr(63, seat="", implementers=implementers, head="a" * 40, base_sha="b" * 40)])
         s["agents"] = [{"name": "gemini"}]

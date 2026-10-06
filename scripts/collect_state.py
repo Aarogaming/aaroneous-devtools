@@ -202,7 +202,7 @@ def seat_from_trailers(text, branch=""):
 THREADS_QUERY = (
     'query($owner:String!,$name:String!){repository(owner:$owner,name:$name){'
     "pullRequests(states:OPEN,first:100){pageInfo{hasNextPage} nodes{number "
-    "reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}}"
+    "reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved comments(last:1){totalCount nodes{author{login}}}}}}}}}"
 )
 
 
@@ -225,6 +225,35 @@ def unresolved_by_pr(graphql):
     return counts
 
 
+def thread_unanswered(thread):
+    """True when nobody on the PR's side has replied to the thread: a single comment, or a last comment from a bot (the
+    review connectors). A thread with at least two comments whose last one is from a person or a seat has been answered
+    and waits for a reviewer to resolve it. Unknown comment data counts as unanswered, the old behaviour."""
+    comments = thread.get("comments") or {}
+    if "totalCount" not in comments or "nodes" not in comments:
+        return True
+    if comments["totalCount"] <= 1 or not comments["nodes"]:
+        return True
+    login = (comments["nodes"][-1].get("author") or {}).get("login", "")
+    return login == "" or login.endswith("[bot]")
+
+
+def unanswered_by_pr(graphql):
+    """Unresolved review threads nobody has answered yet, per open PR (see `thread_unanswered`). The same truncation
+    rules as `unresolved_by_pr`: a further page of threads counts one extra, so it is never reported as none."""
+    pull_requests = graphql["data"]["repository"]["pullRequests"]
+    if (pull_requests.get("pageInfo") or {}).get("hasNextPage"):
+        raise SystemExit("more than 100 open pull requests: unresolved-thread counts would be missing for the rest; "
+                         "paginate the threads query before trusting them")
+    counts = {}
+    for n in pull_requests["nodes"]:
+        threads = n["reviewThreads"]
+        counts[n["number"]] = sum(1 for t in threads["nodes"] if not t["isResolved"] and thread_unanswered(t))
+        if (threads.get("pageInfo") or {}).get("hasNextPage"):
+            counts[n["number"]] += 1
+    return counts
+
+
 def eligible_completer(kind, seat, implementers, repair_owners=()):
     """Whether this seat may complete a card of this kind. It fails closed: an unattributed comment never completes
     a card; a review needs KNOWN implementers and a seat that is not one of them (unknown ownership must not make
@@ -236,6 +265,8 @@ def eligible_completer(kind, seat, implementers, repair_owners=()):
         return bool(implementers) and seat not in implementers
     if kind == "fix_threads":
         return bool(implementers) and seat == implementers[0]
+    if kind == "resolve_threads":
+        return bool(implementers) and seat not in implementers
     if kind == "repair_verdict":
         return seat in repair_owners
     return True
@@ -279,7 +310,7 @@ def done_receipts(snapshot, repair_owners=None, implementers_by_pr=None):
 
 
 def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now, default_branch="main",
-                commit_exists=None):
+                commit_exists=None, unanswered=None):
     covered = {r["pr"]: r["covered"] for r in coverage_rows}
     rows = {r["pr"]: r for r in coverage_rows}
     implementers_by_pr = {
@@ -307,6 +338,7 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
                 "size": f"+{m.get('additions', 0)}/-{m.get('deletions', 0)} in {m.get('changedFiles', 0)} file(s)",
                 "implementers": implementers_by_pr[n],
                 "threads_unresolved": unresolved.get(n, 0),
+                "threads_unanswered": (unanswered if unanswered is not None else unresolved).get(n, 0),
                 "covered": covered.get(n, False),
             }
         )
@@ -334,7 +366,7 @@ def collect(repo, repo_dir, agents, backlog, identities=None):
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     default = rc.gh_json("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
     return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now, default,
-                       git_commit_exists(repo_dir))
+                       git_commit_exists(repo_dir), unanswered_by_pr(graphql))
 
 
 def main(argv):

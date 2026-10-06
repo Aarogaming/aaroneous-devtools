@@ -310,6 +310,33 @@
         "claude"
       ]
     },
+    "name": "a reviewer completes a thread resolution and the author cannot",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:resolve_threads:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: resolved",
+              "id": 1
+            },
+            {
+              "body": "[done:resolve_threads:7:cccccccccccccccccccccccccccccccccccccccc] Gemini seat: resolved",
+              "id": 2
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
     "name": "the first eligible receipt names the seat",
     "repair_owners": {},
     "snapshot": {

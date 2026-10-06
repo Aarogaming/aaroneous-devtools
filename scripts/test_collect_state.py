@@ -213,6 +213,42 @@ class Build(unittest.TestCase):
             cs.unresolved_by_pr(self.graphql([self.pr_threads(1, 0, 0, False)], more_prs=True))
         self.assertIn("100 open pull requests", str(caught.exception))
 
+    def thread(self, resolved, total, last_login):
+        comments = {"totalCount": total, "nodes": [{"author": {"login": last_login}}]} if last_login is not None else {}
+        return {"isResolved": resolved, "comments": comments}
+
+    def test_a_thread_is_answered_when_a_person_or_seat_replied_last(self):
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 1, "Aarogaming")))  # only the opener
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 3, "chatgpt-codex-connector[bot]")))  # bot spoke last
+        self.assertFalse(cs.thread_unanswered(self.thread(False, 2, "Aarogaming")))  # answered
+        self.assertTrue(cs.thread_unanswered({"isResolved": False}))  # unknown comment data: the old behaviour
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "")))
+
+    def test_unanswered_counts_only_unresolved_threads_nobody_replied_to(self):
+        threads = [self.thread(True, 2, "Aarogaming"), self.thread(False, 2, "Aarogaming"), self.thread(False, 1, "x[bot]"),
+                   self.thread(False, 2, "copilot[bot]")]
+        graphql = self.graphql([{"number": 1, "reviewThreads": {"pageInfo": {"hasNextPage": False}, "nodes": threads}}])
+        self.assertEqual(cs.unresolved_by_pr(graphql), {1: 3})
+        self.assertEqual(cs.unanswered_by_pr(graphql), {1: 2})
+
+    def test_a_further_page_of_threads_counts_one_extra_unanswered_thread(self):
+        graphql = self.graphql([{"number": 1, "reviewThreads": {"pageInfo": {"hasNextPage": True},
+                                                                  "nodes": [self.thread(False, 2, "Aarogaming")]}}])
+        self.assertEqual(cs.unanswered_by_pr(graphql), {1: 1})
+
+    def test_the_state_carries_the_unanswered_count_and_defaults_to_the_old_behaviour(self):
+        snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main", "implementers": ["claude"]}]}
+        meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
+        args = (snapshot, [{"pr": 7, "covered": False}], meta, {7: 3}, {7: "claude"}, ["claude"], [], "2026-10-04T12:00:00Z")
+        self.assertEqual(cs.build_state(*args)["prs"][0]["threads_unanswered"], 3)
+        self.assertEqual(cs.build_state(*args, unanswered={7: 0})["prs"][0]["threads_unanswered"], 0)
+
+    def test_only_a_non_implementer_completes_a_resolve_threads_card(self):
+        self.assertTrue(cs.eligible_completer("resolve_threads", "gemini", ["claude"]))
+        self.assertFalse(cs.eligible_completer("resolve_threads", "claude", ["claude"]))
+        self.assertFalse(cs.eligible_completer("resolve_threads", "gemini", []))
+        self.assertFalse(cs.eligible_completer("resolve_threads", "", ["claude"]))
+
     def test_the_threads_query_asks_for_both_page_infos(self):
         self.assertEqual(cs.THREADS_QUERY.count("pageInfo{hasNextPage}"), 2)
 
