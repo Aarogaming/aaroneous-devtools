@@ -126,7 +126,7 @@ def work_items(state):
             items.append(dict(base, kind="stale", rank=5, detail=f"no update for {int(age_h)}h"))
     # A receipt closes a card for a head, but resolving threads is observable on GitHub: the item disappears when the
     # threads are resolved, and a receipt must not hide it while one is still open.
-    items = [i for i in items if i["kind"] in ("resolve_threads", "address_review")
+    items = [i for i in items if i["kind"] in OBSERVABLE_KINDS
              or item_key(i["kind"], i["pr"], i["head"]) not in done]
     # A stale overlay on a PR that already has its primary action (merge brief or draft flip) is noise.
     primary = {i["pr"] for i in items if i["kind"] in ("ready_to_merge", "draft", "stacked")}
@@ -189,7 +189,7 @@ def card_for(agent, role, tick, item):
 
 
 # Kinds whose completion is visible on GitHub (see collect_state.OBSERVABLE_KINDS); no receipt is requested for them.
-OBSERVABLE_KINDS = ("resolve_threads", "address_review")
+OBSERVABLE_KINDS = ("resolve_threads", "address_review", "identify_implementers")
 # Kinds that are meaningless without a known author or known independence: they are withheld while the implementers
 # are unknown, and an identify_implementers item takes their place.
 NEEDS_KNOWN_IMPLEMENTERS = ("fix_threads", "resolve_threads", "address_review", "needs_review")

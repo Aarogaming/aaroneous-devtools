@@ -309,7 +309,10 @@ def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
 # Cards whose completion is visible on GitHub itself (a thread is resolved, a rejecting verdict stops standing). A
 # receipt for one of these would complete the lease while the item is still open, and the dispatcher would lease the same
 # key again on the next tick, so receipts for them are not read.
-OBSERVABLE_KINDS = ("resolve_threads", "address_review")
+# identify_implementers belongs here too: its completion is the implementers becoming known (a trailer or a seat-named
+# branch), which a comment cannot establish. A receipt would otherwise remove the item while the implementers are still
+# unknown, and every review, fix and resolve card for that PR stays withheld until its head moves.
+OBSERVABLE_KINDS = ("resolve_threads", "address_review", "identify_implementers")
 
 
 def done_receipts(snapshot, repair_owners=None, implementers_by_pr=None):

@@ -333,6 +333,31 @@
   },
   {
     "implementers_by_pr": {
+      "7": []
+    },
+    "name": "a receipt for an identify_implementers card is not read while the implementers are unknown",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:identify_implementers:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: identified",
+              "id": 1
+            },
+            {
+              "body": "[done:identify_implementers:7:cccccccccccccccccccccccccccccccccccccccc] Gemini seat: identified",
+              "id": 2
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
       "7": [
         "claude"
       ]

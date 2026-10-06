@@ -281,7 +281,7 @@ class Build(unittest.TestCase):
 
     def test_receipts_for_cards_that_complete_on_github_are_not_read(self):
         head = "c" * 40
-        for kind, seat in (("resolve_threads", "Gemini"), ("address_review", "Codex")):
+        for kind, seat in (("resolve_threads", "Gemini"), ("address_review", "Codex"), ("identify_implementers", "Claude")):
             body = f"[done:{kind}:7:{head}] {seat} seat: done"
             snapshot = {"prs": [{"number": 7, "head": head, "comments": [{"id": 1, "body": body}]}]}
             self.assertEqual(cs.done_receipts(snapshot, {}, {7: ["codex" if kind == "resolve_threads" else "codex"]}), {}, kind)

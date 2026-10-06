@@ -254,6 +254,16 @@ class Cards(unittest.TestCase):
         kinds = self.cards_for({"seat": "", "implementers": [], "covered": True})
         self.assertIn("ready_to_merge", set(kinds.values()))
 
+    def test_a_receipt_never_removes_an_identify_card_while_the_implementers_are_unknown(self):
+        # Probe on the #90 tip: any seat's receipt completed the item, and with the implementers still unknown every
+        # review, fix and resolve card for that PR is withheld, so the PR left the dispatcher until its head moved.
+        s = state([pr(63, seat="", implementers=[], head="a" * 40)])
+        s["done"] = ["identify_implementers:63:aaaaaaaa"]
+        self.assertEqual([i["kind"] for i in nt.work_items(s)], ["identify_implementers"])
+        s["agents"] = [{"name": "claude"}]
+        card = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "identify_implementers"][0]
+        self.assertNotIn("[done:", card["acceptance"])
+
     def test_no_receipt_is_requested_for_a_card_that_completes_on_github(self):
         s = state([pr(41, seat="claude", implementers=["claude"],
                       standing_blocker={"verdict": "needs_revision", "by": "Codex"})])
