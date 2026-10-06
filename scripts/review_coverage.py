@@ -102,9 +102,10 @@ def evaluate(head, merge_base, records, is_ancestor):
         for r in records
         if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base
     ]
-    # A delta whose `from` is the merge base is a review of the whole PR diff, so it seeds coverage like a whole accept.
-    # Stacked PRs make this the normal case: reviewing "the delta over the base branch" IS reviewing the PR.
-    covered = {r["head"] for r in valid if r["scope"] == "whole" or (r["scope"] == "delta" and r["from"] == merge_base)}
+    # Only a `whole` accept seeds coverage (governance/PLATFORM_SPEC.md section 3: "Delta accepts compose only when
+    # chained from a whole-diff accept"). A delta that starts at the merge base reviewed the whole PR diff, but its
+    # author must say so by labelling it `whole`; the tool tells them (see the reason below) and does not guess.
+    covered = {r["head"] for r in valid if r["scope"] == "whole"}
     changed = True
     while changed:
         changed = False
@@ -120,7 +121,11 @@ def evaluate(head, merge_base, records, is_ancestor):
     ok = head in covered and not blockers
     if head not in covered:
         if any(r["verdict"] in ACCEPT and r["head"] == head for r in records):
-            reasons.append("accept at head exists but is not chained to a whole accept at this base")
+            reason = "accept at head exists but is not chained to a whole accept at this base"
+            if any(r["scope"] == "delta" and r["head"] == head and r["from"] == merge_base for r in valid):
+                reason += (f"; its delta starts at the merge base {merge_base[:8]}, which is the whole PR diff, so if the "
+                           "reviewer read all of base...head they should re-post it with scope \"whole\"")
+            reasons.append(reason)
         else:
             reasons.append("no accept at the current head")
     return {"covered": ok, "reasons": reasons, "accepts_at_head": len(at_head)}

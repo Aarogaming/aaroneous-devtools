@@ -55,18 +55,21 @@ class Coverage(unittest.TestCase):
         self.assertFalse(decision["covered"])
         self.assertIn("not chained", " ".join(decision["reasons"]))
 
-    def test_a_delta_from_the_merge_base_is_a_whole_diff_review_and_covers(self):
-        self.assertTrue(ev(H2, [rec(H2, "delta", frm=MB)])["covered"])
-
-    def test_a_delta_from_the_merge_base_still_needs_an_independent_reviewer_and_the_right_base(self):
-        self.assertFalse(ev(H2, [rec(H2, "delta", frm=MB, reviewer="claude")])["covered"])
-        self.assertFalse(ev(H2, [rec(H2, "delta", frm=MB, base="d" * 40)])["covered"])
-        self.assertFalse(ev(H2, [rec(H2, "delta", frm=MB, verdict="needs_revision")])["covered"])
-
-    def test_a_delta_from_the_merge_base_at_an_older_head_does_not_carry(self):
-        decision = ev(H3, [rec(H2, "delta", frm=MB)])
+    def test_a_delta_from_the_merge_base_does_not_seed_coverage_but_the_reason_says_to_relabel_it_whole(self):
+        decision = ev(H2, [rec(H2, "delta", frm=MB)])
         self.assertFalse(decision["covered"])
-        self.assertIn("no accept at the current head", decision["reasons"])
+        self.assertIn("not chained to a whole accept", " ".join(decision["reasons"]))
+        self.assertIn('re-post it with scope "whole"', " ".join(decision["reasons"]))
+
+    def test_the_relabel_hint_appears_only_for_a_delta_that_starts_at_the_merge_base(self):
+        other = ev(H2, [rec(H2, "delta", frm=H1)])
+        self.assertFalse(other["covered"])
+        self.assertNotIn("re-post", " ".join(other["reasons"]))
+        implementer = ev(H2, [rec(H2, "delta", frm=MB, reviewer="claude")])
+        self.assertNotIn("re-post", " ".join(implementer["reasons"]))
+
+    def test_the_same_review_labelled_whole_covers(self):
+        self.assertTrue(ev(H2, [rec(H2, "whole")])["covered"])
 
     def test_accept_at_an_older_head_does_not_carry(self):
         decision = ev(H2, [rec(H1)])
