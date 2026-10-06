@@ -50,6 +50,13 @@ def validate(record):
     return None
 
 
+# Fields this tool computes onto a record after parsing. They are never the attester's to supply: a record that carried
+# its own `git_implementers` would override the implementers git names and let a self-accept count. They are stripped
+# from the parsed JSON before anything is derived, and the stripped names are kept in `ignored_fields` so the report
+# can say they were ignored instead of dropping them silently.
+COMPUTED_FIELDS = ("git_implementers", "comment", "ignored_fields")
+
+
 def parse_attestations(comments):
     """Return (structured, problems, legacy). Malformed records are reported, never counted."""
     structured, problems, legacy = [], [], []
@@ -67,6 +74,11 @@ def parse_attestations(comments):
             if problem:
                 problems.append({"comment": index, "problem": problem})
                 continue
+            ignored = [key for key in COMPUTED_FIELDS if key in record]
+            for key in ignored:
+                del record[key]
+            if ignored:
+                record["ignored_fields"] = ignored
             record["comment"] = index
             structured.append(record)
         if not found and re.search(r"\bVERDICT\b", body):
@@ -254,6 +266,9 @@ def report_snapshot(snapshot, is_ancestor=None):
                 "malformed": problems,
                 "legacy_packets_not_counted": len(legacy),
                 "implementers_from_git": sorted(git_implementers | {s for r in structured for s in r.get("git_implementers", ())}),
+                "ignored_computed_fields": [
+                    {"comment": r["comment"], "fields": r["ignored_fields"]} for r in structured if r.get("ignored_fields")
+                ],
             }
         )
     return rows

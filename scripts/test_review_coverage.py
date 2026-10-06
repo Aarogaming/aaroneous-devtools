@@ -256,6 +256,34 @@ class Independence(unittest.TestCase):
             self.assertEqual([c["seats"] for c in commits], [["codex", "mimo"], []])
             self.assertIsNone(rc.commit_seats(repo, base, "0" * 40))
 
+    def injected_snapshot(self, commits, extra=None, reviewer="Claude", impl=("Codex",)):
+        record = dict(rec(H1, reviewer=reviewer, impl=impl, repo="o/r", pr=1), **(extra or {}))
+        pr = {"number": 1, "head": H1, "merge_base": MB, "comments": [block(record)], "trailer_implementers": ["claude"]}
+        if commits is not None:
+            pr["commits"] = commits
+        return rc.report_snapshot({"repo": "o/r", "prs": [pr]})[0]
+
+    def test_an_attestation_cannot_supply_its_own_git_implementers(self):
+        for commits in (None, []):
+            row = self.injected_snapshot(commits, {"git_implementers": []})
+            self.assertFalse(row["covered"], f"commits={commits!r}")
+            self.assertEqual(row["implementers_from_git"], ["claude"])
+            self.assertEqual(row["ignored_computed_fields"], [{"comment": 0, "fields": ["git_implementers"]}])
+
+    def test_the_derived_range_overrides_an_injected_one_and_a_normal_record_is_untouched(self):
+        derived = [{"sha": H1, "seats": ["claude"]}]
+        self.assertFalse(self.injected_snapshot(derived, {"git_implementers": []})["covered"])
+        control = self.injected_snapshot(derived, None, reviewer="mimo", impl=("claude",))
+        self.assertTrue(control["covered"])
+        self.assertEqual(control["ignored_computed_fields"], [])
+
+    def test_the_other_computed_fields_are_also_stripped_at_parse(self):
+        record = dict(rec(H1), git_implementers=["x"], comment=99, ignored_fields=["spoof"])
+        parsed = rc.parse_attestations([block(record)])[0][0]
+        self.assertNotIn("git_implementers", parsed)
+        self.assertEqual(parsed["comment"], 0)
+        self.assertEqual(parsed["ignored_fields"], ["git_implementers", "comment", "ignored_fields"])
+
     def test_trailer_seats_reads_trailers_and_branch_prefix_only(self):
         log = ("fix: thing\n\nCo-Authored-By: Claude Sonnet 5.5 <n@a.com>\n"
                "Contribution-ID: C99/codex-v1\n\nThis reuses an idea from Mimo and Gemini.\n"
