@@ -225,6 +225,20 @@ def unresolved_by_pr(graphql):
     return counts
 
 
+STANDING_REASON = re.compile(r"^standing (\w+) at head by (.+)$")
+
+
+def standing_blocker(reasons):
+    """The standing rejecting verdict at the PR's current head, from the coverage tool's reasons: {"verdict", "by"}, or
+    None. "standing needs_revision at head by Claude" is a reviewer waiting for the author to change something; no
+    further review of the same head can help."""
+    for reason in reasons or []:
+        match = STANDING_REASON.match(reason)
+        if match:
+            return {"verdict": match.group(1), "by": match.group(2)}
+    return None
+
+
 def thread_unanswered(thread, author_seats=()):
     """True unless the PR's own side has the last word in the thread. Every seat and the owner post from one shared
     login, so a person-versus-bot test cannot tell an author's answer from a reviewer's "still missing". The last comment
@@ -277,6 +291,8 @@ def eligible_completer(kind, seat, implementers, repair_owners=()):
         return bool(implementers) and seat == implementers[0]
     if kind == "resolve_threads":
         return bool(implementers) and seat not in implementers
+    if kind == "address_review":
+        return bool(implementers) and seat == implementers[0]
     if kind == "repair_verdict":
         return seat in repair_owners
     return True
@@ -350,6 +366,7 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
                 "threads_unresolved": unresolved.get(n, 0),
                 "threads_unanswered": (unanswered if unanswered is not None else unresolved).get(n, 0),
                 "covered": covered.get(n, False),
+                "standing_blocker": standing_blocker(rows.get(n, {}).get("reasons")),
             }
         )
     return {"now": now, "agents": [{"name": a} for a in agents], "prs": prs, "backlog": backlog,

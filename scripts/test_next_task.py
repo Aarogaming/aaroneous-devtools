@@ -202,6 +202,35 @@ class Cards(unittest.TestCase):
         s["done"] = ["fix_threads:40:aaaaaaaa"]
         self.assertEqual({i["kind"] for i in nt.work_items(s)} & {"fix_threads"}, set())
 
+    def test_a_standing_rejecting_verdict_goes_to_the_author_and_no_other_review_is_requested(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"],
+                                "standing_blocker": {"verdict": "needs_revision", "by": "Codex"}})
+        self.assertEqual(kinds["claude"], "address_review")
+        self.assertNotIn("needs_review", set(kinds.values()))
+        self.assertEqual({a for a, k in kinds.items() if k == "address_review"}, {"claude"})
+
+    def test_the_address_review_card_names_the_verdict_and_the_reviewer(self):
+        s = state([pr(41, seat="claude", implementers=["claude"],
+                      standing_blocker={"verdict": "needs_revision", "by": "Codex"})])
+        s["agents"] = [{"name": "claude"}]
+        card = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "address_review"][0]
+        self.assertIn("needs_revision", card["task"])
+        self.assertIn("Codex", card["task"])
+        self.assertIn("a new head", card["acceptance"])
+
+    def test_threads_come_before_a_standing_verdict_and_no_standing_verdict_means_a_review_as_before(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "threads_unresolved": 1, "threads_unanswered": 1,
+                                "standing_blocker": {"verdict": "needs_revision", "by": "Codex"}})
+        self.assertEqual(kinds["claude"], "fix_threads")
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "standing_blocker": None})
+        self.assertIn("needs_review", set(kinds.values()))
+
+    def test_a_receipt_does_not_hide_a_standing_verdict_that_still_stands(self):
+        s = state([pr(41, seat="claude", implementers=["claude"], head="a" * 40,
+                      standing_blocker={"verdict": "needs_revision", "by": "Codex"})])
+        s["done"] = ["address_review:41:aaaaaaaa"]
+        self.assertEqual([i["kind"] for i in nt.work_items(s)], ["address_review"])
+
     def test_a_co_implementer_never_resolves_the_threads_on_its_own_pr(self):
         kinds = self.cards_for({"seat": "claude", "implementers": ["claude", "mimo"], "threads_unresolved": 1,
                                 "threads_unanswered": 0})

@@ -259,6 +259,26 @@ class Build(unittest.TestCase):
         self.assertEqual(cs.build_state(*args)["prs"][0]["threads_unanswered"], 3)
         self.assertEqual(cs.build_state(*args, unanswered={7: 0})["prs"][0]["threads_unanswered"], 0)
 
+    def test_the_standing_rejecting_verdict_is_read_from_the_coverage_reasons(self):
+        self.assertEqual(cs.standing_blocker(["standing needs_revision at head by Claude", "no accept at the current head"]),
+                         {"verdict": "needs_revision", "by": "Claude"})
+        self.assertEqual(cs.standing_blocker(["standing changes_requested at head by Mimo"]),
+                         {"verdict": "changes_requested", "by": "Mimo"})
+        for none in ([], None, ["no accept at the current head"], ["accept at head exists but is not chained to a whole accept"]):
+            self.assertIsNone(cs.standing_blocker(none))
+
+    def test_the_state_carries_the_standing_verdict(self):
+        snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main", "implementers": ["codex"]}]}
+        meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
+        rows = [{"pr": 7, "covered": False, "reasons": ["standing needs_revision at head by Claude"]}]
+        state = cs.build_state(snapshot, rows, meta, {7: 0}, {7: "codex"}, ["codex"], [], "2026-10-04T12:00:00Z")
+        self.assertEqual(state["prs"][0]["standing_blocker"], {"verdict": "needs_revision", "by": "Claude"})
+
+    def test_only_the_author_completes_an_address_review_card(self):
+        self.assertTrue(cs.eligible_completer("address_review", "codex", ["codex"]))
+        self.assertFalse(cs.eligible_completer("address_review", "claude", ["codex"]))
+        self.assertFalse(cs.eligible_completer("address_review", "codex", []))
+
     def test_only_a_non_implementer_completes_a_resolve_threads_card(self):
         self.assertTrue(cs.eligible_completer("resolve_threads", "gemini", ["claude"]))
         self.assertFalse(cs.eligible_completer("resolve_threads", "claude", ["claude"]))

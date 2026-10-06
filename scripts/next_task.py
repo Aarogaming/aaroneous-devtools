@@ -84,6 +84,12 @@ def work_items(state):
             # a reviewer reading the replies and resolving. Handing the author the same card every tick never completes.
             items.append(dict(base, kind="resolve_threads", rank=2, owner_seat=None,
                               detail=f"{threads} unresolved review thread(s), all answered; waiting for a reviewer to resolve"))
+        elif pr.get("standing_blocker"):
+            # A reviewer's rejecting verdict stands at this head. Another review of the same head cannot help and the
+            # author was never told: the next move is the author's, and it clears when a new head is reviewed.
+            blocker = pr["standing_blocker"]
+            items.append(dict(base, kind="address_review", rank=1, owner_seat=pr.get("seat"), blocker=blocker,
+                              detail=f"{blocker['verdict']} by {blocker['by']} stands at the current head"))
         elif not pr.get("covered", False):
             where = " (a draft: flipping it ready waits until it is covered)" if draft else ""
             items.append(dict(base, kind="needs_review", rank=2,
@@ -110,7 +116,8 @@ def work_items(state):
             items.append(dict(base, kind="stale", rank=5, detail=f"no update for {int(age_h)}h"))
     # A receipt closes a card for a head, but resolving threads is observable on GitHub: the item disappears when the
     # threads are resolved, and a receipt must not hide it while one is still open.
-    items = [i for i in items if i["kind"] == "resolve_threads" or item_key(i["kind"], i["pr"], i["head"]) not in done]
+    items = [i for i in items if i["kind"] in ("resolve_threads", "address_review")
+             or item_key(i["kind"], i["pr"], i["head"]) not in done]
     # A stale overlay on a PR that already has its primary action (merge brief or draft flip) is noise.
     primary = {i["pr"] for i in items if i["kind"] in ("ready_to_merge", "draft", "stacked")}
     items = [i for i in items if not (i["kind"] == "stale" and i["pr"] in primary)]
@@ -128,6 +135,10 @@ def card_for(agent, role, tick, item):
     tasks = {
         "fix_threads": ("Fix and answer every unresolved review thread on " + ref,
                         "every thread has a reply naming the commit that addresses it, and is resolved only if addressed"),
+        "address_review": ("Answer the standing " + str((item.get("blocker") or {}).get("verdict", "rejecting verdict"))
+                           + " by " + str((item.get("blocker") or {}).get("by", "a reviewer")) + " on " + ref,
+                           "a new head that fixes what the reviewer found, or a reply naming each finding and the commit or evidence that answers it; "
+                           "the card clears when the new head is reviewed"),
         "resolve_threads": ("Check the replies on every unresolved review thread of " + ref + " and resolve each one that is addressed",
                             "every thread is resolved after you checked the commit its reply names, or carries your reply saying what is still missing"),
         "needs_review": ("Post an independent whole-diff review of " + ref + " at its current head, with an attestation block",
@@ -200,6 +211,10 @@ def recipe_for(item):
             f"implementers={implementers_field(item, base_sha, head)}, verdict",
             "keep your analysis as prose above the block",
         ]
+    if item["kind"] == "address_review" and pr:
+        return ["read the reviewer's latest comment on the PR and list each finding it names",
+                "fix each finding in a commit, or reply with the evidence that answers it",
+                "push the new head and say so on the PR; the reviewer re-reviews the new head"]
     if item["kind"] == "resolve_threads" and pr:
         return ["list the unresolved threads on the PR with their replies",
                 "for each thread, read the reply and open the commit it names",
@@ -322,7 +337,8 @@ def build_cards(state, tick):
     def allowed(item, name):
         if item["kind"] in ("needs_review", "resolve_threads") and name in set(item.get("implementers") or []) | {item.get("seat")}:
             return False
-        return not (item["kind"] in ("fix_threads", "repair_verdict") and item.get("owner_seat") not in (None, "", name))
+        return not (item["kind"] in ("fix_threads", "repair_verdict", "address_review")
+                    and item.get("owner_seat") not in (None, "", name))
 
     history = state.get("history", {})
 

@@ -88,6 +88,8 @@ SCENARIOS = {
     "healthy_idle": (1, state([pr(13, covered=True, base="proposal/other")])),
     "answered_threads_go_to_a_reviewer_to_resolve": (0, state(
         [pr(15, threads_unresolved=2, threads_unanswered=0, seat="claude", implementers=["claude"])])),
+    "a_standing_rejecting_verdict_goes_to_the_author_not_to_another_review": (0, state(
+        [pr(17, seat="codex", implementers=["codex"], standing_blocker={"verdict": "needs_revision", "by": "Claude"})])),
     "unanswered_threads_still_go_to_the_author": (0, state(
         [pr(16, threads_unresolved=2, threads_unanswered=1, seat="codex", implementers=["codex"])])),
 }
