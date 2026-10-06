@@ -90,6 +90,17 @@ def parse_attestations(comments):
     return structured, problems, legacy
 
 
+# One seat is one seat however its name is spelled: "Gemini", "gemini" and "Antigravity" are the same reviewer. The merge gate's
+# "at least two independent seats" box counts len(accept_seats), so two comments from one seat spelled differently (live on
+# #96: ['Gemini', 'gemini']) looked like two seats.
+SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
+
+
+def seat_name(name):
+    key = str(name).strip().lower()
+    return SEAT_NAME_ALIASES.get(key, key)
+
+
 def independent(record):
     return record["reviewer"] not in record["implementers"]
 
@@ -140,7 +151,7 @@ def evaluate(head, merge_base, records, is_ancestor):
         "reasons": reasons,
         "accepts_at_head": len(at_head),
         "counted": counted,
-        "accept_seats": sorted({r["reviewer"] for r in counted}),
+        "accept_seats": sorted({seat_name(r["reviewer"]) for r in counted}),
     }
 
 

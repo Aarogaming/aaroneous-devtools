@@ -78,6 +78,16 @@ class Coverage(unittest.TestCase):
     def test_reviewer_who_implemented_does_not_count(self):
         self.assertFalse(ev(H1, [rec(H1, reviewer="claude")])["covered"])
 
+    def test_the_same_seat_spelled_two_ways_is_one_accepting_seat(self):
+        # #96 at ecab144a: two Gemini comments, reviewer "Gemini" and "gemini", read as accept_seats ['Gemini', 'gemini'].
+        records = [rec(H1, reviewer="Gemini", impl=("Claude",)), rec(H1, reviewer="gemini", impl=("Claude",)),
+                   rec(H1, reviewer="Antigravity", impl=("Claude",))]
+        decision = ev(H1, records)
+        self.assertTrue(decision["covered"])
+        self.assertEqual(decision["accept_seats"], ["gemini"])
+        two = ev(H1, records + [rec(H1, reviewer="Codex", impl=("Claude",))])
+        self.assertEqual(two["accept_seats"], ["codex", "gemini"])
+
     def test_standing_changes_requested_blocks(self):
         decision = ev(H1, [rec(H1), rec(H1, verdict="changes_requested", reviewer="codex")])
         self.assertFalse(decision["covered"])
