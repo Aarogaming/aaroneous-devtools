@@ -153,6 +153,25 @@ class Ingest(unittest.TestCase):
         self.assertEqual(sr.seat_from_comment("### Review\n- **Reviewer**: Gemini / Antigravity"), "gemini")
         self.assertEqual(sr.seat_from_comment("random words"), "")
 
+    def test_a_bot_status_comment_that_mentions_a_seat_on_a_later_line_is_not_that_seats_artifact(self):
+        bot = ("<!-- codex-pull-request-review-summary -->\n\n## Codex Review Summary\n\n| Review | Status |\n| --- | --- |\n"
+               "| Code Review | Running |\n\n<details>\n\nReviews are triggered when you open a pull request.\n\n"
+               "Codex reacts with an eyes emoji while any review is running, and comments if it has suggestions.\n\n</details>\n")
+        self.assertEqual(sr.seat_from_comment(bot), "")
+
+    def test_the_gemini_packet_header_reviewer_slash_seat_is_attributed(self):
+        packet = ("### Independent Review Packet: Aarogaming/aaroneous-devtools#63\n\n"
+                  "**Reviewer / Seat**: Antigravity (`gemini-3.8-flash`)\n**Head Reviewed**: `240c9e1d`\n")
+        self.assertEqual(sr.seat_from_comment(packet), "gemini")
+
+    def test_a_bot_comment_does_not_hide_a_stalled_seat(self):
+        path = tmp_log()
+        bot = {"id": 77, "body": "## Summary\n\nCodex reacts with an eyes emoji while any review is running.\n"}
+        result = sr.run_tick(state([pr(1)]), snap({1: [bot]}), path, 1, NOW)
+        self.assertEqual(result["ingest"]["per_seat"], {})
+        self.assertEqual(result["ingest"]["unattributed"], 1)
+        os.unlink(path)
+
     def test_new_comments_are_counted_once_per_seat(self):
         path = tmp_log()
         comments = {1: [{"id": 10, "body": "Codex independent review"}, {"id": 11, "body": "Seat / agent: Mimo"}]}

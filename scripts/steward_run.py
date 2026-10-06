@@ -106,7 +106,9 @@ def append_event(path, event_type, data, now):
 
 
 def seat_from_comment(body):
-    return cs.comment_seat(body)
+    """Strict: a seat name on any later line (a bot footer such as "Codex reacts with ...") must not credit that seat
+    with an artifact, because a credited artifact resets the seat's stall count."""
+    return cs.comment_seat(body, strict=True)
 
 
 def seen_comment_ids(events):
