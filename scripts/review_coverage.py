@@ -28,6 +28,9 @@ import sys
 
 FENCE = re.compile(r"```attestation\s*\n(.*?)\n```", re.DOTALL)
 FULL_SHA = re.compile(r"\b[0-9a-f]{40}\b")
+# Any fenced block, with its info string. Only a fence labelled ``attestation`` is read; a complete attestation record in
+# a differently labelled fence (```json is what seats reach for) is reported by name instead of vanishing.
+ANY_FENCE = re.compile(r"```([^\n`]*)\n(.*?)\n```", re.DOTALL)
 # A prose verdict: the upper-case VERDICT label the old packets used, or the word "verdict" in any case followed within
 # a few words by an accept or reject word ("Independent Codex verdict: ACCEPT ..."). Without the second form a seat
 # that writes the label in lower case is invisible: not counted, not malformed, not legacy, so nobody tells it why.
@@ -55,6 +58,19 @@ def validate(record):
     return None
 
 
+def looks_like_attestation(raw):
+    """The parsed record when ``raw`` is a JSON object carrying every required field and a full 40-hex head, else None.
+    A template with placeholders or a partial example is not one, so quoting the format does not raise a problem."""
+    try:
+        record = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(record, dict) or any(key not in record for key in REQUIRED):
+        return None
+    head = record["head"]
+    return record if isinstance(head, str) and FULL_SHA.fullmatch(head) else None
+
+
 def parse_attestations(comments):
     """Return (structured, problems, legacy). Malformed records are reported, never counted."""
     structured, problems, legacy = [], [], []
@@ -74,6 +90,15 @@ def parse_attestations(comments):
                 continue
             record["comment"] = index
             structured.append(record)
+        for label, raw in ANY_FENCE.findall(body):
+            if label.strip().lower() == "attestation":
+                continue
+            record = looks_like_attestation(raw)
+            if record is not None:
+                found = True
+                problems.append({"comment": index, "problem": (
+                    f"fence labelled {label.strip() or 'plain'!r} holds a complete attestation record for head "
+                    f"{record['head']}, but only a fence labelled attestation is read; nothing was counted")})
         if not found and PROSE_VERDICT.search(body):
             legacy.append(
                 {

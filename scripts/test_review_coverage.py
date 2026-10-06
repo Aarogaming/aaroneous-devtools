@@ -129,6 +129,37 @@ class Parsing(unittest.TestCase):
         self.assertEqual((len(structured), problems, len(legacy)), (1, [], 1))
         self.assertTrue(legacy[0]["looks_whole"])
 
+    def test_a_complete_record_in_a_json_fence_is_reported_by_name_and_never_counted(self):
+        # Codex's whole accept of #57 (comment 6016730072) used a json fence; it was not an attestation, not a problem
+        # and, on a base without the prose-verdict rule, not even legacy: nothing told its author why it did not count.
+        for label in ("json", "", "JSON", "yaml"):
+            comments = [{"body": "Reviewer / Seat: Codex\n\n```" + label + "\n" + json.dumps(rec(H1)) + "\n```\nscope: all files"}]
+            structured, problems, legacy = rc.parse_attestations(comments)
+            self.assertEqual(structured, [], label)
+            self.assertEqual(len(problems), 1, label)
+            self.assertIn(H1, problems[0]["problem"])
+            self.assertIn("only a fence labelled attestation is read", problems[0]["problem"])
+            self.assertEqual(legacy, [], label)
+
+    def test_quoting_the_format_or_other_json_is_not_a_problem(self):
+        template = {key: "<" + key + ">" for key in rc.REQUIRED}
+        partial = {"head": H1, "verdict": "accept"}
+        comments = [{"body": "```json\n" + json.dumps(template) + "\n```"},
+                    {"body": "```json\n" + json.dumps(partial) + "\n```"},
+                    {"body": "```json\n{not json}\n```"},
+                    {"body": "```python\nprint(1)\n```"},
+                    {"body": "```attestation\n" + json.dumps(rec(H1)) + "\n```"}]
+        structured, problems, legacy = rc.parse_attestations(comments)
+        # The partial record is still reported as an unstructured verdict (the existing prose rule), never as a problem.
+        self.assertEqual((len(structured), problems, [item["comment"] for item in legacy]), (1, [], [1]))
+
+    def test_a_mislabelled_record_does_not_cover_the_pr(self):
+        snapshot = {"repo": "o/r", "prs": [{"number": 1, "head": H1, "merge_base": MB, "implementers": ["claude"],
+                                            "comments": [{"body": "```json\n" + json.dumps(rec(H1)) + "\n```"}]}]}
+        row = rc.report_snapshot(snapshot, is_ancestor=always)[0]
+        self.assertFalse(row["covered"])
+        self.assertEqual(len(row["malformed"]), 1)
+
     def test_malformed_blocks_are_reported_not_counted(self):
         comments = [
             {"body": "```attestation\n{not json}\n```"},
