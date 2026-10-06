@@ -189,7 +189,7 @@ def card_for(agent, role, tick, item):
 
 
 # Kinds whose completion is visible on GitHub (see collect_state.OBSERVABLE_KINDS); no receipt is requested for them.
-OBSERVABLE_KINDS = ("resolve_threads", "address_review", "identify_implementers")
+OBSERVABLE_KINDS = ("resolve_threads", "address_review", "identify_implementers", "not_mergeable")
 # Kinds that are meaningless without a known author or known independence: they are withheld while the implementers
 # are unknown, and an identify_implementers item takes their place.
 NEEDS_KNOWN_IMPLEMENTERS = ("fix_threads", "resolve_threads", "address_review", "needs_review")

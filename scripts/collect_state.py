@@ -312,7 +312,9 @@ def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
 # identify_implementers belongs here too: its completion is the implementers becoming known (a trailer or a seat-named
 # branch), which a comment cannot establish. A receipt would otherwise remove the item while the implementers are still
 # unknown, and every review, fix and resolve card for that PR stays withheld until its head moves.
-OBSERVABLE_KINDS = ("resolve_threads", "address_review", "identify_implementers")
+# not_mergeable too: its end state (the conflict is gone) is on GitHub, and any seat's receipt at the same head closed the
+# card while the PR was still DIRTY (eligible_completer returns True for kinds it does not list).
+OBSERVABLE_KINDS = ("resolve_threads", "address_review", "identify_implementers", "not_mergeable")
 
 
 def done_receipts(snapshot, repair_owners=None, implementers_by_pr=None):

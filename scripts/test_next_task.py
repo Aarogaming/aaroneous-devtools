@@ -264,6 +264,15 @@ class Cards(unittest.TestCase):
         card = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "identify_implementers"][0]
         self.assertNotIn("[done:", card["acceptance"])
 
+    def test_a_receipt_never_removes_a_conflict_card_while_the_pr_is_still_dirty(self):
+        # Skeptic probe on the #90 tip: [done:not_mergeable:7:<head>] from any seat emptied work_items for a DIRTY PR.
+        s = state([pr(7, seat="claude", implementers=["claude"], head="a" * 40, mergeable_state="DIRTY", covered=True)])
+        s["done"] = ["not_mergeable:7:aaaaaaaa"]
+        self.assertEqual([i["kind"] for i in nt.work_items(s)], ["not_mergeable"])
+        s["agents"] = [{"name": "claude"}]
+        card = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "not_mergeable"][0]
+        self.assertNotIn("[done:", card["acceptance"])
+
     def test_no_receipt_is_requested_for_a_card_that_completes_on_github(self):
         s = state([pr(41, seat="claude", implementers=["claude"],
                       standing_blocker={"verdict": "needs_revision", "by": "Codex"})])

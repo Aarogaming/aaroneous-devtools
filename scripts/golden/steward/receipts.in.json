@@ -362,6 +362,33 @@
         "claude"
       ]
     },
+    "name": "a receipt for a not_mergeable card is not read: the conflict is observable on GitHub",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:not_mergeable:7:cccccccccccccccccccccccccccccccccccccccc] Gemini seat: fixed",
+              "id": 1
+            },
+            {
+              "body": "[done:not_mergeable:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: fixed",
+              "id": 2
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
     "name": "the first eligible receipt names the seat",
     "repair_owners": {},
     "snapshot": {
