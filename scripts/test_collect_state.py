@@ -138,6 +138,26 @@ class Rejections(unittest.TestCase):
         pr = {"head": head, "comments": [{"id": 2, "body": "Seat / agent: Mimo\nhead " + unrelated + "\nVERDICT: accept"}]}
         self.assertEqual(cs.rejected_verdicts(pr, row, commit_exists=lambda token: False), [])
 
+    def test_a_seat_name_right_after_a_completion_receipt_attributes_the_comment(self):
+        head = "a" * 40
+        receipt = f"[done:fix_threads:62:{head}]"
+        for tail, seat in ((" Claude Sonnet 5.5 \u2014 all threads answered", "claude"), (" Claude seat: done", "claude"),
+                           (": Mimo: done", "mimo"), (" Seat / agent: Codex", "codex"),
+                           (" thanks Mimo for the review", ""), (" all done, Claude", ""), ("", "")):
+            self.assertEqual(cs.comment_seat(receipt + tail, strict=True), seat, tail)
+
+    def test_a_receipt_with_the_seat_after_it_completes_the_card_only_for_an_eligible_seat(self):
+        head = "a" * 40
+
+        def done(seat_text, implementers):
+            snap = {"prs": [{"number": 62, "head": head,
+                             "comments": [{"id": 1, "body": f"[done:fix_threads:62:{head}] {seat_text} \u2014 all threads answered"}]}]}
+            return cs.done_keys(snap, {}, {62: implementers})
+
+        self.assertEqual(done("Claude Sonnet 5.5", ["claude"]), ["fix_threads:62:aaaaaaaa"])
+        self.assertEqual(done("Mimo", ["claude"]), [])  # not the author seat
+        self.assertEqual(done("Claude Sonnet 5.5", []), [])  # unknown implementers fail closed
+
     def test_a_seat_name_further_down_a_comment_does_not_attribute_it(self):
         self.assertEqual(cs.comment_seat("My note.\nMimo reviewed this earlier.\n", strict=True), "")
         self.assertEqual(cs.comment_seat("Mimo reviewed this earlier.\n", strict=False), "mimo")
