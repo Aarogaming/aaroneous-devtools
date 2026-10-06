@@ -35,7 +35,9 @@ SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
 
 SEAT_IN_TEXT = re.compile(
     r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)"
-    r"|^\s*(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+    # A seat name that opens a line, optionally after a markdown heading mark and the word "Independent" ("### Codex
+    # bounded review", "Independent Codex verdict: ACCEPT"), which is how the seats title their reviews.
+    r"|^\s*(?:#{1,6}\s*)?(?:Independent\s+)?(Claude|Codex|Gemini|Mimo|Antigravity)\b",
     re.I | re.M,
 )
 SEAT_DECLARED = re.compile(r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)", re.I)

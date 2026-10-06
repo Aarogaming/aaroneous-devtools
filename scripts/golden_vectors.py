@@ -117,6 +117,10 @@ ATTRIBUTION = [
     {"body": "### Independent Review Packet: o/r#63\n\n**Reviewer / Seat**: Antigravity (`gemini-3.8-flash`)\n", "strict": True},
     {"body": "no seat is named here", "strict": True},
     {"body": "Claude seat: done", "strict": True},
+    {"body": "Independent Codex verdict: ACCEPT this attribution delta only", "strict": True},
+    {"body": "### Codex bounded independent review: verification incomplete", "strict": True},
+    {"body": "Independent review by Codex", "strict": True},
+    {"body": "### Independent review", "strict": True},
 ]
 
 HEADS = [

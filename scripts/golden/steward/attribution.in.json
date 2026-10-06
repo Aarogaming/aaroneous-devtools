@@ -38,5 +38,21 @@
   {
     "body": "Claude seat: done",
     "strict": true
+  },
+  {
+    "body": "Independent Codex verdict: ACCEPT this attribution delta only",
+    "strict": true
+  },
+  {
+    "body": "### Codex bounded independent review: verification incomplete",
+    "strict": true
+  },
+  {
+    "body": "Independent review by Codex",
+    "strict": true
+  },
+  {
+    "body": "### Independent review",
+    "strict": true
   }
 ]

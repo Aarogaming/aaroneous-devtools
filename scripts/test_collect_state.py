@@ -148,6 +148,19 @@ class Rejections(unittest.TestCase):
         pr = {"head": head, "comments": [{"id": 2, "body": "Seat / agent: Mimo\nhead " + unrelated + "\nVERDICT: accept"}]}
         self.assertEqual(cs.rejected_verdicts(pr, row, commit_exists=lambda token: False), [])
 
+    def test_the_titles_the_seats_give_their_reviews_attribute_the_comment(self):
+        for body, seat in (("Independent Codex verdict: ACCEPT this attribution delta only", "codex"),
+                           ("### Codex bounded independent review: verification incomplete", "codex"),
+                           ("## Gemini whole-diff packet", "gemini"),
+                           ("Independent Mimo review at the current head", "mimo"),
+                           ("independent claude re-check", "claude")):
+            self.assertEqual(cs.comment_seat(body, strict=True), seat, body)
+
+    def test_a_title_that_only_mentions_a_seat_does_not_attribute_the_comment(self):
+        for body in ("Independent review by Codex", "Independently, Codex said it passes", "Review of Codex's change",
+                     "### Independent review", "Independent verdict: ACCEPT"):
+            self.assertEqual(cs.comment_seat(body, strict=True), "", body)
+
     def test_a_seat_name_further_down_a_comment_does_not_attribute_it(self):
         self.assertEqual(cs.comment_seat("My note.\nMimo reviewed this earlier.\n", strict=True), "")
         self.assertEqual(cs.comment_seat("Mimo reviewed this earlier.\n", strict=False), "mimo")
