@@ -132,7 +132,7 @@ class Parsing(unittest.TestCase):
     def test_a_complete_record_in_a_json_fence_is_reported_by_name_and_never_counted(self):
         # Codex's whole accept of #57 (comment 6016730072) used a json fence; it was not an attestation, not a problem
         # and, on a base without the prose-verdict rule, not even legacy: nothing told its author why it did not count.
-        for label in ("json", "", "JSON", "yaml"):
+        for label in ("json", "", "JSON", "yaml", "Attestation", "ATTESTATION", " attestation", "attestation v1"):
             comments = [{"body": "Reviewer / Seat: Codex\n\n```" + label + "\n" + json.dumps(rec(H1)) + "\n```\nscope: all files"}]
             structured, problems, legacy = rc.parse_attestations(comments)
             self.assertEqual(structured, [], label)

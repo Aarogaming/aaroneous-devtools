@@ -91,7 +91,7 @@ def parse_attestations(comments):
             record["comment"] = index
             structured.append(record)
         for label, raw in ANY_FENCE.findall(body):
-            if label.strip().lower() == "attestation":
+            if label.rstrip() == "attestation":  # exactly what FENCE reads; any other spelling is reported below
                 continue
             record = looks_like_attestation(raw)
             if record is not None:
