@@ -295,6 +295,47 @@ class CompletionAtANewerHead(unittest.TestCase):
         os.unlink(path)
 
 
+class MissingLog(unittest.TestCase):
+    """The log is tamper-evident only if deleting it is also noticed."""
+
+    def run_once(self, path, expect_tip=None):
+        return sr.tick_under_lock(path, state([pr(1)]), snap({1: []}), None, NOW, 3, expect_tip=expect_tip)
+
+    def test_a_missing_log_with_an_external_anchor_stops_instead_of_starting_a_new_chain(self):
+        directory = tempfile.mkdtemp()
+        path = os.path.join(directory, "events.jsonl")
+        with self.assertRaises(SystemExit) as caught:
+            self.run_once(path, expect_tip="f" * 64)
+        self.assertIn("event log failed verification", str(caught.exception))
+        self.assertFalse(os.path.exists(path))
+
+    def test_a_missing_log_whose_sidecar_remembers_events_stops_and_keeps_the_sidecar(self):
+        directory = tempfile.mkdtemp()
+        path = os.path.join(directory, "events.jsonl")
+        with open(sr.tip_path(path), "w", encoding="utf-8") as handle:
+            json.dump({"count": 900, "tip": "a" * 64}, handle)
+        with self.assertRaises(SystemExit):
+            self.run_once(path)
+        self.assertFalse(os.path.exists(path))
+        with open(sr.tip_path(path), encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle)["count"], 900)
+
+    def test_a_genuine_first_run_with_no_anchor_and_no_sidecar_still_starts_the_log(self):
+        directory = tempfile.mkdtemp()
+        path = os.path.join(directory, "events.jsonl")
+        result = self.run_once(path)
+        self.assertEqual(sr.next_tick(sr.read_events(path)), 2)
+        self.assertGreater(result["tip"]["count"], 0)
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+
+    def test_an_existing_log_with_its_matching_anchor_still_runs(self):
+        directory = tempfile.mkdtemp()
+        path = os.path.join(directory, "events.jsonl")
+        first = self.run_once(path)
+        second = self.run_once(path, expect_tip=first["tip"]["sha256"])
+        self.assertGreater(second["tip"]["count"], first["tip"]["count"])
+
+
 class Ingest(unittest.TestCase):
     def test_seat_is_read_from_the_text(self):
         self.assertEqual(sr.seat_from_comment("REVIEW PACKET\nSeat / agent: Mimo (x)"), "mimo")

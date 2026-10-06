@@ -429,9 +429,13 @@ def tick_under_lock(log_path, state, snapshot, tick, now, stall_after, outbox=No
             ok, problem = verify_chain(log_path)
             if not ok:
                 raise SystemExit(f"event log failed verification: {problem}")
-            ok, problem = verify_tip(log_path, expect_tip)
-            if not ok:
-                raise SystemExit(f"event log failed verification: {problem}")
+        # The tip is checked even when the log file is gone: a missing log reads as (0, GENESIS), so an externally
+        # anchored digest or a sidecar that remembers events no longer matches. Without this, deleting the log (and
+        # keeping or ignoring the sidecar) started a fresh chain at tick 1 and rewrote the sidecar, erasing the proof
+        # of the deletion. A genuine first run has neither an anchor nor a sidecar and passes.
+        ok, problem = verify_tip(log_path, expect_tip)
+        if not ok:
+            raise SystemExit(f"event log failed verification: {problem}")
         if tick is None:
             tick = next_tick(read_events(log_path))
         result = run_tick(state, snapshot, log_path, tick, now, stall_after)
