@@ -45,15 +45,17 @@ TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "gove
                 "governance/identities.json")
 PROTECTED = TIER_A_PATHS
 DOCS_ALLOWLIST = ("governance/", "docs/", "architecture/")
+# `git diff --check` with no revision inspects only uncommitted changes, and run_checks runs it in a clean detached worktree,
+# so it always exited 0 whatever whitespace errors the PR committed (Codex P2 on #98). The range form checks the PR itself.
 FULL_GATE = [
-    ["git", "diff", "--check"],
+    ["git", "diff", "--check", "{base}...HEAD"],
     ["python", "scripts/check_coordination_evidence.py", "{base}", "HEAD"],
     ["cargo", "fmt", "--all", "--", "--check"],
     ["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
     ["cargo", "test", "-p", "foundation_cli"],
 ]
 LIGHT_GATE = [
-    ["git", "diff", "--check"],
+    ["git", "diff", "--check", "{base}...HEAD"],
     ["python", "scripts/check_coordination_evidence.py", "{base}", "HEAD"],
 ]
 

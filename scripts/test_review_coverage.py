@@ -93,6 +93,20 @@ class Coverage(unittest.TestCase):
         two = ev(H1, records + [rec(H1, reviewer="Codex", impl=("Claude",))])
         self.assertEqual(two["accept_seats"], ["codex", "gemini"])
 
+    def test_an_implementer_in_another_spelling_is_never_independent(self):
+        # Codex's counterexample on #98: reviewer 'Gemini/Antigravity' with implementer 'gemini' cannot self-cover, and
+        # neither can 'gemini' with ['Gemini'] or 'Claude' with ['Claude Sonnet 5.5'].
+        for reviewer, implementers in (("Gemini/Antigravity", ("gemini",)), ("gemini", ("Gemini",)),
+                                       ("Claude", ("Claude Sonnet 5.5",)), ("Antigravity", ("Gemini",)),
+                                       ("mimo", ("Mimo (OpenCode)", "Claude"))):
+            decision = ev(H1, [rec(H1, reviewer=reviewer, impl=implementers)])
+            self.assertFalse(decision["covered"], (reviewer, implementers))
+        genuine = ev(H1, [rec(H1, reviewer="codex", impl=("Gemini", "Claude Sonnet 5.5"))])
+        self.assertTrue(genuine["covered"])
+        mixed = ev(H1, [rec(H1, reviewer="gemini", impl=("Gemini",)), rec(H1, reviewer="Codex", impl=("Gemini",))])
+        self.assertEqual(mixed["accept_seats"], ["codex"])
+        self.assertTrue(mixed["covered"])
+
     def test_standing_changes_requested_blocks(self):
         decision = ev(H1, [rec(H1), rec(H1, verdict="changes_requested", reviewer="codex")])
         self.assertFalse(decision["covered"])

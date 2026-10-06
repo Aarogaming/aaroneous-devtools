@@ -105,7 +105,11 @@ def seat_name(name):
 
 
 def independent(record):
-    return record["reviewer"] not in record["implementers"]
+    """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
+    ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
+    raw comparison let an implementer's own verdict count under a spelling variant)."""
+    implementers = {seat_name(i) for i in record["implementers"]}
+    return seat_name(record["reviewer"]) not in implementers
 
 
 def evaluate(head, merge_base, records, is_ancestor):

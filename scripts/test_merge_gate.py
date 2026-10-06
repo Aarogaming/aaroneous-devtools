@@ -9,6 +9,47 @@ COVERED = {"covered": True}
 UNCOVERED = {"covered": False}
 
 
+class DiffCheckCommand(unittest.TestCase):
+    """The plan's whitespace check must see a committed error; the no-revision form never could."""
+
+    def run_plan_check(self, plan_commands):
+        import shutil
+        import subprocess
+        import tempfile
+        directory = tempfile.mkdtemp(prefix="merge-gate-ws-")
+        self.addCleanup(shutil.rmtree, directory, True)
+
+        def git(*args):
+            return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", directory, *args],
+                                  capture_output=True, text=True)
+
+        git("init", "-q", "-b", "main")
+        with open(os.path.join(directory, "a.txt"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("clean\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "base")
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        git("checkout", "-q", "-b", "pr")
+        with open(os.path.join(directory, "a.txt"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("trailing whitespace   \n")
+        git("add", ".")
+        git("commit", "-q", "-m", "committed whitespace error")
+        command = [part.replace("{base}", "origin/main") for part in plan_commands[0]]
+        return git(*command[1:]).returncode, command
+
+    def test_both_plans_fail_on_a_whitespace_error_committed_by_the_pr(self):
+        for plan in (mg.FULL_GATE, mg.LIGHT_GATE):
+            returncode, command = self.run_plan_check(plan)
+            self.assertEqual(command[:3], ["git", "diff", "--check"])
+            self.assertIn("origin/main...HEAD", command)
+            self.assertNotEqual(returncode, 0, command)
+
+    def test_the_old_no_revision_form_passes_a_committed_whitespace_error(self):
+        # The bug being fixed, kept as the control: this is what the plan used to run.
+        returncode, _ = self.run_plan_check([["git", "diff", "--check"]])
+        self.assertEqual(returncode, 0)
+
+
 class ChangedPaths(unittest.TestCase):
     """changed_paths against a real throwaway repository: the protected path must survive a rename."""
 
