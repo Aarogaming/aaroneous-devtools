@@ -1,7 +1,9 @@
 import json
 import os
 import sys
+import types
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 import review_coverage as rc  # noqa: E402
@@ -84,7 +86,40 @@ class Coverage(unittest.TestCase):
         self.assertIn("changes_requested", " ".join(decision["reasons"]))
 
 
+class Subprocesses(unittest.TestCase):
+    """gh and git output is UTF-8. Decoding it with the platform default (cp1252 on Windows) raised UnicodeDecodeError on
+    any comment holding an emoji, so the coverage tool could not run at all on this repository's real comments."""
+
+    def test_gh_and_git_output_is_decoded_as_utf8_with_replacement(self):
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append((command[0], kwargs))
+            return types.SimpleNamespace(stdout="[]", returncode=0)
+
+        with mock.patch.object(rc.subprocess, "run", fake_run):
+            rc.gh_json("pr", "list")
+            rc.git(".", "status")
+        self.assertEqual([c[0] for c in calls], ["gh", "git"])
+        for _, kwargs in calls:
+            self.assertEqual((kwargs.get("encoding"), kwargs.get("errors")), ("utf-8", "replace"))
+
+
 class Parsing(unittest.TestCase):
+    def test_a_lower_case_prose_verdict_is_reported_as_legacy_not_silently_ignored(self):
+        codex = "Independent Codex verdict: ACCEPT PR #69 delta only. Base " + H1 + "\nreviewed."
+        structured, problems, legacy = rc.parse_attestations([{"body": codex}])
+        self.assertEqual((structured, problems, len(legacy)), ([], [], 1))
+        self.assertEqual(legacy[0]["heads_mentioned"], [H1])
+        self.assertFalse(legacy[0]["looks_whole"])
+
+    def test_ordinary_uses_of_the_word_verdict_are_not_legacy_packets(self):
+        for body in ("No verdict yet, still reading the diff.", "The verdict is pending.\nAccept later.",
+                     "verdict. Acceptable work", "Our verdict on the jury: acceptable"):
+            self.assertEqual(rc.parse_attestations([{"body": body}])[2], [], body)
+        for body in ("Verdict: needs_revision", "my verdict - Rejected at this head", "**Verdict**: **ACCEPT-EVIDENCE**"):
+            self.assertEqual(len(rc.parse_attestations([{"body": body}])[2]), 1, body)
+
     def test_structured_block_is_parsed_and_prose_is_not_counted(self):
         comments = [
             {"body": "intro\n```attestation\n" + json.dumps(rec(H1)) + "\n```\nVERDICT: ACCEPT"},
