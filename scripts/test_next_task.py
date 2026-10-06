@@ -188,10 +188,16 @@ class Cards(unittest.TestCase):
         bash = shutil.which("bash")
         if not bash:
             self.skipTest("bash is not available")
-        command = re.search(r"git log --format='[^']+' \S+\.\.\S+", self.review_recipe([]))
+        # On Windows `bash` can resolve to the WSL entry point (System32\\bash.exe), which exits 1 with its error on
+        # stdout when no distribution is registered. A bash that cannot run `exit 0` is not a bash to test against.
+        probe = subprocess.run([bash, "-c", "exit 0"], capture_output=True)
+        if probe.returncode != 0:
+            self.skipTest(f"{bash} is not functional (exit {probe.returncode})")
+        command = re.search(r"git log --format='[^']+' [0-9a-f]{40}\.\.[0-9a-f]{40}", self.review_recipe([]))
         self.assertIsNotNone(command)
         result = subprocess.run([bash, "-n", "-c", command.group(0)], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 0, f"stdout={result.stdout!r} stderr={result.stderr!r}")
+        self.assertFalse(command.group(0).endswith(","), command.group(0))
 
     def test_a_base_branch_name_with_shell_characters_stays_one_argument(self):
         import shlex
