@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import json
+import shlex
 import sys
 from datetime import datetime, timezone
 
@@ -173,7 +174,9 @@ def recipe_for(item):
         return [
             f"git fetch --prune origin && git fetch origin pull/{pr}/head   # head must be {head}",
             f"git diff --check {base_sha or '<merge-base>'}...{head}   # expect exit 0",
-            f"git merge-tree --write-tree origin/{base_ref} {head}   # expect exit 0 (clean trial merge)",
+            # A base branch name is chosen by whoever opened the PR and git allows ' $ ( ) ; & in ref names, so it is
+            # quoted; a seat pastes this line into a shell.
+            f"git merge-tree --write-tree {shlex.quote('origin/' + base_ref)} {head}   # expect exit 0 (clean trial merge)",
             "run the PR's own tests if it changes code (python -m unittest discover -s scripts -p 'test_*.py')",
             f"post ONE attestation block with fields: repo, pr={pr}, head={head}, base_sha={base_sha or '<merge-base>'}, "
             f"scope=whole, reviewer=<your seat>, implementers={implementers_field(item, base_sha, head)}, verdict",

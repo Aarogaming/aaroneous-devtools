@@ -193,6 +193,16 @@ class Cards(unittest.TestCase):
         result = subprocess.run([bash, "-n", "-c", command.group(0)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_a_base_branch_name_with_shell_characters_stays_one_argument(self):
+        import shlex
+        for ref in ("main", "feat/it's-ok", "x;touch pwned", "a$(id)b", "q&r|s", "sp (1)"):
+            s = state([pr(64, base=ref, head="a" * 40, base_sha="b" * 40)])
+            s["agents"] = [{"name": "gemini"}]
+            card = [c for c in nt.build_cards(s, 0) if c["inputs"].get("kind") == "needs_review"][0]
+            step = [x for x in card["recipe"] if x.startswith("git merge-tree")][0]
+            command = step.split("   # ")[0]
+            self.assertEqual(shlex.split(command), ["git", "merge-tree", "--write-tree", "origin/" + ref, "a" * 40], ref)
+
     def test_known_implementers_are_printed_exactly_as_before(self):
         self.assertIn("implementers=['claude'], verdict", self.review_recipe(["claude"]))
 
