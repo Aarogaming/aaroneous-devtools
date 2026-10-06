@@ -83,8 +83,10 @@ pub fn next_card(input: u32) -> u32 { /* ... */ }
 ```
 
 Keys in v1: `purpose`, `boundary`, `input`, `output`, `contract`, `authority`, `checked-by`, `evidence`,
-`relation`, `provenance`. A `contract.<id>` is **checked** only when a `checked-by.<id>` exists on the same item
-and its target resolves; otherwise it is reported as unchecked. The `notation:v1` prefix carries the version; an
+`relation`, `provenance`. A `contract.<id>` is **resolved** when a `checked-by.<id>` exists on the same item
+and its target resolves; it is reported as **checked** only after the cited check's support for the invariant has
+been established (section 7: resolving a citation is not support). A resolved contract whose check has not been
+assessed is reported as resolved/unassessed, never as checked; with no resolving `checked-by` it is unchecked. The `notation:v1` prefix carries the version; an
 unknown version is reported, not guessed at.
 
 **Verified in a scratch crate (not committed):** with `#![deny(warnings)]`, doc attributes in this form (including
