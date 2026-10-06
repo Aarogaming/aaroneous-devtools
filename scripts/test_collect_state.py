@@ -1,6 +1,9 @@
 import os
+import subprocess
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 import collect_state as cs  # noqa: E402
@@ -100,6 +103,30 @@ class Rejections(unittest.TestCase):
         self.assertEqual([(f["comment_id"], f["seat"]) for f in found], [(9, "gemini")])
         self.assertIn(typo, found[0]["reason"])
         self.assertIn(head, found[0]["reason"])
+        self.assertIn("suspected head mismatch, not proof", found[0]["reason"])
+        self.assertNotIn("not a commit in this repository", found[0]["reason"])
+
+    def test_a_failed_lookup_is_not_an_accusation(self):
+        head = "ce3a58c6f8324020e942ecddc86dd7c2dfff87b0"
+        typo = "ce3a58cf0b4458f7cfd36a83a0ee1cf7bcba4c10"
+        pr = {"head": head, "comments": [{"id": 9, "body": "Seat / agent: Gemini\nhead " + typo}]}
+        row = {"legacy": [{"comment": 0}]}
+        self.assertEqual(cs.rejected_verdicts(pr, row, commit_exists=lambda token: None), [])
+        self.assertEqual(len(cs.rejected_verdicts(pr, row, commit_exists=lambda token: False)), 1)
+
+    def test_the_git_lookup_separates_present_absent_and_failed(self):
+        with tempfile.TemporaryDirectory() as repo:
+            for args in (["init", "-q"], ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q",
+                                          "--allow-empty", "-m", "a"]):
+                subprocess.run(["git", "-C", repo, *args], check=True, capture_output=True)
+            present = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], check=True, capture_output=True,
+                                     text=True).stdout.strip()
+            exists = cs.git_commit_exists(repo)
+            self.assertIs(exists(present), True)
+            self.assertIs(exists("0" * 39 + "1"), False)
+            self.assertIsNone(cs.git_commit_exists(os.path.join(repo, "no", "such", "dir"))(present))
+            with mock.patch.object(cs.rc, "git", side_effect=FileNotFoundError("git")):
+                self.assertIsNone(cs.git_commit_exists(repo)(present))
 
     def test_a_near_miss_that_is_a_real_commit_or_a_different_prefix_stays_history(self):
         head = "ce3a58c6f8324020e942ecddc86dd7c2dfff87b0"

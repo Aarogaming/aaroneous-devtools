@@ -97,11 +97,25 @@ def cites_head(body, head):
 NEAR_MISS_PREFIX = 7
 
 
+def git_commit_exists(repo_dir):
+    """A `commit_exists` callback backed by a clone: True when the commit is present, False when git reports it
+    absent (exit 1), and None when the lookup itself failed (git missing, not a repository, any other exit code).
+    Absent means absent from THIS clone, not from the repository: an unfetched historical head also reads False."""
+    def exists(token):
+        try:
+            result = rc.git(repo_dir, "rev-parse", "--verify", "--quiet", f"{token}^{{commit}}")
+        except OSError:
+            return None
+        return {0: True, 1: False}.get(result.returncode)
+    return exists
+
+
 def phantom_head(body, head, commit_exists):
     """A full 40-character token in the comment that agrees with the PR's current head in its first
-    NEAR_MISS_PREFIX characters, differs after that, and names no commit that exists: a mistyped or invented head,
+    NEAR_MISS_PREFIX characters, differs after that, and is reported absent: a probably mistyped or invented head,
     which is not the same thing as a genuine older head (two real commits agreeing in seven hex characters is
-    about one in 2.7e8). Returns that token, or None. Needs `commit_exists`; without it nothing is flagged."""
+    about one in 2.7e8). Returns that token, or None. `commit_exists` returns True, False, or None for a failed
+    lookup; only False flags, so a git failure never turns into an accusation. Without it nothing is flagged."""
     head = (head or "").lower()
     if commit_exists is None or not head:
         return None
@@ -109,7 +123,7 @@ def phantom_head(body, head, commit_exists):
         agree = 0
         while agree < len(head) and token[agree] == head[agree]:
             agree += 1
-        if token != head and agree >= NEAR_MISS_PREFIX and not commit_exists(token):
+        if token != head and agree >= NEAR_MISS_PREFIX and commit_exists(token) is False:
             return token
     return None
 
@@ -133,8 +147,9 @@ def rejected_verdicts(pr, row, commit_exists=None):
             phantom = phantom_head(body, head, commit_exists)
             if not phantom:
                 return
-            reason = (f"it cites {phantom}, which is not a commit in this repository; the PR's current head is {head} "
-                      f"(only the first characters match, so it looks mistyped). Copy the head from the card. Also: {reason}")
+            reason = (f"it cites {phantom}, which was not found as a commit in the steward's clone (a suspected head "
+                      f"mismatch, not proof); the PR's current head is {head} and only the first characters match, so it "
+                      f"looks mistyped. Copy the head from the card. Also: {reason}")
         found.append({"comment_id": comment.get("id"), "seat": comment_seat(body, strict=True), "reason": reason,
                       "_index": index})
 
@@ -296,10 +311,8 @@ def collect(repo, repo_dir, agents, backlog, identities=None):
     rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir), identities)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     default = rc.gh_json("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
-    def commit_exists(token):
-        return rc.git(repo_dir, "cat-file", "-e", f"{token}^{{commit}}").returncode == 0
-
-    return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now, default, commit_exists)
+    return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now, default,
+                       git_commit_exists(repo_dir))
 
 
 def main(argv):
