@@ -160,7 +160,7 @@ def implementers_field(item, base_sha, head):
     names = item.get("implementers") or []
     if names:
         return repr(list(names))
-    return ("<NOT KNOWN, so find them: git log --format=%(trailers:key=Co-Authored-By,key=Contribution-ID,only=true,unfold=true) "
+    return ("<NOT KNOWN, so find them: git log --format='%(trailers:key=Co-Authored-By,key=Contribution-ID,only=true,unfold=true)' "
             f"{base_sha or '<merge-base>'}..{head}, plus a seat-named branch prefix; the list must not be empty, so if git "
             "names no seat, post a comment saying the implementers are unknown instead of an accept block>")
 

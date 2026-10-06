@@ -176,9 +176,22 @@ class Cards(unittest.TestCase):
         step = self.review_recipe([])
         self.assertNotIn("implementers=[]", step)
         self.assertIn("NOT KNOWN", step)
-        self.assertIn("git log --format=%(trailers:key=Co-Authored-By,key=Contribution-ID", step)
+        self.assertIn("git log --format='%(trailers:key=Co-Authored-By,key=Contribution-ID", step)
         self.assertIn("b" * 40 + ".." + "a" * 40, step)
         self.assertIn("instead of an accept block", step)
+
+    def test_the_suggested_git_command_is_valid_shell(self):
+        """Unquoted, the parentheses in the format are shell syntax and bash stops at "syntax error near unexpected token"."""
+        import re
+        import shutil
+        import subprocess
+        bash = shutil.which("bash")
+        if not bash:
+            self.skipTest("bash is not available")
+        command = re.search(r"git log --format='[^']+' \S+\.\.\S+", self.review_recipe([]))
+        self.assertIsNotNone(command)
+        result = subprocess.run([bash, "-n", "-c", command.group(0)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_known_implementers_are_printed_exactly_as_before(self):
         self.assertIn("implementers=['claude'], verdict", self.review_recipe(["claude"]))
