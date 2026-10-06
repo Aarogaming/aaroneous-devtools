@@ -205,12 +205,63 @@ class Independence(unittest.TestCase):
     def test_git_implementers_do_not_disturb_a_genuinely_independent_accept(self):
         self.assertTrue(rc.evaluate(H1, MB, [rec(H1, reviewer="mimo", impl=("claude",))], always, {"claude"})["covered"])
 
+    def test_qwen_and_mimo_are_the_same_local_worker_seat_in_both_directions(self):
+        self.assertFalse(ev(H1, [rec(H1, reviewer="qwen", impl=("mimo",))])["covered"])
+        self.assertFalse(ev(H1, [rec(H1, reviewer="mimo", impl=("qwen",))])["covered"])
+        self.assertFalse(rc.evaluate(H1, MB, [rec(H1, reviewer="qwen", impl=("claude",))], always, {"mimo"})["covered"])
+        self.assertTrue(ev(H1, [rec(H1, reviewer="qwen", impl=("claude",))])["covered"])
+        self.assertEqual(rc.trailer_seats("", "qwen/local-worker"), {"mimo"})
+        self.assertEqual(rc.trailer_seats("Co-Authored-By: Qwen <q@x.y>"), {"mimo"})
+
+    def snapshot_with_commits(self, commits, records):
+        pr = {"number": 1, "head": H2, "merge_base": MB, "comments": [block(r) for r in records], "commits": commits,
+              "ancestry": [[H1, H2]]}
+        return rc.report_snapshot({"repo": "o/r", "prs": [pr]})[0]
+
+    def test_a_seat_that_accepted_an_earlier_range_and_then_implemented_a_fix_keeps_its_earlier_seed(self):
+        commits = [{"sha": H2, "seats": ["claude"]}, {"sha": H1, "seats": ["codex"]}]
+        records = [rec(H1, reviewer="claude", impl=("codex",)), rec(H2, "delta", frm=H1, reviewer="mimo", impl=("claude",))]
+        row = self.snapshot_with_commits(commits, records)
+        self.assertTrue(row["covered"], row["reasons"])
+
+    def test_a_seat_that_implemented_the_range_it_accepted_is_still_rejected(self):
+        commits = [{"sha": H2, "seats": ["claude"]}, {"sha": H1, "seats": ["claude"]}]
+        records = [rec(H1, reviewer="claude", impl=("codex",)), rec(H2, "delta", frm=H1, reviewer="mimo", impl=("claude",))]
+        row = self.snapshot_with_commits(commits, records)
+        self.assertFalse(row["covered"])
+        self.assertIn("commit trailers", " ".join(row["reasons"]))
+
+    def test_range_implementers_cover_exactly_the_reviewed_commits(self):
+        commits = [{"sha": H3, "seats": ["gemini"]}, {"sha": H2, "seats": ["claude"]}, {"sha": H1, "seats": ["codex"]}]
+        self.assertEqual(rc.range_implementers(commits, H1, MB), {"codex"})
+        self.assertEqual(rc.range_implementers(commits, H2, MB), {"claude", "codex"})
+        self.assertEqual(rc.range_implementers(commits, H3, H1), {"gemini", "claude"})
+        self.assertEqual(rc.range_implementers(commits, H3, MB, "mimo"), {"gemini", "claude", "codex", "mimo"})
+
+    def test_only_a_commits_real_trailer_block_names_an_implementer(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as repo:
+            def git_run(*args):
+                return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", repo, *args],
+                                      check=True, capture_output=True, text=True).stdout.strip()
+            git_run("init", "-q")
+            git_run("commit", "-q", "--allow-empty", "-m", "base")
+            base = git_run("rev-parse", "HEAD")
+            prose = "feat: x\n\nCo-Authored-By: Claude is only quoted here as an example\nand prose follows.\n\nMore prose."
+            git_run("commit", "-q", "--allow-empty", "-m", prose)
+            git_run("commit", "-q", "--allow-empty", "-m", "fix: y\n\nCo-Authored-By: Codex <c@x.y>\nContribution-ID: C1/mimo-v1")
+            head = git_run("rev-parse", "HEAD")
+            commits = rc.commit_seats(repo, base, head)
+            self.assertEqual([c["seats"] for c in commits], [["codex", "mimo"], []])
+            self.assertIsNone(rc.commit_seats(repo, base, "0" * 40))
+
     def test_trailer_seats_reads_trailers_and_branch_prefix_only(self):
         log = ("fix: thing\n\nCo-Authored-By: Claude Sonnet 5.5 <n@a.com>\n"
                "Contribution-ID: C99/codex-v1\n\nThis reuses an idea from Mimo and Gemini.\n"
                "Co-authored-by: Antigravity <x@y.z>\n")
         self.assertEqual(rc.trailer_seats(log), {"claude", "codex", "gemini"})
-        self.assertEqual(rc.trailer_seats("no trailers", "qwen/local"), {"qwen"})
+        self.assertEqual(rc.trailer_seats("no trailers", "qwen/local"), {"mimo"})  # Qwen is the Mimo seat
         self.assertEqual(rc.trailer_seats("no trailers", "proposal/c99-x"), set())
         self.assertEqual(rc.trailer_seats(None), set())
 

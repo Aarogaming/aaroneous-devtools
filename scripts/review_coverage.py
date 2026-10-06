@@ -81,11 +81,12 @@ def parse_attestations(comments):
 
 
 SEAT_NAMES = re.compile(r"\b(claude|codex|gemini|antigravity|mimo|qwen)\b", re.I)
-SEAT_ALIASES = {"antigravity": "gemini"}
+# The repository names the local worker both ways: CROSS_AGENT_COORDINATION_PROTOCOL.md says 'local Qwen ("Mimo")'.
+SEAT_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
 
 
 def seat_key(name):
-    """A seat name in comparable form: case-insensitive, and Antigravity is the Gemini seat."""
+    """A seat name in comparable form: case-insensitive; Antigravity is the Gemini seat and Qwen is the Mimo seat."""
     key = str(name).strip().lower()
     return SEAT_ALIASES.get(key, key)
 
@@ -105,6 +106,38 @@ def trailer_seats(log_text, branch=""):
     return seats
 
 
+def commit_seats(repo_dir, merge_base, head):
+    """Newest-first list of {"sha", "seats"} for merge_base..head. `seats` come only from the commit's terminal trailer
+    block, as git itself parses it (`%(trailers:...)`), so a paragraph that merely starts with "Co-Authored-By:" does not
+    count. Returns None when git cannot answer, so the caller can fall back to the attested lists instead of guessing."""
+    result = git(repo_dir, "log", "--format=%H%x1f%(trailers:key=Co-Authored-By,key=Contribution-ID,only=true,unfold=true)%x1e",
+                 f"{merge_base}..{head}")
+    if result.returncode != 0:
+        return None
+    commits = []
+    for chunk in result.stdout.split("\x1e"):
+        if not chunk.strip():
+            continue
+        sha, _, trailers = chunk.partition("\x1f")
+        commits.append({"sha": sha.strip(), "seats": sorted(trailer_seats(trailers))})
+    return commits
+
+
+def range_implementers(commits, head, frm, branch_seat=""):
+    """Seats named by the commits a review covered: the commits from `head` down to, not including, `frm` in the
+    newest-first list (all of them when `frm` is the merge base or unknown), plus the branch owner. A seat that
+    implemented only a later range is not an implementer of an earlier review's range."""
+    shas = [c["sha"] for c in commits]
+    top = shas.index(head) if head in shas else 0
+    bottom = shas.index(frm) if frm in shas else len(shas)
+    seats = set()
+    for commit in commits[top:bottom]:
+        seats.update(commit["seats"])
+    if branch_seat:
+        seats.add(branch_seat)
+    return seats
+
+
 def independent(record, git_implementers=()):
     """The reviewer is not among the attested implementers nor among the implementers git names (case-insensitive)."""
     named = {seat_key(i) for i in record["implementers"]} | {seat_key(i) for i in git_implementers}
@@ -116,7 +149,9 @@ def evaluate(head, merge_base, records, is_ancestor, git_implementers=()):
 
     ``git_implementers`` are the seats the PR's own commits name as implementers (`trailer_seats`); they are added to
     each record's attested implementers before the independence check, so a self-accept cannot count by omitting itself
-    from its own attestation. With none supplied the check is attested-only, as before.
+    from its own attestation. A record that carries its own ``git_implementers`` (the seats of the range it reviewed,
+    see `range_implementers`) is judged against that set instead, so a seat that independently accepted an earlier
+    range and later implemented a fix keeps its earlier seed. With none supplied the check is attested-only.
 
     ``is_ancestor(a, b)`` says whether commit a is an ancestor of commit b. A delta accept extends
     coverage only when its ``from`` is a covered head AND an ancestor of the delta's own head, so a
@@ -128,14 +163,17 @@ def evaluate(head, merge_base, records, is_ancestor, git_implementers=()):
     if blockers:
         reasons.append(f"standing {blockers[0]['verdict']} at head by {blockers[0]['reviewer']}")
 
+    def named_by_git(record):
+        return record.get("git_implementers", git_implementers)
+
     valid = [
         r
         for r in records
-        if r["verdict"] in ACCEPT and independent(r, git_implementers) and r["base_sha"] == merge_base
+        if r["verdict"] in ACCEPT and independent(r, named_by_git(r)) and r["base_sha"] == merge_base
     ]
     for r in records:
         if (r["verdict"] in ACCEPT and r["base_sha"] == merge_base and independent(r)
-                and not independent(r, git_implementers)):
+                and not independent(r, named_by_git(r))):
             reasons.append(f"accept by {r['reviewer']} not counted: {seat_key(r['reviewer'])} is named as an implementer in "
                            "this PR's commit trailers or branch prefix, although the attestation omits it")
     # Only a `whole` accept seeds coverage (governance/PLATFORM_SPEC.md section 3: "Delta accepts compose only when
@@ -197,6 +235,11 @@ def report_snapshot(snapshot, is_ancestor=None):
                     f"does not match {repo}#{pr['number']}",
                 }
             )
+        commits = pr.get("commits")
+        for record in structured:
+            if commits:
+                frm = record["base_sha"] if record["scope"] == "whole" else record["from"]
+                record["git_implementers"] = range_implementers(commits, record["head"], frm, pr.get("branch_seat", ""))
         ancestry = is_ancestor or pairs_ancestry(pr.get("ancestry", []))
         git_implementers = set(pr.get("trailer_implementers", []))
         decision = evaluate(pr["head"], pr["merge_base"], structured, ancestry, git_implementers)
@@ -210,7 +253,7 @@ def report_snapshot(snapshot, is_ancestor=None):
                 "structured_attestations": len(structured),
                 "malformed": problems,
                 "legacy_packets_not_counted": len(legacy),
-                "implementers_from_git": sorted(git_implementers),
+                "implementers_from_git": sorted(git_implementers | {s for r in structured for s in r.get("git_implementers", ())}),
             }
         )
     return rows
@@ -255,14 +298,17 @@ def live_snapshot(repo, repo_dir):
         pages = gh_json("api", f"repos/{repo}/issues/{item['number']}/comments", "--paginate", "--slurp")
         base = f"origin/{item['baseRefName']}"
         mb = git(repo_dir, "merge-base", base, item["headRefOid"]).stdout.strip() or "unknown"
-        log = git(repo_dir, "log", "--format=%B", f"{mb}..{item['headRefOid']}").stdout if mb != "unknown" else ""
+        commits = commit_seats(repo_dir, mb, item["headRefOid"]) if mb != "unknown" else None
+        branch_seat = sorted(trailer_seats("", item.get("headRefName", "")))
         prs.append(
             {
                 "number": item["number"],
                 "head": item["headRefOid"],
                 "base": item["baseRefName"],
                 "merge_base": mb,
-                "trailer_implementers": sorted(trailer_seats(log, item.get("headRefName", ""))),
+                "branch_seat": branch_seat[0] if branch_seat else "",
+                "commits": commits or [],
+                "trailer_implementers": sorted({s for c in (commits or []) for s in c["seats"]} | set(branch_seat)),
                 "comments": flatten_pages(pages),
             }
         )
