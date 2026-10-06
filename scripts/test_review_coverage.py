@@ -93,6 +93,24 @@ class Coverage(unittest.TestCase):
         two = ev(H1, records + [rec(H1, reviewer="Codex", impl=("Claude",))])
         self.assertEqual(two["accept_seats"], ["codex", "gemini"])
 
+    def test_model_ids_and_punctuation_forms_name_the_same_seat(self):
+        # Skeptic probe on #99: all of these were independent of the reviewer they name, because only the first
+        # space-separated word was compared.
+        for reviewer, implementers in (("Gemini", ("gemini-3.8-flash",)), ("Gemini", ("gemini_3_flash",)),
+                                       ("Claude", ("claude-sonnet-5-5",)), ("Claude", ("Claude, Mimo",)),
+                                       ("Claude", ("claude+mimo",)), ("Mimo", ("mimo-v2.6-flash-free",)),
+                                       ("Codex", ("codex:session-01a1",)), ("Claude", ("Claude\u200b",)),
+                                       ("Claude", ("CLAUDE.",)), ("Gemini", ("Gemini3",)), ("Claude", ("Anthropic Claude",))):
+            self.assertFalse(ev(H1, [rec(H1, reviewer=reviewer, impl=implementers)])["covered"], (reviewer, implementers))
+        # A string naming two seats covers neither of them, and still leaves a third free to review.
+        self.assertTrue(ev(H1, [rec(H1, reviewer="Codex", impl=("Claude, Mimo",))])["covered"])
+        self.assertFalse(ev(H1, [rec(H1, reviewer="Mimo", impl=("Claude, Mimo",))])["covered"])
+        self.assertEqual(rc.seat_names("Gemini/Antigravity"), {"gemini"})
+        self.assertEqual(rc.seat_names("Claude, Mimo"), {"claude", "mimo"})
+        self.assertEqual(rc.seat_names("Local Qwen"), {"mimo"})
+        self.assertEqual(rc.seat_names("someone else"), {"someone"})
+        self.assertEqual(rc.seat_names("!!!"), set())
+
     def test_an_implementer_in_another_spelling_is_never_independent(self):
         # Codex's counterexample on #98: reviewer 'Gemini/Antigravity' with implementer 'gemini' cannot self-cover, and
         # neither can 'gemini' with ['Gemini'] or 'Claude' with ['Claude Sonnet 5.5'].
