@@ -97,7 +97,10 @@ SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
 
 
 def seat_name(name):
-    key = str(name).strip().lower()
+    """The seat a reviewer or implementer string names: its first word, lower case, aliases applied. Live spellings
+    include "Gemini/Antigravity" (14 records), "Claude Sonnet 5.5", "Claude (steward)" and "Mimo (OpenCode)"."""
+    words = re.split(r"[\s/(]+", str(name).strip().lower())
+    key = words[0] if words and words[0] else ""
     return SEAT_NAME_ALIASES.get(key, key)
 
 

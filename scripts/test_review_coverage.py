@@ -85,6 +85,11 @@ class Coverage(unittest.TestCase):
         decision = ev(H1, records)
         self.assertTrue(decision["covered"])
         self.assertEqual(decision["accept_seats"], ["gemini"])
+        for spelling in ("Gemini/Antigravity", "gemini (antigravity)", " GEMINI "):
+            self.assertEqual(ev(H1, records + [rec(H1, reviewer=spelling, impl=("Claude",))])["accept_seats"], ["gemini"], spelling)
+        self.assertEqual(rc.seat_name("Claude Sonnet 5.5"), "claude")
+        self.assertEqual(rc.seat_name("Mimo (OpenCode)"), "mimo")
+        self.assertEqual(rc.seat_name(""), "")
         two = ev(H1, records + [rec(H1, reviewer="Codex", impl=("Claude",))])
         self.assertEqual(two["accept_seats"], ["codex", "gemini"])
 
