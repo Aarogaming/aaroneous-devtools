@@ -74,5 +74,17 @@
     "paths": [
       "AGENTS.md.bak"
     ]
+  },
+  {
+    "name": "the seat identity map is owner-only",
+    "paths": [
+      "governance/identities.json"
+    ]
+  },
+  {
+    "name": "another governance json file is still tier B",
+    "paths": [
+      "governance/other.json"
+    ]
   }
 ]

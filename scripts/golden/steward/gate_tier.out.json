@@ -114,5 +114,25 @@
       "A",
       "touches owner-only paths: ['AGENTS.md.bak']"
     ]
+  },
+  {
+    "category": "governance/*.json",
+    "plan_level": "light",
+    "protected": [
+      "governance/identities.json"
+    ],
+    "tier": [
+      "A",
+      "touches owner-only paths: ['governance/identities.json']"
+    ]
+  },
+  {
+    "category": "governance/*.json",
+    "plan_level": "light",
+    "protected": [],
+    "tier": [
+      "B",
+      ""
+    ]
   }
 ]

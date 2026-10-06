@@ -49,6 +49,19 @@ class Decision(unittest.TestCase):
             self.assertTrue(any(r.startswith("f:") for r in d["reasons"]))
         self.assertTrue(mg.decide(COVERED, ["AGENTS.md"], "main", True, owner_confirmed_protected=True)["eligible"])
 
+    def test_the_seat_identity_map_is_owner_only(self):
+        # It decides who counts as an independent reviewer and which keys verify; a login or key added by an
+        # auto-merged PR would make that PR's author's later verdicts count.
+        for paths in (["governance/identities.json"], ["governance/identities.json", "docs/a.md"]):
+            self.assertEqual(mg.tier_of(paths)[0], "A", paths)
+            d = mg.decide(COVERED, paths, "main", True)
+            self.assertFalse(d["eligible"], paths)
+            self.assertTrue(any(r.startswith("f:") for r in d["reasons"]), paths)
+        self.assertTrue(mg.decide(COVERED, ["governance/identities.json"], "main", True,
+                                  owner_confirmed_protected=True)["eligible"])
+        # The other governance json files stay Tier B.
+        self.assertEqual(mg.tier_of(["governance/other.json"])[0], "B")
+
     def test_the_decision_path_and_the_checklist_share_one_owner_only_list(self):
         self.assertIs(mg.PROTECTED, mg.TIER_A_PATHS)
         for path in mg.TIER_A_PATHS:
