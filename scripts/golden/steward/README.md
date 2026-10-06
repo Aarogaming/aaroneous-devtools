@@ -47,6 +47,8 @@ means healthy idle with the evidence that was checked; a verdict the coverage to
 author as a repair card carrying the reason (never to an implementer, and not once the PR is covered).
 Unresolved threads that nobody on the PR's side has answered are a fix card for the author only; threads that all have an
 answer are a `resolve_threads` card for a seat that is not an implementer (the author cannot complete it).
+A standing rejecting verdict (`needs_revision`, `changes_requested`) at the current head is an `address_review` card for the
+author only, and no other review of that head is requested while it stands.
 
 ## Byte format of the log (decision needed before Guild)
 
