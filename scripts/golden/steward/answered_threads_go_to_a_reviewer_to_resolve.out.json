@@ -1,0 +1,82 @@
+[
+  {
+    "acceptance": "every thread is resolved after you checked the commit its reply names, or carries your reply saying what is still missing",
+    "agent": "mimo",
+    "attempt": 1,
+    "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "resolve_threads",
+      "pr": 15
+    },
+    "lease": {
+      "expires_tick": 6,
+      "key": "resolve_threads:15:15151515",
+      "renewed": false
+    },
+    "lens": "direct",
+    "lens_text": "Do the task as stated.",
+    "marker": "[done:resolve_threads:15:1515151515151515151515151515151515151515]",
+    "new_since_last": "first time this seat is handed this PR",
+    "owner_blocked": false,
+    "priority": 2,
+    "recipe": [
+      "list the unresolved threads on the PR with their replies",
+      "for each thread, read the reply and open the commit it names",
+      "resolve the thread only if it is actually addressed; otherwise reply with what is still missing"
+    ],
+    "role": "implementer",
+    "state": "PR #15 head 151515151515 on main; +10/-2 in 1 file(s); mergeable=CLEAN; implementers=claude",
+    "task": "Check the replies on every unresolved review thread of PR #15 and resolve each one that is addressed",
+    "then": "no further item is free for you; stand by",
+    "tick": 0,
+    "why_now": "2 unresolved review thread(s), all answered; waiting for a reviewer to resolve"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "gemini",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "reviewer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "codex",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "auditor",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "claude",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "skeptic",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  }
+]

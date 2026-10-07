@@ -1,0 +1,90 @@
+[
+  {
+    "name": "docs and governance markdown is tier B with the light gate",
+    "paths": [
+      "governance/NOTES.md",
+      "docs/x.md"
+    ]
+  },
+  {
+    "name": "AGENTS.md is owner-only",
+    "paths": [
+      "AGENTS.md"
+    ]
+  },
+  {
+    "name": "workflow files are owner-only",
+    "paths": [
+      ".github/workflows/ci.yml",
+      "scripts/a.py"
+    ]
+  },
+  {
+    "name": "an owner-only path wins over a safe family",
+    "paths": [
+      "governance/AUTOMATED_MERGE_POLICY.md",
+      "docs/a.md"
+    ]
+  },
+  {
+    "name": "scripts are tier B but get the full gate",
+    "paths": [
+      "scripts/steward_run.py",
+      "scripts/test_steward_run.py"
+    ]
+  },
+  {
+    "name": "Rust sources are unclassified, never assumed safe",
+    "paths": [
+      "foundation/crates/foundation_cli/src/main.rs"
+    ]
+  },
+  {
+    "name": "one unrecognised path makes the whole change unclassified",
+    "paths": [
+      "docs/a.md",
+      "Cargo.toml"
+    ]
+  },
+  {
+    "name": "a doc extension outside the family is not trusted",
+    "paths": [
+      "docs/diagram.png"
+    ]
+  },
+  {
+    "name": "an unlisted directory is not trusted for the light gate",
+    "paths": [
+      "notes/x.md"
+    ]
+  },
+  {
+    "name": "no paths is tier B and a full gate",
+    "paths": []
+  },
+  {
+    "name": "mixed directories report mixed",
+    "paths": [
+      "docs/a.md",
+      "governance/b.md"
+    ]
+  },
+  {
+    "name": "a lookalike prefix is also owner-only (prefix match, fails closed)",
+    "paths": [
+      "AGENTS.md.bak"
+    ]
+  },
+  {
+    "name": "the seat identity map is owner-only",
+    "paths": [
+      "governance/identities.json"
+    ]
+  },
+  {
+    "name": "another governance json file is still tier B",
+    "paths": [
+      "governance/other.json"
+    ]
+  }
+]

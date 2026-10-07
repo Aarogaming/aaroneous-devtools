@@ -1,0 +1,180 @@
+[
+  {
+    "accept_seats": [
+      "mimo"
+    ],
+    "accepts_at_head": 1,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
+  },
+  {
+    "accept_seats": [
+      "mimo"
+    ],
+    "accepts_at_head": 1,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "from": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "delta",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
+  },
+  {
+    "accept_seats": [
+      "mimo"
+    ],
+    "accepts_at_head": 1,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "from": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "delta",
+        "verdict": "accept"
+      }
+    ],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  },
+  {
+    "accept_seats": [
+      "mimo"
+    ],
+    "accepts_at_head": 1,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "from": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "delta",
+        "verdict": "accept"
+      }
+    ],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  },
+  {
+    "accept_seats": [
+      "mimo"
+    ],
+    "accepts_at_head": 1,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "from": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "head": "cccccccccccccccccccccccccccccccccccccccc",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "delta",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 0,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "no accept at the current head"
+    ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 1,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  },
+  {
+    "accept_seats": [
+      "mimo"
+    ],
+    "accepts_at_head": 2,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": false,
+    "reasons": [
+      "standing needs_revision at head by gemini"
+    ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 1,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 1,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  }
+]
