@@ -1,0 +1,78 @@
+[
+  {
+    "acceptance": "the PR is no longer a draft, or a comment names who must flip it Start your comment with the receipt [done:draft:4:0404040404040404040404040404040404040404] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
+    "agent": "mimo",
+    "attempt": 1,
+    "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "draft",
+      "pr": 4
+    },
+    "lease": {
+      "expires_tick": 6,
+      "key": "draft:4:04040404",
+      "renewed": false
+    },
+    "lens": "direct",
+    "lens_text": "Do the task as stated.",
+    "marker": "[done:draft:4:0404040404040404040404040404040404040404]",
+    "new_since_last": "first time this seat is handed this PR",
+    "owner_blocked": true,
+    "priority": 4,
+    "recipe": [],
+    "role": "implementer",
+    "state": "PR #4 head 040404040404 on main; +10/-2 in 1 file(s); mergeable=CLEAN; implementers=claude",
+    "task": "Ask the author, or prepare the one-line command, to mark PR #4 ready for review",
+    "then": "no further item is free for you; stand by",
+    "tick": 0,
+    "why_now": "draft: merge option hidden until ready for review"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "gemini",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": true,
+    "priority": 9,
+    "role": "reviewer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "codex",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": true,
+    "priority": 9,
+    "role": "auditor",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "claude",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": true,
+    "priority": 9,
+    "role": "skeptic",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  }
+]

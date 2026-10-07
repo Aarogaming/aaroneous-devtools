@@ -29,10 +29,15 @@ HEADING_RE = re.compile(r"^\+(#{2,4})\s")
 
 
 def get_diff(base: str, head: str) -> str:
+    # git prints UTF-8. Decoding with the platform default (cp1252 on Windows) failed on bytes such as the one in a
+    # right double quote (U+201D), the read thread died, stdout came back empty and the check reported "nothing to
+    # check" with exit code 0, so an unevidenced Done row containing that character passed.
     result = subprocess.run(
         ["git", "diff", f"{base}...{head}", "--", TARGET_FILE],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=True,
     )
     return result.stdout

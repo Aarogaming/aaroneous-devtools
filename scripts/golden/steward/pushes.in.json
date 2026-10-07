@@ -1,0 +1,107 @@
+[
+  {
+    "name": "no earlier record credits nobody and records every head",
+    "previous": null,
+    "prs": [
+      {
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "number": 1,
+        "seat": "claude"
+      },
+      {
+        "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "number": 2,
+        "seat": "codex"
+      }
+    ]
+  },
+  {
+    "name": "an unchanged head is not a push",
+    "previous": {
+      "1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "prs": [
+      {
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "number": 1,
+        "seat": "claude"
+      }
+    ]
+  },
+  {
+    "name": "a moved head credits the PR's seat",
+    "previous": {
+      "1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "prs": [
+      {
+        "head": "cccccccccccccccccccccccccccccccccccccccc",
+        "number": 1,
+        "seat": "claude"
+      }
+    ]
+  },
+  {
+    "name": "a new PR credits its seat",
+    "previous": {
+      "1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "prs": [
+      {
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "number": 1,
+        "seat": "claude"
+      },
+      {
+        "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "number": 2,
+        "seat": "codex"
+      }
+    ]
+  },
+  {
+    "name": "two moved heads of one seat count twice",
+    "previous": {
+      "1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "2": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "prs": [
+      {
+        "head": "cccccccccccccccccccccccccccccccccccccccc",
+        "number": 1,
+        "seat": "claude"
+      },
+      {
+        "head": "dddddddddddddddddddddddddddddddddddddddd",
+        "number": 2,
+        "seat": "claude"
+      }
+    ]
+  },
+  {
+    "name": "a moved head with no known seat is recorded and credits nobody",
+    "previous": {
+      "1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "prs": [
+      {
+        "head": "cccccccccccccccccccccccccccccccccccccccc",
+        "number": 1,
+        "seat": ""
+      }
+    ]
+  },
+  {
+    "name": "the seat is lower-cased",
+    "previous": {
+      "1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "prs": [
+      {
+        "head": "cccccccccccccccccccccccccccccccccccccccc",
+        "number": 1,
+        "seat": "Claude"
+      }
+    ]
+  }
+]
