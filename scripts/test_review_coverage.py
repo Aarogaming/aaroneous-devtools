@@ -1,7 +1,9 @@
 import json
 import os
 import sys
+import types
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 import review_coverage as rc  # noqa: E402
@@ -78,13 +80,93 @@ class Coverage(unittest.TestCase):
     def test_reviewer_who_implemented_does_not_count(self):
         self.assertFalse(ev(H1, [rec(H1, reviewer="claude")])["covered"])
 
+    def test_the_same_seat_spelled_two_ways_is_one_accepting_seat(self):
+        # #96 at ecab144a: two Gemini comments, reviewer "Gemini" and "gemini", read as accept_seats ['Gemini', 'gemini'].
+        records = [rec(H1, reviewer="Gemini", impl=("Claude",)), rec(H1, reviewer="gemini", impl=("Claude",)),
+                   rec(H1, reviewer="Antigravity", impl=("Claude",))]
+        decision = ev(H1, records)
+        self.assertTrue(decision["covered"])
+        self.assertEqual(decision["accept_seats"], ["gemini"])
+        for spelling in ("Gemini/Antigravity", "gemini (antigravity)", " GEMINI "):
+            self.assertEqual(ev(H1, records + [rec(H1, reviewer=spelling, impl=("Claude",))])["accept_seats"], ["gemini"], spelling)
+        self.assertEqual(rc.seat_name("Claude Sonnet 5.5"), "claude")
+        self.assertEqual(rc.seat_name("Mimo (OpenCode)"), "mimo")
+        self.assertEqual(rc.seat_name(""), "")
+        two = ev(H1, records + [rec(H1, reviewer="Codex", impl=("Claude",))])
+        self.assertEqual(two["accept_seats"], ["codex", "gemini"])
+
+    def test_model_ids_and_punctuation_forms_name_the_same_seat(self):
+        # Skeptic probe on #99: all of these were independent of the reviewer they name, because only the first
+        # space-separated word was compared.
+        for reviewer, implementers in (("Gemini", ("gemini-3.8-flash",)), ("Gemini", ("gemini_3_flash",)),
+                                       ("Claude", ("claude-sonnet-5-5",)), ("Claude", ("Claude, Mimo",)),
+                                       ("Claude", ("claude+mimo",)), ("Mimo", ("mimo-v2.6-flash-free",)),
+                                       ("Codex", ("codex:session-01a1",)), ("Claude", ("Claude\u200b",)),
+                                       ("Claude", ("CLAUDE.",)), ("Gemini", ("Gemini3",)), ("Claude", ("Anthropic Claude",))):
+            self.assertFalse(ev(H1, [rec(H1, reviewer=reviewer, impl=implementers)])["covered"], (reviewer, implementers))
+        # A string naming two seats covers neither of them, and still leaves a third free to review.
+        self.assertTrue(ev(H1, [rec(H1, reviewer="Codex", impl=("Claude, Mimo",))])["covered"])
+        self.assertFalse(ev(H1, [rec(H1, reviewer="Mimo", impl=("Claude, Mimo",))])["covered"])
+        self.assertEqual(rc.seat_names("Gemini/Antigravity"), {"gemini"})
+        self.assertEqual(rc.seat_names("Claude, Mimo"), {"claude", "mimo"})
+        self.assertEqual(rc.seat_names("Local Qwen"), {"mimo"})
+        self.assertEqual(rc.seat_names("someone else"), {"someone"})
+        self.assertEqual(rc.seat_names("!!!"), set())
+
+    def test_an_implementer_in_another_spelling_is_never_independent(self):
+        # Codex's counterexample on #98: reviewer 'Gemini/Antigravity' with implementer 'gemini' cannot self-cover, and
+        # neither can 'gemini' with ['Gemini'] or 'Claude' with ['Claude Sonnet 5.5'].
+        for reviewer, implementers in (("Gemini/Antigravity", ("gemini",)), ("gemini", ("Gemini",)),
+                                       ("Claude", ("Claude Sonnet 5.5",)), ("Antigravity", ("Gemini",)),
+                                       ("mimo", ("Mimo (OpenCode)", "Claude"))):
+            decision = ev(H1, [rec(H1, reviewer=reviewer, impl=implementers)])
+            self.assertFalse(decision["covered"], (reviewer, implementers))
+        genuine = ev(H1, [rec(H1, reviewer="codex", impl=("Gemini", "Claude Sonnet 5.5"))])
+        self.assertTrue(genuine["covered"])
+        mixed = ev(H1, [rec(H1, reviewer="gemini", impl=("Gemini",)), rec(H1, reviewer="Codex", impl=("Gemini",))])
+        self.assertEqual(mixed["accept_seats"], ["codex"])
+        self.assertTrue(mixed["covered"])
+
     def test_standing_changes_requested_blocks(self):
         decision = ev(H1, [rec(H1), rec(H1, verdict="changes_requested", reviewer="codex")])
         self.assertFalse(decision["covered"])
         self.assertIn("changes_requested", " ".join(decision["reasons"]))
 
 
+class Subprocesses(unittest.TestCase):
+    """gh and git output is UTF-8. Decoding it with the platform default (cp1252 on Windows) raised UnicodeDecodeError on
+    any comment holding an emoji, so the coverage tool could not run at all on this repository's real comments."""
+
+    def test_gh_and_git_output_is_decoded_as_utf8_with_replacement(self):
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append((command[0], kwargs))
+            return types.SimpleNamespace(stdout="[]", returncode=0)
+
+        with mock.patch.object(rc.subprocess, "run", fake_run):
+            rc.gh_json("pr", "list")
+            rc.git(".", "status")
+        self.assertEqual([c[0] for c in calls], ["gh", "git"])
+        for _, kwargs in calls:
+            self.assertEqual((kwargs.get("encoding"), kwargs.get("errors")), ("utf-8", "replace"))
+
+
 class Parsing(unittest.TestCase):
+    def test_a_lower_case_prose_verdict_is_reported_as_legacy_not_silently_ignored(self):
+        codex = "Independent Codex verdict: ACCEPT PR #69 delta only. Base " + H1 + "\nreviewed."
+        structured, problems, legacy = rc.parse_attestations([{"body": codex}])
+        self.assertEqual((structured, problems, len(legacy)), ([], [], 1))
+        self.assertEqual(legacy[0]["heads_mentioned"], [H1])
+        self.assertFalse(legacy[0]["looks_whole"])
+
+    def test_ordinary_uses_of_the_word_verdict_are_not_legacy_packets(self):
+        for body in ("No verdict yet, still reading the diff.", "The verdict is pending.\nAccept later.",
+                     "verdict. Acceptable work", "Our verdict on the jury: acceptable"):
+            self.assertEqual(rc.parse_attestations([{"body": body}])[2], [], body)
+        for body in ("Verdict: needs_revision", "my verdict - Rejected at this head", "**Verdict**: **ACCEPT-EVIDENCE**"):
+            self.assertEqual(len(rc.parse_attestations([{"body": body}])[2]), 1, body)
+
     def test_structured_block_is_parsed_and_prose_is_not_counted(self):
         comments = [
             {"body": "intro\n```attestation\n" + json.dumps(rec(H1)) + "\n```\nVERDICT: ACCEPT"},
@@ -93,6 +175,37 @@ class Parsing(unittest.TestCase):
         structured, problems, legacy = rc.parse_attestations(comments)
         self.assertEqual((len(structured), problems, len(legacy)), (1, [], 1))
         self.assertTrue(legacy[0]["looks_whole"])
+
+    def test_a_complete_record_in_a_json_fence_is_reported_by_name_and_never_counted(self):
+        # Codex's whole accept of #57 (comment 6016730072) used a json fence; it was not an attestation, not a problem
+        # and, on a base without the prose-verdict rule, not even legacy: nothing told its author why it did not count.
+        for label in ("json", "", "JSON", "yaml", "Attestation", "ATTESTATION", " attestation", "attestation v1"):
+            comments = [{"body": "Reviewer / Seat: Codex\n\n```" + label + "\n" + json.dumps(rec(H1)) + "\n```\nscope: all files"}]
+            structured, problems, legacy = rc.parse_attestations(comments)
+            self.assertEqual(structured, [], label)
+            self.assertEqual(len(problems), 1, label)
+            self.assertIn(H1, problems[0]["problem"])
+            self.assertIn("only a fence labelled attestation is read", problems[0]["problem"])
+            self.assertEqual(legacy, [], label)
+
+    def test_quoting_the_format_or_other_json_is_not_a_problem(self):
+        template = {key: "<" + key + ">" for key in rc.REQUIRED}
+        partial = {"head": H1, "verdict": "accept"}
+        comments = [{"body": "```json\n" + json.dumps(template) + "\n```"},
+                    {"body": "```json\n" + json.dumps(partial) + "\n```"},
+                    {"body": "```json\n{not json}\n```"},
+                    {"body": "```python\nprint(1)\n```"},
+                    {"body": "```attestation\n" + json.dumps(rec(H1)) + "\n```"}]
+        structured, problems, legacy = rc.parse_attestations(comments)
+        # The partial record is still reported as an unstructured verdict (the existing prose rule), never as a problem.
+        self.assertEqual((len(structured), problems, [item["comment"] for item in legacy]), (1, [], [1]))
+
+    def test_a_mislabelled_record_does_not_cover_the_pr(self):
+        snapshot = {"repo": "o/r", "prs": [{"number": 1, "head": H1, "merge_base": MB, "implementers": ["claude"],
+                                            "comments": [{"body": "```json\n" + json.dumps(rec(H1)) + "\n```"}]}]}
+        row = rc.report_snapshot(snapshot, is_ancestor=always)[0]
+        self.assertFalse(row["covered"])
+        self.assertEqual(len(row["malformed"]), 1)
 
     def test_malformed_blocks_are_reported_not_counted(self):
         comments = [

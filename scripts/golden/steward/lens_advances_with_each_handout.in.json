@@ -1,0 +1,47 @@
+{
+  "state": {
+    "agents": [
+      {
+        "name": "mimo"
+      },
+      {
+        "name": "gemini"
+      },
+      {
+        "name": "codex"
+      },
+      {
+        "name": "claude"
+      }
+    ],
+    "backlog": [],
+    "default_branch": "main",
+    "done": [],
+    "history": {
+      "item_attempts": {
+        "needs_review:7:07070707": 2
+      }
+    },
+    "now": "2026-10-05T00:00:00Z",
+    "prs": [
+      {
+        "base": "main",
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "covered": false,
+        "draft": false,
+        "head": "0707070707070707070707070707070707070707",
+        "implementers": [
+          "claude"
+        ],
+        "mergeable_state": "CLEAN",
+        "number": 7,
+        "seat": "claude",
+        "size": "+10/-2 in 1 file(s)",
+        "threads_unresolved": 0,
+        "title": "pr 7",
+        "updated_at": "2026-10-04T23:00:00Z"
+      }
+    ]
+  },
+  "tick": 0
+}

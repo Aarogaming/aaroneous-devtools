@@ -1,0 +1,44 @@
+[
+  [
+    {
+      "comment_id": 100,
+      "reason": "the comment reads like a verdict but has no fenced attestation block, so nothing was counted",
+      "seat": "gemini"
+    }
+  ],
+  [],
+  [],
+  [
+    {
+      "comment_id": 103,
+      "reason": "the comment reads like a verdict but has no fenced attestation block, so nothing was counted",
+      "seat": "mimo"
+    },
+    {
+      "comment_id": 104,
+      "reason": "the comment reads like a verdict but has no fenced attestation block, so nothing was counted",
+      "seat": "mimo"
+    }
+  ],
+  [
+    {
+      "comment_id": 100,
+      "reason": "the attestation block is missing fields: ['head', 'reviewer']",
+      "seat": "gemini"
+    }
+  ],
+  [
+    {
+      "comment_id": 100,
+      "reason": "the attestation block is not valid JSON; it must be one JSON object, not YAML or prose",
+      "seat": "mimo"
+    }
+  ],
+  [
+    {
+      "comment_id": 100,
+      "reason": "the comment reads like a verdict but has no fenced attestation block, so nothing was counted",
+      "seat": ""
+    }
+  ]
+]

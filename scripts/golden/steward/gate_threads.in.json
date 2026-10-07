@@ -1,0 +1,410 @@
+[
+  {
+    "data": {
+      "data": {
+        "repository": {
+          "pullRequest": {
+            "reviewThreads": {
+              "nodes": [
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": false
+                },
+                {
+                  "isResolved": false
+                }
+              ],
+              "pageInfo": {
+                "hasNextPage": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "name": "a complete page with two open"
+  },
+  {
+    "data": {
+      "data": {
+        "repository": {
+          "pullRequest": {
+            "reviewThreads": {
+              "nodes": [
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                }
+              ],
+              "pageInfo": {
+                "hasNextPage": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "name": "a complete page with none open"
+  },
+  {
+    "data": {
+      "data": {
+        "repository": {
+          "pullRequest": {
+            "reviewThreads": {
+              "nodes": [
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                }
+              ],
+              "pageInfo": {
+                "hasNextPage": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "name": "a full page that has a next page is unknown"
+  },
+  {
+    "data": {
+      "data": {
+        "repository": {
+          "pullRequest": {
+            "reviewThreads": {
+              "nodes": [
+                {
+                  "isResolved": true
+                },
+                {
+                  "isResolved": true
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "name": "missing pagination info is unknown"
+  },
+  {
+    "data": {
+      "data": {}
+    },
+    "name": "a malformed response is unknown"
+  }
+]
