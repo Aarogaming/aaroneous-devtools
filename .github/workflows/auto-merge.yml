@@ -71,6 +71,17 @@ jobs:
           DRY_RUN_INPUT: ${{ github.event.inputs.dry_run }}
         run: |
           set -euo pipefail
+          # Checkout is pinned to the default branch on purpose (see the checkout step above):
+          # the gate and merge logic must always run from main's own copy of these scripts, never
+          # from whatever a triggering PR's own branch proposes to change them to -- otherwise a
+          # PR could rewrite its own gate and have that version run with write access to merge.
+          # One consequence: the PR that first adds this script (this one) can never see it on
+          # main until it is merged, so there is nothing to run yet. That is bootstrap, not a
+          # failure.
+          if [[ ! -f scripts/auto_merge.py ]]; then
+            echo "scripts/auto_merge.py is not on the default branch yet (this is likely the PR that introduces it, still unmerged) -- nothing to evaluate."
+            exit 0
+          fi
           args=(--repo "${{ github.repository }}" --repo-dir "${{ github.workspace }}" \
                 --identities governance/identities.json)
           if [[ -n "${PR_INPUT:-}" ]]; then
