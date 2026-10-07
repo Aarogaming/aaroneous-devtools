@@ -25,7 +25,7 @@ fn load(name: &str) -> Value {
 const SCENARIO_MARKER: &str = "(scenario)";
 
 /// Not ported yet. Remove an entry when its family is ported and listed in `check`.
-const PENDING: [&str; 4] = ["audit", "chain", "gate_checklist", "gate_decide"];
+const PENDING: [&str; 2] = ["audit", "chain"];
 /// The rule families that have a dedicated function in the Python steward (everything else is a scenario file).
 const RULE_FAMILIES: [&str; 15] = [
     "attribution",
@@ -54,6 +54,8 @@ fn check(family: &str) -> Option<Result<(), String>> {
         "receipts" => Some(check_receipts()),
         "stalls" => Some(check_stalls()),
         "coverage" => Some(check_coverage()),
+        "gate_checklist" => Some(check_gate_checklist()),
+        "gate_decide" => Some(check_gate_decide()),
         "gate_tier" => Some(check_gate_tier()),
         "gate_ci" => Some(check_gate_ci()),
         "gate_breaker" => Some(check_gate_breaker()),
@@ -149,6 +151,45 @@ fn check_rejected() -> Result<(), String> {
         ));
     }
     compare(&Value::Array(actual), &load("rejected.out.json"))
+}
+
+fn check_gate_checklist() -> Result<(), String> {
+    use steward::checklist::checklist;
+    let input = load("gate_checklist.in.json");
+    let mut actual = Vec::new();
+    for case in input["cases"].as_array().ok_or("no cases")? {
+        let mut facts = input["green"].clone();
+        if let (Some(target), Some(over)) = (facts.as_object_mut(), case["override"].as_object()) {
+            for (k, v) in over {
+                target.insert(k.clone(), v.clone());
+            }
+        }
+        let list = checklist(&facts)?;
+        actual.push(json!({"lines": list.lines, "would_merge": list.would_merge, "first_blocker": list.first_blocker}));
+    }
+    compare(&Value::Array(actual), &load("gate_checklist.out.json"))
+}
+
+fn check_gate_decide() -> Result<(), String> {
+    use steward::checklist::{decide, reconcile};
+    use steward::gate::truthy;
+    let green = load("gate_checklist.in.json")["green"].clone();
+    let mut actual = Vec::new();
+    for case in load("gate_decide.in.json").as_array().ok_or("not a list")? {
+        let d = decide(
+            truthy(&case["row"]["covered"]),
+            &string_list(&case["paths"]),
+            case["base"].as_str().unwrap_or_default(),
+            truthy(&case["trial"]),
+            truthy(&case["owner"]),
+        );
+        let (eligible, first) = reconcile(d.eligible, &green)?;
+        actual.push(json!({
+            "decide": {"eligible": d.eligible, "reasons": d.reasons, "plan": {"level": d.level, "commands": d.commands}},
+            "reconciled_with_all_green_checklist": {"eligible": eligible, "first_blocker": first},
+        }));
+    }
+    compare(&Value::Array(actual), &load("gate_decide.out.json"))
 }
 
 fn check_gate_tier() -> Result<(), String> {

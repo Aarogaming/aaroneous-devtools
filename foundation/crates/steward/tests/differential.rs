@@ -136,6 +136,7 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
     }
     coverage_cases(all, bad);
     gate_cases(all, bad);
+    checklist_cases(all, bad);
     for case in all["pushes"].as_array().unwrap() {
         let prs: Vec<PushPr> = case["prs"]
             .as_array()
@@ -294,5 +295,66 @@ fn gate_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
                 .or_default()
                 .push(format!("{} rust={got:?} py={want:?}", case["data"]));
         }
+    }
+}
+
+fn checklist_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
+    use steward::checklist::{checklist, decide, reconcile};
+    use steward::gate::truthy;
+    let strings = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .map(|l| {
+                l.iter()
+                    .filter_map(|s| s.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for case in all["gate_checklist"].as_array().unwrap() {
+        let got = checklist(&case["facts"]);
+        let want = &case["out"];
+        let same = match &got {
+            Err(_) => want["error"] == true,
+            Ok(list) => {
+                want["would_merge"] == list.would_merge
+                    && want["first_blocker"]
+                        == list
+                            .first_blocker
+                            .as_deref()
+                            .map_or(Value::Null, |s| Value::String(s.to_owned()))
+                    && strings(&want["lines"]) == list.lines
+            }
+        };
+        if !same {
+            bad.entry("gate_checklist")
+                .or_default()
+                .push(format!("{} rust={got:?} py={want}", case["facts"]));
+        }
+    }
+    let green = all["gate_checklist"]
+        .as_array()
+        .unwrap()
+        .first()
+        .map(|c| c["facts"].clone());
+    let _ = green;
+    for case in all["gate_decide"].as_array().unwrap() {
+        let d = decide(
+            truthy(&case["row"]["covered"]),
+            &strings(&case["paths"]),
+            case["base"].as_str().unwrap(),
+            truthy(&case["trial"]),
+            truthy(&case["owner"]),
+        );
+        let want = &case["out"]["decide"];
+        let same = want["eligible"] == d.eligible
+            && strings(&want["reasons"]) == d.reasons
+            && want["plan"]["level"] == d.level
+            && want["plan"]["commands"] == serde_json::json!(d.commands);
+        if !same {
+            bad.entry("gate_decide")
+                .or_default()
+                .push(format!("{case} rust={d:?}"));
+        }
+        let _ = reconcile;
     }
 }

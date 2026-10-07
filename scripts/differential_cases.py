@@ -132,5 +132,51 @@ gate_threads = []
 for _ in range(int(sys.argv[1]) // 5):
     data = threads_response()
     gate_threads.append({"data": data, "out": mg.open_threads(data)})
-json.dump({"text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
+GREEN = json.load(open("scripts/golden/steward/gate_checklist.in.json", encoding="utf-8"))["green"]
+ODD = {
+    "ci": [None, {}, {"state": "missing", "detail": "no CI status found"}, {"state": "failure", "detail": "1 failed"}, {"state": "pending", "detail": ""}, {"state": "success"}, {"state": "success", "detail": 7}],
+    "trial_merge_ok": [True, False, None, 1, "yes", 0],
+    "base_ref": ["main", "proposal/x", "", 5],
+    "default_branch": ["main", "master"],
+    "base_tip": ["t" * 40, "", None, 12, "short"],
+    "head": ["h" * 40, "abc", ""],
+    "accept_seats": [["a", "b"], ["a", "a"], ["", ""], [], "ab", None, ["a", None], ["claude", "codex", "x"], [" a ", "a"]],
+    "covered": [True, False, None, 1, "yes"],
+    "threads_open": [0, 1, 3, None, False, True, 0.0, "0", -1],
+    "standing_changes_requested": [True, False, None, 0, "no"],
+    "counted_verdicts": [0, 1, 2, None, True, 2.5, "2", -1],
+    "verdicts_missing_evidence": [[], [3], ["a", None], None, 0, "", {"a": 1}, [[1, 2]], ["it's"]],
+    "revertible": [True, False, None, "yes", 1],
+    "breaker_tripped": [True, False, None, 0, ""],
+    "trust": [None, [5, 5], [4, 5], [0, 0], [5, 0], [-1, -2], [10, 3]],
+    "category": ["scripts/*.py", "mixed", None, "caf\u00e9"],
+    "tier": [["B", ""], ["A", "touches owner-only paths: ['x']"], ["unclassified", "why"], ["B", 1], "B", None, ["B"], ["b", ""]],
+}
+checklist_cases = []
+for _ in range(int(sys.argv[1]) // 5):
+    facts = json.loads(json.dumps(GREEN))
+    for _ in range(random.randint(0, 3)):
+        key = random.choice(list(ODD) + list(GREEN))
+        if random.random() < 0.25:
+            facts.pop(key, None)
+        elif key in ODD:
+            facts[key] = random.choice(ODD[key])
+    try:
+        lines, would, first = mg.checklist(json.loads(json.dumps(facts)))
+        out = {"lines": lines, "would_merge": would, "first_blocker": first}
+    except Exception:
+        out = {"error": True}
+    checklist_cases.append({"facts": facts, "out": out})
+decide_cases = []
+for _ in range(int(sys.argv[1]) // 5):
+    paths = [random_path() for _ in range(random.randint(0, 3))]
+    row = {"covered": random.choice([True, False, None, 0, 1, "", "x", []])}
+    base = random.choice(["main", "proposal/x", "", "Main"])
+    trial = random.choice([True, False, None, 0, 1])
+    owner = random.choice([True, False, 0, 1, None])
+    result = mg.decide(row, paths, base, trial, owner)
+    _, eligible, first = mg.reconcile(result["eligible"], json.loads(json.dumps(GREEN)))
+    decide_cases.append({"row": row, "paths": paths, "base": base, "trial": trial, "owner": owner,
+                         "out": {"decide": result, "reconciled": {"eligible": eligible, "first_blocker": first}}})
+json.dump({"text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
 print(len(cases), len(stalls), len(push_cases))

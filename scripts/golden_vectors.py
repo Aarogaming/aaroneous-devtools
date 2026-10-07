@@ -475,6 +475,14 @@ GATE_CHECKLIST = [
     {"name": "no trust counter fails", "override": {"trust": None}},
     {"name": "tier A is owner-only", "override": {"tier": ["A", "touches owner-only paths: ['AGENTS.md']"]}},
     {"name": "an unclassified tier is blocked", "override": {"tier": ["unclassified", "unrecognised paths"]}},
+    {"name": "a boolean where a thread count belongs is blocked", "override": {"threads_open": False}},
+    {"name": "a number where the breaker flag belongs is blocked", "override": {"breaker_tripped": 0}},
+    {"name": "a string where the accepting seats belong is blocked", "override": {"accept_seats": "ab"}},
+    {"name": "two copies of one seat are one seat", "override": {"accept_seats": ["codex", "codex"]}},
+    {"name": "a tier that is not a pair of strings is unclassified", "override": {"tier": "B"}},
+    {"name": "a truthy non-boolean revertibility is blocked with no reason", "override": {"revertible": 1}},
+    {"name": "a non-boolean coverage fact is blocked", "override": {"covered": 1}},
+    {"name": "a missing-evidence fact that is not a list is blocked", "override": {"verdicts_missing_evidence": None}},
 ]
 
 GATE_DECIDE = [

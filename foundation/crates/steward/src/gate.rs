@@ -38,7 +38,7 @@ pub fn touches_protected(paths: &[String]) -> Vec<String> {
 }
 
 /// Python's `repr` of a list of strings (the owner-only reason prints one).
-fn py_repr_list(items: &[String]) -> String {
+pub fn py_repr_list(items: &[String]) -> String {
     let quoted: Vec<String> = items
         .iter()
         .map(|item| {
@@ -211,7 +211,7 @@ pub fn breaker_state(text: &str) -> Option<bool> {
 }
 
 /// Python truthiness of a JSON value.
-fn truthy(value: &Value) -> bool {
+pub fn truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(b) => *b,
