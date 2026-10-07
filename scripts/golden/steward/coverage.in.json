@@ -1,0 +1,446 @@
+[
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a whole accept at the head covers",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [
+      [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1"
+      ]
+    ],
+    "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a delta chained from a whole accept covers",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "from": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "delta",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [
+      [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1"
+      ]
+    ],
+    "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a delta with no whole origin does not cover",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "from": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "delta",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a delta whose from is not an ancestor does not cover",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "from": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "delta",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [
+      [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1"
+      ],
+      [
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "cccccccccccccccccccccccccccccccccccccccc"
+      ]
+    ],
+    "head": "cccccccccccccccccccccccccccccccccccccccc",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "two chained deltas cover",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "from": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "delta",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "from": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+        "head": "cccccccccccccccccccccccccccccccccccccccc",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "delta",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "an accept at an older head does not carry",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "an implementer cannot accept its own work",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "claude",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a standing needs_revision at the head blocks",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "gemini",
+        "scope": "whole",
+        "verdict": "needs_revision"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a record bound to another merge base is invalid",
+    "records": [
+      {
+        "base_sha": "dddddddddddddddddddddddddddddddddddddddd",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "name": "a moved merge base invalidates the record",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "the same seat in another case or alias cannot accept its own work",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "gemini"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Gemini/Antigravity",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "Gemini"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "an implementer named by model id is still that seat",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude-sonnet-5-5"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Claude",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "gemini-3.8-flash"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "one implementer string may name two seats and neither can accept",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "Claude, Mimo"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude+mimo"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "claude",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a third seat still covers when an implementer string names two others",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "Claude, Mimo"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "one seat spelled three ways is one accepting seat",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Antigravity",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  }
+]

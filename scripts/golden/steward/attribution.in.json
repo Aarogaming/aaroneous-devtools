@@ -1,0 +1,58 @@
+[
+  {
+    "body": "Seat / agent: Mimo (mimo-v2.6-flash-free, opencode)",
+    "strict": false
+  },
+  {
+    "body": "### Review\n**Seat / Agent**: Antigravity (Gemini 2.5 Pro)\n",
+    "strict": false
+  },
+  {
+    "body": "My note.\nMimo reviewed this earlier.\n",
+    "strict": true
+  },
+  {
+    "body": "Mimo reviewed this earlier.\n",
+    "strict": false
+  },
+  {
+    "body": "Gemini whole-diff packet\n",
+    "strict": true
+  },
+  {
+    "body": "intro\nSeat / agent: Codex\n",
+    "strict": true
+  },
+  {
+    "body": "<!-- codex-pull-request-review-summary -->\n\n## Codex Review Summary\n\nCodex reacts with an eyes emoji.\n",
+    "strict": true
+  },
+  {
+    "body": "### Independent Review Packet: o/r#63\n\n**Reviewer / Seat**: Antigravity (`gemini-3.8-flash`)\n",
+    "strict": true
+  },
+  {
+    "body": "no seat is named here",
+    "strict": true
+  },
+  {
+    "body": "Claude seat: done",
+    "strict": true
+  },
+  {
+    "body": "Independent Codex verdict: ACCEPT this attribution delta only",
+    "strict": true
+  },
+  {
+    "body": "### Codex bounded independent review: verification incomplete",
+    "strict": true
+  },
+  {
+    "body": "Independent review by Codex",
+    "strict": true
+  },
+  {
+    "body": "### Independent review",
+    "strict": true
+  }
+]

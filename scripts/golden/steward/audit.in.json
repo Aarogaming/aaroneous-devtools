@@ -1,0 +1,63 @@
+{
+  "state": {
+    "agents": [
+      {
+        "name": "mimo"
+      },
+      {
+        "name": "gemini"
+      },
+      {
+        "name": "codex"
+      },
+      {
+        "name": "claude"
+      }
+    ],
+    "backlog": [],
+    "default_branch": "main",
+    "done": [],
+    "last_merged": {
+      "head": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh",
+      "merge_commit": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+      "number": 54
+    },
+    "now": "2026-10-05T00:00:00Z",
+    "prs": [
+      {
+        "base": "proposal/other",
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "covered": true,
+        "draft": false,
+        "head": "1313131313131313131313131313131313131313",
+        "implementers": [
+          "claude"
+        ],
+        "mergeable_state": "CLEAN",
+        "number": 13,
+        "seat": "claude",
+        "size": "+10/-2 in 1 file(s)",
+        "threads_unresolved": 0,
+        "title": "pr 13",
+        "updated_at": "2026-10-04T23:00:00Z"
+      }
+    ],
+    "repo": "o/r"
+  },
+  "ticks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ]
+}

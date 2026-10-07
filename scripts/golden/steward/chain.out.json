@@ -1,0 +1,8 @@
+{
+  "lines": [
+    "{\"data\": {\"per_seat\": {\"mimo\": 2}, \"tick\": 1, \"unattributed\": 0}, \"prev\": \"0000000000000000000000000000000000000000000000000000000000000000\", \"seq\": 1, \"ts\": \"2026-10-05T00:00:00Z\", \"type\": \"ingest\"}",
+    "{\"data\": {\"agent\": \"gemini\", \"expires\": 7, \"key\": \"needs_review:1:01010101\", \"tick\": 1}, \"prev\": \"5a6fcb1b94dc0ed84cc464c6178d07dccbfb47c48a029a2f3d2dd2970d9131ab\", \"seq\": 2, \"ts\": \"2026-10-05T00:00:01Z\", \"type\": \"lease_grant\"}",
+    "{\"data\": {\"agents\": [\"gemini\"], \"tasks\": [\"Post a review — déjà vu\"], \"tick\": 1}, \"prev\": \"c8b0d2a927b22726b5db4a02c28ab625a7ae6bea6f649b2515aa9b57ad23f15a\", \"seq\": 3, \"ts\": \"2026-10-05T00:00:02Z\", \"type\": \"cards\"}"
+  ],
+  "tip": "c0ab959324a239b2aac377077238117a3430a38d90a3615970b958c5f730a02f"
+}
