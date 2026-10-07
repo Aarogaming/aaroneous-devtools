@@ -17,6 +17,7 @@ component) must reproduce. They are plain JSON, so the contract does not depend 
 | `rejected.*` | `[{name, pr, row}]` and `rejected_verdicts`: the repair entries, at most two per seat, current head only |
 | `stalls.*` | `[{name, events, agents, stall_after, window}]` and `{stalled, attribution_weak}` |
 | `pushes.*` | `[{name, previous, prs}]` and `{heads, credited}` (`steward_run.pushes`: a moved or new head credits the PR's seat) |
+| `seats.*` | `[string]` and `[seat, ...]` sorted: `review_coverage.seat_names` (a spelling names a seat by prefix; one string may name several; an unknown string keeps its first token) |
 | `coverage.*` | `[{name, head, merge_base, records, ancestry}]` and `review_coverage.evaluate`: `{covered, reasons, accepts_at_head}` |
 | `audit.in.json`, `audit.out.json` | a healthy state and, for ticks 0-13, the tasks issued: the periodic audit on every 6th tick only |
 | `gate_tier.*` | `[{name, paths}]` and `{tier, protected, plan_level, category}`: owner-only paths (a prefix match, so a lookalike also counts), tier B only for a recognised safe family, everything else unclassified |

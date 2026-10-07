@@ -176,5 +176,100 @@
     "reasons": [
       "accept at head exists but is not chained to a whole accept at this base"
     ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 2,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 2,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 2,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  },
+  {
+    "accept_seats": [
+      "codex"
+    ],
+    "accepts_at_head": 1,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "Claude, Mimo"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
+  },
+  {
+    "accept_seats": [
+      "gemini"
+    ],
+    "accepts_at_head": 3,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Antigravity",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
   }
 ]
