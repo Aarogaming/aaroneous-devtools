@@ -380,6 +380,22 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
             self.assertFalse(self.merges(accept_seats=seats), seats)
         self.assertTrue(self.merges(accept_seats=["claude", "codex"]))
 
+    def test_malformed_box_3_facts_render_as_blocked_not_as_an_unchecked_box(self):
+        # Codex P2 on #122: "unavailable" must be distinguishable from a valid fact reporting too few verdicts.
+        for override in ({"accept_seats": "ab"}, {"accept_seats": MISSING}, {"covered": MISSING}, {"covered": 1}):
+            facts = good_facts()
+            for key, value in override.items():
+                if value is MISSING:
+                    del facts[key]
+                else:
+                    facts[key] = value
+            lines = mg.checklist(facts)[0]
+            box3 = [line for line in lines if " 3. " in line][0]
+            self.assertTrue(box3.startswith("[blocked: accepting seats or coverage unavailable]"), (override, box3))
+        facts = good_facts(accept_seats=["claude"])
+        box3 = [line for line in mg.checklist(facts)[0] if " 3. " in line][0]
+        self.assertTrue(box3.startswith("[ ]"), "a valid fact reporting one seat is an unchecked box, not blocked")
+
     def test_json_style_lists_for_the_tier_are_accepted(self):
         # facts read back from JSON hold lists, not tuples
         self.assertTrue(self.merges(tier=["B", ""]))

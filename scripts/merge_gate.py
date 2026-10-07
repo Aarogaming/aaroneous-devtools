@@ -130,9 +130,11 @@ def checklist(facts):
     # Probe (scout/skeptic tick): with the old defaults a facts dict without `tier` was Tier B, without
     # `standing_changes_requested` had no standing rejection, without `verdicts_missing_evidence` had complete
     # evidence, and `threads_open=False`, `breaker_tripped=0`, `accept_seats=["a", "a"]` or `"ab"` all passed.
-    seats = facts.get("accept_seats")
-    seats = seats if isinstance(seats, list) and all(isinstance(s, str) for s in seats) else []
+    raw_seats = facts.get("accept_seats")
+    seats_known = isinstance(raw_seats, list) and all(isinstance(s, str) for s in raw_seats)
+    seats = raw_seats if seats_known else []
     distinct_seats = {s.strip() for s in seats if s.strip()}
+    covered_fact = facts.get("covered")
     missing_evidence = facts.get("verdicts_missing_evidence")
     counted = facts.get("counted_verdicts")
     threads_open = facts.get("threads_open")
@@ -147,8 +149,9 @@ def checklist(facts):
         ("2", facts["trial_merge_ok"], f"No merge conflict vs. {facts['base_ref']} tip {facts.get('base_tip', '?')[:12]}", "", ""),
         ("2a", facts["base_ref"] == facts["default_branch"], "Base branch is the repository default branch",
          f"base={facts['base_ref']}", ""),
-        ("3", len(distinct_seats) >= 2 and facts.get("covered") is True,
-         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}", "", ""),
+        ("3", None if not seats_known or not isinstance(covered_fact, bool) else len(distinct_seats) >= 2 and covered_fact,
+         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}", "",
+         "accepting seats or coverage unavailable"),
         ("4", None if not is_count(threads_open) or not isinstance(standing, bool) else threads_open == 0 and not standing,
          "Zero open blocking threads", f"count checked: {threads_open}",
          "thread count unavailable" if not is_count(threads_open) else "standing-rejection status unavailable"),
