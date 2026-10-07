@@ -85,6 +85,12 @@ A new lane needs a source, priority, exact scope, dependency, expected evidence,
 retirement decision. The worklist may contain future work; the coordination queue contains only
 work ready to own. No task enters the queue because it merely sounds useful.
 
+### Future intake candidates (unapproved, not ready to own)
+
+| Priority | ID | Bounded work / source | Dependency | Acceptance & Rollback |
+| --- | --- | --- | --- | --- |
+| P1 (proposed) | C98 | Owner-requested maintenance progression guard: new `foundation/crates/foundation_cli/src/progression_guard.rs`, new standalone `foundation/crates/foundation_cli/src/bin/maintenance_progress.rs`, and `governance/MAINTENANCE_PROGRESSION_GUARD.md`. Source: Owner request 2026-10-04. | C91/#36 and scheduler independence (unresolved); Ready authorization | Acceptance: focused/workspace tests, fmt, all-target Clippy, diff/evidence checks. Rollback: retire if existing native scheduler/component already provides the guard; preserve findings and reproducers; documentation rollback restores prior worklist revision with no runtime change. |
+
 ## Review gates
 
 - Product code: native Aaroneous verification plus focused tests.
