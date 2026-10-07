@@ -87,6 +87,22 @@ asked directly, all three answered same session):
 **Verification & Push**: this entry itself + the phased-plan doc, via PR
 (branch protection). No product source changed by this entry.
 
+## Owner-authorized PR96 preservation correction
+
+Bounded reservation recorded before corrective edits: Codex, branch
+`codex/pr96-preservation`, isolated worktree `D:/aaroneous-devtools/tmp/pr96-preservation`,
+UTC start 2026-10-07T00:50:00Z. The owner explicitly requested this correction in
+the round-table chat after the vulnerability/loss-prevention review ("do it").
+Exact scope: this file's C99/C100/C101 status and preservation handoff, plus
+`governance/proposals/TRANSPARENT_BY_DESIGN_NOTATION.md`'s advisory boundaries and
+resolved/support/test wording. No takeover of implementation branches or other
+queue rows; this is a supplemental correction to PR96, not a new implementation lane.
+Gate: full scripts unittest discovery, coordination evidence and whitespace checks,
+current-main row-preservation/duplicate-ID assertions, proposal consistency checks,
+then independent changed-head review. Rollback: abandon this unmerged candidate;
+retain PR96 and all source PR branches. No merge, deletion, policy adoption or live
+deployment is authorized. This record reserves correction scope only, not acceptance.
+
 ## Active and ready lanes
 
 Only this table grants current claims. Ready means available for acknowledgement, not running. Codex serializes ledger edits: send the lane ID, exact branch/worktree, output and UTC start; wait for the visible claim before writing. Claims expire after 24 hours without an update; expiry never discards dirty work. No self-certification or automatic merge authority.
