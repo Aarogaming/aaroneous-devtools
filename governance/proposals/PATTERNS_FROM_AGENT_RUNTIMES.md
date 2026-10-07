@@ -3,8 +3,11 @@
 ```text
 Author: Claude Sonnet 5.5, Claude Code session on host D:\Aaroneous
 Date: 2026-10-07
-Status: proposal. Nothing here changes behaviour. Every item names a first step small enough to be its own PR, and
-        the seat or person who has to decide.
+Status: proposal. Nothing here changes behaviour or claims execution authority.
+        This document is an inert design proposal cataloging candidate patterns mined from external runtimes.
+        Before any pattern or step is implemented, an explicit Ready-to-Claimed transition in
+        `governance/COORDINATION_QUEUE.md` (or a dedicated claim PR) must be opened and recorded per AGENTS.md:18,
+        preventing scope collisions and unevidenced work.
 Sources read: the documentation pages listed at the end (docs.rs, a forum post, a write-up). NOT VERIFIED: any
         claim about what the code does beyond what those pages say; no source repository was cloned or built.
 ```
@@ -12,10 +15,15 @@ Sources read: the documentation pages listed at the end (docs.rs, a forum post, 
 ## Why this document exists
 
 The question was whether other agent-coordination, gated, Rust-based systems exist that Aaroneous could lean on.
-They do. None is a drop-in: Foremerge and ZeroClaw use tokio and bundled SQLite, so under `AGENTS.md` section 4
-(dependency admission, "Extract pattern") the answer for each is to clean-room the idea behind a workspace trait,
-not to add the crate. Scores for `alloc`, `ambient`, `abi` and `safety` have not been computed; if any of them is
-ever proposed as a dependency, that scoring comes first.
+They do. None is a drop-in. For devtools and governance tooling, dependency evaluation is governed by
+`governance/OPERATING_MODEL.md` (evaluating concrete need, licensing, platform support, maintenance cost, and
+permitting async I/O when justified) rather than the strict zero-heap/zero-ambient-authority rules of Aaroneous product
+crates (`AGENTS.md` section 4). However, even under devtools standards, introducing full external frameworks
+(e.g. bundled SQLite engines or external async runtimes) for narrow coordination tasks carries unnecessary maintenance
+cost and platform footprint. Therefore, the recommended path for devtools remains clean-rooming the mined coordination
+patterns into our existing lightweight Python steward and Rust foundation tools, rather than admitting heavy external
+runtime crates. If any pattern is ever proposed to cross into the Aaroneous product codebase, `AGENTS.md` section 4
+dependency admission scoring (`alloc`, `ambient`, `abi`, `safety`) strictly applies.
 
 The patterns below are ranked by how much trouble the gap has cost us in the last week, with the evidence for each
 gap taken from this repository, not from the sources.
@@ -33,9 +41,12 @@ duplicate IDs (#107) but cannot say two live lanes want the same file.
 
 **First step.** An optional, machine-readable token in the Scope cell, `touches: <path-or-glob>=replace|extend`
 (our scopes are paths, so Foremerge's twelve-kind vocabulary collapses to file, directory and queue row). A check in
-`check_coordination_evidence.py` that reports, as a warning with a baseline that may only shrink, any two
-Ready/Claimed rows whose globs overlap where at least one side is `replace`. Test: two rows, one `replace`, same
-path, reported; both `extend`, not reported.
+`check_coordination_evidence.py` (and in Rust `scheduler.rs`) that reports, as a warning with a baseline that may only
+shrink, any two active scope-owning rows whose globs overlap where at least one side is `replace`. Active scope
+ownership encompasses all non-terminal queue statuses that reserve or receive implementation revisions: `Claimed`,
+`In progress`, and `Review` (as well as proposed `Ready` reservations). Deriving active ownership across all non-terminal
+lifecycle stages ensures that active reviews or ongoing iterations cannot be silently shadowed by a new claim on the
+same file. Test: two rows (one `Review`, one `Claimed`), one `replace`, same path, reported; both `extend`, not reported.
 **Decides:** Codex (queue serializer) for the cell grammar; Claude can write the check.
 
 ## 2. "Unverified" is a recorded state, not a refusal and not a pass (Foremerge)
@@ -48,9 +59,12 @@ decision, stuck waiting for a yes or no. Today an accept is counted whether or n
 merge-gate box 5 checks that separately and fails the PR.
 
 **First step.** An optional `evidence` list on the attestation (`command`, `exit`, `log`), validated when present.
-Coverage rows gain `verified_accepts` and `unverified_accepts` next to `accept_seats`; nothing about `covered`
-changes. Advisory first, which is Foremerge's own `checks policy advisory` mode and our own ratchet shape.
-**Decides:** owner, once the counts exist: should an unverified accept ever count toward the two-seat rule.
+Coverage rows gain `verified_accepts` and `unverified_accepts` next to `accept_seats`. In accordance with binding
+rule `governance/AUTOMATED_MERGE_POLICY.md:155-156`, an accept lacking command and exit-code evidence does not count
+toward condition 3 (independent reviewer verification) for merge eligibility; unverified accepts are preserved purely
+for historical audit trail and cannot satisfy `covered`. Any alteration to allow unverified accepts to satisfy coverage
+would require an explicit, signed owner amendment to `AUTOMATED_MERGE_POLICY.md`.
+**Decides:** owner, if an amendment to acceptance criteria is ever sought; today the exclusion is binding.
 
 ## 3. Autonomy level and grants as data (ZeroClaw)
 
@@ -81,14 +95,18 @@ command, exit code and log. What is missing is a trailer that names the parent w
 
 **Source.** The gate runs a named check "against an exact candidate fingerprint".
 
-**Our gap.** Attestations bind the head and the merge base, so any advance of `main` invalidates every accept
-(this week: the whole stack re-attested after #99, and #62/#69 need it again after #86/#88). `merge_gate.run_checks`
-runs in a worktree of the head but stores only command and exit code.
+**Our gap.** Under `governance/PLATFORM_SPEC.md:50(a)`, attestations bind the immutable merge base SHA. A normal
+advance of `main`'s branch tip does not invalidate existing attestations (as verified by
+`test_same_merge_base_stays_valid_when_base_tip_moves`). However, when a PR branch is rebased or retargeted, the merge
+base SHA itself changes, which strictly invalidates all whole-diff and delta records even if the patch content
+(`base...head` diff) is semantically identical. `merge_gate.run_checks` runs in a worktree of the head but stores only
+command and exit code.
 **First step, no semantic change:** record `git rev-parse <head>^{tree}` and `git patch-id --stable` of the
-`base...head` diff next to every check result and, optionally, in the attestation. That produces the data for a later
-decision on whether an unchanged patch-id may carry an accept across a base move.
-**Decides:** owner. Carrying coverage across a base move is a policy change with a real risk (same diff, different
-surroundings); this step only collects the evidence.
+`base...head` diff next to every check result and, optionally, in the attestation. That produces the empirical data for a
+future owner-decided policy proposal on whether an identical patch-id may carry forward an attestation across a
+merge-base change (rebase).
+**Decides:** owner. Carrying coverage across a merge-base move is a policy change with real semantic risks
+(same diff against different parent context); this step strictly collects data without relaxing merge-base invalidation.
 
 ## 6. Already matches, kept for the record
 
