@@ -1,0 +1,12 @@
+[package]
+name = "steward"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Rust port of the devtools steward, proven against the committed golden vectors (lane C99)"
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = "1.0"

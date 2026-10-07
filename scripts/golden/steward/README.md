@@ -60,6 +60,13 @@ That is the current format, so a Rust implementation has to match it exactly (`c
 how most canonical-JSON schemes are written (RFC 8785 is compact). Moving to a compact canonical form would
 be a breaking, versioned contract change; deciding between the two is an open question for Guild.
 
+## The Rust port
+
+`foundation/crates/steward` is the Rust port (lane C99). `cargo test -p steward` runs it against every vector family
+here (`tests/golden.rs`) and fails when a family exists that is neither ported nor listed in its `PENDING` list, when a
+ported family disagrees with its `*.out.json`, or when a family listed as pending no longer exists. Ported so far:
+`seats`, `heads`. Port a family by moving it from `PENDING` to `check`.
+
 ## Not covered yet
 
 These parts of the steward have no vectors and are therefore not yet shown to be replicable: the GitHub read
