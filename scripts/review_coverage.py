@@ -147,10 +147,16 @@ def evaluate(head, merge_base, records, is_ancestor):
         return {"covered": False, "reasons": ["merge-base unresolved: coverage cannot be judged"], "accepts_at_head": 0,
                 "counted": [], "accept_seats": []}
     at_head = [r for r in records if r["head"] == head]
-    blockers = [r for r in at_head if r["verdict"] in REJECT and r["base_sha"] == merge_base]
+    # A rejection stands whatever merge base it names: it was written about this exact head, and a base_sha typed or
+    # copied wrong (a hand-written attestation) must not let an accept through over it. Accepts stay strict.
+    blockers = [r for r in at_head if r["verdict"] in REJECT]
     reasons = []
     if blockers:
         reasons.append(f"standing {blockers[0]['verdict']} at head by {blockers[0]['reviewer']}")
+        for r in blockers:
+            if r["base_sha"] != merge_base:
+                reasons.append(f"the rejection by {r['reviewer']} names base_sha {str(r['base_sha'])[:12]}, not the merge "
+                               f"base {merge_base[:12]}; it still stands until that reviewer re-attests or withdraws it")
 
     valid = [
         r
@@ -174,6 +180,15 @@ def evaluate(head, merge_base, records, is_ancestor):
     if head not in covered:
         if any(r["verdict"] in ACCEPT and r["head"] == head for r in records):
             reasons.append("accept at head exists but is not chained to a whole accept at this base")
+            for r in at_head:
+                if r["verdict"] not in ACCEPT or r in valid:
+                    continue
+                if r["base_sha"] != merge_base:
+                    reasons.append(f"the accept by {r['reviewer']} names base_sha {str(r['base_sha'])[:12]}, but the merge "
+                                   f"base is {merge_base[:12]}: re-attest against the current merge base")
+                elif not independent(r):
+                    reasons.append(f"the accept by {r['reviewer']} is not independent of its implementers "
+                                   f"{sorted(r['implementers'])}")
         else:
             reasons.append("no accept at the current head")
     counted = [r for r in valid if r["head"] == head]

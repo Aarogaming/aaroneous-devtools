@@ -46,6 +46,31 @@ def ev(head, records, anc=always, mb=MB):
 
 
 class Coverage(unittest.TestCase):
+    def test_a_rejection_naming_the_wrong_merge_base_still_blocks(self):
+        # Probe: an independent accept plus a needs_revision whose hand-typed base_sha was wrong was covered=True, so a
+        # reviewer's request for changes was ignored. Rejections stand at the head whatever base they name.
+        wrong = "w" * 40
+        for verdict in ("needs_revision", "changes_requested"):
+            result = ev(H1, [rec(H1), rec(H1, reviewer="codex", verdict=verdict, base=wrong)])
+            self.assertFalse(result["covered"], verdict)
+            self.assertEqual(result["reasons"][0], f"standing {verdict} at head by codex")
+            self.assertIn("names base_sha wwwwwwwwwwww", result["reasons"][1])
+        right = ev(H1, [rec(H1), rec(H1, reviewer="codex", verdict="needs_revision")])
+        self.assertEqual(len(right["reasons"]), 1, "a rejection on the right base needs no extra note")
+
+    def test_a_rejection_at_another_head_does_not_block(self):
+        self.assertTrue(ev(H1, [rec(H1), rec(H2, reviewer="codex", verdict="needs_revision", base="w" * 40)])["covered"])
+
+    def test_an_accept_that_does_not_count_says_why(self):
+        wrong = ev(H1, [rec(H1, reviewer="gemini", base="d" * 40)])
+        self.assertFalse(wrong["covered"])
+        self.assertIn("names base_sha dddddddddddd, but the merge base is mmmmmmmmmmmm", wrong["reasons"][-1])
+        own = ev(H1, [rec(H1, reviewer="claude")])
+        self.assertIn("the accept by claude is not independent of its implementers ['claude']", own["reasons"][-1])
+        # new wording must not trip merge_gate's substring test for a standing rejection
+        for result in (wrong, own):
+            self.assertFalse(any("changes_requested" in r or "needs_revision" in r for r in result["reasons"]))
+
     def test_whole_accept_at_head_covers(self):
         self.assertTrue(ev(H1, [rec(H1)])["covered"])
 

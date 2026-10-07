@@ -316,6 +316,8 @@ COVERAGE = [
      "records": [rec(A, reviewer="claude")], "ancestry": []},
     {"name": "a standing needs_revision at the head blocks", "head": A, "merge_base": MB,
      "records": [rec(A), rec(A, reviewer="gemini", verdict="needs_revision")], "ancestry": []},
+    {"name": "a rejection naming the wrong merge base still blocks an accept", "head": A, "merge_base": MB,
+     "records": [rec(A), rec(A, reviewer="codex", verdict="needs_revision", base="d" * 40)], "ancestry": []},
     {"name": "a record bound to another merge base is invalid", "head": A, "merge_base": MB,
      "records": [rec(A, base="d" * 40)], "ancestry": []},
     {"name": "a moved merge base invalidates the record", "head": A, "merge_base": "e" * 40,
