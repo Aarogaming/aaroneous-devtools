@@ -345,7 +345,7 @@ def checkout_matches(remote_url, repo):
 
 def pr_list_args(repo):
     return ["pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
-            "number,headRefOid,baseRefName"]
+            "number,headRefOid,baseRefName,isDraft"]
 
 
 def gh_json(*args):
@@ -378,6 +378,7 @@ def live_snapshot(repo, repo_dir):
                 "number": item["number"],
                 "head": item["headRefOid"],
                 "base": item["baseRefName"],
+                "draft": item["isDraft"],
                 "merge_base": mb,
                 "comments": flatten_pages(pages),
                 "reviews": flatten_pages(

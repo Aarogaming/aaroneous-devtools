@@ -103,6 +103,7 @@ class Golden(unittest.TestCase):
         self.assertEqual(checklist["red CI blocks"]["first_blocker"], "1")
         self.assertEqual(checklist["a merge conflict blocks"]["first_blocker"], "2")
         self.assertEqual(checklist["a stacked base blocks"]["first_blocker"], "2a")
+        self.assertEqual(checklist["a draft PR blocks"]["first_blocker"], "2b")
         self.assertEqual(checklist["one accept seat is not enough"]["first_blocker"], "3")
         self.assertEqual(checklist["an open thread blocks"]["first_blocker"], "4")
         self.assertEqual(checklist["a tripped breaker blocks"]["first_blocker"], "7")

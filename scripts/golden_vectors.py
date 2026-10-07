@@ -397,7 +397,7 @@ GATE_GREEN = {
     "head": "h" * 40, "ci": {"state": "success", "detail": "3 checks: SUCCESS"}, "trial_merge_ok": True, "base_ref": "main",
     "default_branch": "main", "base_tip": "t" * 40, "accept_seats": ["codex", "gemini"], "covered": True, "threads_open": 0,
     "standing_changes_requested": False, "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
-    "breaker_tripped": False, "category": "scripts/*.py", "tier": ["B", ""],
+    "breaker_tripped": False, "category": "scripts/*.py", "tier": ["B", ""], "is_draft": False,
 }
 GATE_CHECKLIST = [
     {"name": "every box green would merge", "override": {}},
@@ -406,6 +406,8 @@ GATE_CHECKLIST = [
     {"name": "pending CI blocks", "override": {"ci": {"state": "pending", "detail": "checks still running"}}},
     {"name": "a merge conflict blocks", "override": {"trial_merge_ok": False}},
     {"name": "a stacked base blocks", "override": {"base_ref": "proposal/x"}},
+    {"name": "a draft PR blocks", "override": {"is_draft": True}},
+    {"name": "an unknown draft status is blocked", "override": {"is_draft": None}},
     {"name": "one accept seat is not enough", "override": {"accept_seats": ["codex"]}},
     {"name": "two seats but not covered", "override": {"covered": False}},
     {"name": "an open thread blocks", "override": {"threads_open": 1}},

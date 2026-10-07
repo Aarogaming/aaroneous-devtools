@@ -135,6 +135,8 @@ def checklist(facts):
         ("2", facts["trial_merge_ok"], f"No merge conflict vs. {facts['base_ref']} tip {facts.get('base_tip', '?')[:12]}", "", ""),
         ("2a", facts["base_ref"] == facts["default_branch"], "Base branch is the repository default branch",
          f"base={facts['base_ref']}", ""),
+        ("2b", None if facts.get("is_draft") is None else not facts["is_draft"], "PR is not a draft", "",
+         "draft status unavailable (fail closed)"),
         ("3", len(seats) >= 2 and facts.get("covered", False),
          f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}", "", ""),
         ("4", None if facts.get("threads_open") is None else facts["threads_open"] == 0 and not facts.get("standing_changes_requested", False),
@@ -162,9 +164,9 @@ def reconcile(decide_ok, facts):
     """One verdict: decide()'s reasons are necessary, the checklist is sufficient; both must pass.
 
     Returns (lines, eligible, first_blocker). eligible is True only when decide() said eligible
-    AND every checklist box (tier, CI, conflict, base, accepts, threads, evidence, revertible,
-    breaker) is green — so the default path can never print ELIGIBLE with red CI, open
-    threads, or a tripped breaker, which checklist() would block."""
+    AND every checklist box (tier, CI, conflict, base, draft status, accepts, threads, evidence,
+    revertible, breaker) is green — so the default path can never print ELIGIBLE with red CI, a
+    draft PR, open threads, or a tripped breaker, which checklist() would block."""
     lines, would_merge, first = checklist(facts)
     return lines, bool(decide_ok) and would_merge, first
 
@@ -320,7 +322,7 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
         "trial_merge_ok": trial_ok, "covered": row["covered"], "accept_seats": row["accept_seats"],
         "counted_verdicts": row["counted_verdicts"], "verdicts_missing_evidence": row["verdicts_missing_evidence"],
         "standing_changes_requested": any("changes_requested" in r or "needs_revision" in r for r in row["reasons"]),
-        "tier": tier_of(paths), "category": category_of(paths),
+        "tier": tier_of(paths), "category": category_of(paths), "is_draft": pr.get("draft"),
         "breaker_tripped": None, "threads_open": None, "ci": None,
     }
     tip = rc.git(repo_dir, "rev-parse", f"origin/{pr['base']}").stdout.strip()
