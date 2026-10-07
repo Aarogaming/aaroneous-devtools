@@ -88,6 +88,16 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Move one job's reviewed results from the results directory to the archive (never overwrites).
+    LocalWorkerArchive {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        job_id: String,
+        /// Actually move the files; without it the command only reports what it would do.
+        #[arg(long)]
+        apply: bool,
+    },
     /// Adaptive persistent local-worker loop: tick, look at what actually
     /// happened, and decide the next tick's delay from that -- backing off
     /// when there's nothing to do rather than re-firing on a blind fixed
@@ -429,6 +439,11 @@ fn main() -> Result<()> {
             local_worker::status(&config, now)
         }
         Command::LocalWorkerLintJobs { config } => local_worker::lint_jobs(&config),
+        Command::LocalWorkerArchive {
+            config,
+            job_id,
+            apply,
+        } => local_worker::archive(&config, &job_id, apply),
         Command::LocalWorkerServe { config } => local_worker::serve(&config),
         Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::MultithreaderServe {

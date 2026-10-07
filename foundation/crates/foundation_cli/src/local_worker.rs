@@ -561,6 +561,85 @@ pub(crate) fn lint_jobs(config_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Moves the reviewed results of one job from the results directory to the archive directory,
+/// which is what frees backpressure after the owner has read them. Holds the same `review.lock` reservation as a tick for the whole operation. Never overwrites: an existing
+/// archive file with the same name is an error. Matches `<job-id>-<n>.json` exactly, so one
+/// job id cannot sweep up another whose id merely starts with the same text.
+pub(crate) fn archive(config_path: &Path, job_id: &str, apply: bool) -> Result<()> {
+    if !config_path.is_absolute() {
+        bail!("absolute config required");
+    }
+    if job_id.is_empty()
+        || job_id.len() > 64
+        || !job_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        bail!("job id must be 1..=64 letters, digits or '-'");
+    }
+    let c: Config = toml::from_str(&read_bounded(config_path, 16384)?)?;
+    for (label, directory) in [
+        ("results", &c.results_directory),
+        ("archive", &c.archive_directory),
+        ("reservation", &c.reservation_directory),
+    ] {
+        validate_directory(label, directory)?;
+    }
+    fs::create_dir_all(&c.reservation_directory)?;
+    let lock = c.reservation_directory.join("review.lock");
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock)
+    {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            bail!("a tick holds the reservation; archive after it finishes");
+        }
+        Err(e) => return Err(e.into()),
+    }
+    let _reservation = Reservation(lock);
+    let prefix = format!("{job_id}-");
+    let matches: Vec<PathBuf> = files(&c.results_directory, "json")?
+        .into_iter()
+        .filter(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .and_then(|stem| stem.strip_prefix(&prefix))
+                .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .collect();
+    if matches.is_empty() {
+        bail!("no pending result for job {job_id}");
+    }
+    for path in &matches {
+        let Some(name) = path.file_name() else {
+            bail!("result without a file name");
+        };
+        let destination = c.archive_directory.join(name);
+        if destination.exists() {
+            bail!("archive already holds {}", destination.display());
+        }
+    }
+    if !apply {
+        println!(
+            "local worker: dry run, {} result(s) for {job_id} would be archived; pass --apply",
+            matches.len()
+        );
+        return Ok(());
+    }
+    for path in &matches {
+        if let Some(name) = path.file_name() {
+            fs::rename(path, c.archive_directory.join(name))?;
+        }
+    }
+    println!(
+        "local worker: archived {} result(s) for {job_id}",
+        matches.len()
+    );
+    Ok(())
+}
+
 /// Pure summary of worker state for `local-worker-status` (C96 slice 4). Inputs are explicit, so
 /// it needs no clock: `now` is supplied by the caller.
 fn render_status(
@@ -1039,6 +1118,84 @@ instruction = \"x\"
         job.id = "ok".into();
         job.evidence.clear();
         assert!(job_problem(&job).is_some());
+    }
+
+    #[test]
+    fn archive_rejects_relative_directories() {
+        let (_d, mut c, config) = fixture();
+        c.archive_directory = PathBuf::from("archive");
+        fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
+        let err = archive(&config, "some-job", true).expect_err("relative archive dir");
+        assert!(!err.to_string().contains("no pending result"), "{err}");
+        let (_d2, mut c2, config2) = fixture();
+        c2.results_directory = c2.results_directory.join("..").join("elsewhere");
+        fs::write(&config2, toml::to_string(&c2).expect("config")).expect("write config");
+        let err2 = archive(&config2, "some-job", true).expect_err("unnormalized results dir");
+        assert!(!err2.to_string().contains("no pending result"), "{err2}");
+    }
+
+    #[test]
+    fn archive_moves_one_jobs_results_and_refuses_overwrite_or_unknown_ids() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        let results = files(&c.results_directory, "json").expect("results");
+        let stem = results[0]
+            .file_stem()
+            .expect("stem")
+            .to_string_lossy()
+            .to_string();
+        let job_id = stem.rsplit_once('-').expect("id-n").0.to_string();
+        assert!(archive(&config, "other-job", true).is_err());
+        assert!(archive(&config, "bad id", true).is_err());
+        archive(&config, &job_id, true).expect("archive");
+        assert!(files(&c.results_directory, "json").expect("r").is_empty());
+        assert_eq!(files(&c.archive_directory, "json").expect("a").len(), 1);
+        assert!(archive(&config, &job_id, true).is_err());
+    }
+
+    #[test]
+    fn archive_defaults_to_dry_run_and_refuses_while_a_tick_holds_the_reservation() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        let results = files(&c.results_directory, "json").expect("results");
+        let stem = results[0]
+            .file_stem()
+            .expect("stem")
+            .to_string_lossy()
+            .to_string();
+        let job_id = stem.rsplit_once('-').expect("id-n").0.to_string();
+        archive(&config, &job_id, false).expect("dry run");
+        assert_eq!(files(&c.results_directory, "json").expect("r").len(), 1);
+        assert!(files(&c.archive_directory, "json").expect("a").is_empty());
+        fs::create_dir_all(&c.reservation_directory).expect("reservation dir");
+        fs::write(c.reservation_directory.join("review.lock"), "owner").expect("reserve");
+        let err = archive(&config, &job_id, true).expect_err("busy reservation");
+        assert!(err.to_string().contains("holds the reservation"), "{err}");
+        assert_eq!(files(&c.results_directory, "json").expect("r").len(), 1);
+    }
+
+    #[test]
+    fn archive_refuses_a_destination_collision_and_releases_its_reservation() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| Ok(draft())).expect("tick");
+        let results = files(&c.results_directory, "json").expect("results");
+        let name = results[0].file_name().expect("name").to_owned();
+        let stem = results[0]
+            .file_stem()
+            .expect("stem")
+            .to_string_lossy()
+            .to_string();
+        let job_id = stem.rsplit_once('-').expect("id-n").0.to_string();
+        fs::create_dir_all(&c.archive_directory).expect("archive dir");
+        fs::write(c.archive_directory.join(&name), "existing").expect("occupy");
+        let err = archive(&config, &job_id, true).expect_err("collision");
+        assert!(err.to_string().contains("archive already holds"), "{err}");
+        assert_eq!(files(&c.results_directory, "json").expect("r").len(), 1);
+        assert_eq!(
+            fs::read_to_string(c.archive_directory.join(&name)).expect("kept"),
+            "existing"
+        );
+        assert!(!c.reservation_directory.join("review.lock").exists());
     }
 
     #[test]
