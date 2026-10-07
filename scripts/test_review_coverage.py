@@ -315,6 +315,32 @@ TRAILER_CLAUDE = "docs: change\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@ant
 NO_TRAILER = "docs: address review findings\n"
 
 
+class StandInComments(unittest.TestCase):
+    """The shared login posts for every seat. "Author Update (operating in lieu of Codex)" is written by a seat that is
+    not Codex and does not say which."""
+
+    def row(self, bodies):
+        pr = {"number": 1, "head": H1, "merge_base": MB, "comments": [{"id": i, "body": b} for i, b in enumerate(bodies)]}
+        return rc.report_snapshot({"repo": "o/r", "prs": [pr]}, is_ancestor=always)[0]
+
+    def test_the_real_phrasing_is_found_and_names_the_seat_being_covered_for(self):
+        self.assertEqual(rc.stand_in_seats([{"body": "### Author Update (operating in lieu of Codex) / PR #60 Intake"}]), ["codex"])
+        self.assertEqual(rc.stand_in_seats([{"body": "Posting on behalf of Antigravity"}]), ["gemini"])
+        self.assertEqual(rc.stand_in_seats([{"body": "x\n\nlater: in lieu of Claude"}]), [], "only the first line is read")
+        self.assertEqual(rc.stand_in_seats([{"body": "Claude seat: not in lieu of anyone"}]), [])
+        self.assertEqual(rc.stand_in_seats(None), [])
+
+    def test_such_a_comment_is_reported_on_the_row_and_does_not_change_coverage(self):
+        row = self.row(["### Author Update (operating in lieu of Codex) / PR #47"])
+        self.assertTrue(any("in lieu of codex" in r for r in row["reasons"]), row["reasons"])
+        self.assertFalse(any("needs_revision" in r or "changes_requested" in r for r in row["reasons"]))
+        self.assertEqual(self.row(["plain comment"])["reasons"], ["no accept at the current head"])
+
+    def test_the_comment_is_not_attributed_to_the_seat_it_stands_in_for(self):
+        import collect_state as cs
+        self.assertEqual(cs.comment_seat("### Author Update (operating in lieu of Codex) / PR #47", strict=True), "")
+
+
 class GitSaysWhoImplemented(unittest.TestCase):
     """An attestation's `implementers` list is the reviewer's word; git history is not. Probe: Gemini committed to #116,
     the commit had no trailer, and Gemini's attestation listed only claude, so the accept counted as independent."""

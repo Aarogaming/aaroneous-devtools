@@ -188,6 +188,24 @@ def unattributed_commits(commit_log, branch):
                if not any(known_seat_names(t) for t in TRAILER.findall(chunk)))
 
 
+STAND_IN = re.compile(r"\b(?:in lieu of|on behalf of|acting for|operating for|standing in for)\s+(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+                      re.I)
+
+
+def stand_in_seats(comments):
+    """The seats whose behalf a comment claims to act on ("Author Update (operating in lieu of Codex)"): the shared login
+    posts for every seat, so such a comment is written by a seat it does not name, and the seat it does name is not the
+    one that worked. Only the first non-blank line is read, and "in lieu of X" never attributes the comment to X.
+    Scout sample: three comments on #20, #47 and #60 said this about Codex; text attribution rightly leaves them
+    unattributed, but nothing told a reader that someone other than the branch's seat was pushing."""
+    found = []
+    for comment in comments or []:
+        body = comment.get("body", "") if isinstance(comment, dict) else ""
+        first = next((line for line in body.splitlines() if line.strip()), "")
+        found.extend(SEAT_NAME_ALIASES.get(m.lower(), m.lower()) for m in STAND_IN.findall(first))
+    return sorted(set(found))
+
+
 def seat_name(name):
     """One seat for display and de-duplication: the first of the sorted seats `seat_names` finds."""
     seats = sorted(seat_names(name))
@@ -384,6 +402,11 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
             decision["reasons"].append(
                 f"{loose} commit(s) in base..head name no implementing seat (no Co-Authored-By trailer, no seat-named "
                 "branch), so git cannot show who wrote them and independence rests on the attestation's word alone")
+        stand_ins = stand_in_seats(pr.get("comments"))
+        if stand_ins:
+            decision["reasons"].append(
+                f"comment(s) on this PR say they were written in lieu of {', '.join(stand_ins)}: the seat that actually "
+                "worked on it is not named, so independence rests on the attestation's word alone")
         rows.append(
             {
                 "pr": pr["number"],
