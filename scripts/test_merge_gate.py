@@ -167,6 +167,7 @@ def good_facts(**kw):
         "accept_seats": ["mimo", "codex"], "covered": True, "threads_open": 0,
         "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
         "breaker_tripped": False, "trust": (5, 5), "category": "governance/*.md", "tier": ("B", ""),
+        "standing_changes_requested": False,
     }
     facts.update(kw)
     return facts
@@ -326,6 +327,65 @@ class TierClassification(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(lines[0].startswith("[blocked:"))
         self.assertIn("never assumed safe", why)
+
+
+class ChecklistReadsFactsStrictly(unittest.TestCase):
+    """A missing fact or one of the wrong type blocks its box; it never reads as fine. Probe: removing `tier`,
+    `standing_changes_requested` or `verdicts_missing_evidence` from an otherwise green facts dict still said would_merge,
+    and so did `threads_open=False`, `breaker_tripped=0`, `accept_seats=["a", "a"]` and `accept_seats="ab"`."""
+
+    def merges(self, **override):
+        facts = good_facts()
+        for key, value in override.items():
+            if value is MISSING:
+                del facts[key]
+            else:
+                facts[key] = value
+        return mg.checklist(facts)[1]
+
+    def test_the_green_facts_still_merge(self):
+        self.assertTrue(self.merges())
+
+    def test_a_missing_fact_blocks(self):
+        for key in ("tier", "standing_changes_requested", "verdicts_missing_evidence", "counted_verdicts", "threads_open",
+                    "breaker_tripped", "covered", "accept_seats", "revertible"):
+            self.assertFalse(self.merges(**{key: MISSING}), key)
+
+    def test_a_missing_tier_is_unclassified_not_tier_b(self):
+        facts = good_facts()
+        del facts["tier"]
+        lines, ok, first = mg.checklist(facts)
+        self.assertFalse(ok)
+        self.assertIn("tier fact missing or malformed", first)
+
+    def test_a_value_of_the_wrong_type_blocks(self):
+        for key, values in {
+            "threads_open": (False, 0.0, True, "0"),
+            "counted_verdicts": ("2", 2.5, True),
+            "breaker_tripped": (0, "", None, "false"),
+            "standing_changes_requested": (0, None, "no"),
+            "verdicts_missing_evidence": (None, 0, ""),
+            "covered": (1, "yes"),
+            "tier": ("B", ("B",), ("B", 1), None),
+        }.items():
+            for value in values:
+                try:
+                    merged = self.merges(**{key: value})
+                except Exception as error:  # a crash is also not a merge, but report it
+                    self.fail(f"{key}={value!r} raised {error!r}")
+                self.assertFalse(merged, f"{key}={value!r}")
+
+    def test_seats_must_be_two_distinct_non_empty_names_in_a_list(self):
+        for seats in (["a", "a"], ["", ""], ["x", " x "], "ab", ("claude", "codex"), ["claude", None], ["claude"]):
+            self.assertFalse(self.merges(accept_seats=seats), seats)
+        self.assertTrue(self.merges(accept_seats=["claude", "codex"]))
+
+    def test_json_style_lists_for_the_tier_are_accepted(self):
+        # facts read back from JSON hold lists, not tuples
+        self.assertTrue(self.merges(tier=["B", ""]))
+
+
+MISSING = object()
 
 
 if __name__ == "__main__":
