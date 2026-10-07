@@ -1,16 +1,18 @@
 //! Which seat a comment says it is from. Port of `collect_state.comment_seat` (vector family `attribution`).
 
-use crate::text::{splitlines, strip};
+use crate::text::{Lexicon, splitlines, strip};
 use regex::Regex;
 
 /// The compiled patterns, built once by the caller and passed in (no hidden global state).
 pub struct Attribution {
+    lexicon: Lexicon,
     in_text: Regex,
     seat_word: Regex,
     declared: Regex,
 }
 
-const DECLARED: &str = r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)";
+// Python's `\s` also counts the ASCII separators U+001C to U+001F, which Rust's does not.
+const DECLARED: &str = r"(?:Seat[\s\x1c-\x1f]*/[\s\x1c-\x1f]*agent|Reviewer(?:[\s\x1c-\x1f]*/[\s\x1c-\x1f]*Seat|[\s\x1c-\x1f]+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)";
 
 impl Attribution {
     /// # Errors
@@ -19,11 +21,14 @@ impl Attribution {
         // A seat name that opens a line, optionally after a markdown heading mark and the word "Independent",
         // is how the seats title their reviews.
         let in_text = format!(
-            r"(?im){DECLARED}|^\s*(?:#{{1,6}}\s*)?(?:Independent\s+)?(Claude|Codex|Gemini|Mimo|Antigravity)\b"
+            r"(?im){DECLARED}|^[\s\x1c-\x1f]*(?:#{{1,6}}[\s\x1c-\x1f]*)?(?:Independent[\s\x1c-\x1f]+)?(Claude|Codex|Gemini|Mimo|Antigravity)\b"
         );
         Ok(Self {
+            lexicon: Lexicon::new()?,
             in_text: Regex::new(&in_text)?,
-            seat_word: Regex::new(r"(?i)\b(Claude|Mimo|Codex|Gemini|Antigravity)\s+seat\b")?,
+            seat_word: Regex::new(
+                r"(?i)\b(Claude|Mimo|Codex|Gemini|Antigravity)[\s\x1c-\x1f]+seat\b",
+            )?,
             declared: Regex::new(&format!("(?i){DECLARED}"))?,
         })
     }
@@ -34,6 +39,8 @@ impl Attribution {
     /// the comment, so a mention of a seat further down a comment never attributes it.
     #[must_use]
     pub fn comment_seat(&self, body: &str, strict: bool) -> String {
+        let body = self.lexicon.pyfy(body);
+        let body = body.as_str();
         let found = if strict {
             let first = splitlines(body)
                 .into_iter()

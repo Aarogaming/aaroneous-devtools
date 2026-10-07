@@ -145,6 +145,15 @@ ATTRIBUTION = [
     {"body": "## Independent  Mimo review", "strict": False},
     {"body": "xGemini packet", "strict": True},
     {"body": "Geminis packet", "strict": True},
+    # Found by a differential run of the Rust port against this oracle (110,000 generated bodies): Python's \\s counts
+    # U+001C..U+001F, and its \\w does not count combining marks, joiners or connector punctuation but does count
+    # superscript digits.
+    {"body": "\r\x1fClaude)", "strict": False},
+    {"body": "\x1f\x1fSeat\x1f/\x1fagent: Codex", "strict": False},
+    {"body": "Claude\u0301\u200dCODEX", "strict": False},
+    {"body": "\u0345Gemini packet", "strict": True},
+    {"body": "\u00b2Gemini packet", "strict": True},
+    {"body": "\u24b6Mimo packet", "strict": True},
 ]
 
 HEADS = [
@@ -155,6 +164,11 @@ HEADS = [
     {"body": "head " + "C" * 40, "head": H},
     {"body": "no hash here", "head": H},
     {"body": f"head {H}", "head": ""},
+    {"body": "head cccccccc\u0301", "head": H},
+    {"body": "head cccccccc\u0e31", "head": H},
+    {"body": "head cccccccc\u203f", "head": H},
+    {"body": "head cccccccc\u00b2", "head": H},
+    {"body": "head \u00b2cccccccc", "head": H},
 ]
 
 
@@ -217,6 +231,9 @@ RECEIPTS = [
     {"name": "a receipt for a not_mergeable card is not read: the conflict is observable on GitHub",
      "snapshot": snapshot_for(7, [receipt("not_mergeable", 7, H, "Gemini seat: fixed"),
                                   receipt("not_mergeable", 7, H, "Claude seat: fixed")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a combining mark inside the attribution does not hide the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "x\u0301Gemini seat: ok")]),
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "the first eligible receipt names the seat",
      "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini seat: first"),

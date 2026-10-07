@@ -1,5 +1,36 @@
 //! Python string semantics the steward's rules rely on, so a port reads text the way the oracle does.
 
+use regex::Regex;
+
+/// Python's idea of a word character (`\w` in a `str` pattern: `str.isalnum()` or `_`) differs from the Rust regex
+/// crate's in both directions: Rust counts combining marks, connector punctuation and zero-width joiners as word
+/// characters (Python does not); Python counts other numbers such as superscripts (Rust does not). A differential run
+/// against the Python oracle found `\b` boundaries disagreeing on exactly these characters. The lexicon rewrites
+/// them before matching so that Rust's `\b` and `\w` see what Python sees: each is replaced by one character, so
+/// lengths in characters, and therefore `{0,6}`-style limits, are unchanged.
+pub struct Lexicon {
+    rust_only_word: Regex,
+    python_only_word: Regex,
+}
+
+impl Lexicon {
+    /// # Errors
+    /// Returns the regex error if a fixed pattern fails to compile (a build defect).
+    pub fn new() -> Result<Self, regex::Error> {
+        Ok(Self {
+            rust_only_word: Regex::new(r"[\w--[\p{L}\p{N}_]]")?,
+            python_only_word: Regex::new(r"[[\p{L}\p{N}]--\w]")?,
+        })
+    }
+
+    /// `text` with Rust-only word characters turned into `-` and Python-only word characters turned into `_`.
+    #[must_use]
+    pub fn pyfy(&self, text: &str) -> String {
+        let first = self.rust_only_word.replace_all(text, "-");
+        self.python_only_word.replace_all(&first, "_").into_owned()
+    }
+}
+
 /// `str.isspace()`: Unicode White_Space plus the four ASCII separator controls Python also counts (`\x1c`-`\x1f`).
 #[must_use]
 pub fn is_space(c: char) -> bool {

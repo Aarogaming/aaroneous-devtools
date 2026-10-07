@@ -8,7 +8,7 @@
 
 use crate::attribution::Attribution;
 use crate::rejected::Comment;
-use crate::text::{splitlines, strip};
+use crate::text::{Lexicon, splitlines, strip};
 use regex::Regex;
 use std::collections::BTreeMap;
 
@@ -30,6 +30,7 @@ pub struct Pr {
 }
 
 pub struct Receipts {
+    lexicon: Lexicon,
     attribution: Attribution,
     start: Regex,
     negative: Regex,
@@ -64,8 +65,9 @@ impl Receipts {
     /// Returns the regex error if a fixed pattern fails to compile (a build defect).
     pub fn new() -> Result<Self, regex::Error> {
         Ok(Self {
+            lexicon: Lexicon::new()?,
             attribution: Attribution::new()?,
-            start: Regex::new(r"(?i)\A\s*\[done:([a-z_]+):([0-9]+):([0-9a-f]{40})\]")?,
+            start: Regex::new(r"(?i)\A[\s\x1c-\x1f]*\[done:([a-z_]+):([0-9]+):([0-9a-f]{40})\]")?,
             negative: Regex::new(
                 r"(?i)\b(not done|not complete[d]?|blocked|could not|cannot|unable|failed)\b",
             )?,
@@ -108,10 +110,10 @@ impl Receipts {
                     .into_iter()
                     .find(|line| !strip(line).is_empty())
                     .unwrap_or("");
-                if self.negative.is_match(first) {
+                if self.negative.is_match(&self.lexicon.pyfy(first)) {
                     continue;
                 }
-                let lowered = comment.body.to_lowercase();
+                let lowered = self.lexicon.pyfy(&comment.body.to_lowercase());
                 let conflicting = self.hex40.find_iter(&lowered).any(|m| {
                     let token = m.as_str();
                     token != head && token.chars().take(8).eq(head.chars().take(8))

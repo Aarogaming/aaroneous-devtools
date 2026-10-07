@@ -110,5 +110,29 @@
   {
     "body": "Geminis packet",
     "strict": true
+  },
+  {
+    "body": "\r\u001fClaude)",
+    "strict": false
+  },
+  {
+    "body": "\u001f\u001fSeat\u001f/\u001fagent: Codex",
+    "strict": false
+  },
+  {
+    "body": "Claudé‍CODEX",
+    "strict": false
+  },
+  {
+    "body": "ͅGemini packet",
+    "strict": true
+  },
+  {
+    "body": "²Gemini packet",
+    "strict": true
+  },
+  {
+    "body": "ⒶMimo packet",
+    "strict": true
   }
 ]

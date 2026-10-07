@@ -412,6 +412,29 @@
         "claude"
       ]
     },
+    "name": "a combining mark inside the attribution does not hide the seat",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] x́Gemini seat: ok",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
     "name": "the first eligible receipt names the seat",
     "repair_owners": {},
     "snapshot": {

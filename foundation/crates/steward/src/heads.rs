@@ -1,6 +1,8 @@
 //! Does a comment cite a pull request's head? Port of `collect_state.cites_head` (vector family `heads`).
 
-/// Python's `\w` for a `str`: a letter or digit of any script, or an underscore.
+use crate::text::Lexicon;
+
+/// A word character once the text has been through [`Lexicon::pyfy`], where Rust's notion equals Python's.
 fn is_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
@@ -51,12 +53,12 @@ fn push_if_token<'a>(
 /// True when `body` cites `head`: a hex token of 8 to 40 characters that is a prefix of the full head. A 40-character
 /// token must equal the head, so a different head that shares the first eight characters is not mistaken for this one.
 #[must_use]
-pub fn cites_head(body: &str, head: &str) -> bool {
+pub fn cites_head(lexicon: &Lexicon, body: &str, head: &str) -> bool {
     let head = head.to_lowercase();
     if head.is_empty() {
         return false;
     }
-    let body = body.to_lowercase();
+    let body = lexicon.pyfy(&body.to_lowercase());
     hex_tokens(&body)
         .into_iter()
         .any(|token| head.starts_with(token))
@@ -64,7 +66,12 @@ pub fn cites_head(body: &str, head: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::cites_head;
+    use super::cites_head as cites;
+    use crate::text::Lexicon;
+
+    fn cites_head(body: &str, head: &str) -> bool {
+        Lexicon::new().is_ok_and(|lexicon| cites(&lexicon, body, head))
+    }
 
     const HEAD: &str = "cccccccccccccccccccccccccccccccccccccccc";
 
@@ -92,5 +99,9 @@ mod tests {
             !cites_head(&"c".repeat(42), HEAD),
             "a 42-character run is one over-long token"
         );
+        // Python's \w: a superscript digit is a word character, a combining mark is not.
+        assert!(!cites_head("cccccccc\u{b2}", HEAD));
+        assert!(cites_head("cccccccc\u{301}", HEAD));
+        assert!(cites_head("cccccccc\u{e31}", HEAD));
     }
 }

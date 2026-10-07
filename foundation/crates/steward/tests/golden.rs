@@ -81,6 +81,7 @@ fn check_seats() -> Result<(), String> {
 }
 
 fn check_heads() -> Result<(), String> {
+    let lexicon = steward::text::Lexicon::new().map_err(|e| e.to_string())?;
     let inputs = load("heads.in.json");
     let expected = load("heads.out.json");
     let actual: Vec<Value> = inputs
@@ -90,7 +91,7 @@ fn check_heads() -> Result<(), String> {
         .map(|case| {
             let body = case["body"].as_str().unwrap_or_default();
             let head = case["head"].as_str().unwrap_or_default();
-            json!(steward::heads::cites_head(body, head))
+            json!(steward::heads::cites_head(&lexicon, body, head))
         })
         .collect();
     compare(&Value::Array(actual), &expected)

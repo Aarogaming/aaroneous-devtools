@@ -160,7 +160,9 @@ class Golden(unittest.TestCase):
         self.assertEqual(out["attribution"][6], "")  # a bot footer is not a seat
         self.assertEqual(out["attribution"][7], "gemini")  # Antigravity is the Gemini seat
         # head citation
-        self.assertEqual(out["heads"], [True, False, True, False, True, False, False])
+        # the first seven pin prefix length, case and a different full head; the next five pin Python's word characters:
+        # a combining mark, a Thai vowel sign and connector punctuation do not join a token, a superscript digit does
+        self.assertEqual(out["heads"], [True, False, True, False, True, False, False, True, True, True, False, False])
         # rejected verdicts: history is not repaired, at most two per seat
         rejected = by_name("rejected")
         self.assertEqual(len(rejected["a legacy comment citing the current head goes back to its seat"]), 1)

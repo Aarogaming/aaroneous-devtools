@@ -3,6 +3,7 @@
 
 use crate::attribution::Attribution;
 use crate::heads::cites_head;
+use crate::text::Lexicon;
 use regex::Regex;
 
 pub const LEGACY_REASON: &str =
@@ -66,6 +67,7 @@ fn hex40_tokens<'a>(re: &Regex, text: &'a str) -> Vec<&'a str> {
 /// `Some(false)` or `None` for a failed lookup; only `Some(false)` flags, so a git failure never turns into an
 /// accusation. Without it nothing is flagged.
 fn phantom_head(
+    lexicon: &Lexicon,
     hex40: &Regex,
     body: &str,
     head: &str,
@@ -76,7 +78,7 @@ fn phantom_head(
     if head.is_empty() {
         return None;
     }
-    let body = body.to_lowercase();
+    let body = lexicon.pyfy(&body.to_lowercase());
     for token in hex40_tokens(hex40, &body) {
         let agree = token
             .chars()
@@ -91,6 +93,7 @@ fn phantom_head(
 }
 
 pub struct Rules {
+    lexicon: Lexicon,
     attribution: Attribution,
     hex40: Regex,
 }
@@ -100,6 +103,7 @@ impl Rules {
     /// Returns the regex error if a fixed pattern fails to compile (a build defect).
     pub fn new() -> Result<Self, regex::Error> {
         Ok(Self {
+            lexicon: Lexicon::new()?,
             attribution: Attribution::new()?,
             hex40: Regex::new(r"\b[0-9a-f]{40}\b")?,
         })
@@ -128,9 +132,14 @@ impl Rules {
             };
             let comment = &comments[index];
             let mut reason = reason;
-            if !cites_head(&comment.body, head) {
-                let Some(phantom) = phantom_head(&self.hex40, &comment.body, head, commit_exists)
-                else {
+            if !cites_head(&self.lexicon, &comment.body, head) {
+                let Some(phantom) = phantom_head(
+                    &self.lexicon,
+                    &self.hex40,
+                    &comment.body,
+                    head,
+                    commit_exists,
+                ) else {
                     return;
                 };
                 reason = format!(
