@@ -25,7 +25,7 @@ fn load(name: &str) -> Value {
 const SCENARIO_MARKER: &str = "(scenario)";
 
 /// Not ported yet. Remove an entry when its family is ported and listed in `check`.
-const PENDING: [&str; 12] = [
+const PENDING: [&str; 11] = [
     "audit",
     "chain",
     "coverage",
@@ -36,7 +36,6 @@ const PENDING: [&str; 12] = [
     "gate_threads",
     "gate_tier",
     "pushes",
-    "receipts",
     "stalls",
 ];
 /// The rule families that have a dedicated function in the Python steward (everything else is a scenario file).
@@ -64,6 +63,7 @@ fn check(family: &str) -> Option<Result<(), String>> {
         "heads" => Some(check_heads()),
         "attribution" => Some(check_attribution()),
         "rejected" => Some(check_rejected()),
+        "receipts" => Some(check_receipts()),
         _ => None,
     }
 }
@@ -153,6 +153,70 @@ fn check_rejected() -> Result<(), String> {
         ));
     }
     compare(&Value::Array(actual), &load("rejected.out.json"))
+}
+
+fn string_list(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn check_receipts() -> Result<(), String> {
+    use std::collections::BTreeMap;
+    use steward::receipts::{Pr, Receipts};
+    use steward::rejected::Comment;
+    let receipts = Receipts::new().map_err(|e| e.to_string())?;
+    let by_number = |value: &Value| -> BTreeMap<i64, Vec<String>> {
+        value
+            .as_object()
+            .map(|map| {
+                map.iter()
+                    .filter_map(|(k, v)| k.parse().ok().map(|n| (n, string_list(v))))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut actual = Vec::new();
+    for case in load("receipts.in.json")
+        .as_array()
+        .ok_or("receipts.in.json is not a list")?
+    {
+        let prs: Vec<Pr> = case["snapshot"]["prs"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|p| Pr {
+                        number: p["number"].as_i64().unwrap_or_default(),
+                        head: p["head"].as_str().unwrap_or_default().to_owned(),
+                        comments: p["comments"]
+                            .as_array()
+                            .map(|c| {
+                                c.iter()
+                                    .map(|c| Comment {
+                                        id: c["id"].as_i64(),
+                                        body: c["body"].as_str().unwrap_or_default().to_owned(),
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        implementers: string_list(&p["implementers"]),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let done = receipts.done_receipts(
+            &prs,
+            &by_number(&case["repair_owners"]),
+            &by_number(&case["implementers_by_pr"]),
+        );
+        actual.push(json!(done));
+    }
+    compare(&Value::Array(actual), &load("receipts.out.json"))
 }
 
 fn compare(actual: &Value, expected: &Value) -> Result<(), String> {

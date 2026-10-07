@@ -166,6 +166,29 @@
         "claude"
       ]
     },
+    "name": "a receipt whose PR number is written in non-ASCII digits does not count",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:٧:cccccccccccccccccccccccccccccccccccccccc] Claude seat: ok",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
     "name": "only the author completes thread fixes",
     "repair_owners": {},
     "snapshot": {
