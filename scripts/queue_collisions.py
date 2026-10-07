@@ -85,9 +85,20 @@ def collisions(by_pr):
     return found
 
 
+def collisions_by_base(by_base):
+    """``collisions`` run separately for each base branch ({base: {pr: {lane: [rows]}}}), each entry naming its base.
+
+    Only PRs aimed at the same base can compete: a stacked PR targets its predecessor's branch and intentionally
+    updates the lane that predecessor added, which is ordered by the stack and not a collision."""
+    found = []
+    for base in sorted(by_base):
+        found.extend(dict(entry, base=base) for entry in collisions(by_base[base]))
+    return found
+
+
 def live(repo):
-    """({pr: {lane: [rows]}}, [PRs whose queue patch could not be read]) from the GitHub files API."""
-    by_pr, unreadable = {}, []
+    """({base: {pr: {lane: [rows]}}}, [PRs whose queue patch could not be read]) from the GitHub files API."""
+    by_base, unreadable = {}, []
     for item in rc.gh_json(*rc.pr_list_args(repo)):
         files = rc.flatten_pages(rc.gh_json("api", f"repos/{repo}/pulls/{item['number']}/files", "--paginate", "--slurp"))
         touched = [f for f in files if f.get("filename") == QUEUE]
@@ -96,14 +107,15 @@ def live(repo):
         if any("patch" not in f for f in touched):
             unreadable.append(item["number"])
             continue
-        by_pr[item["number"]] = added_rows("\n".join(f["patch"] for f in touched))
-    return by_pr, sorted(unreadable)
+        rows = added_rows("\n".join(f["patch"] for f in touched))
+        by_base.setdefault(item.get("baseRefName", "?"), {})[item["number"]] = rows
+    return by_base, sorted(unreadable)
 
 
 def render(found, unreadable):
     lines = []
     for entry in found:
-        lines.append(f"{entry['lane']}: {len(entry['versions'])} different rows")
+        lines.append(f"{entry['lane']}: {len(entry['versions'])} different rows (PRs into {entry.get('base', '?')})")
         for version in entry["versions"]:
             lines.append("  " + ", ".join(f"#{n}" for n in version["prs"]) + f"  status={version['status']}")
     for pr in unreadable:
@@ -116,8 +128,8 @@ def main(argv):
     parser.add_argument("--repo", required=True)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
-    by_pr, unreadable = live(args.repo)
-    found = collisions(by_pr)
+    by_base, unreadable = live(args.repo)
+    found = collisions_by_base(by_base)
     if args.json:
         print(json.dumps({"collisions": found, "unreadable": unreadable}, indent=2))
     else:
