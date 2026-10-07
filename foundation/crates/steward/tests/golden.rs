@@ -25,7 +25,7 @@ fn load(name: &str) -> Value {
 const SCENARIO_MARKER: &str = "(scenario)";
 
 /// Not ported yet. Remove an entry when its family is ported and listed in `check`.
-const PENDING: [&str; 11] = [
+const PENDING: [&str; 9] = [
     "audit",
     "chain",
     "coverage",
@@ -35,8 +35,6 @@ const PENDING: [&str; 11] = [
     "gate_decide",
     "gate_threads",
     "gate_tier",
-    "pushes",
-    "stalls",
 ];
 /// The rule families that have a dedicated function in the Python steward (everything else is a scenario file).
 const RULE_FAMILIES: [&str; 15] = [
@@ -64,6 +62,8 @@ fn check(family: &str) -> Option<Result<(), String>> {
         "attribution" => Some(check_attribution()),
         "rejected" => Some(check_rejected()),
         "receipts" => Some(check_receipts()),
+        "stalls" => Some(check_stalls()),
+        "pushes" => Some(check_pushes()),
         _ => None,
     }
 }
@@ -154,6 +154,81 @@ fn check_rejected() -> Result<(), String> {
         ));
     }
     compare(&Value::Array(actual), &load("rejected.out.json"))
+}
+
+fn check_stalls() -> Result<(), String> {
+    use std::collections::BTreeMap;
+    use steward::engagement::{Event, attribution_weak, stalled_seats};
+    let counts = |value: &Value| -> BTreeMap<String, i64> {
+        value
+            .as_object()
+            .map(|map| {
+                map.iter()
+                    .map(|(k, v)| (k.clone(), v.as_i64().unwrap_or_default()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut actual = Vec::new();
+    for case in load("stalls.in.json")
+        .as_array()
+        .ok_or("stalls.in.json is not a list")?
+    {
+        let events: Vec<Event> = case["events"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|e| Event {
+                        kind: e["type"].as_str().unwrap_or_default().to_owned(),
+                        tick: e["data"]["tick"].as_i64(),
+                        agents: string_list(&e["data"]["agents"]),
+                        per_seat: counts(&e["data"]["per_seat"]),
+                        pushes: counts(&e["data"]["pushes"]),
+                        unattributed: e["data"]["unattributed"].as_i64().unwrap_or_default(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let stalled = stalled_seats(
+            &events,
+            &string_list(&case["agents"]),
+            case["stall_after"].as_i64().unwrap_or_default(),
+        );
+        let weak = attribution_weak(&events, case["window"].as_i64().unwrap_or_default(), 3);
+        actual.push(json!({"stalled": stalled, "attribution_weak": weak}));
+    }
+    compare(&Value::Array(actual), &load("stalls.out.json"))
+}
+
+fn check_pushes() -> Result<(), String> {
+    use std::collections::BTreeMap;
+    use steward::engagement::{PushPr, pushes};
+    let mut actual = Vec::new();
+    for case in load("pushes.in.json")
+        .as_array()
+        .ok_or("pushes.in.json is not a list")?
+    {
+        let prs: Vec<PushPr> = case["prs"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|p| PushPr {
+                        number: p["number"].as_i64().unwrap_or_default(),
+                        head: p["head"].as_str().unwrap_or_default().to_owned(),
+                        seat: p["seat"].as_str().unwrap_or_default().to_owned(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let previous: Option<BTreeMap<String, String>> = case["previous"].as_object().map(|map| {
+            map.iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_owned()))
+                .collect()
+        });
+        let (heads, credited) = pushes(&prs, previous.as_ref());
+        actual.push(json!({"heads": heads, "credited": credited}));
+    }
+    compare(&Value::Array(actual), &load("pushes.out.json"))
 }
 
 fn string_list(value: &Value) -> Vec<String> {

@@ -10,7 +10,7 @@ divergence is then pinned as a vector.
 
 import json, random, sys
 sys.path.insert(0, 'scripts')
-import collect_state as cs, review_coverage as rc
+import collect_state as cs, review_coverage as rc, steward_run as sr
 random.seed(int(sys.argv[2]))
 H = "c" * 40
 pieces = ["Seat / agent:", "Seat/agent", "Reviewer", "Reviewer / Seat", "Reviewer seat", "Claude", "claude", "CODEX", "Gemini", "Mimo", "Antigravity", "Qwen",
@@ -33,5 +33,35 @@ for _ in range(int(sys.argv[1])):
         "receipts": cs.done_receipts(snap, {7: owners}, {7: implementers}),
     }
     cases.append({"body": body, "implementers": implementers, "owners": owners, "out": out})
-json.dump(cases, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
-print(len(cases))
+AGENTS = ["claude", "mimo", "codex", "gemini"]
+def random_events():
+    events = []
+    for tick in range(random.randint(0, 6)):
+        if random.random() < 0.15:
+            tick = random.choice([tick, tick + 1])  # duplicate or skipped tick numbers
+        if random.random() < 0.8:
+            events.append({"type": "ingest", "data": {"tick": tick,
+                "per_seat": {a: random.choice([0, 0, 1, 3]) for a in AGENTS if random.random() < 0.4},
+                "pushes": {a: random.choice([0, 1, 2]) for a in AGENTS if random.random() < 0.3},
+                "unattributed": random.choice([0, 0, 1, 2, 5])}})
+        if random.random() < 0.9:
+            events.append({"type": "cards", "data": {"tick": tick, "agents": [a for a in AGENTS if random.random() < 0.8]}})
+        if random.random() < 0.1:
+            events.append({"type": "lease_grant", "data": {"tick": tick}})
+        if random.random() < 0.05:
+            events.append({"type": "ingest", "data": {"per_seat": {"claude": 1}}})  # no tick
+    return events
+stalls, push_cases = [], []
+for _ in range(int(sys.argv[1]) // 5):
+    events = random_events()
+    after, window = random.choice([-2, -1, 0, 1, 2, 3, 4, 9]), random.choice([-2, -1, 0, 1, 2, 3, 9])
+    stalls.append({"events": events, "agents": AGENTS, "stall_after": after, "window": window,
+                   "out": {"stalled": sr.stalled_seats(events, AGENTS, after),
+                           "weak": sr.attribution_weak([e for e in events if e["type"] == "ingest"], window)}})
+    prs = [{"number": n, "head": random.choice(["a" * 40, "b" * 40, "c" * 40, ""]),
+            "seat": random.choice(["claude", "Claude", "codex", "", "GEMINI"])} for n in random.sample(range(1, 9), random.randint(0, 5))]
+    previous = random.choice([None, {}, {str(n): random.choice(["a" * 40, "b" * 40]) for n in range(1, 9) if random.random() < 0.6}])
+    heads, credited = sr.pushes(prs, previous)
+    push_cases.append({"prs": prs, "previous": previous, "out": {"heads": heads, "credited": credited}})
+json.dump({"text": cases, "stalls": stalls, "pushes": push_cases}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
+print(len(cases), len(stalls), len(push_cases))

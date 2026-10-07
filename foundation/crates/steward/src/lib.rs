@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 pub mod attribution;
+pub mod engagement;
 pub mod heads;
 pub mod receipts;
 pub mod rejected;
