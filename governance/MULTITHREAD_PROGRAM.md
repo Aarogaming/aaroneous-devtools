@@ -85,6 +85,12 @@ A new lane needs a source, priority, exact scope, dependency, expected evidence,
 retirement decision. The worklist may contain future work; the coordination queue contains only
 work ready to own. No task enters the queue because it merely sounds useful.
 
+### Future intake candidates (unapproved, not ready to own)
+
+| Priority | ID | Bounded work / source | Dependency | Acceptance & Rollback |
+| --- | --- | --- | --- | --- |
+| P2 (proposed) | C102 | Design only: supported Windows/Linux operations server, common stage/stack contract, one canonical writer, topic case projection, client-owned short/long-term memory and bounded local operating loops. Intended output: `governance/proposals/SUPPORTED_OPERATIONS_SERVER.md`. Reconcile existing maintenance_ui, steward stages and PR #59. Source: Owner request for design-first evolution. | Ready authorization and acknowledged claim before design PR; PR #59 context | Acceptance: strict UTF-8/no-BOM/LF, additive diff, git diff --check, evidence checks with retained receipts. Rollback: if design is declined, retire this intake without deleting runtime evidence; documentation rollback restores prior worklist revision and never changes runtime deployment. |
+
 ## Review gates
 
 - Product code: native Aaroneous verification plus focused tests.
