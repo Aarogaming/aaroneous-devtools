@@ -63,6 +63,11 @@ class LaneRowFindings(unittest.TestCase):
         self.assertEqual(self.findings(grown), ([], []))
         self.assertEqual(self.findings(BASE_QUEUE.replace("| C2 | s |", "| C2 | longer scope |")), ([], []))
 
+    def test_an_escaped_pipe_in_a_cell_does_not_change_the_status(self):
+        row = "| C89 | profile = `kernel\\|control\\|tooling` | Ready | Unowned |"
+        self.assertEqual(cce.lane_rows(row), ({"C89": "Ready"}, []))
+        self.assertEqual(cce.split_cells("| a\\\\| b |"), ["", " a\\\\", " b ", ""])
+
     def test_an_unreadable_status_is_reported_not_crashed_on(self):
         failures, _ = self.findings(BASE_QUEUE.replace(ROW_CLAIMED + "\n", "| C2 |\n"))
         self.assertEqual(failures, [])

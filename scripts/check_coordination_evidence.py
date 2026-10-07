@@ -98,6 +98,28 @@ def check_prose_blocks(diff_lines: list[str]) -> list[str]:
 LANE_ROW = re.compile(r"^\|\s*(C\d+)\s*\|")
 
 
+def split_cells(row: str):
+    """The cells of a table row split the way GitHub renders it: a pipe written `\\|` stays inside its cell. The live C89 row
+    holds `kernel\\|control\\|tooling`; a plain split read its status as `control\\` (found with the Rust schedule-review,
+    which dropped the row)."""
+    cells, current, i = [], [], 0
+    while i < len(row):
+        char = row[i]
+        following = row[i + 1] if i + 1 < len(row) else ""
+        if char == "\\" and following in ("|", "\\"):
+            current.append("|" if following == "|" else "\\\\")
+            i += 2
+            continue
+        if char == "|":
+            cells.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        i += 1
+    cells.append("".join(current))
+    return cells
+
+
 def lane_rows(text: str):
     """({lane ID: status}, [IDs that appear more than once]) for the lane rows of a queue file. The status is the
     fourth `|`-separated field, exactly as the native parser reads it."""
@@ -106,7 +128,7 @@ def lane_rows(text: str):
         match = LANE_ROW.match(line)
         if not match:
             continue
-        lane, fields = match.group(1), line.split("|")
+        lane, fields = match.group(1), split_cells(line)
         if lane in rows:
             repeats.append(lane)
         rows[lane] = fields[3].strip() if len(fields) > 3 else ""
