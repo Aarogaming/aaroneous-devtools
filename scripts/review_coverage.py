@@ -211,16 +211,25 @@ def evaluate(head, merge_base, records, is_ancestor):
     }
 
 
+def read_identities(path):
+    """The identities file, validated: a file with a problem stops the tool with the problems listed (see
+    `attest_sig.validate_identities`)."""
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    problems = attest_sig.validate_identities(data)
+    if problems:
+        raise SystemExit(f"{path} is not a usable identities file:\n  " + "\n  ".join(problems))
+    return data
+
+
 def load_keys(path):
     """Return the raw identities data (seat -> logins/keys) for signature verification."""
-    with open(path, encoding="utf-8") as handle:
-        return json.load(handle)
+    return read_identities(path)
 
 
 def load_identities(path):
     """Return {login_lower: seat} from governance/identities.json ({"seats": {seat: [logins]}})."""
-    with open(path, encoding="utf-8") as handle:
-        data = json.load(handle)
+    data = read_identities(path)
     mapping = {}
     for seat, entry in data.get("seats", {}).items():
         logins = entry.get("logins", []) if isinstance(entry, dict) else entry
