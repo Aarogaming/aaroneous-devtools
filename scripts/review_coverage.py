@@ -28,6 +28,11 @@ import sys
 
 FENCE = re.compile(r"```attestation\s*\n(.*?)\n```", re.DOTALL)
 FULL_SHA = re.compile(r"\b[0-9a-f]{40}\b")
+# A prose verdict: the upper-case VERDICT label the old packets used, or the word "verdict" in any case followed within
+# a few words by an accept or reject word ("Independent Codex verdict: ACCEPT ..."). Without the second form a seat
+# that writes the label in lower case is invisible: not counted, not malformed, not legacy, so nobody tells it why.
+PROSE_VERDICT = re.compile(
+    r"\bVERDICT\b|(?i:\bverdict\b[^.\n]{0,40}?\b(?:accept(?:ed)?|reject(?:ed)?|approve[ds]?|changes[ _-]?requested|needs[ _-]?revision)\b)")
 ACCEPT = {"accept"}
 REJECT = {"changes_requested", "needs_revision"}
 REQUIRED = ("repo", "pr", "head", "base_sha", "scope", "reviewer", "implementers", "verdict")
@@ -69,7 +74,7 @@ def parse_attestations(comments):
                 continue
             record["comment"] = index
             structured.append(record)
-        if not found and re.search(r"\bVERDICT\b", body):
+        if not found and PROSE_VERDICT.search(body):
             legacy.append(
                 {
                     "comment": index,
@@ -191,12 +196,17 @@ def pr_list_args(repo):
 
 
 def gh_json(*args):
-    out = subprocess.run(["gh", *args], capture_output=True, text=True, check=True)
+    out = subprocess.run(
+        ["gh", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True
+    )
     return json.loads(out.stdout)
 
 
 def git(repo_dir, *args):
-    return subprocess.run(["git", "-C", repo_dir, *args], capture_output=True, text=True, check=False)
+    return subprocess.run(
+        ["git", "-C", repo_dir, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        check=False,
+    )
 
 
 def live_snapshot(repo, repo_dir):
