@@ -38,6 +38,23 @@ class Blocks(unittest.TestCase):
         self.assertEqual([b[2] for b in mf.blocks("```a\n1\n```\n\n\n```b\n2\n```")], [False, True])
         self.assertEqual([b[2] for b in mf.blocks("```a\n1\n```\ntext\n```b\n2\n```")], [False, False])
 
+    def test_a_fence_indented_four_spaces_at_the_root_is_indented_code_not_a_block(self):
+        # Codex P1 on #125: the first version accepted any indentation, so an indented example counted as posted.
+        self.assertEqual(mf.blocks("    ```a\n    x\n    ```"), [])
+        self.assertEqual(mf.blocks("\t```a\n\tx\n\t```"), [], "a tab is four columns")
+        self.assertEqual(mf.blocks("   ```a\n   x\n   ```"), [("a", "   x", False)], "up to three spaces is a fence")
+        self.assertEqual(mf.blocks("   ```a\nx\n    ```\n   ```"), [("a", "x\n    ```", False)],
+                         "a closer indented four spaces is content")
+
+    def test_a_fence_inside_a_list_item_counts_at_its_content_indent_and_not_four_spaces_past_it(self):
+        self.assertEqual(mf.blocks("- item\n  ```a\n  x\n  ```"), [("a", "  x", False)])
+        self.assertEqual(mf.blocks("1. item\n   ```a\n   x\n   ```"), [("a", "   x", False)])
+        self.assertEqual(mf.blocks("- item\n      ```a\n      x\n      ```"), [], "content indent 2 + 4 is indented code")
+        self.assertEqual(mf.blocks("- ```a\n  x\n  ```"), [("a", "  x", False)], "a fence may open on the marker line")
+        self.assertEqual(mf.blocks("- one\n  - two\n    ```a\n    x\n    ```"), [("a", "    x", False)])
+        self.assertEqual(mf.blocks("- item\n\nparagraph\n    ```a\n    x\n    ```"), [],
+                         "after the list ends the root rule applies again")
+
     def test_crlf_and_cr_line_endings_are_read_like_lf(self):
         self.assertEqual(mf.blocks("```a\r\nx\r\n```\r\n"), [("a", "x", False)])
         self.assertEqual(mf.blocks("```a\rx\r```"), [("a", "x", False)])

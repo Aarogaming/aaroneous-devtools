@@ -274,6 +274,16 @@ class NestedAttestations(unittest.TestCase):
             structured, problems, _ = self.parse(body)
             self.assertEqual((len(structured), problems), (1, []), body)
 
+    def test_an_indented_code_example_is_not_counted_even_with_a_signature_block_after_it(self):
+        # Codex P1 on #125: a four-space-indented fence renders as literal code; with a real top-level signature block
+        # next to it, the hidden example must not pair with it and satisfy the signature-required gate.
+        sig = "```attestation-sig\n-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n```"
+        body = "Example:\n\n    ```attestation\n    " + self.RECORD + "\n    ```\n\n" + sig
+        structured, problems, _ = self.parse(body)
+        self.assertEqual(structured, [])
+        self.assertEqual(len(problems), 1)
+        self.assertIn("not a posted verdict", problems[0]["problem"])
+
     def test_a_block_indented_inside_a_list_item_counts(self):
         # The old pattern needed the closing fence at the start of a line, so a verdict whose fence sat inside a list
         # item (closer indented with the opener) was dropped with no count and no problem.

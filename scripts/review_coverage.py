@@ -35,7 +35,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import attest_sig  # noqa: E402
 import markdown_fences  # noqa: E402
 
-FENCE = re.compile(r"```attestation\s*\n(.*?)\n```", re.DOTALL)
+# Where a record could be written, however it is nested or indented: used to name a complete record that
+# markdown_fences does not show as a posted block (inside an example, an HTML comment or indented code).
+FENCE = re.compile(r"```attestation\s*\n(.*?)\n[ \t]*```", re.DOTALL)
 FULL_SHA = re.compile(r"\b[0-9a-f]{40}\b")
 # Any fenced block, with its info string. Only a fence labelled ``attestation`` is read; a complete attestation record in
 # a differently labelled fence (```json is what seats reach for) is reported by name instead of vanishing.
