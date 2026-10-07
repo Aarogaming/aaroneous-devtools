@@ -95,6 +95,50 @@ def check_prose_blocks(diff_lines: list[str]) -> list[str]:
     return offenders
 
 
+LANE_ROW = re.compile(r"^\|\s*(C\d+)\s*\|")
+
+
+def lane_rows(text: str):
+    """({lane ID: status}, [IDs that appear more than once]) for the lane rows of a queue file. The status is the
+    fourth `|`-separated field, exactly as the native parser reads it."""
+    rows, repeats = {}, []
+    for line in text.splitlines():
+        match = LANE_ROW.match(line)
+        if not match:
+            continue
+        lane, fields = match.group(1), line.split("|")
+        if lane in rows:
+            repeats.append(lane)
+        rows[lane] = fields[3].strip() if len(fields) > 3 else ""
+    return rows, repeats
+
+
+def lane_row_findings(base_text: str, head_text: str):
+    """(failures, warnings) for what a change does to existing lanes. This check only looked at ADDED lines, so a PR
+    could delete a Claimed lane, add a second row with an existing ID, or turn a Done row back into Ready and pass
+    (probe on main: all three exit 0). Failures: a lane ID that appears more than once at the head and did not at the
+    base; a removed lane that was not Done (a live lane lost); a Done lane whose status changed. Warning: a removed Done
+    lane (retiring finished work to an archive is legitimate but should be a visible decision)."""
+    base, base_repeats = lane_rows(base_text)
+    head, head_repeats = lane_rows(head_text)
+    failures, warnings = [], []
+    for lane in sorted(set(head_repeats) - set(base_repeats)):
+        failures.append(f"{lane}: lane ID appears more than once")
+    for lane, status in sorted(base.items()):
+        if lane not in head:
+            (warnings if status == "Done" else failures).append(f"{lane}: row removed (it was {status or 'status unreadable'})")
+        elif status == "Done" and head[lane] != "Done":
+            failures.append(f"{lane}: Done row changed to {head[lane] or 'status unreadable'}")
+    return failures, warnings
+
+
+def show(ref: str):
+    """The queue file at a ref, or None when it does not exist there."""
+    result = subprocess.run(["git", "show", f"{ref}:{TARGET_FILE}"], capture_output=True, text=True, encoding="utf-8",
+                            errors="replace")
+    return result.stdout if result.returncode == 0 else None
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print("usage: check_coordination_evidence.py <base-ref> <head-ref>", file=sys.stderr)
@@ -108,6 +152,20 @@ def main() -> int:
 
     diff_lines = diff.splitlines()
     offenders = check_table_rows(diff_lines) + check_prose_blocks(diff_lines)
+
+    merge_base = subprocess.run(["git", "merge-base", base, head], capture_output=True, text=True).stdout.strip()
+    base_text, head_text = (show(merge_base) if merge_base else None), show(head)
+    lane_failures, lane_warnings = ([], []) if base_text is None or head_text is None else lane_row_findings(
+        base_text, head_text)
+    for warning in lane_warnings:
+        print(f"WARNING (not a failure): {warning}", file=sys.stderr)
+    if lane_failures:
+        print(f"Lane-row check failed: this change damages existing lanes in {TARGET_FILE}:\n")
+        for failure in lane_failures:
+            print(f"  {failure}")
+        print("\nRestore the row (or change its status through the normal Ready, Claimed, Review, Done order), or move a "
+              "Done row to an archive file in the same change.")
+        return 1
 
     for row in review_rows_without_contribution_id(diff_lines):
         print(
