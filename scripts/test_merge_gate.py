@@ -166,7 +166,7 @@ def good_facts(**kw):
         "ci": {"state": "success", "detail": "2 checks: SUCCESS"}, "trial_merge_ok": True,
         "accept_seats": ["mimo", "codex"], "covered": True, "threads_open": 0,
         "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
-        "breaker_tripped": False, "trust": (5, 5), "category": "governance/*.md", "tier": ("B", ""),
+        "breaker_tripped": False, "category": "governance/*.md", "tier": ("B", ""),
     }
     facts.update(kw)
     return facts
@@ -221,7 +221,6 @@ class Checklist(unittest.TestCase):
             "5": {"verdicts_missing_evidence": [4]},
             "6": {"revertible": False},
             "7": {"breaker_tripped": True},
-            "8": {"trust": (2, 5)},
         }
         for box_no, change in cases.items():
             lines, ok, first = mg.checklist(good_facts(**change))

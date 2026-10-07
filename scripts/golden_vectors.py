@@ -397,7 +397,7 @@ GATE_GREEN = {
     "head": "h" * 40, "ci": {"state": "success", "detail": "3 checks: SUCCESS"}, "trial_merge_ok": True, "base_ref": "main",
     "default_branch": "main", "base_tip": "t" * 40, "accept_seats": ["codex", "gemini"], "covered": True, "threads_open": 0,
     "standing_changes_requested": False, "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
-    "breaker_tripped": False, "trust": [5, 5], "category": "scripts/*.py", "tier": ["B", ""],
+    "breaker_tripped": False, "category": "scripts/*.py", "tier": ["B", ""],
 }
 GATE_CHECKLIST = [
     {"name": "every box green would merge", "override": {}},
@@ -416,8 +416,6 @@ GATE_CHECKLIST = [
     {"name": "an unclassified revertibility is blocked", "override": {"revertible": None}},
     {"name": "a tripped breaker blocks", "override": {"breaker_tripped": True}},
     {"name": "an unreadable breaker is blocked", "override": {"breaker_tripped": None}},
-    {"name": "trust below the threshold blocks", "override": {"trust": [4, 5]}},
-    {"name": "no trust counter fails", "override": {"trust": None}},
     {"name": "tier A is owner-only", "override": {"tier": ["A", "touches owner-only paths: ['AGENTS.md']"]}},
     {"name": "an unclassified tier is blocked", "override": {"tier": ["unclassified", "unrecognised paths"]}},
 ]

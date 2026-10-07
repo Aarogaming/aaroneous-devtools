@@ -18,8 +18,11 @@ Conditions (mirroring the routine's step 3, with local equivalents):
 
 The default output path runs gather_facts() + checklist() for every PR and reconciles both
 verdicts through reconcile(): decide()'s reasons (a/b/d/f) are necessary, the checklist (CI state,
-unresolved threads, circuit breaker, trust threshold, tier) is sufficient, and neither alone can
+unresolved threads, circuit breaker, tier) is sufficient, and neither alone can
 print an eligibility verdict. --run-checks remains the extra local-gate layer (condition c) on top.
+
+Trust-building (a per-category clean-merge counter) was dropped by owner decision 2026-10-07;
+see governance/RECURSIVE_AUDIT_CADENCE.md for the periodic-audit mechanism that replaced it.
 
 Usage:
   merge_gate.py --repo OWNER/NAME --repo-dir CLONE --identities governance/identities.json [--pr N]
@@ -68,9 +71,6 @@ def gate_plan(paths):
     """Path-based plan: only an allowlist of docs/ledger paths runs the light gate; all else is full."""
     docs_only = bool(paths) and all(p.endswith((".md", ".json")) and p.startswith(DOCS_ALLOWLIST) for p in paths)
     return {"level": "light" if docs_only else "full", "commands": LIGHT_GATE if docs_only else FULL_GATE}
-
-
-TRUST_NEEDED = 5
 
 
 SAFE_FAMILIES = (
@@ -145,9 +145,6 @@ def checklist(facts):
          "needs a human classification"),
         ("7", None if facts.get("breaker_tripped") is None else not facts["breaker_tripped"],
          "circuit_breaker_override.toml: tripped = false", "", "circuit breaker file not found or unparseable (fail closed)"),
-        ("8", False if facts.get("trust") is None else facts["trust"][0] >= facts["trust"][1],
-         f"Category {facts.get('category', '?')} has cleared trust-building threshold",
-         f"{(facts.get('trust') or (0, TRUST_NEEDED))[0]}/{(facts.get('trust') or (0, TRUST_NEEDED))[1]}", ""),
     ]
     tier, why = facts.get("tier", ("B", ""))
     # B: eligible box; A: unchecked box; unclassified: [blocked: …] (never assumed safe)
@@ -166,8 +163,8 @@ def reconcile(decide_ok, facts):
 
     Returns (lines, eligible, first_blocker). eligible is True only when decide() said eligible
     AND every checklist box (tier, CI, conflict, base, accepts, threads, evidence, revertible,
-    breaker, trust) is green — so the default path can never print ELIGIBLE with red CI, open
-    threads, a tripped breaker or an untrusted category, which checklist() would block."""
+    breaker) is green — so the default path can never print ELIGIBLE with red CI, open
+    threads, or a tripped breaker, which checklist() would block."""
     lines, would_merge, first = checklist(facts)
     return lines, bool(decide_ok) and would_merge, first
 
@@ -283,7 +280,7 @@ def print_checklists(args):
 
 
 def category_of(paths):
-    """A coarse file-pattern category for the trust counter, e.g. governance/*.md."""
+    """A coarse file-pattern category for reporting, e.g. governance/*.md."""
     if not paths:
         return "?"
     dirs = {os.path.dirname(p) or "." for p in paths}
@@ -323,7 +320,7 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
         "trial_merge_ok": trial_ok, "covered": row["covered"], "accept_seats": row["accept_seats"],
         "counted_verdicts": row["counted_verdicts"], "verdicts_missing_evidence": row["verdicts_missing_evidence"],
         "standing_changes_requested": any("changes_requested" in r or "needs_revision" in r for r in row["reasons"]),
-        "tier": tier_of(paths), "category": category_of(paths), "trust": None,
+        "tier": tier_of(paths), "category": category_of(paths),
         "breaker_tripped": None, "threads_open": None, "ci": None,
     }
     tip = rc.git(repo_dir, "rev-parse", f"origin/{pr['base']}").stdout.strip()

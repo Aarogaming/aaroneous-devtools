@@ -108,21 +108,6 @@
       }
     },
     {
-      "name": "trust below the threshold blocks",
-      "override": {
-        "trust": [
-          4,
-          5
-        ]
-      }
-    },
-    {
-      "name": "no trust counter fails",
-      "override": {
-        "trust": null
-      }
-    },
-    {
       "name": "tier A is owner-only",
       "override": {
         "tier": [
@@ -166,10 +151,6 @@
       ""
     ],
     "trial_merge_ok": true,
-    "trust": [
-      5,
-      5
-    ],
     "verdicts_missing_evidence": []
   }
 }

@@ -106,7 +106,6 @@ class Golden(unittest.TestCase):
         self.assertEqual(checklist["one accept seat is not enough"]["first_blocker"], "3")
         self.assertEqual(checklist["an open thread blocks"]["first_blocker"], "4")
         self.assertEqual(checklist["a tripped breaker blocks"]["first_blocker"], "7")
-        self.assertEqual(checklist["trust below the threshold blocks"]["first_blocker"], "8")
         self.assertTrue(checklist["tier A is owner-only"]["first_blocker"].startswith("0"))
         tier = named("gate_tier")
         self.assertEqual(tier["AGENTS.md is owner-only"]["tier"][0], "A")
