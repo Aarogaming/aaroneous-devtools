@@ -17,7 +17,7 @@ import review_coverage as rc  # noqa: E402
 import steward_run as sr  # noqa: E402
 
 DIR = gv.DIR
-RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "pushes", "coverage", "audit",
+RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "pushes", "seats", "coverage", "audit",
                  "gate_tier", "gate_ci", "gate_breaker", "gate_threads", "gate_checklist", "gate_decide")
 
 
@@ -56,6 +56,8 @@ class Golden(unittest.TestCase):
         pushes = load("pushes.in.json")
         self.assertEqual([dict(zip(("heads", "credited"), sr.pushes(c["prs"], c["previous"]))) for c in pushes],
                          load("pushes.out.json"))
+        seats = load("seats.in.json")
+        self.assertEqual([sorted(rc.seat_names(s)) for s in seats], load("seats.out.json"))
         coverage = load("coverage.in.json")
         results = []
         for c in coverage:
@@ -179,8 +181,21 @@ class Golden(unittest.TestCase):
         self.assertTrue(stalls["unattributed comments make attribution weak"]["attribution_weak"])
         self.assertFalse(stalls["exactly half attributed is not weak"]["attribution_weak"])
         self.assertFalse(stalls["fewer than three comments is never weak"]["attribution_weak"])
+        # seat names: a spelling is a seat, a string may name several, an unknown one keeps its first token
+        named = dict(zip(load("seats.in.json"), load("seats.out.json")))
+        self.assertEqual(named["Gemini/Antigravity"], ["gemini"])
+        self.assertEqual(named["Claude, Mimo"], ["claude", "mimo"])
+        self.assertEqual(named["gemini-3.8-flash"], ["gemini"])
+        self.assertEqual(named["someone else"], ["someone"])
+        self.assertEqual(named["!!!"], [])
         # coverage
         coverage = by_name("coverage")
+        for refused in ("the same seat in another case or alias cannot accept its own work",
+                        "an implementer named by model id is still that seat",
+                        "one implementer string may name two seats and neither can accept"):
+            self.assertFalse(coverage[refused]["covered"], refused)
+        self.assertTrue(coverage["a third seat still covers when an implementer string names two others"]["covered"])
+        self.assertEqual(coverage["one seat spelled three ways is one accepting seat"]["accept_seats"], ["gemini"])
         for covered in ("a whole accept at the head covers", "a delta chained from a whole accept covers",
                         "two chained deltas cover"):
             self.assertTrue(coverage[covered]["covered"], covered)
