@@ -50,6 +50,70 @@ class DiffCheckCommand(unittest.TestCase):
         self.assertEqual(returncode, 0)
 
 
+class RefreshRefs(unittest.TestCase):
+    """refresh_refs against real throwaway repositories: a stale clone gets the branches and PR heads it was missing."""
+
+    def setUp(self):
+        import shutil
+        import subprocess
+        import tempfile
+        self.root = tempfile.mkdtemp(prefix="merge-gate-fetch-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.subprocess = subprocess
+        self.remote = os.path.join(self.root, "remote.git")
+        self.work = os.path.join(self.root, "work")
+        self.clone = os.path.join(self.root, "clone")
+        self.git(self.root, "init", "-q", "--bare", "-b", "main", self.remote)
+        self.git(self.root, "init", "-q", "-b", "main", self.work)
+        self.commit(self.work, "base.txt", "base\n", "base")
+        self.git(self.work, "remote", "add", "origin", self.remote)
+        self.git(self.work, "push", "-q", "origin", "main")
+        self.git(self.root, "clone", "-q", self.remote, self.clone)
+
+    def git(self, directory, *args):
+        result = self.subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", directory, *args],
+                                     capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def commit(self, directory, name, text, message):
+        with open(os.path.join(directory, name), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        self.git(directory, "add", ".")
+        self.git(directory, "commit", "-q", "-m", message)
+        return self.git(directory, "rev-parse", "HEAD")
+
+    def test_a_stale_clone_gets_the_new_base_tip_and_the_pr_head(self):
+        new_main = self.commit(self.work, "later.txt", "later\n", "main moves")
+        self.git(self.work, "push", "-q", "origin", "main")
+        self.git(self.work, "checkout", "-q", "-b", "feature")
+        head = self.commit(self.work, "pr.txt", "pr\n", "the PR")
+        self.git(self.work, "push", "-q", "origin", "feature:refs/pull/7/head")
+        self.assertEqual(mg.missing_heads(self.clone, [{"number": 7, "head": head}]), [7], "stale: the head is absent")
+        self.assertNotEqual(self.git(self.clone, "rev-parse", "origin/main"), new_main)
+        ok, message = mg.refresh_refs(self.clone)
+        self.assertTrue(ok, message)
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin/main"), new_main)
+        self.assertEqual(mg.missing_heads(self.clone, [{"number": 7, "head": head}]), [])
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin/pr/7"), head)
+
+    def test_a_deleted_remote_branch_is_pruned(self):
+        self.git(self.work, "push", "-q", "origin", "main:refs/heads/gone")
+        ok, _ = mg.refresh_refs(self.clone)
+        self.assertTrue(ok)
+        self.assertNotEqual(self.git(self.clone, "branch", "-r", "--list", "origin/gone"), "")
+        self.git(self.work, "push", "-q", "origin", ":gone")
+        ok, _ = mg.refresh_refs(self.clone)
+        self.assertTrue(ok)
+        self.assertEqual(self.git(self.clone, "branch", "-r", "--list", "origin/gone"), "")
+
+    def test_a_failed_fetch_is_reported_not_swallowed(self):
+        self.git(self.clone, "remote", "set-url", "origin", os.path.join(self.root, "does-not-exist.git"))
+        ok, message = mg.refresh_refs(self.clone)
+        self.assertFalse(ok)
+        self.assertTrue(message)
+
+
 class ChangedPaths(unittest.TestCase):
     """changed_paths against a real throwaway repository: the protected path must survive a rename."""
 
