@@ -126,30 +126,52 @@ def checklist(facts):
     like an unchecked box; nothing is rounded up to green."""
     head = facts["head"][:12]
     ci = facts.get("ci") or {"state": "missing", "detail": "no CI status found"}
-    seats = facts.get("accept_seats", [])
-    missing_evidence = facts.get("verdicts_missing_evidence", [])
-    counted = facts.get("counted_verdicts", 0)
+    # Every fact is read strictly: a missing key or a value of the wrong type blocks its box, it never reads as "fine".
+    # Probe (scout/skeptic tick): with the old defaults a facts dict without `tier` was Tier B, without
+    # `standing_changes_requested` had no standing rejection, without `verdicts_missing_evidence` had complete
+    # evidence, and `threads_open=False`, `breaker_tripped=0`, `accept_seats=["a", "a"]` or `"ab"` all passed.
+    raw_seats = facts.get("accept_seats")
+    seats_known = isinstance(raw_seats, list) and all(isinstance(s, str) for s in raw_seats)
+    seats = raw_seats if seats_known else []
+    distinct_seats = {s.strip() for s in seats if s.strip()}
+    covered_fact = facts.get("covered")
+    missing_evidence = facts.get("verdicts_missing_evidence")
+    counted = facts.get("counted_verdicts")
+    threads_open = facts.get("threads_open")
+    standing = facts.get("standing_changes_requested")
+    tripped = facts.get("breaker_tripped")
+
+    def is_count(value):
+        return isinstance(value, int) and not isinstance(value, bool)
     checks = [
         ("1", None if ci["state"] == "missing" else ci["state"] == "success",
          f"CI green on head {head}", ci.get("detail", ""), ci.get("detail") or "no CI status found"),
         ("2", facts["trial_merge_ok"], f"No merge conflict vs. {facts['base_ref']} tip {facts.get('base_tip', '?')[:12]}", "", ""),
         ("2a", facts["base_ref"] == facts["default_branch"], "Base branch is the repository default branch",
          f"base={facts['base_ref']}", ""),
-        ("3", len(seats) >= 2 and facts.get("covered", False),
-         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}", "", ""),
-        ("4", None if facts.get("threads_open") is None else facts["threads_open"] == 0 and not facts.get("standing_changes_requested", False),
-         "Zero open blocking threads", f"count checked: {facts.get('threads_open')}", "thread count unavailable"),
-        ("5", counted > 0 and not missing_evidence, "Each counted verdict cites command + exit code",
-         f"verdicts missing evidence: {missing_evidence}" if missing_evidence else f"counted: {counted}", ""),
+        ("3", None if not seats_known or not isinstance(covered_fact, bool) else len(distinct_seats) >= 2 and covered_fact,
+         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}", "",
+         "accepting seats or coverage unavailable"),
+        ("4", None if not is_count(threads_open) or not isinstance(standing, bool) else threads_open == 0 and not standing,
+         "Zero open blocking threads", f"count checked: {threads_open}",
+         "thread count unavailable" if not is_count(threads_open) else "standing-rejection status unavailable"),
+        ("5", None if not is_count(counted) or not isinstance(missing_evidence, list) else counted > 0 and not missing_evidence,
+         "Each counted verdict cites command + exit code",
+         f"verdicts missing evidence: {missing_evidence}" if missing_evidence else f"counted: {counted}",
+         "verdict evidence facts unavailable"),
         ("6", facts.get("revertible"), "Revertible via plain `git revert` (no migration/external side effect)", "",
          "needs a human classification"),
-        ("7", None if facts.get("breaker_tripped") is None else not facts["breaker_tripped"],
+        ("7", None if not isinstance(tripped, bool) else not tripped,
          "circuit_breaker_override.toml: tripped = false", "", "circuit breaker file not found or unparseable (fail closed)"),
         ("8", False if facts.get("trust") is None else facts["trust"][0] >= facts["trust"][1],
          f"Category {facts.get('category', '?')} has cleared trust-building threshold",
          f"{(facts.get('trust') or (0, TRUST_NEEDED))[0]}/{(facts.get('trust') or (0, TRUST_NEEDED))[1]}", ""),
     ]
-    tier, why = facts.get("tier", ("B", ""))
+    raw_tier = facts.get("tier")
+    if isinstance(raw_tier, (tuple, list)) and len(raw_tier) == 2 and all(isinstance(x, str) for x in raw_tier):
+        tier, why = raw_tier
+    else:
+        tier, why = "unclassified", "tier fact missing or malformed"
     # B: eligible box; A: unchecked box; unclassified: [blocked: …] (never assumed safe)
     tier_mark = True if tier == "B" else (False if tier == "A" else None)
     lines = [box(tier_mark, f"0. Tier B (auto-merge eligible)", why)]
