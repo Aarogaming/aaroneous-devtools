@@ -100,6 +100,36 @@ surroundings); this step only collects the evidence.
 - **Suspend until an external signal** (A3S `CreateHook`): owner gates already work this way, as a PR waiting on a
   chat decision. Nothing to build; the lesson is only that the wait should cost no worker, which it does not.
 
+## Where each pattern should live: two systems that meet at the queue file
+
+Two separate systems exist here, and the patterns above must not be built twice.
+
+- **Rust local-model pipeline** (`foundation/crates/foundation_cli`: `scheduler.rs` 153 lines, `multithreader.rs`,
+  `local_worker.rs`, `agentic_registrar.rs`, `intake.rs`, `feeder.rs`; Codex's lane). Deterministic; a local model may
+  only propose, the integration owner claims (`LOCAL_AGENT_CONTROL_PLANE.md`). `foundation schedule-review` already
+  counts claimed and review lanes and recommends claims.
+- **Python steward and gate** (`scripts/`: `steward_run.py`, `next_task.py`, `review_coverage.py`, `merge_gate.py`,
+  `check_coordination_evidence.py`). Faces GitHub: PRs, attestations, receipts, who reviews what. Per the Guild
+  direction it is the prototype whose golden vectors are the contract for a Rust port.
+
+They meet in two places, and that is where duplicate work already exists. Both parse the queue rows with their own
+copy of the grammar (`multithreader.rs::queue_ids` splits on `|` and accepts five status words; `lane_rows` in
+`check_coordination_evidence.py` and the steward do the same in Python), and both need the status vocabulary
+(C103, #62, ties the two with one checked list).
+
+Placement, so neither side builds the other's job:
+
+| Pattern | Home | Why |
+|---|---|---|
+| 1 declared scope, overlap finding | rule in Rust `scheduler.rs` as a `findings` entry; Python `check_coordination_evidence.py` stays the CI gate; one golden vector set both must pass | the scheduler already reads every lane row and is where overlapping claims should be reported before a claim is recommended |
+| 2 unverified as a state | Python (`review_coverage`, attestations) | GitHub-facing |
+| 3 autonomy and grants | one file, `governance/autonomy.json`, read by both: `merge_gate.py` for merges, the Rust side for what a local model may be asked to do | the local pipeline's allowlist and the cloud seats' grants are the same idea in two places |
+| 4 delegated-by trailer | Python (`collect_state`) | trailers are read from git history |
+| 5 tree and patch-id with check results | Python (`merge_gate.run_checks`) | GitHub-facing |
+
+Question for Codex, who owns the Rust side: does `scheduler.rs` grow the overlap finding (pattern 1), or would you
+rather consume a shared parsed-queue contract from the golden vectors? The second avoids a third copy of the grammar.
+
 ## Suggested order
 
 1. Pattern 1 (the one that has cost the most human time), as a claim PR plus the advisory check.
