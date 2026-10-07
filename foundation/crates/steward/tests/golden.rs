@@ -25,8 +25,7 @@ fn load(name: &str) -> Value {
 const SCENARIO_MARKER: &str = "(scenario)";
 
 /// Not ported yet. Remove an entry when its family is ported and listed in `check`.
-const PENDING: [&str; 14] = [
-    "attribution",
+const PENDING: [&str; 12] = [
     "audit",
     "chain",
     "coverage",
@@ -38,7 +37,6 @@ const PENDING: [&str; 14] = [
     "gate_tier",
     "pushes",
     "receipts",
-    "rejected",
     "stalls",
 ];
 /// The rule families that have a dedicated function in the Python steward (everything else is a scenario file).
@@ -64,6 +62,8 @@ fn check(family: &str) -> Option<Result<(), String>> {
     match family {
         "seats" => Some(check_seats()),
         "heads" => Some(check_heads()),
+        "attribution" => Some(check_attribution()),
+        "rejected" => Some(check_rejected()),
         _ => None,
     }
 }
@@ -94,6 +94,65 @@ fn check_heads() -> Result<(), String> {
         })
         .collect();
     compare(&Value::Array(actual), &expected)
+}
+
+fn check_attribution() -> Result<(), String> {
+    let attribution = steward::attribution::Attribution::new().map_err(|e| e.to_string())?;
+    let inputs = load("attribution.in.json");
+    let actual: Vec<Value> = inputs
+        .as_array()
+        .ok_or("attribution.in.json is not a list")?
+        .iter()
+        .map(|case| {
+            let body = case["body"].as_str().unwrap_or_default();
+            json!(attribution.comment_seat(body, case["strict"].as_bool().unwrap_or(false)))
+        })
+        .collect();
+    compare(&Value::Array(actual), &load("attribution.out.json"))
+}
+
+fn check_rejected() -> Result<(), String> {
+    use steward::rejected::{Comment, Malformed, Rules};
+    let rules = Rules::new().map_err(|e| e.to_string())?;
+    let inputs = load("rejected.in.json");
+    let mut actual = Vec::new();
+    for case in inputs.as_array().ok_or("rejected.in.json is not a list")? {
+        let comments: Vec<Comment> = case["pr"]["comments"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|c| Comment {
+                        id: c["id"].as_i64(),
+                        body: c["body"].as_str().unwrap_or_default().to_owned(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let head = case["pr"]["head"].as_str().unwrap_or_default();
+        let malformed: Vec<Malformed> = case["row"]["malformed"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .filter(|p| p.get("comment").is_some())
+                    .map(|p| Malformed {
+                        comment: p["comment"].as_i64(),
+                        problem: p["problem"].as_str().unwrap_or_default().to_owned(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let legacy: Vec<Option<i64>> = case["row"]["legacy"]
+            .as_array()
+            .map(|list| list.iter().map(|p| p["comment"].as_i64()).collect())
+            .unwrap_or_default();
+        let kept = rules.rejected_verdicts(&comments, head, &malformed, &legacy, None);
+        actual.push(Value::Array(
+            kept.iter()
+                .map(|r| json!({"comment_id": r.comment_id, "seat": r.seat, "reason": r.reason}))
+                .collect(),
+        ));
+    }
+    compare(&Value::Array(actual), &load("rejected.out.json"))
 }
 
 fn compare(actual: &Value, expected: &Value) -> Result<(), String> {

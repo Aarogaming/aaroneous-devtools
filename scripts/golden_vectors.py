@@ -131,6 +131,20 @@ ATTRIBUTION = [
     {"body": "### Codex bounded independent review: verification incomplete", "strict": True},
     {"body": "Independent review by Codex", "strict": True},
     {"body": "### Independent review", "strict": True},
+    {"body": "\r\n\r\nCodex whole-diff packet\r\nmore", "strict": True},
+    {"body": "   \n\u2028\n  \t Gemini packet\n", "strict": True},
+    {"body": "\x1f\x1f\nMimo packet", "strict": True},
+    {"body": "first line names nobody\u2028Claude seat: done", "strict": True},
+    {"body": "Reviewer: CODEX (gpt)", "strict": False},
+    {"body": "Reviewer seat - Gemini", "strict": False},
+    {"body": "Reviewer / Seat \u2014 Antigravity", "strict": False},
+    {"body": "see the note\nSeat/agent:Claude", "strict": True},
+    {"body": "SEAT / AGENT: mimo", "strict": False},
+    {"body": "Claude Seat finished", "strict": True},
+    {"body": "####### Claude over-long heading", "strict": True},
+    {"body": "## Independent  Mimo review", "strict": False},
+    {"body": "xGemini packet", "strict": True},
+    {"body": "Geminis packet", "strict": True},
 ]
 
 HEADS = [
