@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import json
+import shlex
 import sys
 from datetime import datetime, timezone
 
@@ -74,9 +75,22 @@ def work_items(state):
                 "base_ref": pr.get("base", default_branch), "base_sha": pr.get("base_sha", ""),
                 "size": pr.get("size", ""), "mergeable_state": pr.get("mergeable_state", ""),
                 "rejected_unattributed": [r for r in pr.get("rejected_verdicts", []) if not r.get("seat")]}
-        if threads:
+        unanswered = pr.get("threads_unanswered", threads)
+        chain_start = len(items)
+        if threads and unanswered:
             items.append(dict(base, kind="fix_threads", rank=1, owner_seat=pr.get("seat"),
-                              detail=f"{threads} unresolved review thread(s)"))
+                              detail=f"{unanswered} of {threads} unresolved review thread(s) not yet answered"))
+        elif threads:
+            # Every open thread has an answer from the PR's side: nothing is left for the author to fix. What remains is
+            # a reviewer reading the replies and resolving. Handing the author the same card every tick never completes.
+            items.append(dict(base, kind="resolve_threads", rank=2, owner_seat=None,
+                              detail=f"{threads} unresolved review thread(s), all answered; waiting for a reviewer to resolve"))
+        elif pr.get("standing_blocker"):
+            # A reviewer's rejecting verdict stands at this head. Another review of the same head cannot help and the
+            # author was never told: the next move is the author's, and it clears when a new head is reviewed.
+            blocker = pr["standing_blocker"]
+            items.append(dict(base, kind="address_review", rank=1, owner_seat=pr.get("seat"), blocker=blocker,
+                              detail=f"{blocker['verdict']} by {blocker['by']} stands at the current head"))
         elif not pr.get("covered", False):
             where = " (a draft: flipping it ready waits until it is covered)" if draft else ""
             items.append(dict(base, kind="needs_review", rank=2,
@@ -90,6 +104,15 @@ def work_items(state):
             items.append(dict(base, kind="ready_to_merge", rank=3, detail="covered, CLEAN, no unresolved threads"))
         elif not clean:
             items.append(dict(base, kind="not_mergeable", rank=2, detail=f"mergeable_state={pr.get('mergeable_state')}"))
+        if not base["implementers"]:
+            # Nobody is known to have written this PR. An author-only card would go to whichever seat is first, and a
+            # review card could go to the real author. Withhold those and ask for the facts instead.
+            chain = items[chain_start:]
+            if any(i["kind"] in NEEDS_KNOWN_IMPLEMENTERS for i in chain):
+                items[chain_start:] = [i for i in chain if i["kind"] not in NEEDS_KNOWN_IMPLEMENTERS]
+                items.append(dict(base, kind="identify_implementers", rank=1, owner_seat=None,
+                                  detail="implementers unknown (no seat trailer, no seat-named branch): "
+                                         "author-only and independence-dependent cards are withheld until they are known"))
         rejected = pr.get("rejected_verdicts", [])
         # An implementer's verdict can never count, so repairing it would be wasted work: skip those seats.
         implementers = set(base["implementers"]) | {pr.get("seat")}
@@ -101,7 +124,10 @@ def work_items(state):
                               detail=f"{len(mine)} verdict comment(s) by {seat} were rejected, so the PR is not covered"))
         if age_h > STALE_HOURS:
             items.append(dict(base, kind="stale", rank=5, detail=f"no update for {int(age_h)}h"))
-    items = [i for i in items if item_key(i["kind"], i["pr"], i["head"]) not in done]
+    # A receipt closes a card for a head, but resolving threads is observable on GitHub: the item disappears when the
+    # threads are resolved, and a receipt must not hide it while one is still open.
+    items = [i for i in items if i["kind"] in OBSERVABLE_KINDS
+             or item_key(i["kind"], i["pr"], i["head"]) not in done]
     # A stale overlay on a PR that already has its primary action (merge brief or draft flip) is noise.
     primary = {i["pr"] for i in items if i["kind"] in ("ready_to_merge", "draft", "stacked")}
     items = [i for i in items if not (i["kind"] == "stale" and i["pr"] in primary)]
@@ -119,6 +145,15 @@ def card_for(agent, role, tick, item):
     tasks = {
         "fix_threads": ("Fix and answer every unresolved review thread on " + ref,
                         "every thread has a reply naming the commit that addresses it, and is resolved only if addressed"),
+        "address_review": ("Answer the standing " + str((item.get("blocker") or {}).get("verdict", "rejecting verdict"))
+                           + " by " + str((item.get("blocker") or {}).get("by", "a reviewer")) + " on " + ref,
+                           "a new head that fixes what the reviewer found, or a reply naming each finding and the commit or evidence that answers it; "
+                           "the card clears when the new head is reviewed"),
+        "identify_implementers": ("Identify who implemented " + ref + " from git, or say it cannot be established",
+                                  "a comment naming each implementing seat with the git evidence (trailer or branch), or stating that none can be "
+                                  "established; until the implementers are known no review, fix or resolve card is issued for this PR"),
+        "resolve_threads": ("Check the replies on every unresolved review thread of " + ref + " and resolve each one that is addressed",
+                            "every thread is resolved after you checked the commit its reply names, or carries your reply saying what is still missing"),
         "needs_review": ("Post an independent whole-diff review of " + ref + " at its current head, with an attestation block",
                          "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason"),
         "not_mergeable": ("Make " + ref + " mergeable: " + item.get("detail", ""),
@@ -148,9 +183,28 @@ def card_for(agent, role, tick, item):
         "acceptance": acceptance + (
             f" Start your comment with the receipt [done:{kind}:{pr}:{item.get('head', '').lower()}] (the full 40-character head) "
             "and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use "
-            "that receipt and say what blocked you." if pr else ""),
+            "that receipt and say what blocked you." if pr and kind not in OBSERVABLE_KINDS else ""),
         "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
     }
+
+
+# Kinds whose completion is visible on GitHub (see collect_state.OBSERVABLE_KINDS); no receipt is requested for them.
+OBSERVABLE_KINDS = ("resolve_threads", "address_review", "identify_implementers", "not_mergeable")
+# Kinds that are meaningless without a known author or known independence: they are withheld while the implementers
+# are unknown, and an identify_implementers item takes their place.
+NEEDS_KNOWN_IMPLEMENTERS = ("fix_threads", "resolve_threads", "address_review", "needs_review")
+
+
+def implementers_field(item, base_sha, head):
+    """What a reviewer should put in `implementers`. A known list is printed as before. When the implementers are not
+    known the old text printed `implementers=[]`, which the coverage tool rejects ("implementers must be a non-empty
+    list"), so a seat that followed the card posted a review that could never count. Say how to find them instead."""
+    names = item.get("implementers") or []
+    if names:
+        return repr(list(names))
+    return ("<NOT KNOWN, so find them: git log --format='%(trailers:key=Co-Authored-By,key=Contribution-ID,only=true,unfold=true)' "
+            f"{base_sha or '<merge-base>'}..{head}, plus a seat-named branch prefix; the list must not be empty, so if git "
+            "names no seat, post a comment saying the implementers are unknown instead of an accept block>")
 
 
 def recipe_for(item):
@@ -161,10 +215,12 @@ def recipe_for(item):
         return [
             f"git fetch --prune origin && git fetch origin pull/{pr}/head   # head must be {head}",
             f"git diff --check {base_sha or '<merge-base>'}...{head}   # expect exit 0",
-            f"git merge-tree --write-tree origin/{base_ref} {head}   # expect exit 0 (clean trial merge)",
+            # A base branch name is chosen by whoever opened the PR and git allows ' $ ( ) ; & in ref names, so it is
+            # quoted; a seat pastes this line into a shell.
+            f"git merge-tree --write-tree {shlex.quote('origin/' + base_ref)} {head}   # expect exit 0 (clean trial merge)",
             "run the PR's own tests if it changes code (python -m unittest discover -s scripts -p 'test_*.py')",
             f"post ONE attestation block with fields: repo, pr={pr}, head={head}, base_sha={base_sha or '<merge-base>'}, "
-            f"scope=whole, reviewer=<your seat>, implementers={item.get('implementers', [])}, verdict",
+            f"scope=whole, reviewer=<your seat>, implementers={implementers_field(item, base_sha, head)}, verdict",
         ]
     if item["kind"] == "repair_verdict" and pr:
         return [
@@ -172,9 +228,23 @@ def recipe_for(item):
             f"post a new comment, built from a file so backslash sequences are not mangled, holding ONE fenced block tagged "
             f"attestation whose body is a JSON object (not YAML) with exactly these fields: repo (this repository), "
             f"pr={pr}, head={head}, base_sha={base_sha or '<merge-base>'}, scope=whole, reviewer=<your seat>, "
-            f"implementers={item.get('implementers', [])}, verdict",
+            f"implementers={implementers_field(item, base_sha, head)}, verdict",
             "keep your analysis as prose above the block",
         ]
+    if item["kind"] == "identify_implementers" and pr:
+        return [f"git log --format='%(trailers:key=Co-Authored-By,key=Contribution-ID,only=true,unfold=true)' "
+                f"{base_sha or '<merge-base>'}..{head}   # trailers naming a seat",
+                "read the head branch name: a seat-named prefix such as codex/ names its owner",
+                "post a comment naming each implementing seat with that evidence, or saying none can be established; "
+                "the author may add a Co-Authored-By trailer in a new commit"]
+    if item["kind"] == "address_review" and pr:
+        return ["read the reviewer's latest comment on the PR and list each finding it names",
+                "fix each finding in a commit, or reply with the evidence that answers it",
+                "push the new head and say so on the PR; the reviewer re-reviews the new head"]
+    if item["kind"] == "resolve_threads" and pr:
+        return ["list the unresolved threads on the PR with their replies",
+                "for each thread, read the reply and open the commit it names",
+                "resolve the thread only if it is actually addressed; otherwise reply with what is still missing"]
     if item["kind"] == "fix_threads" and pr:
         return ["list the unresolved threads on the PR", "fix each in a commit",
                 "reply on each thread naming the commit; resolve only what is addressed"]
@@ -291,9 +361,10 @@ def build_cards(state, tick):
         return item_key(item["kind"], item["pr"], item.get("head", "")) if item.get("pr") else None
 
     def allowed(item, name):
-        if item["kind"] == "needs_review" and name in set(item.get("implementers") or []) | {item.get("seat")}:
+        if item["kind"] in ("needs_review", "resolve_threads") and name in set(item.get("implementers") or []) | {item.get("seat")}:
             return False
-        return not (item["kind"] in ("fix_threads", "repair_verdict") and item.get("owner_seat") not in (None, "", name))
+        return not (item["kind"] in ("fix_threads", "repair_verdict", "address_review")
+                    and item.get("owner_seat") not in (None, "", name))
 
     history = state.get("history", {})
 

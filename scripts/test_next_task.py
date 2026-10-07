@@ -166,6 +166,176 @@ class Cards(unittest.TestCase):
     def test_a_covered_draft_still_gets_the_flip_ready_card(self):
         self.assertEqual({i["kind"] for i in nt.work_items(state([pr(9, draft=True, covered=True)]))}, {"draft"})
 
+    def cards_for(self, pr_kwargs):
+        s = state([pr(40, **pr_kwargs)])
+        s["agents"] = [{"name": "claude"}, {"name": "gemini"}, {"name": "mimo"}]
+        return {c["agent"]: c["inputs"]["kind"] for c in nt.build_cards(s, 0)}
+
+    def test_threads_the_author_has_answered_go_to_a_reviewer_to_resolve_not_back_to_the_author(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "threads_unresolved": 2, "threads_unanswered": 0})
+        self.assertNotEqual(kinds["claude"], "resolve_threads")
+        self.assertNotEqual(kinds["claude"], "fix_threads")
+        self.assertIn("resolve_threads", set(kinds.values()))
+        self.assertEqual({a for a, k in kinds.items() if k == "resolve_threads"} & {"claude"}, set())
+
+    def test_unanswered_threads_still_go_only_to_the_author(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "threads_unresolved": 2, "threads_unanswered": 1})
+        self.assertEqual(kinds["claude"], "fix_threads")
+        self.assertNotIn("fix_threads", {k for a, k in kinds.items() if a != "claude"})
+        self.assertNotIn("resolve_threads", set(kinds.values()))
+
+    def test_without_the_unanswered_count_every_open_thread_is_a_fix_for_the_author(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "threads_unresolved": 3})
+        self.assertEqual(kinds["claude"], "fix_threads")
+
+    def test_a_resolve_receipt_does_not_hide_threads_that_are_still_open(self):
+        s = state([pr(40, seat="claude", implementers=["claude"], threads_unresolved=2, threads_unanswered=0,
+                      head="a" * 40)])
+        s["done"] = ["resolve_threads:40:aaaaaaaa"]
+        s["agents"] = [{"name": "claude"}, {"name": "gemini"}]
+        kinds = {c["agent"]: c["inputs"]["kind"] for c in nt.build_cards(s, 0)}
+        self.assertEqual(kinds["gemini"], "resolve_threads")
+
+    def test_a_fix_receipt_still_closes_a_fix_card_for_that_head(self):
+        s = state([pr(40, seat="claude", implementers=["claude"], threads_unresolved=2, threads_unanswered=2,
+                      head="a" * 40)])
+        s["done"] = ["fix_threads:40:aaaaaaaa"]
+        self.assertEqual({i["kind"] for i in nt.work_items(s)} & {"fix_threads"}, set())
+
+    def test_a_standing_rejecting_verdict_goes_to_the_author_and_no_other_review_is_requested(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"],
+                                "standing_blocker": {"verdict": "needs_revision", "by": "Codex"}})
+        self.assertEqual(kinds["claude"], "address_review")
+        self.assertNotIn("needs_review", set(kinds.values()))
+        self.assertEqual({a for a, k in kinds.items() if k == "address_review"}, {"claude"})
+
+    def test_the_address_review_card_names_the_verdict_and_the_reviewer(self):
+        s = state([pr(41, seat="claude", implementers=["claude"],
+                      standing_blocker={"verdict": "needs_revision", "by": "Codex"})])
+        s["agents"] = [{"name": "claude"}]
+        card = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "address_review"][0]
+        self.assertIn("needs_revision", card["task"])
+        self.assertIn("Codex", card["task"])
+        self.assertIn("a new head", card["acceptance"])
+
+    def test_threads_come_before_a_standing_verdict_and_no_standing_verdict_means_a_review_as_before(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "threads_unresolved": 1, "threads_unanswered": 1,
+                                "standing_blocker": {"verdict": "needs_revision", "by": "Codex"}})
+        self.assertEqual(kinds["claude"], "fix_threads")
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude"], "standing_blocker": None})
+        self.assertIn("needs_review", set(kinds.values()))
+
+    def test_a_receipt_does_not_hide_a_standing_verdict_that_still_stands(self):
+        s = state([pr(41, seat="claude", implementers=["claude"], head="a" * 40,
+                      standing_blocker={"verdict": "needs_revision", "by": "Codex"})])
+        s["done"] = ["address_review:41:aaaaaaaa"]
+        self.assertEqual([i["kind"] for i in nt.work_items(s)], ["address_review"])
+
+    def test_unknown_implementers_never_hand_an_author_only_or_review_card_to_an_arbitrary_seat(self):
+        for kwargs in ({"threads_unresolved": 1, "threads_unanswered": 1},
+                       {"threads_unresolved": 1, "threads_unanswered": 0},
+                       {"standing_blocker": {"verdict": "needs_revision", "by": "Codex"}},
+                       {}):
+            kinds = self.cards_for(dict(seat="", implementers=[], **kwargs))
+            self.assertEqual({k for k in kinds.values()} & {"fix_threads", "resolve_threads", "address_review", "needs_review"},
+                             set(), kwargs)
+            self.assertIn("identify_implementers", set(kinds.values()), kwargs)
+
+    def test_known_primary_co_implementer_and_rejecting_reviewer_controls(self):
+        known = self.cards_for({"seat": "claude", "implementers": ["claude"],
+                                "standing_blocker": {"verdict": "needs_revision", "by": "Codex"}})
+        self.assertEqual(known["claude"], "address_review")
+        self.assertNotIn("identify_implementers", set(known.values()))
+        co = self.cards_for({"seat": "claude", "implementers": ["claude", "mimo"], "threads_unresolved": 1, "threads_unanswered": 1})
+        self.assertEqual(co["claude"], "fix_threads")
+        self.assertNotEqual(co["mimo"], "fix_threads")
+
+    def test_a_covered_clean_pr_with_unknown_implementers_still_gets_its_merge_brief(self):
+        kinds = self.cards_for({"seat": "", "implementers": [], "covered": True})
+        self.assertIn("ready_to_merge", set(kinds.values()))
+
+    def test_a_receipt_never_removes_an_identify_card_while_the_implementers_are_unknown(self):
+        # Probe on the #90 tip: any seat's receipt completed the item, and with the implementers still unknown every
+        # review, fix and resolve card for that PR is withheld, so the PR left the dispatcher until its head moved.
+        s = state([pr(63, seat="", implementers=[], head="a" * 40)])
+        s["done"] = ["identify_implementers:63:aaaaaaaa"]
+        self.assertEqual([i["kind"] for i in nt.work_items(s)], ["identify_implementers"])
+        s["agents"] = [{"name": "claude"}]
+        card = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "identify_implementers"][0]
+        self.assertNotIn("[done:", card["acceptance"])
+
+    def test_a_receipt_never_removes_a_conflict_card_while_the_pr_is_still_dirty(self):
+        # Skeptic probe on the #90 tip: [done:not_mergeable:7:<head>] from any seat emptied work_items for a DIRTY PR.
+        s = state([pr(7, seat="claude", implementers=["claude"], head="a" * 40, mergeable_state="DIRTY", covered=True)])
+        s["done"] = ["not_mergeable:7:aaaaaaaa"]
+        self.assertEqual([i["kind"] for i in nt.work_items(s)], ["not_mergeable"])
+        s["agents"] = [{"name": "claude"}]
+        card = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "not_mergeable"][0]
+        self.assertNotIn("[done:", card["acceptance"])
+
+    def test_no_receipt_is_requested_for_a_card_that_completes_on_github(self):
+        s = state([pr(41, seat="claude", implementers=["claude"],
+                      standing_blocker={"verdict": "needs_revision", "by": "Codex"})])
+        s["agents"] = [{"name": "claude"}]
+        card = [c for c in nt.build_cards(s, 0) if c["inputs"]["kind"] == "address_review"][0]
+        self.assertNotIn("[done:", card["acceptance"])
+        fix = state([pr(42, seat="claude", implementers=["claude"], threads_unresolved=1, threads_unanswered=1)])
+        fix["agents"] = [{"name": "claude"}]
+        self.assertIn("[done:fix_threads:", [c for c in nt.build_cards(fix, 0)][0]["acceptance"])
+
+    def test_a_co_implementer_never_resolves_the_threads_on_its_own_pr(self):
+        kinds = self.cards_for({"seat": "claude", "implementers": ["claude", "mimo"], "threads_unresolved": 1,
+                                "threads_unanswered": 0})
+        self.assertNotEqual(kinds["mimo"], "resolve_threads")
+        self.assertEqual(kinds["gemini"], "resolve_threads")
+
+    def review_recipe(self, implementers):
+        # work_items now withholds a review card while the implementers are unknown, so the recipe's own defence is
+        # exercised directly.
+        item = {"kind": "needs_review", "pr": 63, "head": "a" * 40, "base_sha": "b" * 40, "base_ref": "main",
+                "implementers": implementers}
+        return [step for step in nt.recipe_for(item) if step.startswith("post ONE attestation block")][0]
+
+    def test_unknown_implementers_are_not_printed_as_an_empty_list_the_tool_would_reject(self):
+        step = self.review_recipe([])
+        self.assertNotIn("implementers=[]", step)
+        self.assertIn("NOT KNOWN", step)
+        self.assertIn("git log --format='%(trailers:key=Co-Authored-By,key=Contribution-ID", step)
+        self.assertIn("b" * 40 + ".." + "a" * 40, step)
+        self.assertIn("instead of an accept block", step)
+
+    def test_the_suggested_git_command_is_valid_shell(self):
+        """Unquoted, the parentheses in the format are shell syntax and bash stops at "syntax error near unexpected token"."""
+        import re
+        import shutil
+        import subprocess
+        bash = shutil.which("bash")
+        if not bash:
+            self.skipTest("bash is not available")
+        # On Windows `bash` can resolve to the WSL entry point (System32\\bash.exe), which exits 1 with its error on
+        # stdout when no distribution is registered. A bash that cannot run `exit 0` is not a bash to test against.
+        probe = subprocess.run([bash, "-c", "exit 0"], capture_output=True)
+        if probe.returncode != 0:
+            self.skipTest(f"{bash} is not functional (exit {probe.returncode})")
+        command = re.search(r"git log --format='[^']+' [0-9a-f]{40}\.\.[0-9a-f]{40}", self.review_recipe([]))
+        self.assertIsNotNone(command)
+        result = subprocess.run([bash, "-n", "-c", command.group(0)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, f"stdout={result.stdout!r} stderr={result.stderr!r}")
+        self.assertFalse(command.group(0).endswith(","), command.group(0))
+
+    def test_a_base_branch_name_with_shell_characters_stays_one_argument(self):
+        import shlex
+        for ref in ("main", "feat/it's-ok", "x;touch pwned", "a$(id)b", "q&r|s", "sp (1)"):
+            s = state([pr(64, base=ref, head="a" * 40, base_sha="b" * 40)])
+            s["agents"] = [{"name": "gemini"}]
+            card = [c for c in nt.build_cards(s, 0) if c["inputs"].get("kind") == "needs_review"][0]
+            step = [x for x in card["recipe"] if x.startswith("git merge-tree")][0]
+            command = step.split("   # ")[0]
+            self.assertEqual(shlex.split(command), ["git", "merge-tree", "--write-tree", "origin/" + ref, "a" * 40], ref)
+
+    def test_known_implementers_are_printed_exactly_as_before(self):
+        self.assertIn("implementers=['claude'], verdict", self.review_recipe(["claude"]))
+
     def test_a_co_implementer_is_never_assigned_to_review_the_pr(self):
         s = state([pr(9, seat="claude", implementers=["claude", "mimo"])])
         s["agents"] = [{"name": "mimo"}, {"name": "gemini"}, {"name": "claude"}]

@@ -22,11 +22,14 @@ Usage:
 """
 
 import argparse
+import contextlib
+import errno
 import hashlib
 import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -39,6 +42,74 @@ SEAT_IN_TEXT = cs.SEAT_IN_TEXT
 
 def digest(line):
     return hashlib.sha256(line.encode("utf-8")).hexdigest()
+
+
+LOCK_WAIT_SECONDS = 120
+
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
+try:
+    import msvcrt
+except ImportError:  # POSIX
+    msvcrt = None
+
+
+def _try_lock(fd):
+    """Take the OS lock on `fd` without blocking. True when taken, False when another holder has it. Any other error
+    (no locking support, a permission problem) is raised, never reported as "busy"."""
+    if fcntl is not None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            return False
+    if msvcrt is None:
+        raise SystemExit("no OS file locking is available on this platform; refusing to run without a single-writer lock")
+    os.lseek(fd, 0, os.SEEK_SET)
+    try:
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        return True
+    except OSError as error:
+        if error.errno in (errno.EACCES, errno.EDEADLK, errno.EAGAIN):
+            return False
+        raise
+
+
+def _unlock(fd):
+    if fcntl is not None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    else:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+
+@contextlib.contextmanager
+def exclusive(log_path, wait=LOCK_WAIT_SECONDS, sleep=time.sleep, clock=time.time):
+    """One writer at a time for a log. `append_event` reads the last line and appends after it, so two overlapping
+    runs would write the same seq with the same previous digest, fork the chain, and every later run would then refuse
+    to start with a tamper message.
+
+    The lock is an OS lock held on an open handle to ``<log>.lock`` (``flock`` on POSIX, a byte-range lock on Windows).
+    It belongs to the holder's handle: the OS releases it when the process exits or crashes, nothing is ever deleted
+    or reclaimed by age, a holder that is merely slow or suspended or a wall-clock jump cannot lose it, and one run
+    cannot release another's. `clock` and `sleep` only bound how long a waiter waits; after `wait` seconds the
+    waiter stops with a message naming the lock file. The lock file itself is left in place (it is empty and harmless)."""
+    lock = log_path + ".lock"
+    handle = os.open(lock, os.O_RDWR | os.O_CREAT)
+    try:
+        deadline = clock() + wait
+        while not _try_lock(handle):
+            if clock() >= deadline:
+                raise SystemExit(f"another steward run holds {lock} (waited {wait}s); it is released when that run ends")
+            sleep(0.05)
+        try:
+            yield
+        finally:
+            _unlock(handle)
+    finally:
+        os.close(handle)
 
 
 def read_events(path):
@@ -125,8 +196,38 @@ def is_bot(comment):
     return user.get("type") == "Bot" or str(user.get("login", "")).lower().endswith("[bot]")
 
 
-def ingest(snapshot, events):
-    """New comments since the last ingest, attributed to a seat where the text says which.
+def last_heads(events):
+    """{pr number (str): head} from the newest ingest event that recorded heads, or None before the first one. Each
+    snapshot REPLACES the previous one, an empty map included: a PR that closed is gone from the next snapshot, so one
+    reopened later at the same head reads as new and credits its seat (Codex P2 on #90). Merging snapshots would keep the
+    closed PR's old head forever and hide the reopening."""
+    heads = None
+    for event in events:
+        if event["type"] == "ingest" and "heads" in event["data"]:
+            heads = dict(event["data"]["heads"])
+    return heads
+
+
+def pushes(state_prs, previous):
+    """Seats credited with a push: a PR whose head moved, or that opened, since the previous ingest, credited to the
+    PR's own seat. Engagement was measured from comments only, so a seat that pushed fixes and opened PRs (but whose
+    comments the log had already seen) was escalated as "no artifact" while it was visibly working. ``previous`` None
+    means no earlier record: the heads are recorded and nothing is credited, so the first run after an upgrade does not
+    credit every open PR. A PR with no known seat is recorded but credits nobody."""
+    heads, credited = {}, {}
+    for item in state_prs:
+        number, head = str(item["number"]), item.get("head", "")
+        heads[number] = head
+        if previous is None or previous.get(number) == head:
+            continue
+        seat = (item.get("seat") or "").lower()
+        if seat:
+            credited[seat] = credited.get(seat, 0) + 1
+    return heads, credited
+
+
+def ingest(snapshot, events, state_prs=()):
+    """New comments since the last ingest, attributed to a seat where the text says which; plus pushes (see `pushes`).
 
     Bot comments are remembered as seen but are nobody's artifact and are left out of the attribution-quality
     denominator: counted as unattributed they would push `attribution_weak` over its minimum and switch off every
@@ -145,8 +246,13 @@ def ingest(snapshot, events):
             fresh.append({"id": cid, "pr": pr["number"], "seat": seat})
             if seat:
                 per_seat[seat] = per_seat.get(seat, 0) + 1
+    # Pushes are kept apart from comment counts: `attribution_weak` is a ratio over comments, and a push is always
+    # attributed, so folding pushes into per_seat would raise the ratio and re-enable stall detection while the
+    # comments still cannot be assigned (Codex P2 on #89). `stalled_seats` reads both.
+    heads, pushed = pushes(state_prs, last_heads(events))
     return {"comment_ids": [f["id"] for f in fresh] + bots, "per_seat": per_seat,
-            "unattributed": sum(1 for f in fresh if not f["seat"]), "bots": len(bots)}
+            "unattributed": sum(1 for f in fresh if not f["seat"]), "bots": len(bots),
+            "pushes": pushed, "heads": heads}
 
 
 def lease_table(events, tick, done):
@@ -216,7 +322,8 @@ def stalled_seats(events, agents, stall_after):
         if event["type"] == "cards":
             slot["issued"].update(event["data"].get("agents", []))
         if event["type"] == "ingest":
-            slot["produced"].update(s for s, n in event["data"].get("per_seat", {}).items() if n)
+            for key in ("per_seat", "pushes"):
+                slot["produced"].update(s for s, n in event["data"].get(key, {}).items() if n)
     recent = sorted(ticks)[-stall_after:]
     if len(recent) < stall_after:
         return []
@@ -279,13 +386,25 @@ def write_outbox(outbox_dir, result, now):
 def run_tick(snapshot_state, comments_snapshot, log_path, tick, now, stall_after=3):
     """Pure-ish tick: `snapshot_state` is collect_state output, `comments_snapshot` the raw snapshot."""
     events = read_events(log_path)
-    ingested = ingest(comments_snapshot, events)
+    ingested = ingest(comments_snapshot, events, snapshot_state.get("prs", []))
     append_event(log_path, "ingest", dict(ingested, tick=tick), now)
     active, expired, completed = lease_table(events, tick, set(snapshot_state.get("done", [])))
     for key, lease in completed.items():
         append_event(log_path, "lease_done", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
     for key, lease in expired.items():
         append_event(log_path, "lease_expired", {"tick": tick, "key": key, "agent": lease["agent"]}, now)
+    # Fixing a thread normally pushes a new head, and a card key ends in the head, so the finished card's key is replaced
+    # by a new one. A receipt for the same fix at the newer head, from the seat that holds the lease, is that card's
+    # completion. It is recorded here, before the cards are built, so it counts toward this tick's ordering; a receipt
+    # from another seat is not the holder's completion and the lease is released below as before.
+    fixed_by = {tuple(k.split(":")[:2]): seat for k, seat in snapshot_state.get("done_by", {}).items()
+                if k.startswith("fix_threads:")}
+    for key, lease in list(active.items()):
+        parts = key.split(":")
+        if len(parts) == 3 and parts[0] == "fix_threads" and fixed_by.get(tuple(parts[:2])) == lease["agent"]:
+            append_event(log_path, "lease_done", {"tick": tick, "key": key, "agent": lease["agent"],
+                                                   "at_newer_head": True}, now)
+            del active[key]
     # Replay AFTER the completion/expiry events above are appended, so a lease that expires this tick already
     # counts as burned and the item rotates to another seat instead of going straight back to its holder.
     snapshot_state = dict(snapshot_state, leases=active, history=history_from_events(read_events(log_path)))
@@ -329,12 +448,39 @@ def render(result):
     for e in result["escalations"]:
         out.append(f"[{e['agent']}] ESCALATION\n  TASK: {e['task']}\n  ACCEPT: {e['acceptance']}")
     per = ", ".join(f"{s}={n}" for s, n in sorted(result["ingest"]["per_seat"].items())) or "none"
-    out.append(f"INGESTED new artifacts by seat: {per}; unattributed: {result['ingest']['unattributed']}")
+    pushed = ", ".join(f"{s}={n}" for s, n in sorted(result["ingest"].get("pushes", {}).items())) or "none"
+    out.append(f"INGESTED new artifacts by seat: {per}; pushes: {pushed}; unattributed: {result['ingest']['unattributed']}")
     if result.get("attribution_weak"):
         out.append("NOTE: most recent comments could not be attributed to a seat; engagement stalls are not judged this tick (have seats put 'Seat / agent: NAME' or a card marker in their comments)")
     lz = result["leases"]
     out.append(f"LEASES active={lz['active']} completed={len(lz['completed'])} expired={len(lz['expired'])}")
     return "\n\n".join(out)
+
+
+def tick_under_lock(log_path, state, snapshot, tick, now, stall_after, outbox=None, expect_tip=None,
+                    wait=LOCK_WAIT_SECONDS):
+    """Verify the log, number the tick, run it, write the outbox and read the tip as one step no other run can
+    interleave with. The slow part (reading GitHub) happens before this and holds no lock."""
+    with exclusive(log_path, wait=wait):
+        if os.path.exists(log_path):
+            ok, problem = verify_chain(log_path)
+            if not ok:
+                raise SystemExit(f"event log failed verification: {problem}")
+        # The tip is checked even when the log file is gone: a missing log reads as (0, GENESIS), so an externally
+        # anchored digest or a sidecar that remembers events no longer matches. Without this, deleting the log (and
+        # keeping or ignoring the sidecar) started a fresh chain at tick 1 and rewrote the sidecar, erasing the proof
+        # of the deletion. A genuine first run has neither an anchor nor a sidecar and passes.
+        ok, problem = verify_tip(log_path, expect_tip)
+        if not ok:
+            raise SystemExit(f"event log failed verification: {problem}")
+        if tick is None:
+            tick = next_tick(read_events(log_path))
+        result = run_tick(state, snapshot, log_path, tick, now, stall_after)
+        if outbox:
+            result["outbox"] = write_outbox(outbox, result, now)
+        count, tip = current_tip(log_path)
+        result["tip"] = {"count": count, "sha256": tip}
+        return result
 
 
 def main(argv):
@@ -347,29 +493,21 @@ def main(argv):
     parser.add_argument("--outbox", help="directory; writes <seat>.md with each seat's current card")
     parser.add_argument("--stall-after", type=int, default=3)
     parser.add_argument("--expect-tip", help="externally anchored SHA-256 of the log's last line")
+    parser.add_argument("--require-signatures", action="store_true",
+                        help="count only attestations whose signature verifies against the registered seat keys")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
-    if os.path.exists(args.log):
-        ok, problem = verify_chain(args.log)
-        if not ok:
-            raise SystemExit(f"event log failed verification: {problem}")
-        ok, problem = verify_tip(args.log, args.expect_tip)
-        if not ok:
-            raise SystemExit(f"event log failed verification: {problem}")
     remote = cs.rc.git(args.repo_dir, "remote", "get-url", "origin")
     if remote.returncode != 0 or not cs.rc.checkout_matches(remote.stdout, args.repo):
         raise SystemExit(f"--repo-dir {args.repo_dir!r} is not a clone of {args.repo}")
     identities = cs.rc.load_identities(args.identities) if args.identities else None
     keys = cs.rc.load_keys(args.identities) if args.identities else None
     snapshot = cs.rc.live_snapshot(args.repo, args.repo_dir)
-    state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities)
+    state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities, keys,
+                       args.require_signatures)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    tick = args.tick if args.tick is not None else next_tick(read_events(args.log))
-    result = run_tick(state, snapshot, args.log, tick, now, args.stall_after)
-    if args.outbox:
-        result["outbox"] = write_outbox(args.outbox, result, now)
-    count, tip = current_tip(args.log)
-    result["tip"] = {"count": count, "sha256": tip}
+    result = tick_under_lock(args.log, state, snapshot, args.tick, now, args.stall_after, args.outbox, args.expect_tip)
+    count, tip = result["tip"]["count"], result["tip"]["sha256"]
     print(json.dumps(result, indent=2) if args.json else render(result) + f"\n\nLOG TIP seq={count} sha256={tip} (anchor this externally)")
     return 0
 

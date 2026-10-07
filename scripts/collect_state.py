@@ -36,7 +36,9 @@ SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
 
 SEAT_IN_TEXT = re.compile(
     r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)"
-    r"|^\s*(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+    # A seat name that opens a line, optionally after a markdown heading mark and the word "Independent" ("### Codex
+    # bounded review", "Independent Codex verdict: ACCEPT"), which is how the seats title their reviews.
+    r"|^\s*(?:#{1,6}\s*)?(?:Independent\s+)?(Claude|Codex|Gemini|Mimo|Antigravity)\b",
     re.I | re.M,
 )
 SEAT_DECLARED = re.compile(r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)", re.I)
@@ -204,15 +206,81 @@ def seat_from_trailers(text, branch=""):
 
 THREADS_QUERY = (
     'query($owner:String!,$name:String!){repository(owner:$owner,name:$name){'
-    "pullRequests(states:OPEN,first:100){nodes{number reviewThreads(first:100){nodes{isResolved}}}}}}"
+    "pullRequests(states:OPEN,first:100){pageInfo{hasNextPage} nodes{number "
+    "reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved comments(last:1){totalCount nodes{author{login} body}}}}}}}}"
 )
 
 
 def unresolved_by_pr(graphql):
-    nodes = graphql["data"]["repository"]["pullRequests"]["nodes"]
-    return {
-        n["number"]: sum(1 for t in n["reviewThreads"]["nodes"] if not t["isResolved"]) for n in nodes
-    }
+    """Unresolved review threads per open PR. The query reads the first 100 PRs and the first 100 threads of each, so a
+    larger answer is truncated and must not be read as "no more unresolved threads": more than 100 PRs stops with a
+    message (a missing PR would read as zero threads and look ready to merge), and a PR with a further page of threads
+    counts one extra, so it is never reported as having none. `merge_gate.open_threads` already fails closed the same way.
+    A response without `pageInfo` is read as complete, as older fixtures are."""
+    pull_requests = graphql["data"]["repository"]["pullRequests"]
+    if (pull_requests.get("pageInfo") or {}).get("hasNextPage"):
+        raise SystemExit("more than 100 open pull requests: unresolved-thread counts would be missing for the rest; "
+                         "paginate the threads query before trusting them")
+    counts = {}
+    for n in pull_requests["nodes"]:
+        threads = n["reviewThreads"]
+        counts[n["number"]] = sum(1 for t in threads["nodes"] if not t["isResolved"])
+        if (threads.get("pageInfo") or {}).get("hasNextPage"):
+            counts[n["number"]] += 1  # at least one more thread exists that this page did not show
+    return counts
+
+
+STANDING_REASON = re.compile(r"^standing (\w+) at head by (.+)$")
+
+
+def standing_blocker(reasons):
+    """The standing rejecting verdict at the PR's current head, from the coverage tool's reasons: {"verdict", "by"}, or
+    None. "standing needs_revision at head by Claude" is a reviewer waiting for the author to change something; no
+    further review of the same head can help."""
+    for reason in reasons or []:
+        match = STANDING_REASON.match(reason)
+        if match:
+            return {"verdict": match.group(1), "by": match.group(2)}
+    return None
+
+
+def thread_unanswered(thread, author_seats=()):
+    """True unless the PR's own side has the last word in the thread. Every seat and the owner post from one shared
+    login, so a person-versus-bot test cannot tell an author's answer from a reviewer's "still missing". The last comment
+    is therefore attributed to a seat by its text (`comment_seat`, strict), and the thread counts as answered only when
+    that seat is one of the PR's implementers (`author_seats`). A single comment, a bot, a reviewer seat, a comment that
+    names no seat, unknown comment data, or no known implementers all count as unanswered: the author keeps the fix card,
+    which is the old behaviour and the safe direction."""
+    comments = thread.get("comments") or {}
+    if "totalCount" not in comments or "nodes" not in comments:
+        return True
+    if comments["totalCount"] <= 1 or not comments["nodes"]:
+        return True
+    last = comments["nodes"][-1]
+    login = (last.get("author") or {}).get("login", "")
+    if login == "" or login.endswith("[bot]"):
+        return True
+    seat = comment_seat(last.get("body") or "", strict=True)
+    return not (seat and seat in {s.lower() for s in author_seats})
+
+
+def unanswered_by_pr(graphql, implementers_by_pr=None):
+    """Unresolved review threads the PR's side has not answered, per open PR (see `thread_unanswered`; the PR's
+    implementers come from `implementers_by_pr`). The same truncation rules as `unresolved_by_pr`: a further page of
+    threads counts one extra, so it is never reported as none."""
+    implementers_by_pr = implementers_by_pr or {}
+    pull_requests = graphql["data"]["repository"]["pullRequests"]
+    if (pull_requests.get("pageInfo") or {}).get("hasNextPage"):
+        raise SystemExit("more than 100 open pull requests: unresolved-thread counts would be missing for the rest; "
+                         "paginate the threads query before trusting them")
+    counts = {}
+    for n in pull_requests["nodes"]:
+        threads = n["reviewThreads"]
+        authors = implementers_by_pr.get(n["number"], ())
+        counts[n["number"]] = sum(1 for t in threads["nodes"] if not t["isResolved"] and thread_unanswered(t, authors))
+        if (threads.get("pageInfo") or {}).get("hasNextPage"):
+            counts[n["number"]] += 1
+    return counts
 
 
 def eligible_completer(kind, seat, implementers, repair_owners=()):
@@ -226,6 +294,10 @@ def eligible_completer(kind, seat, implementers, repair_owners=()):
         return bool(implementers) and seat not in implementers
     if kind == "fix_threads":
         return bool(implementers) and seat == implementers[0]
+    if kind == "resolve_threads":
+        return bool(implementers) and seat not in implementers
+    if kind == "address_review":
+        return bool(implementers) and seat == implementers[0]
     if kind == "repair_verdict":
         return seat in repair_owners
     return True
@@ -236,9 +308,26 @@ def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
     [done:KIND:PR:FULL_HEAD] for the PR's current head, says nothing negative on its first line, names no
     conflicting full head, and comes from a seat allowed to complete that kind of card.
     repair_owners maps a PR number to the seats whose verdicts were rejected there."""
+    return sorted(done_receipts(snapshot, repair_owners, implementers_by_pr))
+
+
+# Cards whose completion is visible on GitHub itself (a thread is resolved, a rejecting verdict stops standing). A
+# receipt for one of these would complete the lease while the item is still open, and the dispatcher would lease the same
+# key again on the next tick, so receipts for them are not read.
+# identify_implementers belongs here too: its completion is the implementers becoming known (a trailer or a seat-named
+# branch), which a comment cannot establish. A receipt would otherwise remove the item while the implementers are still
+# unknown, and every review, fix and resolve card for that PR stays withheld until its head moves.
+# not_mergeable too: its end state (the conflict is gone) is on GitHub, and any seat's receipt at the same head closed the
+# card while the PR was still DIRTY (eligible_completer returns True for kinds it does not list).
+OBSERVABLE_KINDS = ("resolve_threads", "address_review", "identify_implementers", "not_mergeable")
+
+
+def done_receipts(snapshot, repair_owners=None, implementers_by_pr=None):
+    """The same completions as `done_keys`, as {key: the seat whose receipt completed it}. The first eligible receipt
+    for a key names the seat. A lease holder is credited with a completion only when it is that seat."""
     repair_owners = repair_owners or {}
     implementers_by_pr = implementers_by_pr or {}
-    keys = set()
+    keys = {}
     for p in snapshot["prs"]:
         head = p["head"].lower()
         implementers = implementers_by_pr.get(p["number"]) or p.get("implementers") or []
@@ -248,6 +337,8 @@ def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
             if not match:
                 continue
             kind, number, receipt_head = match.group(1).lower(), int(match.group(2)), match.group(3).lower()
+            if kind in OBSERVABLE_KINDS:
+                continue
             if number != p["number"] or receipt_head != head:
                 continue
             first = next((line for line in body.splitlines() if line.strip()), "")
@@ -255,15 +346,15 @@ def done_keys(snapshot, repair_owners=None, implementers_by_pr=None):
                 continue
             if any(token != head and token[:8] == head[:8] for token in HEX40.findall(body.lower())):
                 continue
-            if not eligible_completer(kind, comment_seat(body, strict=True), implementers,
-                                      repair_owners.get(p["number"], ())):
+            seat = comment_seat(body, strict=True)
+            if not eligible_completer(kind, seat, implementers, repair_owners.get(p["number"], ())):
                 continue
-            keys.add(f"{kind}:{number}:{head[:8]}")
-    return sorted(keys)
+            keys.setdefault(f"{kind}:{number}:{head[:8]}", seat)
+    return keys
 
 
 def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlog, now, default_branch="main",
-                commit_exists=None):
+                commit_exists=None, unanswered=None):
     covered = {r["pr"]: r["covered"] for r in coverage_rows}
     rows = {r["pr"]: r for r in coverage_rows}
     implementers_by_pr = {
@@ -291,14 +382,22 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
                 "size": f"+{m.get('additions', 0)}/-{m.get('deletions', 0)} in {m.get('changedFiles', 0)} file(s)",
                 "implementers": implementers_by_pr[n],
                 "threads_unresolved": unresolved.get(n, 0),
+                "threads_unanswered": (unanswered if unanswered is not None else unresolved).get(n, 0),
                 "covered": covered.get(n, False),
+                "standing_blocker": standing_blocker(rows.get(n, {}).get("reasons")),
             }
         )
     return {"now": now, "agents": [{"name": a} for a in agents], "prs": prs, "backlog": backlog,
-            "done": done_keys(snapshot, repair_owners, implementers_by_pr), "default_branch": default_branch}
+            "done": done_keys(snapshot, repair_owners, implementers_by_pr),
+            "done_by": done_receipts(snapshot, repair_owners, implementers_by_pr), "default_branch": default_branch}
 
 
-def collect(repo, repo_dir, agents, backlog, identities=None):
+def collect(repo, repo_dir, agents, backlog, identities=None, keys=None, require_signatures=False):
+    """Read the live state. ``keys`` (the identity registry) and ``require_signatures`` reach `report_snapshot`, so once
+    the owner registers seat keys the steward can stop counting unsigned, spoofable attestation blocks as coverage
+    (Codex P2 on #99: the steward loaded the keys and dropped them). Enforcement without keys fails closed."""
+    if require_signatures and not (keys and rc.attest_sig.allowed_signers(keys).strip()):
+        raise SystemExit("--require-signatures needs --identities with registered seat keys: nothing could verify a signature")
     snapshot = rc.live_snapshot(repo, repo_dir)
     meta = {
         p["number"]: p
@@ -313,11 +412,12 @@ def collect(repo, repo_dir, agents, backlog, identities=None):
         every = seats_from_trailers(log, meta[p["number"]].get("headRefName", ""))
         seats[p["number"]] = every[0] if every else ""
         p["implementers"] = every
-    rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir), identities)
+    rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir), identities, keys, require_signatures)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     default = rc.gh_json("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
     return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now, default,
-                       git_commit_exists(repo_dir))
+                       git_commit_exists(repo_dir),
+                       unanswered_by_pr(graphql, {p["number"]: p["implementers"] for p in snapshot["prs"]}))
 
 
 def main(argv):
@@ -327,6 +427,8 @@ def main(argv):
     parser.add_argument("--agents", default="claude,mimo,codex,gemini")
     parser.add_argument("--backlog", help="JSON file: list of {id, task, acceptance}")
     parser.add_argument("--identities", help="identity map JSON (governance/identities.json)")
+    parser.add_argument("--require-signatures", action="store_true",
+                        help="count only attestations whose signature verifies against the registered seat keys")
     args = parser.parse_args(argv)
     remote = rc.git(args.repo_dir, "remote", "get-url", "origin")
     if remote.returncode != 0 or not rc.checkout_matches(remote.stdout, args.repo):
@@ -336,7 +438,9 @@ def main(argv):
         with open(args.backlog, encoding="utf-8") as handle:
             backlog = json.load(handle)
     identities = rc.load_identities(args.identities) if args.identities else None
-    state = collect(args.repo, args.repo_dir, [a for a in args.agents.split(",") if a], backlog, identities)
+    keys = rc.load_keys(args.identities) if args.identities else None
+    state = collect(args.repo, args.repo_dir, [a for a in args.agents.split(",") if a], backlog, identities, keys,
+                    args.require_signatures)
     print(json.dumps(state, indent=1))
     return 0
 

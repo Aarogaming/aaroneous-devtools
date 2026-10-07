@@ -9,6 +9,93 @@ COVERED = {"covered": True}
 UNCOVERED = {"covered": False}
 
 
+class DiffCheckCommand(unittest.TestCase):
+    """The plan's whitespace check must see a committed error; the no-revision form never could."""
+
+    def run_plan_check(self, plan_commands):
+        import shutil
+        import subprocess
+        import tempfile
+        directory = tempfile.mkdtemp(prefix="merge-gate-ws-")
+        self.addCleanup(shutil.rmtree, directory, True)
+
+        def git(*args):
+            return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", directory, *args],
+                                  capture_output=True, text=True)
+
+        git("init", "-q", "-b", "main")
+        with open(os.path.join(directory, "a.txt"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("clean\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "base")
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        git("checkout", "-q", "-b", "pr")
+        with open(os.path.join(directory, "a.txt"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("trailing whitespace   \n")
+        git("add", ".")
+        git("commit", "-q", "-m", "committed whitespace error")
+        command = [part.replace("{base}", "origin/main") for part in plan_commands[0]]
+        return git(*command[1:]).returncode, command
+
+    def test_both_plans_fail_on_a_whitespace_error_committed_by_the_pr(self):
+        for plan in (mg.FULL_GATE, mg.LIGHT_GATE):
+            returncode, command = self.run_plan_check(plan)
+            self.assertEqual(command[:3], ["git", "diff", "--check"])
+            self.assertIn("origin/main...HEAD", command)
+            self.assertNotEqual(returncode, 0, command)
+
+    def test_the_old_no_revision_form_passes_a_committed_whitespace_error(self):
+        # The bug being fixed, kept as the control: this is what the plan used to run.
+        returncode, _ = self.run_plan_check([["git", "diff", "--check"]])
+        self.assertEqual(returncode, 0)
+
+
+class ChangedPaths(unittest.TestCase):
+    """changed_paths against a real throwaway repository: the protected path must survive a rename."""
+
+    def make_repo(self):
+        import subprocess
+        import tempfile
+        directory = tempfile.mkdtemp(prefix="merge-gate-test-")
+        self.addCleanup(__import__("shutil").rmtree, directory, True)
+
+        def git(*args):
+            result = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", directory, *args],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout.strip()
+
+        git("init", "-q", "-b", "main")
+        os.makedirs(os.path.join(directory, "governance"))
+        with open(os.path.join(directory, "governance", "identities.json"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write('{"seats": {}, "padding": "' + "x" * 300 + '"}\n')
+        git("add", ".")
+        git("commit", "-q", "-m", "base")
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        git("checkout", "-q", "-b", "pr")
+        return directory, git
+
+    def test_renaming_an_owner_only_file_still_reports_the_protected_source_path(self):
+        directory, git = self.make_repo()
+        git("mv", "governance/identities.json", "governance/other.json")
+        git("commit", "-q", "-m", "rename")
+        paths = mg.changed_paths(directory, "main", git("rev-parse", "HEAD"))
+        self.assertIn("governance/identities.json", paths)
+        self.assertIn("governance/other.json", paths)
+        self.assertEqual(mg.tier_of(paths)[0], "A")
+        self.assertFalse(mg.decide(COVERED, paths, "main", True)["eligible"])
+
+    def test_an_ordinary_edit_is_listed_once_and_stays_tier_b(self):
+        directory, git = self.make_repo()
+        with open(os.path.join(directory, "governance", "notes.md"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("notes\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "notes")
+        paths = mg.changed_paths(directory, "main", git("rev-parse", "HEAD"))
+        self.assertEqual(paths, ["governance/notes.md"])
+        self.assertEqual(mg.tier_of(paths)[0], "B")
+
+
 class Plan(unittest.TestCase):
     def test_docs_only_changes_get_the_light_gate(self):
         self.assertEqual(mg.gate_plan(["governance/PLATFORM_SPEC.md", "governance/identities.json"])["level"], "light")
@@ -48,6 +135,19 @@ class Decision(unittest.TestCase):
             self.assertFalse(d["eligible"], path)
             self.assertTrue(any(r.startswith("f:") for r in d["reasons"]))
         self.assertTrue(mg.decide(COVERED, ["AGENTS.md"], "main", True, owner_confirmed_protected=True)["eligible"])
+
+    def test_the_seat_identity_map_is_owner_only(self):
+        # It decides who counts as an independent reviewer and which keys verify; a login or key added by an
+        # auto-merged PR would make that PR's author's later verdicts count.
+        for paths in (["governance/identities.json"], ["governance/identities.json", "docs/a.md"]):
+            self.assertEqual(mg.tier_of(paths)[0], "A", paths)
+            d = mg.decide(COVERED, paths, "main", True)
+            self.assertFalse(d["eligible"], paths)
+            self.assertTrue(any(r.startswith("f:") for r in d["reasons"]), paths)
+        self.assertTrue(mg.decide(COVERED, ["governance/identities.json"], "main", True,
+                                  owner_confirmed_protected=True)["eligible"])
+        # The other governance json files stay Tier B.
+        self.assertEqual(mg.tier_of(["governance/other.json"])[0], "B")
 
     def test_the_decision_path_and_the_checklist_share_one_owner_only_list(self):
         self.assertIs(mg.PROTECTED, mg.TIER_A_PATHS)

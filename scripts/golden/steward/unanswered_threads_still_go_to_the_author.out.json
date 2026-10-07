@@ -1,0 +1,82 @@
+[
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "mimo",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "implementer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "gemini",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "reviewer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "every thread has a reply naming the commit that addresses it, and is resolved only if addressed Start your comment with the receipt [done:fix_threads:16:1616161616161616161616161616161616161616] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
+    "agent": "codex",
+    "attempt": 1,
+    "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "fix_threads",
+      "pr": 16
+    },
+    "lease": {
+      "expires_tick": 6,
+      "key": "fix_threads:16:16161616",
+      "renewed": false
+    },
+    "lens": "direct",
+    "lens_text": "Do the task as stated.",
+    "marker": "[done:fix_threads:16:1616161616161616161616161616161616161616]",
+    "new_since_last": "first time this seat is handed this PR",
+    "owner_blocked": false,
+    "priority": 1,
+    "recipe": [
+      "list the unresolved threads on the PR",
+      "fix each in a commit",
+      "reply on each thread naming the commit; resolve only what is addressed"
+    ],
+    "role": "auditor",
+    "state": "PR #16 head 161616161616 on main; +10/-2 in 1 file(s); mergeable=CLEAN; implementers=codex",
+    "task": "Fix and answer every unresolved review thread on PR #16",
+    "then": "no further item is free for you; stand by",
+    "tick": 0,
+    "why_now": "1 of 2 unresolved review thread(s) not yet answered"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "claude",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "skeptic",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  }
+]

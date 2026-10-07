@@ -1,5 +1,6 @@
 import os
 import subprocess
+import types
 import sys
 import tempfile
 import unittest
@@ -42,6 +43,16 @@ class AllSeats(unittest.TestCase):
     def test_primary_seat_is_the_first_of_the_list(self):
         self.assertEqual(cs.seat_from_trailers("Co-Authored-By: Mimo <m@a.com>", ""), "mimo")
         self.assertEqual(cs.seat_from_trailers("plain", "feature/x"), "")
+
+
+class DoneReceipts(unittest.TestCase):
+    def test_done_receipts_names_the_seat_that_completed_each_card_and_done_keys_is_unchanged(self):
+        head = "c" * 40
+        body = f"[done:fix_threads:7:{head}] Claude seat: all threads answered"
+        snapshot = {"prs": [{"number": 7, "head": head, "comments": [{"id": 1, "body": body}]}]}
+        self.assertEqual(cs.done_receipts(snapshot, {}, {7: ["claude"]}), {f"fix_threads:7:{head[:8]}": "claude"})
+        self.assertEqual(cs.done_keys(snapshot, {}, {7: ["claude"]}), [f"fix_threads:7:{head[:8]}"])
+        self.assertEqual(cs.done_receipts(snapshot, {}, {7: ["codex"]}), {})
 
 
 class Rejections(unittest.TestCase):
@@ -158,6 +169,19 @@ class Rejections(unittest.TestCase):
         self.assertEqual(done("Mimo", ["claude"]), [])  # not the author seat
         self.assertEqual(done("Claude Sonnet 5.5", []), [])  # unknown implementers fail closed
 
+    def test_the_titles_the_seats_give_their_reviews_attribute_the_comment(self):
+        for body, seat in (("Independent Codex verdict: ACCEPT this attribution delta only", "codex"),
+                           ("### Codex bounded independent review: verification incomplete", "codex"),
+                           ("## Gemini whole-diff packet", "gemini"),
+                           ("Independent Mimo review at the current head", "mimo"),
+                           ("independent claude re-check", "claude")):
+            self.assertEqual(cs.comment_seat(body, strict=True), seat, body)
+
+    def test_a_title_that_only_mentions_a_seat_does_not_attribute_the_comment(self):
+        for body in ("Independent review by Codex", "Independently, Codex said it passes", "Review of Codex's change",
+                     "### Independent review", "Independent verdict: ACCEPT"):
+            self.assertEqual(cs.comment_seat(body, strict=True), "", body)
+
     def test_a_seat_name_further_down_a_comment_does_not_attribute_it(self):
         self.assertEqual(cs.comment_seat("My note.\nMimo reviewed this earlier.\n", strict=True), "")
         self.assertEqual(cs.comment_seat("Mimo reviewed this earlier.\n", strict=False), "mimo")
@@ -188,6 +212,154 @@ class Build(unittest.TestCase):
             {"number": 2, "reviewThreads": {"nodes": []}},
         ]}}}}
         self.assertEqual(cs.unresolved_by_pr(graphql), {1: 2, 2: 0})
+
+    def graphql(self, prs, more_prs=False):
+        return {"data": {"repository": {"pullRequests": {"pageInfo": {"hasNextPage": more_prs}, "nodes": prs}}}}
+
+    def pr_threads(self, number, resolved, unresolved, more):
+        nodes = [{"isResolved": True}] * resolved + [{"isResolved": False}] * unresolved
+        return {"number": number, "reviewThreads": {"pageInfo": {"hasNextPage": more}, "nodes": nodes}}
+
+    def test_a_pr_with_a_further_page_of_threads_is_never_reported_as_having_none(self):
+        full_page_all_resolved = self.pr_threads(1, 100, 0, True)
+        self.assertEqual(cs.unresolved_by_pr(self.graphql([full_page_all_resolved])), {1: 1})
+        self.assertEqual(cs.unresolved_by_pr(self.graphql([self.pr_threads(2, 97, 3, True)])), {2: 4})
+
+    def test_a_complete_page_is_counted_exactly(self):
+        self.assertEqual(cs.unresolved_by_pr(self.graphql([self.pr_threads(1, 99, 1, False), self.pr_threads(2, 0, 0, False)])),
+                         {1: 1, 2: 0})
+
+    def test_more_than_a_hundred_open_prs_stops_instead_of_dropping_the_rest(self):
+        with self.assertRaises(SystemExit) as caught:
+            cs.unresolved_by_pr(self.graphql([self.pr_threads(1, 0, 0, False)], more_prs=True))
+        self.assertIn("100 open pull requests", str(caught.exception))
+
+    AUTHOR_REPLY = "Claude Sonnet 5.5 (author). Valid, fixed at abc1234: the format is now quoted."
+    REVIEWER_FOLLOW_UP = "Reviewer / Seat: Codex. Still missing: the case with an empty list is not covered."
+
+    def thread(self, resolved, total, last_login, body=None):
+        node = {"author": {"login": last_login}}
+        if body is not None:
+            node["body"] = body
+        comments = {"totalCount": total, "nodes": [node]} if last_login is not None else {}
+        return {"isResolved": resolved, "comments": comments}
+
+    def test_a_thread_is_answered_only_when_the_pr_sides_seat_has_the_last_word(self):
+        author = ("claude",)
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 1, "Aarogaming", self.AUTHOR_REPLY), author))  # only the opener
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 3, "chatgpt-codex-connector[bot]", "x"), author))  # bot last
+        self.assertFalse(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", self.AUTHOR_REPLY), author))  # author answered
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 3, "Aarogaming", self.REVIEWER_FOLLOW_UP), author))  # reviewer last
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", "Still not fixed, see line 12"), author))  # no seat
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", self.AUTHOR_REPLY), ()))  # implementers unknown
+        self.assertTrue(cs.thread_unanswered({"isResolved": False}, author))  # unknown comment data: the old behaviour
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "", "x"), author))
+
+    def test_a_co_implementer_answer_also_counts_as_the_pr_sides(self):
+        reply = "Mimo seat: fixed in abc1234."
+        self.assertFalse(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", reply), ("claude", "mimo")))
+        self.assertTrue(cs.thread_unanswered(self.thread(False, 2, "Aarogaming", reply), ("claude",)))
+
+    def test_unanswered_counts_only_unresolved_threads_the_pr_side_has_not_answered(self):
+        threads = [self.thread(True, 2, "Aarogaming", self.AUTHOR_REPLY), self.thread(False, 2, "Aarogaming", self.AUTHOR_REPLY),
+                   self.thread(False, 1, "x[bot]", "p"), self.thread(False, 3, "Aarogaming", self.REVIEWER_FOLLOW_UP)]
+        graphql = self.graphql([{"number": 1, "reviewThreads": {"pageInfo": {"hasNextPage": False}, "nodes": threads}}])
+        self.assertEqual(cs.unresolved_by_pr(graphql), {1: 3})
+        self.assertEqual(cs.unanswered_by_pr(graphql, {1: ["claude"]}), {1: 2})
+        self.assertEqual(cs.unanswered_by_pr(graphql), {1: 3})  # without implementers nothing is answered
+
+    def test_a_further_page_of_threads_counts_one_extra_unanswered_thread(self):
+        graphql = self.graphql([{"number": 1, "reviewThreads": {"pageInfo": {"hasNextPage": True},
+                                                                  "nodes": [self.thread(False, 2, "Aarogaming", self.AUTHOR_REPLY)]}}])
+        self.assertEqual(cs.unanswered_by_pr(graphql, {1: ["claude"]}), {1: 1})
+
+    def test_the_state_carries_the_unanswered_count_and_defaults_to_the_old_behaviour(self):
+        snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main", "implementers": ["claude"]}]}
+        meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
+        args = (snapshot, [{"pr": 7, "covered": False}], meta, {7: 3}, {7: "claude"}, ["claude"], [], "2026-10-04T12:00:00Z")
+        self.assertEqual(cs.build_state(*args)["prs"][0]["threads_unanswered"], 3)
+        self.assertEqual(cs.build_state(*args, unanswered={7: 0})["prs"][0]["threads_unanswered"], 0)
+
+    def test_the_standing_rejecting_verdict_is_read_from_the_coverage_reasons(self):
+        self.assertEqual(cs.standing_blocker(["standing needs_revision at head by Claude", "no accept at the current head"]),
+                         {"verdict": "needs_revision", "by": "Claude"})
+        self.assertEqual(cs.standing_blocker(["standing changes_requested at head by Mimo"]),
+                         {"verdict": "changes_requested", "by": "Mimo"})
+        for none in ([], None, ["no accept at the current head"], ["accept at head exists but is not chained to a whole accept"]):
+            self.assertIsNone(cs.standing_blocker(none))
+
+    def test_the_state_carries_the_standing_verdict(self):
+        snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main", "implementers": ["codex"]}]}
+        meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
+        rows = [{"pr": 7, "covered": False, "reasons": ["standing needs_revision at head by Claude"]}]
+        state = cs.build_state(snapshot, rows, meta, {7: 0}, {7: "codex"}, ["codex"], [], "2026-10-04T12:00:00Z")
+        self.assertEqual(state["prs"][0]["standing_blocker"], {"verdict": "needs_revision", "by": "Claude"})
+
+    def test_only_the_author_completes_an_address_review_card(self):
+        self.assertTrue(cs.eligible_completer("address_review", "codex", ["codex"]))
+        self.assertFalse(cs.eligible_completer("address_review", "claude", ["codex"]))
+        self.assertFalse(cs.eligible_completer("address_review", "codex", []))
+
+    def collect_with_an_unsigned_accept(self, **kwargs):
+        # collect() against a stubbed GitHub: one PR whose only accept is an unsigned attestation block.
+        import json
+        from unittest import mock
+        head, base = "a" * 40, "d" * 40
+        record = {"repo": "o/r", "pr": 1, "head": head, "base_sha": base, "scope": "whole", "reviewer": "gemini",
+                  "implementers": ["claude"], "verdict": "accept"}
+        snapshot = {"repo": "o/r", "prs": [{"number": 1, "head": head, "base": "main", "merge_base": base,
+                                            "reviews": [], "base_events": [],
+                                            "comments": [{"id": 5, "body": "```attestation\n" + json.dumps(record) + "\n```"}]}]}
+        meta = [{"number": 1, "title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-06T00:00:00Z",
+                 "headRefName": "claude/x", "additions": 1, "deletions": 0, "changedFiles": 1}]
+        graphql = {"data": {"repository": {"pullRequests": {"pageInfo": {"hasNextPage": False}, "nodes": [
+            {"number": 1, "reviewThreads": {"pageInfo": {"hasNextPage": False}, "nodes": []}}]}}}}
+
+        def gh_json(*args):
+            if args[0] == "pr":
+                return meta
+            if args[0] == "api":
+                return graphql
+            return {"defaultBranchRef": {"name": "main"}}
+
+        done = types.SimpleNamespace(stdout="", returncode=0)
+        with mock.patch.object(cs.rc, "live_snapshot", return_value=snapshot), \
+                mock.patch.object(cs.rc, "gh_json", side_effect=gh_json), \
+                mock.patch.object(cs.rc, "git", return_value=done), \
+                mock.patch.object(cs.rc, "live_ancestry", return_value=lambda a, b: True):
+            return cs.collect("o/r", ".", ["claude", "gemini"], [], {"gemini": "gemini"}, **kwargs)
+
+    def test_signature_enforcement_reaches_the_coverage_decision(self):
+        keys = {"seats": {"gemini": {"keys": ["ssh-ed25519 AAAA test"]}}}
+        unenforced = self.collect_with_an_unsigned_accept(keys=keys, require_signatures=False)
+        self.assertTrue(unenforced["prs"][0]["covered"])
+        enforced = self.collect_with_an_unsigned_accept(keys=keys, require_signatures=True)
+        self.assertFalse(enforced["prs"][0]["covered"], "an unsigned accept must stop counting once enforcement is on")
+
+    def test_enforcement_without_registered_keys_fails_closed(self):
+        for keys in (None, {}, {"seats": {}}):
+            with self.assertRaises(SystemExit):
+                self.collect_with_an_unsigned_accept(keys=keys, require_signatures=True)
+
+    def test_receipts_for_cards_that_complete_on_github_are_not_read(self):
+        head = "c" * 40
+        for kind, seat in (("resolve_threads", "Gemini"), ("address_review", "Codex"), ("identify_implementers", "Claude"),
+                           ("not_mergeable", "Gemini")):
+            body = f"[done:{kind}:7:{head}] {seat} seat: done"
+            snapshot = {"prs": [{"number": 7, "head": head, "comments": [{"id": 1, "body": body}]}]}
+            self.assertEqual(cs.done_receipts(snapshot, {}, {7: ["codex" if kind == "resolve_threads" else "codex"]}), {}, kind)
+        body = f"[done:fix_threads:7:{head}] Claude seat: done"
+        snapshot = {"prs": [{"number": 7, "head": head, "comments": [{"id": 1, "body": body}]}]}
+        self.assertEqual(cs.done_receipts(snapshot, {}, {7: ["claude"]}), {f"fix_threads:7:{head[:8]}": "claude"})
+
+    def test_only_a_non_implementer_completes_a_resolve_threads_card(self):
+        self.assertTrue(cs.eligible_completer("resolve_threads", "gemini", ["claude"]))
+        self.assertFalse(cs.eligible_completer("resolve_threads", "claude", ["claude"]))
+        self.assertFalse(cs.eligible_completer("resolve_threads", "gemini", []))
+        self.assertFalse(cs.eligible_completer("resolve_threads", "", ["claude"]))
+
+    def test_the_threads_query_asks_for_both_page_infos(self):
+        self.assertEqual(cs.THREADS_QUERY.count("pageInfo{hasNextPage}"), 2)
 
     def test_every_implementer_reaches_the_dispatcher_state(self):
         snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main", "implementers": ["claude", "mimo"]}]}

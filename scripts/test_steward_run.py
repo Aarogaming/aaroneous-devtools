@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 import tempfile
 import unittest
 
@@ -146,6 +147,195 @@ class HealthyIdle(unittest.TestCase):
         os.unlink(sr.tip_path(path))
 
 
+def _append_many(path, count, start_event):
+    start_event.wait()
+    for i in range(count):
+        with sr.exclusive(path):
+            sr.append_event(path, "stall", {"tick": i, "pid": os.getpid()}, NOW)
+
+
+class Locking(unittest.TestCase):
+    def test_overlapping_writers_cannot_fork_the_chain(self):
+        import multiprocessing
+        path = tmp_log()
+        start = multiprocessing.Event()
+        workers = [multiprocessing.Process(target=_append_many, args=(path, 20, start)) for _ in range(4)]
+        for worker in workers:
+            worker.start()
+        start.set()
+        for worker in workers:
+            worker.join()
+        events = sr.read_events(path)
+        self.assertEqual(len(events), 80)
+        self.assertEqual([e["seq"] for e in events], list(range(1, 81)))
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+        for leftover in (path, sr.tip_path(path)):
+            os.unlink(leftover)
+
+    def test_a_held_lock_stops_a_second_run_with_a_message_that_names_the_lock(self):
+        path = tmp_log()
+        with sr.exclusive(path):
+            with self.assertRaises(SystemExit) as caught:
+                with sr.exclusive(path, wait=0.2):
+                    pass
+        self.assertIn(path + ".lock", str(caught.exception))
+
+    def test_a_live_holder_is_not_displaced_by_age_or_by_a_clock_jump(self):
+        path = tmp_log()
+        with sr.exclusive(path):
+            for jump in (601, 10_000_000):
+                with self.assertRaises(SystemExit):
+                    with sr.exclusive(path, wait=0.2, clock=lambda jump=jump: time.time() + jump):
+                        self.fail("a second owner entered while the first still held the lock")
+
+    def test_one_owner_leaving_does_not_release_another_owners_lock(self):
+        path = tmp_log()
+        first = sr.exclusive(path)
+        first.__enter__()
+        with self.assertRaises(SystemExit):
+            with sr.exclusive(path, wait=0.2):
+                pass
+        first.__exit__(None, None, None)
+        with sr.exclusive(path, wait=1):
+            with self.assertRaises(SystemExit):
+                with sr.exclusive(path, wait=0.2):
+                    pass
+
+    def test_the_lock_is_released_when_the_body_raises(self):
+        path = tmp_log()
+        with self.assertRaises(RuntimeError):
+            with sr.exclusive(path):
+                raise RuntimeError("boom")
+        with sr.exclusive(path, wait=1):
+            pass
+
+    def test_a_crashed_holder_releases_the_lock_without_any_cleanup(self):
+        import subprocess
+        path = tmp_log()
+        code = ("import sys, time; sys.path.insert(0, %r); import steward_run as sr\n"
+                "ctx = sr.exclusive(%r); ctx.__enter__(); print('locked', flush=True); time.sleep(120)\n"
+                % (os.path.dirname(os.path.abspath(__file__)), path))
+        child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "locked")
+            with self.assertRaises(SystemExit):
+                with sr.exclusive(path, wait=0.3):
+                    pass
+            child.kill()
+            child.wait(timeout=10)
+            with sr.exclusive(path, wait=10):
+                pass
+        finally:
+            if child.poll() is None:
+                child.kill()
+            child.stdout.close()
+
+    def test_a_whole_tick_waits_for_the_lock_and_numbers_itself_after_the_holder(self):
+        path = tmp_log()
+        with sr.exclusive(path):
+            with self.assertRaises(SystemExit):
+                sr.tick_under_lock(path, state([pr(1)]), snap({1: []}), None, NOW, 3, wait=0.2)
+        sr.tick_under_lock(path, state([pr(1)]), snap({1: []}), None, NOW, 3)
+        self.assertEqual(sr.next_tick(sr.read_events(path)), 2)
+        sr.tick_under_lock(path, state([pr(1)]), snap({1: []}), None, NOW, 3)
+        self.assertEqual(sr.next_tick(sr.read_events(path)), 3)
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+        os.unlink(path)
+        os.unlink(sr.tip_path(path))
+
+
+class CompletionAtANewerHead(unittest.TestCase):
+    """A thread fix pushes a new head, and a card key ends in the head. The receipt for the new head must close the
+    old card as done; before this it was logged as a release, so the seat that actually fixed things was credited
+    with nothing in the history that orders seats by who finishes work."""
+
+    OLD, NEW = "a" * 40, "b" * 40
+
+    def lease_events(self, path):
+        return [e for e in sr.read_events(path) if e["type"] in ("lease_done", "lease_released")]
+
+    def run_two_ticks(self, done_at_new_head, completer="claude"):
+        path = tmp_log()
+        first = state([pr(1, head=self.OLD, threads_unresolved=1, seat="claude")])
+        sr.run_tick(first, snap({1: []}), path, 1, NOW, stall_after=99)
+        second = state([pr(1, head=self.NEW, threads_unresolved=1, seat="claude")])
+        second["done"] = [f"fix_threads:1:{self.NEW[:8]}"] if done_at_new_head else []
+        second["done_by"] = {f"fix_threads:1:{self.NEW[:8]}": completer} if done_at_new_head else {}
+        sr.run_tick(second, snap({1: []}), path, 2, NOW, stall_after=99)
+        return path
+
+    def test_a_receipt_for_the_fix_at_the_new_head_closes_the_old_card_as_done(self):
+        path = self.run_two_ticks(True)
+        events = self.lease_events(path)
+        self.assertEqual([(e["type"], e["data"]["key"], e["data"]["agent"]) for e in events],
+                         [("lease_done", f"fix_threads:1:{self.OLD[:8]}", "claude")])
+        self.assertTrue(events[0]["data"]["at_newer_head"])
+        self.assertEqual(sr.history_from_events(sr.read_events(path))["agents"]["claude"]["done"], 1)
+        os.unlink(path)
+
+    def test_a_receipt_from_another_seat_is_not_the_holders_completion(self):
+        path = self.run_two_ticks(True, completer="codex")
+        events = self.lease_events(path)
+        self.assertEqual([e["type"] for e in events], ["lease_released"])
+        self.assertEqual(sr.history_from_events(sr.read_events(path))["agents"].get("claude", {}).get("done", 0), 0)
+        os.unlink(path)
+
+    def test_the_completion_is_recorded_before_the_ticks_cards_are_built(self):
+        path = self.run_two_ticks(True)
+        types = [e["type"] for e in sr.read_events(path) if e["data"].get("tick") == 2]
+        self.assertIn("lease_done", types)
+        self.assertLess(types.index("lease_done"), types.index("cards"))
+        os.unlink(path)
+
+    def test_without_that_receipt_the_old_card_is_still_just_released(self):
+        path = self.run_two_ticks(False)
+        events = self.lease_events(path)
+        self.assertEqual([e["type"] for e in events], ["lease_released"])
+        self.assertEqual(sr.history_from_events(sr.read_events(path))["agents"].get("claude", {}).get("done", 0), 0)
+        os.unlink(path)
+
+
+class MissingLog(unittest.TestCase):
+    """The log is tamper-evident only if deleting it is also noticed."""
+
+    def run_once(self, path, expect_tip=None):
+        return sr.tick_under_lock(path, state([pr(1)]), snap({1: []}), None, NOW, 3, expect_tip=expect_tip)
+
+    def test_a_missing_log_with_an_external_anchor_stops_instead_of_starting_a_new_chain(self):
+        directory = tempfile.mkdtemp()
+        path = os.path.join(directory, "events.jsonl")
+        with self.assertRaises(SystemExit) as caught:
+            self.run_once(path, expect_tip="f" * 64)
+        self.assertIn("event log failed verification", str(caught.exception))
+        self.assertFalse(os.path.exists(path))
+
+    def test_a_missing_log_whose_sidecar_remembers_events_stops_and_keeps_the_sidecar(self):
+        directory = tempfile.mkdtemp()
+        path = os.path.join(directory, "events.jsonl")
+        with open(sr.tip_path(path), "w", encoding="utf-8") as handle:
+            json.dump({"count": 900, "tip": "a" * 64}, handle)
+        with self.assertRaises(SystemExit):
+            self.run_once(path)
+        self.assertFalse(os.path.exists(path))
+        with open(sr.tip_path(path), encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle)["count"], 900)
+
+    def test_a_genuine_first_run_with_no_anchor_and_no_sidecar_still_starts_the_log(self):
+        directory = tempfile.mkdtemp()
+        path = os.path.join(directory, "events.jsonl")
+        result = self.run_once(path)
+        self.assertEqual(sr.next_tick(sr.read_events(path)), 2)
+        self.assertGreater(result["tip"]["count"], 0)
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+
+    def test_an_existing_log_with_its_matching_anchor_still_runs(self):
+        directory = tempfile.mkdtemp()
+        path = os.path.join(directory, "events.jsonl")
+        first = self.run_once(path)
+        second = self.run_once(path, expect_tip=first["tip"]["sha256"])
+        self.assertGreater(second["tip"]["count"], first["tip"]["count"])
+
+
 class Ingest(unittest.TestCase):
     def test_seat_is_read_from_the_text(self):
         self.assertEqual(sr.seat_from_comment("REVIEW PACKET\nSeat / agent: Mimo (x)"), "mimo")
@@ -183,6 +373,100 @@ class Ingest(unittest.TestCase):
         self.assertEqual(first["ingest"]["per_seat"], {"codex": 1, "mimo": 1})
         second = sr.run_tick(state([pr(1)]), snap(comments), path, 2, NOW)
         self.assertEqual(second["ingest"]["comment_ids"], [])
+        os.unlink(path)
+
+    def test_a_head_that_moved_credits_the_prs_seat_with_a_push(self):
+        path = tmp_log()
+        first = sr.run_tick(state([pr(1, head="a" * 40, seat="claude")]), snap({}), path, 1, NOW)
+        self.assertEqual(first["ingest"]["pushes"], {}, "the first run records heads and credits nobody")
+        self.assertEqual(first["ingest"]["heads"], {"1": "a" * 40})
+        same = sr.run_tick(state([pr(1, head="a" * 40, seat="claude")]), snap({}), path, 2, NOW)
+        self.assertEqual(same["ingest"]["pushes"], {})
+        moved = sr.run_tick(state([pr(1, head="b" * 40, seat="claude")]), snap({}), path, 3, NOW)
+        self.assertEqual(moved["ingest"]["pushes"], {"claude": 1})
+        self.assertEqual(moved["ingest"]["per_seat"], {}, "a push is not a comment")
+        again = sr.run_tick(state([pr(1, head="b" * 40, seat="claude")]), snap({}), path, 4, NOW)
+        self.assertEqual(again["ingest"]["pushes"], {}, "a push is credited once")
+        os.unlink(path)
+
+    def test_a_new_pr_is_a_push_but_one_with_no_known_seat_credits_nobody(self):
+        path = tmp_log()
+        sr.run_tick(state([pr(1)]), snap({}), path, 1, NOW)
+        opened = sr.run_tick(state([pr(1), pr(2, seat="codex"), pr(3, seat="")]), snap({}), path, 2, NOW)
+        self.assertEqual(opened["ingest"]["pushes"], {"codex": 1})
+        self.assertEqual(opened["ingest"]["unattributed"], 0, "a push with no seat must not weaken attribution quality")
+        os.unlink(path)
+
+    def test_a_pr_that_closes_and_reopens_at_the_same_head_is_credited_when_it_reopens(self):
+        path = tmp_log()
+        sr.run_tick(state([pr(1, head="a" * 40, seat="claude"), pr(2, seat="codex")]), snap({}), path, 1, NOW)
+        closed = sr.run_tick(state([pr(2, seat="codex")]), snap({}), path, 2, NOW)
+        self.assertEqual(closed["ingest"]["pushes"], {})
+        self.assertEqual(closed["ingest"]["heads"], {"2": "a" * 40})
+        reopened = sr.run_tick(state([pr(1, head="a" * 40, seat="claude"), pr(2, seat="codex")]), snap({}), path, 3, NOW)
+        self.assertEqual(reopened["ingest"]["pushes"], {"claude": 1})
+        os.unlink(path)
+
+    def test_every_open_prs_snapshot_replaces_the_last_even_when_empty(self):
+        path = tmp_log()
+        sr.append_event(path, "ingest", {"tick": 1, "per_seat": {}, "unattributed": 0, "heads": {"1": "a" * 40}}, NOW)
+        sr.append_event(path, "ingest", {"tick": 2, "per_seat": {}, "unattributed": 0, "heads": {}}, NOW)
+        self.assertEqual(sr.last_heads(sr.read_events(path)), {})
+        os.unlink(path)
+
+    def test_a_log_from_before_pushes_were_recorded_credits_nothing_on_its_first_run(self):
+        path = tmp_log()
+        sr.append_event(path, "ingest", {"tick": 1, "per_seat": {"mimo": 1}, "unattributed": 0, "comment_ids": [5]}, NOW)
+        result = sr.run_tick(state([pr(1), pr(2, seat="codex")]), snap({}), path, 2, NOW)
+        self.assertEqual(result["ingest"]["pushes"], {})
+        os.unlink(path)
+
+    def test_pushes_do_not_raise_the_comment_attribution_ratio(self):
+        # Three pushes plus three comments nobody can be assigned: the ratio over comments is 0, so attribution stays
+        # weak and stall detection stays off. Folded into per_seat it would read 3 of 6 and switch detection back on.
+        path = tmp_log()
+        sr.run_tick(state([pr(1, seat="claude"), pr(2, seat="codex"), pr(3, seat="mimo")]), snap({}), path, 1, NOW)
+        moved = state([pr(1, head="b" * 40, seat="claude"), pr(2, head="b" * 40, seat="codex"),
+                       pr(3, head="b" * 40, seat="mimo")])
+        comments = {1: [{"id": 10 + i, "body": "plain note"} for i in range(3)]}
+        result = sr.run_tick(moved, snap(comments), path, 2, NOW)
+        self.assertEqual(result["ingest"]["pushes"], {"claude": 1, "codex": 1, "mimo": 1})
+        self.assertEqual(result["ingest"]["unattributed"], 3)
+        ingests = [e for e in sr.read_events(path) if e["type"] == "ingest"]
+        self.assertTrue(sr.attribution_weak(ingests, 3))
+        os.unlink(path)
+
+    def test_a_push_by_an_author_under_a_standing_rejection_clears_the_stall_but_neither_completes_nor_covers(self):
+        # Codex's cross-case for the #87 + #89 integration: push credit is engagement only. The address_review card must
+        # still be issued at the new head, no lease may complete, and the state's coverage is untouched.
+        path = tmp_log()
+
+        def rejected(head):
+            return state([pr(1, head=head, seat="claude", implementers=["claude"], covered=False,
+                             standing_blocker={"verdict": "needs_revision", "by": "Codex"})])
+
+        sr.run_tick(rejected("a" * 40), snap({}), path, 1, NOW)
+        moved = rejected("b" * 40)
+        result = sr.run_tick(moved, snap({}), path, 2, NOW)
+        self.assertEqual(result["ingest"]["pushes"], {"claude": 1})
+        self.assertEqual(result["ingest"]["per_seat"], {}, "a push is not a comment")
+        kinds = {c["agent"]: c["inputs"].get("kind") for c in result["cards"]}
+        self.assertEqual(kinds["claude"], "address_review", "the rejection still stands, so the card is still issued")
+        events = sr.read_events(path)
+        self.assertNotIn("lease_done", [e["type"] for e in events], "a push never completes a card")
+        self.assertEqual(moved["done"], [])
+        self.assertFalse(moved["prs"][0]["covered"], "a push never creates coverage")
+        os.unlink(path)
+
+    def test_a_push_clears_the_seats_stall_and_only_that_seats(self):
+        path = tmp_log()
+        sr.run_tick(three_open(), snap({}), path, 1, NOW, stall_after=3)
+        sr.run_tick(three_open(), snap({}), path, 2, NOW, stall_after=3)
+        moved = state([pr(1, head="b" * 40, seat="claude"), pr(2, seat="other"), pr(3, seat="other")])
+        result = sr.run_tick(moved, snap({}), path, 3, NOW, stall_after=3)
+        escalated = {e["agent"] for e in result["escalations"]}
+        self.assertNotIn("claude", escalated)
+        self.assertEqual(escalated, {"mimo", "codex"})
         os.unlink(path)
 
     def test_unattributed_comments_are_counted_separately(self):

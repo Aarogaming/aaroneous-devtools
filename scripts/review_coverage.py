@@ -36,6 +36,11 @@ import attest_sig  # noqa: E402
 
 FENCE = re.compile(r"```attestation\s*\n(.*?)\n```", re.DOTALL)
 FULL_SHA = re.compile(r"\b[0-9a-f]{40}\b")
+# A prose verdict: the upper-case VERDICT label the old packets used, or the word "verdict" in any case followed within
+# a few words by an accept or reject word ("Independent Codex verdict: ACCEPT ..."). Without the second form a seat
+# that writes the label in lower case is invisible: not counted, not malformed, not legacy, so nobody tells it why.
+PROSE_VERDICT = re.compile(
+    r"\bVERDICT\b|(?i:\bverdict\b[^.\n]{0,40}?\b(?:accept(?:ed)?|reject(?:ed)?|approve[ds]?|changes[ _-]?requested|needs[ _-]?revision)\b)")
 ACCEPT = {"accept"}
 REJECT = {"changes_requested", "needs_revision"}
 REQUIRED = ("repo", "pr", "head", "base_sha", "scope", "reviewer", "implementers", "verdict")
@@ -79,7 +84,7 @@ def parse_attestations(comments):
             record["_sig"] = signature
             record["comment"] = index
             structured.append(record)
-        if not found and re.search(r"\bVERDICT\b", body):
+        if not found and PROSE_VERDICT.search(body):
             legacy.append(
                 {
                     "comment": index,
@@ -90,8 +95,45 @@ def parse_attestations(comments):
     return structured, problems, legacy
 
 
+# One seat is one seat however its name is spelled: "Gemini", "gemini" and "Antigravity" are the same reviewer. The merge gate's
+# "at least two independent seats" box counts len(accept_seats), so two comments from one seat spelled differently (live on
+# #96: ['Gemini', 'gemini']) looked like two seats.
+SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
+
+
+# A seat is recognised by a word that STARTS with its name: "claude-sonnet-5-5", "gemini-3.8-flash", "mimo-v2.6-flash-free",
+# "Claude\u200b" and "CLAUDE." all name a seat. Taking only the first space-separated word missed every model-id and
+# punctuation form (skeptic probe on #99: reviewer "Claude" with implementers ["claude-sonnet-5-5"] was independent).
+KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen")
+
+
+def seat_names(name):
+    """The set of seats a reviewer or implementer string names. A string may name several ("Claude, Mimo",
+    "claude+mimo", "Gemini/Antigravity"); a string that names none keeps its first alphanumeric token, so an unknown
+    seat still compares with itself."""
+    tokens = [t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t]
+    found = set()
+    for token in tokens:
+        for seat in KNOWN_SEATS:
+            if token.startswith(seat):
+                found.add(SEAT_NAME_ALIASES.get(seat, seat))
+    if not found and tokens:
+        found.add(tokens[0])
+    return found
+
+
+def seat_name(name):
+    """One seat for display and de-duplication: the first of the sorted seats `seat_names` finds."""
+    seats = sorted(seat_names(name))
+    return seats[0] if seats else ""
+
+
 def independent(record):
-    return record["reviewer"] not in record["implementers"]
+    """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
+    ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
+    raw comparison let an implementer's own verdict count under a spelling variant)."""
+    implementers = set().union(*(seat_names(i) for i in record["implementers"])) if record["implementers"] else set()
+    return not (seat_names(record["reviewer"]) & implementers)
 
 
 def evaluate(head, merge_base, records, is_ancestor):
@@ -140,7 +182,7 @@ def evaluate(head, merge_base, records, is_ancestor):
         "reasons": reasons,
         "accepts_at_head": len(at_head),
         "counted": counted,
-        "accept_seats": sorted({r["reviewer"] for r in counted}),
+        "accept_seats": sorted(set().union(*(seat_names(r["reviewer"]) for r in counted)) if counted else []),
     }
 
 
