@@ -75,6 +75,37 @@ class ChangedPaths(unittest.TestCase):
         git("checkout", "-q", "-b", "pr")
         return directory, git
 
+    def test_a_non_ascii_or_spaced_path_is_listed_as_itself_and_still_protected(self):
+        # Probe: git quoted '.github/workflows/\u00e9.yml' as '".github/workflows/\\303\\251.yml"', no protected prefix
+        # matched it, and decide() said eligible=True for a covered PR touching an owner-only workflow.
+        directory, git = self.make_repo()
+        os.makedirs(os.path.join(directory, ".github", "workflows"))
+        os.makedirs(os.path.join(directory, "docs"))
+        names = [".github/workflows/é.yml", "docs/with space.md"] + ([] if os.name == "nt" else ['docs/quo"te.md'])
+        for name in names:
+            with open(os.path.join(directory, name), "w", encoding="utf-8", newline="\n") as handle:
+                handle.write("x\n")
+        git("add", "-A")
+        git("commit", "-q", "-m", "odd names")
+        paths = mg.changed_paths(directory, "main", git("rev-parse", "HEAD"))
+        self.assertEqual(sorted(paths), sorted(names))
+        self.assertEqual(mg.touches_protected(paths), [".github/workflows/\u00e9.yml"])
+        self.assertEqual(mg.tier_of(paths)[0], "A")
+        decision = mg.decide({"covered": True}, paths, "main", True)
+        self.assertFalse(decision["eligible"])
+        self.assertIn("f: touches protected paths", decision["reasons"][0])
+
+    def test_a_breaker_file_under_a_directory_with_a_space_is_found(self):
+        directory, git = self.make_repo()
+        os.makedirs(os.path.join(directory, "ops dir"))
+        with open(os.path.join(directory, "ops dir", "circuit_breaker_override.toml"), "w", encoding="utf-8",
+                  newline="\n") as handle:
+            handle.write("tripped = true\n")
+        git("add", "-A")
+        git("commit", "-q", "-m", "breaker")
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        self.assertEqual(mg.breaker_files(directory, "main"), ["ops dir/circuit_breaker_override.toml"])
+
     def test_renaming_an_owner_only_file_still_reports_the_protected_source_path(self):
         directory, git = self.make_repo()
         git("mv", "governance/identities.json", "governance/other.json")
