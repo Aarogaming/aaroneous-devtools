@@ -519,6 +519,62 @@ fn family_key(stem: &str) -> String {
     }
 }
 
+/// The fewest cases each ported family may hold. A runner that compares two empty lists passes, so emptying or
+/// truncating a family's vectors (input and output together) used to leave this test green (skeptic probe: seats,
+/// coverage and chain all emptied, 3 tests passed). The floors only rise: add a family here when you port it, and raise
+/// a number when vectors are added.
+const MIN_CASES: [(&str, usize); 15] = [
+    ("seats", 23),
+    ("heads", 12),
+    ("attribution", 34),
+    ("rejected", 7),
+    ("receipts", 19),
+    ("stalls", 9),
+    ("pushes", 7),
+    ("coverage", 16),
+    ("gate_tier", 14),
+    ("gate_ci", 7),
+    ("gate_breaker", 7),
+    ("gate_threads", 5),
+    ("gate_checklist", 28),
+    ("gate_decide", 7),
+    ("chain", 3),
+];
+
+fn case_count(stem: &str) -> usize {
+    let input = load(&format!("{stem}.in.json"));
+    input["cases"]
+        .as_array()
+        .or_else(|| input.as_array())
+        .map_or(0, Vec::len)
+}
+
+#[test]
+fn no_ported_family_has_fewer_vectors_than_its_floor_and_every_one_has_a_floor() {
+    let floors: std::collections::BTreeMap<&str, usize> = MIN_CASES.iter().copied().collect();
+    let mut problems = Vec::new();
+    for stem in families_on_disk() {
+        if check(&family_key(&stem)).is_none() {
+            continue;
+        }
+        match floors.get(stem.as_str()) {
+            None => problems.push(format!("{stem} is ported but has no entry in MIN_CASES")),
+            Some(&floor) => {
+                let count = case_count(&stem);
+                if count < floor {
+                    problems.push(format!("{stem} has {count} vector cases, floor is {floor}"));
+                }
+            }
+        }
+    }
+    for (name, _) in MIN_CASES {
+        if check(name).is_none() {
+            problems.push(format!("{name} has a floor but is not ported"));
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
 #[test]
 fn every_ported_family_matches_its_vectors_exactly() {
     let mut failures = Vec::new();
