@@ -311,5 +311,79 @@ class Subject(unittest.TestCase):
             rc.report_snapshot({"prs": []})
 
 
+TRAILER_CLAUDE = "docs: change\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>\n"
+NO_TRAILER = "docs: address review findings\n"
+
+
+class GitSaysWhoImplemented(unittest.TestCase):
+    """An attestation's `implementers` list is the reviewer's word; git history is not. Probe: Gemini committed to #116,
+    the commit had no trailer, and Gemini's attestation listed only claude, so the accept counted as independent."""
+
+    def row(self, record, commit_log="", branch="proposal/x", reviews=()):
+        pr = {"number": 1, "head": H1, "merge_base": MB, "comments": [block(record)], "commit_log": commit_log,
+              "branch": branch}
+        return rc.report_snapshot({"repo": "o/r", "prs": [pr]}, is_ancestor=always)[0]
+
+    def record(self, reviewer, implementers=("claude",)):
+        return rec(H1, reviewer=reviewer, impl=implementers, repo="o/r", pr=1)
+
+    def test_a_seat_named_in_a_trailer_cannot_review_even_when_the_attestation_omits_it(self):
+        log = "\x1e" + TRAILER_CLAUDE + "\x1e" + "fix\n\nCo-Authored-By: Gemini <g@example.invalid>\n"
+        row = self.row(self.record("gemini"), log)
+        self.assertFalse(row["covered"])
+        self.assertTrue(any("git history names ['gemini']" in r for r in row["reasons"]), row["reasons"])
+        # the same history does not stop a seat that did not write it
+        self.assertTrue(self.row(self.record("codex"), log)["covered"])
+
+    def test_a_seat_named_branch_prefix_counts_as_an_implementer(self):
+        row = self.row(self.record("codex", ("claude",)), "\x1e" + NO_TRAILER, branch="codex/output-lifecycle")
+        self.assertFalse(row["covered"])
+
+    def test_aliases_resolve_to_the_seat(self):
+        log = "\x1e" + "x\n\nCo-Authored-By: Antigravity <a@example.invalid>\n"
+        self.assertFalse(self.row(self.record("Gemini"), log)["covered"])
+
+    def test_a_commit_that_names_no_seat_is_reported_but_does_not_block(self):
+        log = "\x1e" + TRAILER_CLAUDE + "\x1e" + NO_TRAILER
+        row = self.row(self.record("gemini"), log)
+        self.assertTrue(row["covered"], "advisory only: git cannot show the author of that commit")
+        self.assertTrue(any(r.startswith("1 commit(s) in base..head name no implementing seat") for r in row["reasons"]))
+        self.assertFalse(any("needs_revision" in r or "changes_requested" in r for r in row["reasons"]))
+
+    def test_a_seat_named_branch_attributes_every_commit(self):
+        row = self.row(self.record("gemini"), "\x1e" + NO_TRAILER, branch="claude/x")
+        self.assertTrue(row["covered"])
+        self.assertEqual(row["reasons"], [])
+
+    def test_without_git_facts_nothing_changes(self):
+        self.assertTrue(self.row(self.record("gemini"))["covered"])
+        self.assertEqual(self.row(self.record("gemini"))["reasons"], [])
+
+    def test_the_helpers_read_a_real_git_log(self):
+        import shutil
+        import subprocess
+        import tempfile
+        root = tempfile.mkdtemp(prefix="git-implementers-")
+        self.addCleanup(shutil.rmtree, root, True)
+
+        def git(*args):
+            result = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", root, *args],
+                                    capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout
+
+        git("init", "-q", "-b", "main")
+        for index, message in enumerate((TRAILER_CLAUDE, NO_TRAILER, "third\n\nContribution-ID: C1/mimo-x\n")):
+            with open(f"{root}/f{index}.txt", "w", encoding="utf-8", newline="\n") as handle:
+                handle.write("x\n")
+            git("add", ".")
+            git("commit", "-q", "-m", message)
+        log = git("log", "--format=%x1e%B", "HEAD")
+        self.assertEqual(len(rc.commit_chunks(log)), 3)
+        self.assertEqual(rc.git_implementers(log, "proposal/x"), {"claude", "mimo"})
+        self.assertEqual(rc.unattributed_commits(log, "proposal/x"), 1)
+        self.assertEqual(rc.unattributed_commits(log, "codex/x"), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
