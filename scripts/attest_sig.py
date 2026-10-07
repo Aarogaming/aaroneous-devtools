@@ -15,16 +15,14 @@ The signed message is ``canonical(record)``: compact JSON with sorted keys, UTF-
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import markdown_fences  # noqa: E402
+
 NAMESPACE = "aaroneous-attestation"
-PAIR = re.compile(
-    r"```attestation[ \t]*\n(.*?)\n```(?:[ \t]*\n+```attestation-sig[ \t]*\n(.*?)\n```)?",
-    re.DOTALL,
-)
 
 
 def canonical(record):
@@ -34,11 +32,16 @@ def canonical(record):
 def pairs(body):
     """Yield (raw_json_text, signature_text_or_None) for each attestation block in a comment.
 
-    Comments written on Windows arrive with CRLF line endings; normalise them first, otherwise the fence
-    patterns (which expect a bare newline) silently skip the block and the verdict never counts."""
-    body = body.replace("\r\n", "\n").replace("\r", "\n")
-    for raw, signature in PAIR.findall(body):
-        yield raw, (signature or "").strip() or None
+    Only a block a reader sees counts (see markdown_fences): an attestation inside an example fence or an HTML comment is
+    not a posted verdict. CRLF line endings, which comments written on Windows arrive with, are normalised there."""
+    found = markdown_fences.blocks(body)
+    for index, (label, raw, _) in enumerate(found):
+        if label != "attestation":
+            continue
+        signature = None
+        if index + 1 < len(found) and found[index + 1][0] == "attestation-sig" and found[index + 1][2]:
+            signature = found[index + 1][1].strip() or None
+        yield raw, signature
 
 
 def allowed_signers(identities):
