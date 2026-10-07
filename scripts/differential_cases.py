@@ -178,5 +178,18 @@ for _ in range(int(sys.argv[1]) // 5):
     _, eligible, first = mg.reconcile(result["eligible"], json.loads(json.dumps(GREEN)))
     decide_cases.append({"row": row, "paths": paths, "base": base, "trial": trial, "owner": owner,
                          "out": {"decide": result, "reconciled": {"eligible": eligible, "first_blocker": first}}})
-json.dump({"text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
+def json_value(depth=0):
+    kind = random.random()
+    if depth > 2 or kind < 0.4:
+        return random.choice([True, False, None, 0, 1, -7, 12345678901234, "", "x", "caf\u00e9", "q\"uo\\te", "tab\there\nnew", "\u0001\u001f\u007f", "\u2028\u2029", "emoji \U0001F600", "\u0008\u000c"])
+    if kind < 0.65:
+        return [json_value(depth + 1) for _ in range(random.randint(0, 3))]
+    return {random.choice(["b", "a", "A", "z", "\u00e9", "k\"ey", "", "10", "2"]): json_value(depth + 1) for _ in range(random.randint(0, 3))}
+chain_cases = []
+for _ in range(int(sys.argv[1]) // 5):
+    event = {"seq": random.randint(1, 5000), "ts": "2026-10-07T00:00:00Z", "type": random.choice(["ingest", "cards", "x\u00e9"]),
+             "data": json_value(), "prev": sr.digest(str(random.random()))}
+    line = json.dumps(event, sort_keys=True, ensure_ascii=False)
+    chain_cases.append({"event": event, "line": line, "digest": sr.digest(line)})
+json.dump({"chain": chain_cases, "text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
 print(len(cases), len(stalls), len(push_cases))

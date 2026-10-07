@@ -137,6 +137,7 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
     coverage_cases(all, bad);
     gate_cases(all, bad);
     checklist_cases(all, bad);
+    chain_cases(all, bad);
     for case in all["pushes"].as_array().unwrap() {
         let prs: Vec<PushPr> = case["prs"]
             .as_array()
@@ -356,5 +357,19 @@ fn checklist_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
                 .push(format!("{case} rust={d:?}"));
         }
         let _ = reconcile;
+    }
+}
+
+fn chain_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
+    use steward::chain::{digest, dumps};
+    for case in all["chain"].as_array().unwrap() {
+        let line = dumps(&case["event"]);
+        if line != case["line"].as_str().unwrap()
+            || digest(&line) != case["digest"].as_str().unwrap()
+        {
+            bad.entry("chain")
+                .or_default()
+                .push(format!("{} rust={line}", case["line"]));
+        }
     }
 }

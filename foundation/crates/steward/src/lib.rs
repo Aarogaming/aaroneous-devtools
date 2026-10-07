@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 pub mod attribution;
+pub mod chain;
 pub mod checklist;
 pub mod coverage;
 pub mod engagement;

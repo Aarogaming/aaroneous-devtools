@@ -65,7 +65,7 @@ be a breaking, versioned contract change; deciding between the two is an open qu
 `foundation/crates/steward` is the Rust port (lane C99). `cargo test -p steward` runs it against every vector family
 here (`tests/golden.rs`) and fails when a family exists that is neither ported nor listed in its `PENDING` list, when a
 ported family disagrees with its `*.out.json`, or when a family listed as pending no longer exists. Ported so far:
-`seats`, `heads`, `attribution`, `rejected`, `receipts`, `stalls`, `pushes`, `gate_checklist`, `gate_decide` (with #122's strict fact reading), `gate_tier`, `gate_ci`, `gate_breaker`, `gate_threads`, `coverage` (as it is on main: later changes in open PRs #111, #114, #119 are not in the vectors yet). Port a family by moving it from `PENDING` to `check`.
+`seats`, `heads`, `attribution`, `rejected`, `receipts`, `stalls`, `pushes`, `chain`, `gate_checklist`, `gate_decide` (with #122's strict fact reading), `gate_tier`, `gate_ci`, `gate_breaker`, `gate_threads`, `coverage` (as it is on main: later changes in open PRs #111, #114, #119 are not in the vectors yet). Port a family by moving it from `PENDING` to `check`.
 
 ## Not covered yet
 

@@ -25,7 +25,7 @@ fn load(name: &str) -> Value {
 const SCENARIO_MARKER: &str = "(scenario)";
 
 /// Not ported yet. Remove an entry when its family is ported and listed in `check`.
-const PENDING: [&str; 2] = ["audit", "chain"];
+const PENDING: [&str; 1] = ["audit"];
 /// The rule families that have a dedicated function in the Python steward (everything else is a scenario file).
 const RULE_FAMILIES: [&str; 15] = [
     "attribution",
@@ -54,6 +54,7 @@ fn check(family: &str) -> Option<Result<(), String>> {
         "receipts" => Some(check_receipts()),
         "stalls" => Some(check_stalls()),
         "coverage" => Some(check_coverage()),
+        "chain" => Some(check_chain()),
         "gate_checklist" => Some(check_gate_checklist()),
         "gate_decide" => Some(check_gate_decide()),
         "gate_tier" => Some(check_gate_tier()),
@@ -151,6 +152,27 @@ fn check_rejected() -> Result<(), String> {
         ));
     }
     compare(&Value::Array(actual), &load("rejected.out.json"))
+}
+
+fn check_chain() -> Result<(), String> {
+    use steward::chain::build_log;
+    let events: Vec<(String, Value, String)> = load("chain.in.json")
+        .as_array()
+        .ok_or("chain.in.json is not a list")?
+        .iter()
+        .map(|e| {
+            (
+                e["type"].as_str().unwrap_or_default().to_owned(),
+                e["data"].clone(),
+                e["now"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect();
+    let (lines, tip) = build_log(&events);
+    compare(
+        &json!({"lines": lines, "tip": tip}),
+        &load("chain.out.json"),
+    )
 }
 
 fn check_gate_checklist() -> Result<(), String> {
