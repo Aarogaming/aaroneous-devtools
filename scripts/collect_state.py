@@ -173,7 +173,9 @@ def rejected_verdicts(pr, row, commit_exists=None):
 
 def seats_from_trailers(text, branch=""):
     """Every implementing seat found, deduplicated in order: a seat-named branch prefix first (the
-    branch owner), then every seat named in a co-author or contribution trailer anywhere in the range.
+    branch owner), then every seat named in a co-author or contribution trailer, or in a `git-author:` line (the
+    commit author's name, which the collector adds to each message: a cloud session commits as "Claude"), anywhere in
+    the range.
     Independence needs the whole list, not just the first match."""
     seats = []
 
@@ -186,7 +188,7 @@ def seats_from_trailers(text, branch=""):
     if prefix:
         add(prefix.group(1))
     for line in text.splitlines():
-        if line.lower().startswith(("co-authored-by:", "contribution-id:")):
+        if line.lower().startswith(("co-authored-by:", "contribution-id:", "git-author:")):
             for found in SEAT_PATTERN.finditer(line):
                 add(found.group(1))
     return seats
@@ -403,7 +405,7 @@ def collect(repo, repo_dir, agents, backlog, identities=None, keys=None, require
     graphql = rc.gh_json("api", "graphql", "-f", f"query={THREADS_QUERY}", "-F", f"owner={owner}", "-F", f"name={name}")
     seats = {}
     for p in snapshot["prs"]:
-        log = rc.git(repo_dir, "log", "--format=%B", f"origin/{p['base']}..{p['head']}").stdout
+        log = rc.git(repo_dir, "log", "--format=git-author: %an <%ae>%n%B", f"origin/{p['base']}..{p['head']}").stdout
         every = seats_from_trailers(log, meta[p["number"]].get("headRefName", ""))
         seats[p["number"]] = every[0] if every else ""
         p["implementers"] = every

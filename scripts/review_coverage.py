@@ -158,17 +158,17 @@ def known_seat_names(name):
     return found
 
 
-TRAILER = re.compile(r"^(?:co-authored-by|contribution-id):(.*)$", re.I | re.M)
+TRAILER = re.compile(r"^(?:co-authored-by|contribution-id|git-author):(.*)$", re.I | re.M)
 
 
 def commit_chunks(commit_log):
-    """The commit messages of a `git log --format=%x1e%B` listing, one string per commit."""
+    """The commits of a `git log --format=%x1egit-author: %an <%ae>%n%B` listing, one string per commit."""
     return [chunk for chunk in str(commit_log or "").split("\x1e") if chunk.strip()]
 
 
 def git_implementers(commit_log, branch):
     """The seats git itself says implemented a PR: the seat named by the branch prefix ("codex/..."), and every seat
-    named in a Co-Authored-By or Contribution-ID trailer of any commit in base..head. The attestation's own
+    named in a Co-Authored-By or Contribution-ID trailer or by the commit author's name, for any commit in base..head. The attestation's own
     `implementers` list is the reviewer's word; this is the history's, and an accept from a seat in it is not
     independent however the attestation spells the list (Gemini committed to #116 and attested it as independent)."""
     seats = known_seat_names(str(branch or "").split("/", 1)[0])
@@ -456,7 +456,7 @@ def live_snapshot(repo, repo_dir):
         pages = gh_json("api", f"repos/{repo}/issues/{item['number']}/comments", "--paginate", "--slurp")
         base = f"origin/{item['baseRefName']}"
         mb = git(repo_dir, "merge-base", base, item["headRefOid"]).stdout.strip() or "unknown"
-        log = git(repo_dir, "log", "--format=%x1e%B", f"{base}..{item['headRefOid']}")
+        log = git(repo_dir, "log", "--format=%x1egit-author: %an <%ae>%n%B", f"{base}..{item['headRefOid']}")
         prs.append(
             {
                 "number": item["number"],

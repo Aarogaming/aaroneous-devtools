@@ -359,6 +359,14 @@ class GitSaysWhoImplemented(unittest.TestCase):
         self.assertTrue(self.row(self.record("gemini"))["covered"])
         self.assertEqual(self.row(self.record("gemini"))["reasons"], [])
 
+    def test_a_commit_author_named_for_a_seat_attributes_the_commit(self):
+        log = "\x1e" + "git-author: Claude <noreply@anthropic.com>\n" + NO_TRAILER
+        self.assertEqual(rc.git_implementers(log, "docs/x"), {"claude"})
+        self.assertEqual(rc.unattributed_commits(log, "docs/x"), 0)
+        other = "\x1e" + "git-author: Aarog <aarog@example.invalid>\n" + NO_TRAILER
+        self.assertEqual(rc.git_implementers(other, "docs/x"), set())
+        self.assertEqual(rc.unattributed_commits(other, "docs/x"), 1)
+
     def test_the_helpers_read_a_real_git_log(self):
         import shutil
         import subprocess
@@ -378,7 +386,7 @@ class GitSaysWhoImplemented(unittest.TestCase):
                 handle.write("x\n")
             git("add", ".")
             git("commit", "-q", "-m", message)
-        log = git("log", "--format=%x1e%B", "HEAD")
+        log = git("log", "--format=%x1egit-author: %an <%ae>%n%B", "HEAD")
         self.assertEqual(len(rc.commit_chunks(log)), 3)
         self.assertEqual(rc.git_implementers(log, "proposal/x"), {"claude", "mimo"})
         self.assertEqual(rc.unattributed_commits(log, "proposal/x"), 1)
