@@ -106,6 +106,13 @@ SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
 # punctuation form (skeptic probe on #99: reviewer "Claude" with implementers ["claude-sonnet-5-5"] was independent).
 KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen")
 
+# A model family named without its seat word still names the seat that runs it: "Opus 5.5" is Claude, "gpt-5.5" is Codex.
+# Without this the string kept its own first token as an "unknown seat", so a Claude session labelling itself "Opus"
+# was independent of an implementer "claude" and two labels ("Opus", "Sonnet") counted as two reviewing seats
+# (skeptic probe on #99 main: both covered a PR whose only implementer was claude).
+MODEL_FAMILY_SEATS = {"opus": "claude", "sonnet": "claude", "haiku": "claude", "fable": "claude", "anthropic": "claude",
+                      "gpt": "codex", "openai": "codex"}
+
 
 def seat_names(name):
     """The set of seats a reviewer or implementer string names. A string may name several ("Claude, Mimo",
@@ -117,6 +124,9 @@ def seat_names(name):
         for seat in KNOWN_SEATS:
             if token.startswith(seat):
                 found.add(SEAT_NAME_ALIASES.get(seat, seat))
+        for family, seat in MODEL_FAMILY_SEATS.items():
+            if token.startswith(family):
+                found.add(seat)
     if not found and tokens:
         found.add(tokens[0])
     return found
