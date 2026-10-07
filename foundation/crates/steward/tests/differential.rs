@@ -139,6 +139,7 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
     checklist_cases(all, bad);
     chain_cases(all, bad);
     work_cases(all, bad);
+    card_cases(all, bad);
     for case in all["pushes"].as_array().unwrap() {
         let prs: Vec<PushPr> = case["prs"]
             .as_array()
@@ -388,6 +389,24 @@ fn work_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             bad.entry("work_items")
                 .or_default()
                 .push(format!("{} rust={got:?}", case["state"]));
+        }
+    }
+}
+
+fn card_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
+    use steward::cards::build_cards;
+    for case in all["cards"].as_array().unwrap() {
+        let got = build_cards(&case["state"], case["tick"].as_i64().unwrap());
+        let want = &case["out"];
+        let same = match &got {
+            Err(_) => want["error"] == true,
+            Ok(cards) => want["cards"] == Value::Array(cards.clone()),
+        };
+        if !same {
+            bad.entry("cards").or_default().push(format!(
+                "tick {} {} rust={got:?}",
+                case["tick"], case["state"]
+            ));
         }
     }
 }

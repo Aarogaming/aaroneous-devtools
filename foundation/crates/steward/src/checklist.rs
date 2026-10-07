@@ -89,7 +89,7 @@ fn py_str(value: &Value) -> String {
 }
 
 /// Python's `repr()` of a JSON value.
-fn py_repr(value: &Value) -> String {
+pub fn py_repr(value: &Value) -> String {
     match value {
         Value::Null => "None".to_owned(),
         Value::Bool(true) => "True".to_owned(),

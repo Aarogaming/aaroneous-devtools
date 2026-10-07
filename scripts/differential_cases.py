@@ -230,5 +230,44 @@ for _ in range(int(sys.argv[1]) // 5):
     except Exception:
         out = {"error": True}
     work_cases.append({"state": state, "out": out})
-json.dump({"work": work_cases, "chain": chain_cases, "text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
+AGENT_POOL = ["claude", "codex", "gemini", "mimo"]
+card_cases = []
+for _ in range(int(sys.argv[1]) // 5):
+    prs = [random_pr(n) for n in random.sample(range(1, 15), random.randint(0, 5))]
+    for pr in prs:
+        if random.random() < 0.97: pr.setdefault("updated_at", random.choice(TIMES[:8]))
+    agents = [{"name": n} for n in random.sample(AGENT_POOL, random.randint(1, 4))]
+    for agent in agents:
+        if random.random() < 0.2: agent["roles"] = random.choice([["reviewer"], ["implementer", "skeptic"], []])
+    state = {"now": "2026-10-05T00:00:00Z", "prs": prs, "agents": agents}
+    if random.random() < 0.3: state["backlog"] = [{"id": f"b{k}", "task": random.choice(["do x", "café"]),
+                                                     **({"acceptance": "proof"} if random.random() < 0.5 else {}),
+                                                     **({"detail": "d"} if random.random() < 0.5 else {})} for k in range(random.randint(1, 2))]
+    if random.random() < 0.5: state["repo"] = "o/r"
+    if random.random() < 0.5: state["last_merged"] = {"number": random.randint(1, 99), "merge_commit": "m" * random.choice([5, 40]), "head": "h" * 40}
+    if random.random() < 0.3: state["lease_ttl"] = random.choice([2, 4, 9])
+    try:
+        probe = [i for i in nt.work_items(json.loads(json.dumps(state))) if i["kind"] != "stacked" and i.get("pr")]
+    except Exception:
+        probe = []
+    keys = [nt.item_key(i["kind"], i["pr"], i.get("head", "")) for i in probe]
+    if keys and random.random() < 0.5:
+        state["leases"] = {k: {"agent": random.choice(AGENT_POOL), "expires": random.randint(1, 40)}
+                           for k in random.sample(keys, random.randint(1, len(keys)))}
+    history = {}
+    if random.random() < 0.5:
+        history["agents"] = {n: {"done": random.randint(0, 3), "expired": random.randint(0, 3)} for n in AGENT_POOL if random.random() < 0.7}
+    if keys and random.random() < 0.5:
+        history["expired"] = {f"{random.choice(AGENT_POOL)}|{k}": random.randint(0, 2) for k in keys if random.random() < 0.6}
+        history["item_attempts"] = {k: random.randint(0, 9) for k in keys if random.random() < 0.7}
+    if probe and random.random() < 0.5:
+        history["last_head"] = {f"{random.choice(AGENT_POOL)}|{i['pr']}": random.choice([i.get("head", "")[:8], "00000000"]) for i in probe}
+    if history or random.random() < 0.2: state["history"] = history
+    tick = random.randint(0, 30)
+    try:
+        out = {"cards": nt.build_cards(json.loads(json.dumps(state)), tick)}
+    except Exception:
+        out = {"error": True}
+    card_cases.append({"state": state, "tick": tick, "out": out})
+json.dump({"cards": card_cases, "work": work_cases, "chain": chain_cases, "text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
 print(len(cases), len(stalls), len(push_cases))

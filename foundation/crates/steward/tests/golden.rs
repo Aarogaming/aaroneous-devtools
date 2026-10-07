@@ -25,7 +25,7 @@ fn load(name: &str) -> Value {
 const SCENARIO_MARKER: &str = "(scenario)";
 
 /// Not ported yet. Remove an entry when its family is ported and listed in `check`.
-const PENDING: [&str; 1] = ["audit"];
+const PENDING: [&str; 0] = [];
 /// The rule families that have a dedicated function in the Python steward (everything else is a scenario file).
 const RULE_FAMILIES: [&str; 15] = [
     "attribution",
@@ -57,12 +57,44 @@ fn check(family: &str) -> Option<Result<(), String>> {
         "chain" => Some(check_chain()),
         "gate_checklist" => Some(check_gate_checklist()),
         "gate_decide" => Some(check_gate_decide()),
+        "audit" => Some(check_audit()),
         "gate_tier" => Some(check_gate_tier()),
         "gate_ci" => Some(check_gate_ci()),
         "gate_breaker" => Some(check_gate_breaker()),
         "gate_threads" => Some(check_gate_threads()),
         "pushes" => Some(check_pushes()),
         _ => None,
+    }
+}
+
+/// A scenario file is `{tick, state}` -> the cards `build_cards` issues.
+fn check_scenario(stem: &str) -> Result<(), String> {
+    let input = load(&format!("{stem}.in.json"));
+    let tick = input["tick"].as_i64().ok_or("scenario without tick")?;
+    let cards = steward::cards::build_cards(&input["state"], tick)?;
+    compare(&Value::Array(cards), &load(&format!("{stem}.out.json")))
+}
+
+/// The healthy state with a known newest merge, for each tick: the periodic audit is issued on every 6th tick only.
+fn check_audit() -> Result<(), String> {
+    let input = load("audit.in.json");
+    let mut actual = Vec::new();
+    for tick in input["ticks"].as_array().ok_or("no ticks")? {
+        let t = tick.as_i64().ok_or("tick is not an integer")?;
+        let cards = steward::cards::build_cards(&input["state"], t)?;
+        let tasks: Vec<Value> = cards.iter().map(|c| c["task"].clone()).collect();
+        actual.push(json!({"tick": t, "tasks": tasks}));
+    }
+    compare(&Value::Array(actual), &load("audit.out.json"))
+}
+
+/// A family file is checked by its family function; a scenario file is checked on its own.
+fn check_stem(stem: &str) -> Option<Result<(), String>> {
+    let key = family_key(stem);
+    if key == SCENARIO_MARKER {
+        Some(check_scenario(stem))
+    } else {
+        check(&key)
     }
 }
 
@@ -523,7 +555,7 @@ fn family_key(stem: &str) -> String {
 /// truncating a family's vectors (input and output together) used to leave this test green (skeptic probe: seats,
 /// coverage and chain all emptied, 3 tests passed). The floors only rise: add a family here when you port it, and raise
 /// a number when vectors are added.
-const MIN_CASES: [(&str, usize); 15] = [
+const MIN_CASES: [(&str, usize); 16] = [
     ("seats", 23),
     ("heads", 12),
     ("attribution", 34),
@@ -539,12 +571,17 @@ const MIN_CASES: [(&str, usize); 15] = [
     ("gate_checklist", 28),
     ("gate_decide", 7),
     ("chain", 3),
+    ("audit", 14),
 ];
+
+/// The fewest scenario files (`{tick, state}` -> cards) the contract may hold.
+const MIN_SCENARIOS: usize = 18;
 
 fn case_count(stem: &str) -> usize {
     let input = load(&format!("{stem}.in.json"));
     input["cases"]
         .as_array()
+        .or_else(|| input["ticks"].as_array())
         .or_else(|| input.as_array())
         .map_or(0, Vec::len)
 }
@@ -554,7 +591,7 @@ fn no_ported_family_has_fewer_vectors_than_its_floor_and_every_one_has_a_floor()
     let floors: std::collections::BTreeMap<&str, usize> = MIN_CASES.iter().copied().collect();
     let mut problems = Vec::new();
     for stem in families_on_disk() {
-        if check(&family_key(&stem)).is_none() {
+        if family_key(&stem) == SCENARIO_MARKER || check(&family_key(&stem)).is_none() {
             continue;
         }
         match floors.get(stem.as_str()) {
@@ -572,6 +609,15 @@ fn no_ported_family_has_fewer_vectors_than_its_floor_and_every_one_has_a_floor()
             problems.push(format!("{name} has a floor but is not ported"));
         }
     }
+    let scenarios = families_on_disk()
+        .iter()
+        .filter(|s| family_key(s) == SCENARIO_MARKER)
+        .count();
+    if scenarios < MIN_SCENARIOS {
+        problems.push(format!(
+            "{scenarios} scenario files, floor is {MIN_SCENARIOS}"
+        ));
+    }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
@@ -580,7 +626,7 @@ fn every_ported_family_matches_its_vectors_exactly() {
     let mut failures = Vec::new();
     let mut ported = Vec::new();
     for stem in families_on_disk() {
-        if let Some(result) = check(&family_key(&stem)) {
+        if let Some(result) = check_stem(&stem) {
             ported.push(stem.clone());
             if let Err(why) = result {
                 failures.push(format!("{stem}: {why}"));
@@ -605,8 +651,8 @@ fn no_vector_family_is_silently_skipped() {
     keys.insert(SCENARIO_MARKER.to_owned());
     let mut problems = Vec::new();
     for key in &keys {
-        let ported = check(key).is_some();
-        let listed = pending.contains(key.as_str()) || key == SCENARIO_MARKER;
+        let ported = key == SCENARIO_MARKER || check(key).is_some();
+        let listed = pending.contains(key.as_str());
         if ported && pending.contains(key.as_str()) {
             problems.push(format!("{key} is ported but still listed as pending"));
         }
@@ -627,10 +673,7 @@ fn no_vector_family_is_silently_skipped() {
 #[test]
 fn report_how_much_of_the_contract_is_ported() {
     let stems = families_on_disk();
-    let ported = stems
-        .iter()
-        .filter(|s| check(&family_key(s)).is_some())
-        .count();
+    let ported = stems.iter().filter(|s| check_stem(s).is_some()).count();
     println!(
         "steward port: {ported} of {} vector files ported",
         stems.len()
