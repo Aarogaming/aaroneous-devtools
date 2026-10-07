@@ -105,7 +105,7 @@ unknown version is reported, not guessed at.
 the one-fact-per-attribute `contract.c1` and `checked-by.c1` pair above) pass `cargo check` and `cargo test`, and
 `cargo doc` renders them as visible text in the crate index and item pages.
 They are inert at runtime. **Alternative, also verified in the same crate:** an attribute written
-`#[cfg_attr(any(), notation(v1, authority = "read-only"))]` compiles, runs and is *not* rendered by rustdoc. The
+`#[cfg_attr(any(), notation(v1, authority = "inspect"))]` compiles, runs and is *not* rendered by rustdoc. The
 trade-off is visibility (transparent in rendered docs) versus tidiness (machine-only). See open question 1.
 NOT VERIFIED on the toolchain Aaroneous pins, with Clippy, or on a crate using procedural macros.
 
@@ -194,10 +194,10 @@ claim. A case file therefore shows four things separately for every claim, and n
 | 4. Authorized decision | did the owner decide? | the owner only |
 
 **Evidence lineage (Codex, entry 13).** Several entries that copy one source are one lineage, not independent
-corroboration. Corroboration counts distinct lineages. Two entries share a lineage when one cites the other or
-their groundings reach the same landmark only through the same entry. How to detect "same source" beyond
-citations is open question 9. Codex suggests W3C PROV-DM as a vocabulary for lineage; I have not checked it
-against this design.
+corroboration. Corroboration counts distinct lineages. Two entries share a lineage when one cites the other,
+their groundings terminate at the same source landmark, or their paths reach a landmark through a shared entry.
+How to detect "same source" beyond citations is open question 9. Codex suggests W3C PROV-DM as a vocabulary for
+lineage; I have not checked it against this design.
 
 ## 8. Overlay tags (devtools side)
 
