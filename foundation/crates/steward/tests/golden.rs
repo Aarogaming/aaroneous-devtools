@@ -25,16 +25,7 @@ fn load(name: &str) -> Value {
 const SCENARIO_MARKER: &str = "(scenario)";
 
 /// Not ported yet. Remove an entry when its family is ported and listed in `check`.
-const PENDING: [&str; 8] = [
-    "audit",
-    "chain",
-    "gate_breaker",
-    "gate_checklist",
-    "gate_ci",
-    "gate_decide",
-    "gate_threads",
-    "gate_tier",
-];
+const PENDING: [&str; 4] = ["audit", "chain", "gate_checklist", "gate_decide"];
 /// The rule families that have a dedicated function in the Python steward (everything else is a scenario file).
 const RULE_FAMILIES: [&str; 15] = [
     "attribution",
@@ -63,6 +54,10 @@ fn check(family: &str) -> Option<Result<(), String>> {
         "receipts" => Some(check_receipts()),
         "stalls" => Some(check_stalls()),
         "coverage" => Some(check_coverage()),
+        "gate_tier" => Some(check_gate_tier()),
+        "gate_ci" => Some(check_gate_ci()),
+        "gate_breaker" => Some(check_gate_breaker()),
+        "gate_threads" => Some(check_gate_threads()),
         "pushes" => Some(check_pushes()),
         _ => None,
     }
@@ -154,6 +149,69 @@ fn check_rejected() -> Result<(), String> {
         ));
     }
     compare(&Value::Array(actual), &load("rejected.out.json"))
+}
+
+fn check_gate_tier() -> Result<(), String> {
+    use steward::gate::{category_of, gate_plan_level, tier_of, touches_protected};
+    let mut actual = Vec::new();
+    for case in load("gate_tier.in.json").as_array().ok_or("not a list")? {
+        let paths = string_list(&case["paths"]);
+        let (tier, reason) = tier_of(&paths);
+        actual.push(json!({
+            "tier": [tier, reason],
+            "protected": touches_protected(&paths),
+            "plan_level": gate_plan_level(&paths),
+            "category": category_of(&paths),
+        }));
+    }
+    compare(&Value::Array(actual), &load("gate_tier.out.json"))
+}
+
+fn check_gate_ci() -> Result<(), String> {
+    use steward::gate::{CiCheck, ci_state};
+    let mut actual = Vec::new();
+    for case in load("gate_ci.in.json").as_array().ok_or("not a list")? {
+        let rollup: Vec<CiCheck> = case["rollup"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|c| CiCheck {
+                        conclusion: c["conclusion"].as_str().map(str::to_owned),
+                        status: c["status"].as_str().map(str::to_owned),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let state = ci_state(&rollup);
+        actual.push(json!({"state": state.state, "detail": state.detail}));
+    }
+    compare(&Value::Array(actual), &load("gate_ci.out.json"))
+}
+
+fn check_gate_breaker() -> Result<(), String> {
+    use steward::gate::breaker_state;
+    let mut actual = Vec::new();
+    for case in load("gate_breaker.in.json")
+        .as_array()
+        .ok_or("not a list")?
+    {
+        actual.push(json!(breaker_state(
+            case["text"].as_str().unwrap_or_default()
+        )));
+    }
+    compare(&Value::Array(actual), &load("gate_breaker.out.json"))
+}
+
+fn check_gate_threads() -> Result<(), String> {
+    use steward::gate::open_threads;
+    let mut actual = Vec::new();
+    for case in load("gate_threads.in.json")
+        .as_array()
+        .ok_or("not a list")?
+    {
+        actual.push(json!(open_threads(&case["data"])));
+    }
+    compare(&Value::Array(actual), &load("gate_threads.out.json"))
 }
 
 fn check_coverage() -> Result<(), String> {

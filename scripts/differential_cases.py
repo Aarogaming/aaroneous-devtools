@@ -10,7 +10,7 @@ divergence is then pinned as a vector.
 
 import json, random, sys
 sys.path.insert(0, 'scripts')
-import collect_state as cs, review_coverage as rc, steward_run as sr
+import collect_state as cs, review_coverage as rc, steward_run as sr, merge_gate as mg
 random.seed(int(sys.argv[2]))
 H = "c" * 40
 pieces = ["Seat / agent:", "Seat/agent", "Reviewer", "Reviewer / Seat", "Reviewer seat", "Claude", "claude", "CODEX", "Gemini", "Mimo", "Antigravity", "Qwen",
@@ -83,5 +83,54 @@ for _ in range(int(sys.argv[1]) // 5):
     known = {(a, b) for a, b in pairs}
     out = rc.evaluate(head, merge_base, records, lambda a, b: a == b or (a, b) in known)
     coverage.append({"head": head, "merge_base": merge_base, "records": records, "ancestry": pairs, "out": out})
-json.dump({"text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
+DIRS = ["", "governance/", "docs/", "architecture/", "scripts/", "inventories/", "contracts/", ".github/workflows/", "foundation/crates/x/src/", "notes/", "a/b/", "governance//", "docs/."]
+NAMES2 = ["a.md", "b.json", "c.py", "d.toml", "e.txt", "f.sh", "g.ps1", "h.rs", "AGENTS.md", "AGENTS.md.bak", "SECURITY.md", "CONTRIBUTING.md", "AUTOMATED_MERGE_POLICY.md", "identities.json", ".gitignore", "..hidden", "x.tar.gz", "noext", "trail.", "A.MD", "caf\u00e9.md", "ci.yml", "a b.md"]
+def random_path():
+    path = random.choice(DIRS) + random.choice(NAMES2)
+    if random.random() < 0.1: path = random.choice(["AGENTS.md", "governance/AUTOMATED_MERGE_POLICY.md", "governance/identities.json"])
+    return path
+gate_tier = []
+for _ in range(int(sys.argv[1]) // 5):
+    paths = [random_path() for _ in range(random.randint(0, 4))]
+    gate_tier.append({"paths": paths, "out": {"tier": list(mg.tier_of(paths)), "protected": mg.touches_protected(paths),
+                                              "plan_level": mg.gate_plan(paths)["level"], "category": mg.category_of(paths)}})
+gate_ci = []
+for _ in range(int(sys.argv[1]) // 5):
+    rollup = []
+    for _ in range(random.randint(0, 4)):
+        item = {}
+        if random.random() < 0.85: item["conclusion"] = random.choice(["SUCCESS", "success", "FAILURE", "SKIPPED", "", None, "NEUTRAL", "stale"])
+        if random.random() < 0.85: item["status"] = random.choice(["COMPLETED", "completed", "IN_PROGRESS", "QUEUED", "", None, "WAITING"])
+        rollup.append(item)
+    gate_ci.append({"rollup": rollup, "out": mg.ci_state(rollup)})
+TOKENS = ["tripped", " ", "=", "true", "false", "True", "1", '"', "'", "#", "\n", "[", "]", "[a]", ".", "a", "tripped = true\n", "tripped = false\n", "tripped=false", "x = 1\n", "\t", "{", "}", ",", "0x1", "1e3", "inf", "nan", "\"false\"", "tripped.sub = true\n", "[t]\ntripped = true\n", "\r\n", "\u00e9", "'" "'" "'", '\"\"\"']
+gate_breaker = []
+LINES = ["tripped = true", "tripped = false", "tripped = false # note", "# tripped = true", "x = 1", "[sec]", "[sec]\ntripped = true", "tripped = 1", "tripped = 'true'", "tripped = \"false\"", "TRIPPED = true", "tripped=true", "a.tripped = true", "tripped = [true]", "tripped = {x = 1}", "\"tripped\" = false", "'tripped' = true", "tripped = true\ntripped = false", "", "  tripped  =  false  ", "tripped = tru", "tripped = true,", "[[arr]]", "tripped = 0x1", "tripped = +true"]
+for _ in range(int(sys.argv[1]) // 5):
+    if random.random() < 0.7:
+        text = "\n".join(random.choice(LINES) for _ in range(random.randint(1, 4))) + random.choice(["\n", "", "\r\n"])
+        if random.random() < 0.3 and text:
+            i = random.randrange(len(text))
+            text = text[:i] + random.choice(TOKENS) + text[i + 1:]
+    else:
+        text = "".join(random.choice(TOKENS) for _ in range(random.randint(0, 8)))
+    gate_breaker.append({"text": text, "out": mg.breaker_state(text)})
+def junk(depth=0):
+    kind = random.random()
+    if depth > 2 or kind < 0.35: return random.choice([True, False, None, 0, 1, "", "x", 2.5])
+    if kind < 0.6: return [junk(depth + 1) for _ in range(random.randint(0, 3))]
+    return {random.choice(["data", "repository", "pullRequest", "reviewThreads", "nodes", "pageInfo", "hasNextPage", "isResolved"]): junk(depth + 1) for _ in range(random.randint(0, 3))}
+def threads_response():
+    nodes = [random.choice([{"isResolved": True}, {"isResolved": False}, {"isResolved": 0}, {"isResolved": None}, {}, "x", 3, {"isResolved": "yes"}]) for _ in range(random.randint(0, 4))]
+    page = random.choice([{"hasNextPage": False}, {"hasNextPage": True}, {"hasNextPage": None}, {"hasNextPage": 0}, {}, None])
+    node_value = random.choice([nodes, nodes, nodes, {}, "", "ab", None, {"a": 1}])
+    data = {"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": node_value, "pageInfo": page}}}}}
+    if random.random() < 0.15: return junk()
+    if random.random() < 0.1: del data["data"]["repository"]["pullRequest"]["reviewThreads"]["pageInfo"]
+    return data
+gate_threads = []
+for _ in range(int(sys.argv[1]) // 5):
+    data = threads_response()
+    gate_threads.append({"data": data, "out": mg.open_threads(data)})
+json.dump({"text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
 print(len(cases), len(stalls), len(push_cases))

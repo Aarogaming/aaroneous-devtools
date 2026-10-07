@@ -135,6 +135,7 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
         }
     }
     coverage_cases(all, bad);
+    gate_cases(all, bad);
     for case in all["pushes"].as_array().unwrap() {
         let prs: Vec<PushPr> = case["prs"]
             .as_array()
@@ -222,6 +223,76 @@ fn coverage_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             bad.entry("coverage")
                 .or_default()
                 .push(format!("{case} rust={d:?}"));
+        }
+    }
+}
+
+fn gate_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
+    use steward::gate::{
+        CiCheck, breaker_state, category_of, ci_state, gate_plan_level, open_threads, tier_of,
+        touches_protected,
+    };
+    let strings = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .map(|l| {
+                l.iter()
+                    .filter_map(|s| s.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for case in all["gate_tier"].as_array().unwrap() {
+        let paths = strings(&case["paths"]);
+        let (tier, reason) = tier_of(&paths);
+        let want = &case["out"];
+        let same = want["tier"][0] == tier.as_str()
+            && want["tier"][1] == reason.as_str()
+            && strings(&want["protected"]) == touches_protected(&paths)
+            && want["plan_level"] == gate_plan_level(&paths)
+            && want["category"] == category_of(&paths).as_str();
+        if !same {
+            bad.entry("gate_tier").or_default().push(format!(
+                "{case} rust={tier} {reason} {} {}",
+                gate_plan_level(&paths),
+                category_of(&paths)
+            ));
+        }
+    }
+    for case in all["gate_ci"].as_array().unwrap() {
+        let rollup: Vec<CiCheck> = case["rollup"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| CiCheck {
+                conclusion: c["conclusion"].as_str().map(str::to_owned),
+                status: c["status"].as_str().map(str::to_owned),
+            })
+            .collect();
+        let state = ci_state(&rollup);
+        if state.state != case["out"]["state"].as_str().unwrap()
+            || state.detail != case["out"]["detail"].as_str().unwrap()
+        {
+            bad.entry("gate_ci")
+                .or_default()
+                .push(format!("{case} rust={state:?}"));
+        }
+    }
+    for case in all["gate_breaker"].as_array().unwrap() {
+        let got = breaker_state(case["text"].as_str().unwrap());
+        let want = case["out"].as_bool();
+        if got != want {
+            bad.entry("gate_breaker")
+                .or_default()
+                .push(format!("{} rust={got:?} py={want:?}", case["text"]));
+        }
+    }
+    for case in all["gate_threads"].as_array().unwrap() {
+        let got = open_threads(&case["data"]);
+        let want = case["out"].as_u64().map(|n| n as usize);
+        if got != want {
+            bad.entry("gate_threads")
+                .or_default()
+                .push(format!("{} rust={got:?} py={want:?}", case["data"]));
         }
     }
 }
