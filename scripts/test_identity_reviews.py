@@ -1,0 +1,137 @@
+import json
+import os
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(__file__))
+import review_coverage as rc  # noqa: E402
+
+MB = "m" * 40
+H1, H2 = "a" * 40, "b" * 40
+MAP = {"mimo-bot": "mimo", "codex-bot": "codex", "claude-bot": "claude"}
+
+
+def review(login, state="APPROVED", commit=H1, rid=1, submitted="2026-10-04T10:00:00Z"):
+    return {"id": rid, "user": {"login": login}, "state": state, "commit_id": commit, "submitted_at": submitted}
+
+
+def snapshot(reviews, implementers=("claude",), head=H1, base_events=()):
+    pr = {"number": 5, "head": head, "merge_base": MB, "comments": [], "reviews": reviews,
+          "implementers": list(implementers), "base_events": list(base_events)}
+    return {"repo": "o/r", "prs": [pr]}
+
+
+def row(reviews, **kw):
+    return rc.report_snapshot(snapshot(reviews, **kw), None, MAP)[0]
+
+
+class FormalReviews(unittest.TestCase):
+    def test_approval_at_head_by_a_mapped_non_implementer_counts(self):
+        r = row([review("mimo-bot")])
+        self.assertTrue(r["covered"])
+        self.assertEqual(r["trust"], "authenticated")
+        self.assertEqual(r["authenticated_reviews"], 1)
+
+    def test_approval_at_an_older_commit_does_not_carry(self):
+        self.assertFalse(row([review("mimo-bot", commit=H2)])["covered"])
+
+    def test_unmapped_login_never_counts_and_is_reported(self):
+        r = row([review("random-user")])
+        self.assertFalse(r["covered"])
+        self.assertIn("not a mapped seat", r["malformed"][0]["problem"])
+
+    def test_shared_owner_login_is_not_a_seat(self):
+        self.assertFalse(row([review("Aarogaming")])["covered"])
+
+    def test_implementer_approving_own_work_does_not_count(self):
+        self.assertFalse(row([review("claude-bot")])["covered"])
+
+    def test_changes_requested_at_head_blocks_even_with_an_approval(self):
+        r = row([review("mimo-bot", rid=1), review("codex-bot", "CHANGES_REQUESTED", rid=2)])
+        self.assertFalse(r["covered"])
+        self.assertIn("changes_requested", " ".join(r["reasons"]))
+
+    def test_unknown_implementers_means_independence_is_unproven(self):
+        r = row([review("mimo-bot")], implementers=())
+        self.assertFalse(r["covered"])
+        self.assertIn("independence unproven", r["malformed"][0]["problem"])
+
+    def test_a_base_change_after_the_review_invalidates_it(self):
+        r = rc.report_snapshot(snapshot([review("mimo-bot")], base_events=["2026-10-04T11:00:00Z"]), None, MAP)[0]
+        self.assertFalse(r["covered"])
+        self.assertIn("base changed after this review", r["malformed"][0]["problem"])
+
+    def test_a_base_change_before_the_review_does_not_invalidate_it(self):
+        r = rc.report_snapshot(snapshot([review("mimo-bot")], base_events=["2026-10-04T09:00:00Z"]), None, MAP)[0]
+        self.assertTrue(r["covered"])
+
+    def test_a_later_approval_supersedes_an_earlier_changes_requested_by_the_same_reviewer(self):
+        reviews = [review("mimo-bot", "CHANGES_REQUESTED", rid=1, submitted="2026-10-04T09:00:00Z"),
+                   review("mimo-bot", "APPROVED", rid=2, submitted="2026-10-04T10:00:00Z")]
+        self.assertTrue(row(reviews)["covered"])
+
+    def test_a_later_changes_requested_supersedes_an_earlier_approval(self):
+        reviews = [review("mimo-bot", "APPROVED", rid=1, submitted="2026-10-04T09:00:00Z"),
+                   review("mimo-bot", "CHANGES_REQUESTED", rid=2, submitted="2026-10-04T10:00:00Z")]
+        r = row(reviews)
+        self.assertFalse(r["covered"])
+        self.assertIn("changes_requested", " ".join(r["reasons"]))
+
+    def test_a_dismissed_review_is_no_decision(self):
+        reviews = [review("mimo-bot", "APPROVED", rid=1, submitted="2026-10-04T09:00:00Z"),
+                   review("mimo-bot", "DISMISSED", rid=2, submitted="2026-10-04T10:00:00Z")]
+        self.assertFalse(row(reviews)["covered"])
+
+    def test_different_reviewers_each_keep_their_own_latest_decision(self):
+        reviews = [review("mimo-bot", "APPROVED", rid=1), review("codex-bot", "CHANGES_REQUESTED", rid=2)]
+        self.assertFalse(row(reviews)["covered"])
+
+    def test_an_unresolved_merge_base_never_yields_coverage(self):
+        snap = snapshot([review("mimo-bot")])
+        snap["prs"][0]["merge_base"] = "unknown"
+        r = rc.report_snapshot(snap, None, MAP)[0]
+        self.assertFalse(r["covered"])
+        self.assertTrue(any("merge-base unresolved" in x for x in r["reasons"] + [m["problem"] for m in r["malformed"]]))
+
+    def test_login_matching_is_case_insensitive(self):
+        self.assertTrue(row([review("MIMO-BOT")])["covered"])
+
+    def test_no_identity_map_means_attested_only_and_formal_reviews_are_ignored(self):
+        r = rc.report_snapshot(snapshot([review("mimo-bot")]), None, None)[0]
+        self.assertFalse(r["covered"])
+        self.assertEqual(r["trust"], "attested-only")
+
+
+class IdentityMap(unittest.TestCase):
+    def test_load_identities_maps_logins_to_seats_lowercased(self):
+        data = {"owner": ["Aarogaming"], "seats": {"mimo": ["Mimo-Bot"], "claude": []}}
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
+            json.dump(data, handle)
+        try:
+            self.assertEqual(rc.load_identities(handle.name), {"mimo-bot": "mimo"})
+        finally:
+            os.unlink(handle.name)
+
+    def test_the_committed_map_never_lists_the_owner_as_a_seat(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        mapping = rc.load_identities(os.path.join(here, "..", "governance", "identities.json"))
+        self.assertNotIn("aarogaming", mapping)
+
+
+class Encoding(unittest.TestCase):
+    def test_subprocess_helpers_decode_utf8_not_the_console_codepage(self):
+        # Review and comment bodies contain non-ASCII (emoji, arrows); cp1252 decoding crashed live runs.
+        import subprocess
+        from unittest import mock
+
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout='[{"b": "ok → done"}]', stderr="")
+        with mock.patch.object(subprocess, "run", return_value=completed) as run:
+            self.assertEqual(rc.gh_json("api", "x"), [{"b": "ok → done"}])
+            self.assertEqual(run.call_args.kwargs["encoding"], "utf-8")
+            rc.git(".", "status")
+            self.assertEqual(run.call_args.kwargs["encoding"], "utf-8")
+
+
+if __name__ == "__main__":
+    unittest.main()

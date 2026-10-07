@@ -12,6 +12,10 @@ Inputs are attestation records, never prose:
   names: ``repo`` and ``pr`` must equal the subject, otherwise it is reported as malformed.
 * Legacy (heuristic, reported separately, never counted as covered): existing REVIEW PACKET prose.
 
+* Formal GitHub reviews (authenticated, lane C100): an APPROVED or CHANGES_REQUESTED review whose
+  commit equals the PR head, by a login mapped to a seat in an identity map, counts like a whole-diff
+  record. The map never lists the shared owner login as a seat, so shared-account reviews never count.
+
 Usage:
   review_coverage.py --snapshot FILE.json                       offline, deterministic (the tests)
   review_coverage.py --repo OWNER/NAME --repo-dir CHECKOUT      live read via the gh CLI (read only);
@@ -22,12 +26,19 @@ Exit status is 0 for a produced report: this check never blocks anything.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import attest_sig  # noqa: E402
+
 FENCE = re.compile(r"```attestation\s*\n(.*?)\n```", re.DOTALL)
 FULL_SHA = re.compile(r"\b[0-9a-f]{40}\b")
+# Any fenced block, with its info string. Only a fence labelled ``attestation`` is read; a complete attestation record in
+# a differently labelled fence (```json is what seats reach for) is reported by name instead of vanishing.
+ANY_FENCE = re.compile(r"```([^\n`]*)\n(.*?)\n```", re.DOTALL)
 # A prose verdict: the upper-case VERDICT label the old packets used, or the word "verdict" in any case followed within
 # a few words by an accept or reject word ("Independent Codex verdict: ACCEPT ..."). Without the second form a seat
 # that writes the label in lower case is invisible: not counted, not malformed, not legacy, so nobody tells it why.
@@ -55,13 +66,26 @@ def validate(record):
     return None
 
 
+def looks_like_attestation(raw):
+    """The parsed record when ``raw`` is a JSON object carrying every required field and a full 40-hex head, else None.
+    A template with placeholders or a partial example is not one, so quoting the format does not raise a problem."""
+    try:
+        record = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(record, dict) or any(key not in record for key in REQUIRED):
+        return None
+    head = record["head"]
+    return record if isinstance(head, str) and FULL_SHA.fullmatch(head) else None
+
+
 def parse_attestations(comments):
     """Return (structured, problems, legacy). Malformed records are reported, never counted."""
     structured, problems, legacy = [], [], []
     for index, comment in enumerate(comments):
         body = comment.get("body", "") if isinstance(comment, dict) else ""
         found = False
-        for raw in FENCE.findall(body):
+        for raw, signature in attest_sig.pairs(body):
             found = True
             try:
                 record = json.loads(raw)
@@ -72,8 +96,19 @@ def parse_attestations(comments):
             if problem:
                 problems.append({"comment": index, "problem": problem})
                 continue
+            record["_canon"] = attest_sig.canonical(record)
+            record["_sig"] = signature
             record["comment"] = index
             structured.append(record)
+        for label, raw in ANY_FENCE.findall(body):
+            if label.rstrip() == "attestation":  # exactly what FENCE reads; any other spelling is reported below
+                continue
+            record = looks_like_attestation(raw)
+            if record is not None:
+                found = True
+                problems.append({"comment": index, "problem": (
+                    f"fence labelled {label.strip() or 'plain'!r} holds a complete attestation record for head "
+                    f"{record['head']}, but only a fence labelled attestation is read; nothing was counted")})
         if not found and PROSE_VERDICT.search(body):
             legacy.append(
                 {
@@ -85,8 +120,45 @@ def parse_attestations(comments):
     return structured, problems, legacy
 
 
+# One seat is one seat however its name is spelled: "Gemini", "gemini" and "Antigravity" are the same reviewer. The merge gate's
+# "at least two independent seats" box counts len(accept_seats), so two comments from one seat spelled differently (live on
+# #96: ['Gemini', 'gemini']) looked like two seats.
+SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
+
+
+# A seat is recognised by a word that STARTS with its name: "claude-sonnet-5-5", "gemini-3.8-flash", "mimo-v2.6-flash-free",
+# "Claude\u200b" and "CLAUDE." all name a seat. Taking only the first space-separated word missed every model-id and
+# punctuation form (skeptic probe on #99: reviewer "Claude" with implementers ["claude-sonnet-5-5"] was independent).
+KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen")
+
+
+def seat_names(name):
+    """The set of seats a reviewer or implementer string names. A string may name several ("Claude, Mimo",
+    "claude+mimo", "Gemini/Antigravity"); a string that names none keeps its first alphanumeric token, so an unknown
+    seat still compares with itself."""
+    tokens = [t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t]
+    found = set()
+    for token in tokens:
+        for seat in KNOWN_SEATS:
+            if token.startswith(seat):
+                found.add(SEAT_NAME_ALIASES.get(seat, seat))
+    if not found and tokens:
+        found.add(tokens[0])
+    return found
+
+
+def seat_name(name):
+    """One seat for display and de-duplication: the first of the sorted seats `seat_names` finds."""
+    seats = sorted(seat_names(name))
+    return seats[0] if seats else ""
+
+
 def independent(record):
-    return record["reviewer"] not in record["implementers"]
+    """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
+    ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
+    raw comparison let an implementer's own verdict count under a spelling variant)."""
+    implementers = set().union(*(seat_names(i) for i in record["implementers"])) if record["implementers"] else set()
+    return not (seat_names(record["reviewer"]) & implementers)
 
 
 def evaluate(head, merge_base, records, is_ancestor):
@@ -96,6 +168,9 @@ def evaluate(head, merge_base, records, is_ancestor):
     coverage only when its ``from`` is a covered head AND an ancestor of the delta's own head, so a
     rebased or flattened head cannot inherit coverage by naming an old SHA.
     """
+    if merge_base in (None, "", "unknown"):
+        return {"covered": False, "reasons": ["merge-base unresolved: coverage cannot be judged"], "accepts_at_head": 0,
+                "counted": [], "accept_seats": []}
     at_head = [r for r in records if r["head"] == head]
     blockers = [r for r in at_head if r["verdict"] in REJECT and r["base_sha"] == merge_base]
     reasons = []
@@ -126,7 +201,81 @@ def evaluate(head, merge_base, records, is_ancestor):
             reasons.append("accept at head exists but is not chained to a whole accept at this base")
         else:
             reasons.append("no accept at the current head")
-    return {"covered": ok, "reasons": reasons, "accepts_at_head": len(at_head)}
+    counted = [r for r in valid if r["head"] == head]
+    return {
+        "covered": ok,
+        "reasons": reasons,
+        "accepts_at_head": len(at_head),
+        "counted": counted,
+        "accept_seats": sorted(set().union(*(seat_names(r["reviewer"]) for r in counted)) if counted else []),
+    }
+
+
+def load_keys(path):
+    """Return the raw identities data (seat -> logins/keys) for signature verification."""
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def load_identities(path):
+    """Return {login_lower: seat} from governance/identities.json ({"seats": {seat: [logins]}})."""
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    mapping = {}
+    for seat, entry in data.get("seats", {}).items():
+        logins = entry.get("logins", []) if isinstance(entry, dict) else entry
+        for login in logins:
+            mapping[login.lower()] = seat
+    return mapping
+
+
+def reviews_to_records(reviews, repo, number, head, merge_base, implementers, login_to_seat, base_events=()):
+    """Turn GitHub PR reviews into attestation-shaped records, plus problems explaining skips.
+
+    Only reviews at the current head by a mapped seat are used. Approval is whole-diff by GitHub's own
+    binding of a review to a commit. Implementers must be known, or independence cannot be shown.
+    A review submitted before a ``base_events`` timestamp (base_ref_changed / base_ref_force_pushed) is
+    skipped: the diff it reviewed is no longer base...head, so only an attestation may restate it.
+    """
+    records, problems = [], []
+    if merge_base in (None, "", "unknown"):
+        return records, [{"review": None, "problem": "merge-base unresolved (checkout lacks the PR head?); formal reviews cannot be bound"}]
+    # GitHub lists every review chronologically. Only each reviewer's latest decision stands: a later
+    # APPROVED supersedes an earlier CHANGES_REQUESTED, and a DISMISSED review is no decision at all.
+    latest = {}
+    for review in sorted(reviews, key=lambda r: (r.get("submitted_at", ""), r.get("id", 0))):
+        if review.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+            latest[(review.get("user") or {}).get("login", "").lower()] = review
+    for review in latest.values():
+        login = (review.get("user") or {}).get("login", "")
+        state = review.get("state", "")
+        if state not in ("APPROVED", "CHANGES_REQUESTED") or review.get("commit_id") != head:
+            continue
+        submitted = review.get("submitted_at", "")
+        if submitted and any(event > submitted for event in base_events):
+            problems.append({"review": review.get("id"), "problem": "base changed after this review was submitted"})
+            continue
+        seat = login_to_seat.get(login.lower())
+        if not seat:
+            problems.append({"review": review.get("id"), "problem": f"login {login!r} is not a mapped seat"})
+            continue
+        if not implementers:
+            problems.append({"review": review.get("id"), "problem": "implementers unknown; independence unproven"})
+            continue
+        records.append(
+            {
+                "repo": repo,
+                "pr": number,
+                "head": head,
+                "base_sha": merge_base,
+                "scope": "whole",
+                "reviewer": seat,
+                "implementers": list(implementers),
+                "verdict": "accept" if state == "APPROVED" else "changes_requested",
+                "source": "github_review",
+            }
+        )
+    return records, problems
 
 
 def pairs_ancestry(pairs):
@@ -143,13 +292,24 @@ def split_subject(records, repo, number):
     return mine, other
 
 
-def report_snapshot(snapshot, is_ancestor=None):
+def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, require_signatures=False):
     repo = snapshot.get("repo")
     if not repo:
         raise ValueError("snapshot needs a top-level 'repo' (OWNER/NAME) naming the subject repository")
     rows = []
     for pr in snapshot["prs"]:
         parsed, problems, legacy = parse_attestations(pr.get("comments", []))
+        allowed = attest_sig.allowed_signers(keys) if keys else ""
+        for record in parsed:
+            record["verified"] = bool(record.get("_sig")) and attest_sig.verify(
+                record["_canon"], record["_sig"], record["reviewer"], allowed
+            )
+        if require_signatures:
+            for record in [r for r in parsed if not r["verified"]]:
+                problems.append(
+                    {"comment": record["comment"], "problem": "unsigned or unverifiable attestation (signatures required)"}
+                )
+            parsed = [r for r in parsed if r["verified"]]
         structured, foreign = split_subject(parsed, repo, pr["number"])
         for record in foreign:
             problems.append(
@@ -159,8 +319,13 @@ def report_snapshot(snapshot, is_ancestor=None):
                     f"does not match {repo}#{pr['number']}",
                 }
             )
+        formal, formal_problems = reviews_to_records(
+            pr.get("reviews", []), repo, pr["number"], pr["head"], pr["merge_base"],
+            pr.get("implementers", []), identities or {}, pr.get("base_events", []),
+        )
+        problems = problems + formal_problems
         ancestry = is_ancestor or pairs_ancestry(pr.get("ancestry", []))
-        decision = evaluate(pr["head"], pr["merge_base"], structured, ancestry)
+        decision = evaluate(pr["head"], pr["merge_base"], structured + formal, ancestry)
         rows.append(
             {
                 "pr": pr["number"],
@@ -168,9 +333,22 @@ def report_snapshot(snapshot, is_ancestor=None):
                 "base": pr.get("base", "main"),
                 "covered": decision["covered"],
                 "reasons": decision["reasons"],
+                "accept_seats": decision["accept_seats"],
+                "counted_verdicts": len(decision["counted"]),
+                "verdicts_missing_evidence": [r.get("comment") for r in decision["counted"] if not r.get("commands")],
                 "structured_attestations": len(structured),
+                "authenticated_reviews": len(formal),
+                "signed_attestations": sum(1 for r in structured if r.get("verified")),
+                "trust": (
+                    "signed"
+                    if any(r.get("verified") and r["verdict"] == "accept" and r["head"] == pr["head"] for r in structured)
+                    else "authenticated"
+                    if any(r["verdict"] == "accept" for r in formal)
+                    else "attested-only"
+                ),
                 "malformed": problems,
                 "legacy_packets_not_counted": len(legacy),
+                "legacy": legacy,
             }
         )
     return rows
@@ -227,6 +405,16 @@ def live_snapshot(repo, repo_dir):
                 "base": item["baseRefName"],
                 "merge_base": mb,
                 "comments": flatten_pages(pages),
+                "reviews": flatten_pages(
+                    gh_json("api", f"repos/{repo}/pulls/{item['number']}/reviews", "--paginate", "--slurp")
+                ),
+                "base_events": sorted(
+                    e.get("created_at", "")
+                    for e in flatten_pages(
+                        gh_json("api", f"repos/{repo}/issues/{item['number']}/timeline", "--paginate", "--slurp")
+                    )
+                    if e.get("event") in ("base_ref_changed", "base_ref_force_pushed")
+                ),
             }
         )
     return {"repo": repo, "prs": prs}
@@ -237,12 +425,12 @@ def live_ancestry(repo_dir):
 
 
 def render(rows):
-    lines = ["PR    head      covered  structured  legacy(not counted)  reasons"]
+    lines = ["PR    head      covered  structured  auth  legacy(not counted)  reasons"]
     for r in rows:
         reasons = "; ".join(r["reasons"]) or "-"
         lines.append(
             f"#{r['pr']:<4} {r['head'][:8]}  {str(r['covered']):<7}  {r['structured_attestations']:<10}"
-            f"  {r['legacy_packets_not_counted']:<19}  {reasons}"
+            f"  {r.get('authenticated_reviews', 0):<4}  {r['legacy_packets_not_counted']:<19}  {reasons}"
         )
     return "\n".join(lines)
 
@@ -254,6 +442,9 @@ def main(argv):
     parser.add_argument("--repo-dir", help="clone of --repo; required with --repo")
     parser.add_argument("--pr", type=int, help="only report this PR")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--identities", help="identity map JSON (seat -> logins/keys); enables formal reviews and signature checks")
+    parser.add_argument("--require-signatures", action="store_true",
+                        help="enforcement mode: only attestations signed by the reviewer seat's key count")
     args = parser.parse_args(argv)
     if bool(args.snapshot) == bool(args.repo):
         parser.error("give exactly one of --snapshot or --repo")
@@ -268,7 +459,11 @@ def main(argv):
         ancestry = live_ancestry(args.repo_dir)
     if args.pr:
         snapshot["prs"] = [p for p in snapshot["prs"] if p["number"] == args.pr]
-    rows = report_snapshot(snapshot, ancestry)
+    identities = load_identities(args.identities) if args.identities else None
+    keys = load_keys(args.identities) if args.identities else None
+    if args.require_signatures and not keys:
+        parser.error("--require-signatures needs --identities")
+    rows = report_snapshot(snapshot, ancestry, identities, keys, args.require_signatures)
     print(json.dumps(rows, indent=2) if args.json else render(rows))
     return 0
 

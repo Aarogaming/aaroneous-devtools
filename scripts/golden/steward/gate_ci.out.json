@@ -1,0 +1,30 @@
+[
+  {
+    "detail": "no CI status found",
+    "state": "missing"
+  },
+  {
+    "detail": "3 checks: SUCCESS",
+    "state": "success"
+  },
+  {
+    "detail": "2 checks: FAILURE, SUCCESS",
+    "state": "failure"
+  },
+  {
+    "detail": "checks still running",
+    "state": "pending"
+  },
+  {
+    "detail": "checks still running",
+    "state": "pending"
+  },
+  {
+    "detail": "1 checks: SKIPPED",
+    "state": "failure"
+  },
+  {
+    "detail": "1 checks: SUCCESS",
+    "state": "success"
+  }
+]
