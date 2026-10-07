@@ -10,7 +10,7 @@ divergence is then pinned as a vector.
 
 import json, random, sys
 sys.path.insert(0, 'scripts')
-import collect_state as cs, review_coverage as rc, steward_run as sr, merge_gate as mg
+import collect_state as cs, review_coverage as rc, steward_run as sr, merge_gate as mg, next_task as nt
 random.seed(int(sys.argv[2]))
 H = "c" * 40
 pieces = ["Seat / agent:", "Seat/agent", "Reviewer", "Reviewer / Seat", "Reviewer seat", "Claude", "claude", "CODEX", "Gemini", "Mimo", "Antigravity", "Qwen",
@@ -191,5 +191,44 @@ for _ in range(int(sys.argv[1]) // 5):
              "data": json_value(), "prev": sr.digest(str(random.random()))}
     line = json.dumps(event, sort_keys=True, ensure_ascii=False)
     chain_cases.append({"event": event, "line": line, "digest": sr.digest(line)})
-json.dump({"chain": chain_cases, "text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
+TIMES = ["2026-10-05T00:00:00Z", "2026-10-04T23:00:00Z", "2026-10-02T00:00:00Z", "2026-09-20T12:30:15Z", "2026-10-05T00:00:00.250Z",
+         "2026-10-04T22:00:00-02:00", "2026-10-05T02:00:00+02:00", "2026-10-01T00:00:00Z", "garbage"]
+SEATS = ["claude", "codex", "gemini", "mimo", "", None]
+def random_pr(number):
+    pr = {"number": number}
+    if random.random() < 0.9: pr["head"] = random.choice(["c" * 40, "d" * 40, "abc", ""])
+    if random.random() < 0.8: pr["seat"] = random.choice(SEATS)
+    if random.random() < 0.5: pr["implementers"] = random.choice([[], ["claude"], ["claude", "codex"], ["gemini"]])
+    if random.random() < 0.3: pr["draft"] = random.choice([True, False])
+    if random.random() < 0.9: pr["mergeable_state"] = random.choice(["CLEAN", "DIRTY", "UNSTABLE", "BEHIND", None])
+    if random.random() < 0.5: pr["threads_unresolved"] = random.choice([0, 0, 1, 3])
+    if random.random() < 0.3: pr["threads_unanswered"] = random.choice([0, 1, 2])
+    if random.random() < 0.2: pr["standing_blocker"] = random.choice([None, {"verdict": "needs_revision", "by": "Gemini"}, {}])
+    if random.random() < 0.8: pr["covered"] = random.choice([True, False])
+    if random.random() < 0.3: pr["base"] = random.choice(["main", "proposal/x"])
+    if random.random() < 0.9: pr["updated_at"] = random.choice(TIMES[:8] if random.random() < 0.95 else TIMES)
+    if random.random() < 0.3: pr["title"] = random.choice(["t", "caf\u00e9", ""])
+    if random.random() < 0.2: pr["size"] = random.choice(["+3/-1", "", None])
+    if random.random() < 0.2: pr["base_sha"] = random.choice(["b" * 40, ""])
+    if random.random() < 0.4:
+        pr["rejected_verdicts"] = [random.choice([{"comment_id": 1, "seat": "gemini", "reason": "r"}, {"comment_id": 2, "seat": "", "reason": "r"},
+                                                  {"comment_id": 3, "reason": "r"}, {"comment_id": 4, "seat": "claude", "reason": "r"}])
+                                   for _ in range(random.randint(1, 3))]
+    return pr
+work_cases = []
+for _ in range(int(sys.argv[1]) // 5):
+    prs = [random_pr(random.randint(1, 12)) for _ in range(random.randint(0, 4))]
+    state = {"now": "2026-10-05T00:00:00Z", "prs": prs}
+    if random.random() < 0.5: state["default_branch"] = random.choice(["main", "master"])
+    done = []
+    for pr in prs:
+        for kind in random.sample(["needs_review", "fix_threads", "ready_to_merge", "draft", "stale", "stacked", "repair_verdict"], random.randint(0, 2)):
+            done.append(nt.item_key(kind, pr["number"], pr.get("head", "")))
+    if done or random.random() < 0.3: state["done"] = done
+    try:
+        out = {"items": nt.work_items(json.loads(json.dumps(state)))}
+    except Exception:
+        out = {"error": True}
+    work_cases.append({"state": state, "out": out})
+json.dump({"work": work_cases, "chain": chain_cases, "text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
 print(len(cases), len(stalls), len(push_cases))
