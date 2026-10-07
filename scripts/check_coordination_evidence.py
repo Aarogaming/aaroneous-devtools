@@ -26,7 +26,9 @@ import sys
 TARGET_FILE = "governance/COORDINATION_QUEUE.md"
 VOCABULARY_FILE = "governance/QUEUE_STATUSES.json"
 RUST_PARSER = "foundation/crates/foundation_cli/src/multithreader.rs"
-RUST_STATUS_LIST = re.compile(r'matches!\(\s*cols\[3\]\s*,((?:\s*"[A-Za-z ]+"\s*\|?)+)\)')
+# `cols[3]` or `cols[3].as_str()`: the parser's cells became owned Strings when it learned to honour an escaped pipe (PR #120);
+# a pattern that only knew the first spelling would stop finding the list and silently switch the comparison off.
+RUST_STATUS_LIST = re.compile(r'matches!\(\s*cols\[3\](?:\.as_str\(\))?\s*,((?:\s*"[A-Za-z ]+"\s*\|?)+)\)')
 LANE_ID = re.compile(r"C\d+")
 
 CLAIM_TABLE_ROW = re.compile(r"^\+\s*\|.*\|\s*Done\s*\|", re.IGNORECASE)
@@ -52,13 +54,35 @@ def get_diff(base: str, head: str) -> str:
     return result.stdout
 
 
+def split_cells(row: str):
+    """The cells of a table row split the way GitHub renders it: a pipe written as backslash-pipe stays inside its cell.
+    The live C89 row holds kernel, control and tooling joined by escaped pipes; a plain split read its status as
+    "control" plus a backslash (found with the Rust schedule-review, which dropped the row)."""
+    cells, current, i = [], [], 0
+    while i < len(row):
+        char = row[i]
+        following = row[i + 1] if i + 1 < len(row) else ""
+        if char == "\\" and following in ("|", "\\"):
+            current.append("|" if following == "|" else "\\\\")
+            i += 2
+            continue
+        if char == "|":
+            cells.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        i += 1
+    cells.append("".join(current))
+    return cells
+
+
 def lane_status(row: str):
-    """(lane id, status) for a lane row, read exactly as multithreader.rs queue_ids reads it: the row must start with
-    `|`, is split on every `|`, needs at least five columns, the id is column 1 and the status column 3. None for
-    anything that is not a lane row (headers, separators, prose)."""
+    """(lane id, status) for a lane row, read as multithreader.rs queue_ids reads it since PR #120 (and as GitHub renders the
+    table): the row must start with `|`, is split on unescaped `|` only, needs at least five columns, the id is column 1
+    and the status column 3. None for anything that is not a lane row (headers, separators, prose)."""
     if not row.startswith("|"):
         return None
-    cols = [c.strip() for c in row.split("|")]
+    cols = [c.strip() for c in split_cells(row)]
     if len(cols) < 5 or not LANE_ID.fullmatch(cols[1]):
         return None
     return cols[1], cols[3]
@@ -220,7 +244,9 @@ def main() -> int:
               f"that is not in {VOCABULARY_FILE} (allowed: {', '.join(statuses)}). The native queue parser skips such "
               "a row, so its lane ID never enters the existing-ID set.\n")
         for lane, status, row in bad_status:
-            hint = " (a `|` inside a cell shifts the columns; the parser does not honour `\\|`)" if status.endswith("\\") else ""
+            cells = len(split_cells(row)) - 2
+            hint = (f" (the row has {cells} cells, 7 expected: an unescaped `|` inside a cell shifts the columns)"
+                    if cells != 7 else "")
             print(f"  {lane}: status {status!r}{hint}")
         print(f"\nUse a listed status, or change {VOCABULARY_FILE} together with the Rust parser and a protocol amendment.")
         if not offenders:

@@ -59,9 +59,15 @@ class LaneStatusRule(unittest.TestCase):
         self.assertEqual([lane for lane, _, _ in cce.status_violations(diff, STATUSES)], ["C1"])
 
     def test_an_unescaped_pipe_inside_a_cell_shifts_the_columns_and_is_flagged(self):
-        broken = "| C89 | profile = \"kernel\\|control\\|tooling\" | Ready | Unowned | - | - | notes |"
+        broken = '| C89 | profile = "kernel|control|tooling" | Ready | Unowned | - | - | notes |'
         found = cce.status_violations(["+" + broken], STATUSES)
-        self.assertEqual([(lane, status) for lane, status, _ in found], [("C89", "control\\")])
+        self.assertEqual([(lane, status) for lane, status, _ in found], [("C89", "control")])
+
+    def test_an_escaped_pipe_stays_in_its_cell_as_github_renders_it_and_the_parser_reads_it_since_pr_120(self):
+        # This used to assert the opposite (status "control" plus a backslash), pinning the parser's old bug as a rule.
+        escaped = '| C89 | profile = "kernel\\|control\\|tooling" | Ready | Unowned | - | - | notes |'
+        self.assertEqual(cce.lane_status(escaped), ("C89", "Ready"))
+        self.assertEqual(cce.status_violations(["+" + escaped], STATUSES), [])
 
 
 class VocabularyMatchesTheNativeParser(unittest.TestCase):
@@ -83,6 +89,13 @@ class VocabularyMatchesTheNativeParser(unittest.TestCase):
         sample = 'if cols.len() < 5 || !matches!(cols[3], "Ready" | "Claimed" | "Review" | "Done" | "Blocked")\n{ continue; }'
         self.assertEqual(cce.parse_rust_statuses(sample), ["Ready", "Claimed", "Review", "Done", "Blocked"])
         self.assertIsNone(cce.parse_rust_statuses("fn other() {}"))
+
+    def test_the_list_is_still_found_when_the_parser_compares_cols_3_as_a_string(self):
+        # PR #120 changed the parser to matches!(cols[3].as_str(), ...); the old pattern returned None for it, which, when the
+        # list was readable at base and not at head, failed the check on every later queue edit
+        sample = ('if cols.len() < 5\n    || !matches!(\n        cols[3].as_str(),\n'
+                  '        "Ready" | "Claimed" | "Review" | "Done" | "Blocked"\n    )\n{ continue; }')
+        self.assertEqual(cce.parse_rust_statuses(sample), ["Ready", "Claimed", "Review", "Done", "Blocked"])
 
 
 class EndToEnd(unittest.TestCase):
