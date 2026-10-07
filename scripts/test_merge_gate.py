@@ -95,7 +95,20 @@ class RefreshRefs(unittest.TestCase):
         self.assertTrue(ok, message)
         self.assertEqual(self.git(self.clone, "rev-parse", "origin/main"), new_main)
         self.assertEqual(mg.missing_heads(self.clone, [{"number": 7, "head": head}]), [])
-        self.assertEqual(self.git(self.clone, "rev-parse", "origin/pr/7"), head)
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin-pr/7"), head)
+
+    def test_a_remote_branch_named_pr_does_not_collide_with_pull_refs(self):
+        # Codex P2 on #109: if a remote branch is named 'pr', refs/remotes/origin/pr and refs/remotes/origin/pr/<N> collide.
+        self.git(self.work, "checkout", "-q", "-b", "pr")
+        self.commit(self.work, "pr_branch.txt", "pr\n", "branch named pr")
+        self.git(self.work, "push", "-q", "origin", "pr")
+        self.git(self.work, "checkout", "-q", "-b", "feature")
+        head = self.commit(self.work, "pr.txt", "pr\n", "the PR")
+        self.git(self.work, "push", "-q", "origin", "feature:refs/pull/7/head")
+        ok, message = mg.refresh_refs(self.clone)
+        self.assertTrue(ok, message)
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin-pr/7"), head)
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin/pr"), self.git(self.work, "rev-parse", "pr"))
 
     def test_a_deleted_remote_branch_is_pruned(self):
         self.git(self.work, "push", "-q", "origin", "main:refs/heads/gone")

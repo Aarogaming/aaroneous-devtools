@@ -231,14 +231,15 @@ def ci_state(rollup):
     return {"state": "success" if ok else "failure", "detail": f"{len(states)} checks: {', '.join(sorted(set(states)))}"}
 
 
-REFRESH_REFSPECS = ("+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/origin/pr/*")
+REFRESH_REFSPECS = ("+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/origin-pr/*")
 
 
 def refresh_refs(repo_dir, run=None):
     """Bring the clone's view of the remote up to date: every branch and every pull request head, pruning what is gone.
     GitHub supplies the current head SHA, but the merge base, changed paths, trial merge, base tip and circuit-breaker
     contents are all read from the clone's own refs; a stale clone gave facts for a different base, or no head at all
-    (Codex P2 on #99). Returns (ok, message)."""
+    (Codex P2 on #99). Pull heads live under refs/remotes/origin-pr/* so they never collide with a remote branch named 'pr'.
+    Returns (ok, message)."""
     run = run or rc.git
     result = run(repo_dir, "fetch", "--prune", "origin", *REFRESH_REFSPECS)
     return result.returncode == 0, (result.stderr or "").strip()
