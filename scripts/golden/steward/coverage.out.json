@@ -179,10 +179,9 @@
         "verdict": "accept"
       }
     ],
-    "covered": false,
+    "covered": true,
     "reasons": [
-      "standing needs_revision at head by codex",
-      "the rejection by codex names base_sha dddddddddddd, not the merge base bbbbbbbbbbbb; it still stands until that reviewer re-attests or withdraws it"
+      "a rejection by codex names base_sha dddddddddddd, but the merge base is bbbbbbbbbbbb, so it is ignored as stale; if the base_sha was mistyped, that reviewer must re-attest against the current merge base"
     ]
   },
   {

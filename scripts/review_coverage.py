@@ -147,16 +147,19 @@ def evaluate(head, merge_base, records, is_ancestor):
         return {"covered": False, "reasons": ["merge-base unresolved: coverage cannot be judged"], "accepts_at_head": 0,
                 "counted": [], "accept_seats": []}
     at_head = [r for r in records if r["head"] == head]
-    # A rejection stands whatever merge base it names: it was written about this exact head, and a base_sha typed or
-    # copied wrong (a hand-written attestation) must not let an accept through over it. Accepts stay strict.
-    blockers = [r for r in at_head if r["verdict"] in REJECT]
+    # A record is valid only while the merge base equals its base_sha (PLATFORM_SPEC.md, attestation record): a retarget
+    # or rebase invalidates a rejection like any other record (Codex P1 on #114). A rejection that names another base is
+    # therefore not a blocker, but it is no longer silent: a hand-typed base_sha is the likelier cause, and ignoring
+    # such a rejection unannounced is how a reviewer's request for changes gets lost.
+    blockers = [r for r in at_head if r["verdict"] in REJECT and r["base_sha"] == merge_base]
     reasons = []
     if blockers:
         reasons.append(f"standing {blockers[0]['verdict']} at head by {blockers[0]['reviewer']}")
-        for r in blockers:
-            if r["base_sha"] != merge_base:
-                reasons.append(f"the rejection by {r['reviewer']} names base_sha {str(r['base_sha'])[:12]}, not the merge "
-                               f"base {merge_base[:12]}; it still stands until that reviewer re-attests or withdraws it")
+    for r in at_head:
+        if r["verdict"] in REJECT and r["base_sha"] != merge_base:
+            reasons.append(f"a rejection by {r['reviewer']} names base_sha {str(r['base_sha'])[:12]}, but the merge base is "
+                           f"{merge_base[:12]}, so it is ignored as stale; if the base_sha was mistyped, that reviewer must "
+                           "re-attest against the current merge base")
 
     valid = [
         r

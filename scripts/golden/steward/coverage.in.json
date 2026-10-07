@@ -247,7 +247,7 @@
     "ancestry": [],
     "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "name": "a rejection naming the wrong merge base still blocks an accept",
+    "name": "a rejection naming another merge base is stale and says so, and does not block",
     "records": [
       {
         "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

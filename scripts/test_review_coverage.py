@@ -46,17 +46,22 @@ def ev(head, records, anc=always, mb=MB):
 
 
 class Coverage(unittest.TestCase):
-    def test_a_rejection_naming_the_wrong_merge_base_still_blocks(self):
-        # Probe: an independent accept plus a needs_revision whose hand-typed base_sha was wrong was covered=True, so a
-        # reviewer's request for changes was ignored. Rejections stand at the head whatever base they name.
+    def test_a_rejection_naming_another_merge_base_is_stale_but_not_silent(self):
+        # PLATFORM_SPEC.md: a record is valid only while the merge base equals its base_sha, so a rejection against an
+        # old base does not block (Codex P1 on #114). It used to vanish without a word, which is how a mistyped base_sha
+        # lost a reviewer's request for changes (probe: accept + needs_revision with a wrong base_sha, no reasons).
         wrong = "w" * 40
         for verdict in ("needs_revision", "changes_requested"):
             result = ev(H1, [rec(H1), rec(H1, reviewer="codex", verdict=verdict, base=wrong)])
-            self.assertFalse(result["covered"], verdict)
-            self.assertEqual(result["reasons"][0], f"standing {verdict} at head by codex")
-            self.assertIn("names base_sha wwwwwwwwwwww", result["reasons"][1])
+            self.assertTrue(result["covered"], verdict)
+            self.assertEqual(len(result["reasons"]), 1)
+            self.assertIn("a rejection by codex names base_sha wwwwwwwwwwww", result["reasons"][0])
+            self.assertIn("ignored as stale", result["reasons"][0])
+            # merge_gate finds a standing rejection by these words in the reasons; the note must not contain them
+            self.assertFalse(any("needs_revision" in r or "changes_requested" in r for r in result["reasons"]))
         right = ev(H1, [rec(H1), rec(H1, reviewer="codex", verdict="needs_revision")])
-        self.assertEqual(len(right["reasons"]), 1, "a rejection on the right base needs no extra note")
+        self.assertFalse(right["covered"])
+        self.assertEqual(right["reasons"], ["standing needs_revision at head by codex"])
 
     def test_a_rejection_at_another_head_does_not_block(self):
         self.assertTrue(ev(H1, [rec(H1), rec(H2, reviewer="codex", verdict="needs_revision", base="w" * 40)])["covered"])
