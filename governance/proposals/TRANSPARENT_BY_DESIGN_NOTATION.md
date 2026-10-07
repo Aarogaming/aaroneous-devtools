@@ -18,6 +18,16 @@ Status: **proposal for review**. It changes no source, no Aaroneous file, no wor
 are invited to challenge and improve any part; nothing here is accepted until a reviewer other than the author
 records it, and product-side adoption needs owner sign-off.
 
+## Preservation boundary
+
+The owner authorized retaining this existing proposal as advisory research after a loss-prevention review.
+That bounded exception preserves progress; it does not accept the design, adopt policy, authorize an extractor,
+enable enforcement, or override normal claims for future work. No acceptance follows from authorship or citations.
+Experiments E3-E7 remain NOT RUN. Before any implementation or adoption, independent tests must cover circular
+citations without a landmark, references that resolve but contradict their claim, copied evidence counted once,
+stale revision/blob anchors, conflicting edges, bounded traversal and secret/path disclosure. Existing progress
+and source branches are retained until the actual landing candidate has independently reviewed evidence.
+
 ## 1. Where this comes from
 
 Owner direction, 2026-10-05: add notation to code and documentation; use it with an active meta-tagging system,
@@ -50,9 +60,11 @@ Anything derived from notation names its source. A fact with no source location 
 
 ## 3. Principles
 
-- **A note is a claim, never authority.** "This is safe" in a comment proves nothing. Only a contract that cites a
-  check that resolves counts as *checked*; everything else is shown as unchecked. (The historical keyword-based
-  cross-verifier is the failure to avoid.)
+- **A note is a claim, never authority.** "This is safe" in a comment proves nothing. A resolving check citation
+  establishes reference identity only: report it as *resolved/unassessed*. Claim support must be established
+  separately; exercised behaviour requires retained command, revision and exit-code evidence. Never label a
+  contract *checked* merely because its cited test exists. (The historical keyword-based cross-verifier is the
+  failure to avoid.)
 - **One ledger; everything else is a projection.** The node index, graph, DAGs and retrieval index are rebuilt
   from the ledger and the notation; none is a store of record (the two-ledger problem in the Foundry doc).
 - **Aaroneous never depends on devtools.** Intrinsic notation is inert and neutral; it never names a devtools
