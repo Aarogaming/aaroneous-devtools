@@ -1,0 +1,172 @@
+[
+  {
+    "name": "a legacy comment citing the current head goes back to its seat",
+    "pr": {
+      "comments": [
+        {
+          "body": "Seat / agent: Gemini\nhead cccccccccccccccccccccccccccccccccccccccc\nVERDICT: accept",
+          "id": 100
+        }
+      ],
+      "head": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "row": {
+      "legacy": [
+        {
+          "comment": 0
+        }
+      ],
+      "malformed": []
+    }
+  },
+  {
+    "name": "a comment that does not cite the current head is history",
+    "pr": {
+      "comments": [
+        {
+          "body": "Seat / agent: Gemini\nhead eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nVERDICT: accept",
+          "id": 100
+        }
+      ],
+      "head": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "row": {
+      "legacy": [
+        {
+          "comment": 0
+        }
+      ],
+      "malformed": []
+    }
+  },
+  {
+    "name": "a head sharing eight characters is not this head",
+    "pr": {
+      "comments": [
+        {
+          "body": "Seat / agent: Mimo\nhead ccccccccdddddddddddddddddddddddddddddddd\nVERDICT: accept",
+          "id": 100
+        }
+      ],
+      "head": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "row": {
+      "legacy": [
+        {
+          "comment": 0
+        }
+      ],
+      "malformed": []
+    }
+  },
+  {
+    "name": "at most the latest two per seat are kept",
+    "pr": {
+      "comments": [
+        {
+          "body": "Seat / agent: Mimo\nhead cccccccccccccccccccccccccccccccccccccccc\nVERDICT: accept 0",
+          "id": 100
+        },
+        {
+          "body": "Seat / agent: Mimo\nhead cccccccccccccccccccccccccccccccccccccccc\nVERDICT: accept 1",
+          "id": 101
+        },
+        {
+          "body": "Seat / agent: Mimo\nhead cccccccccccccccccccccccccccccccccccccccc\nVERDICT: accept 2",
+          "id": 102
+        },
+        {
+          "body": "Seat / agent: Mimo\nhead cccccccccccccccccccccccccccccccccccccccc\nVERDICT: accept 3",
+          "id": 103
+        },
+        {
+          "body": "Seat / agent: Mimo\nhead cccccccccccccccccccccccccccccccccccccccc\nVERDICT: accept 4",
+          "id": 104
+        }
+      ],
+      "head": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "row": {
+      "legacy": [
+        {
+          "comment": 0
+        },
+        {
+          "comment": 1
+        },
+        {
+          "comment": 2
+        },
+        {
+          "comment": 3
+        },
+        {
+          "comment": 4
+        }
+      ],
+      "malformed": []
+    }
+  },
+  {
+    "name": "a malformed block carries a plain-words reason",
+    "pr": {
+      "comments": [
+        {
+          "body": "Seat / agent: Gemini\nhead cccccccccccccccccccccccccccccccccccccccc\n```attestation\n{}\n```",
+          "id": 100
+        }
+      ],
+      "head": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "row": {
+      "legacy": [],
+      "malformed": [
+        {
+          "comment": 0,
+          "problem": "missing fields: ['head', 'reviewer']"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a malformed block with invalid JSON",
+    "pr": {
+      "comments": [
+        {
+          "body": "Seat / agent: Mimo\nhead cccccccccccccccccccccccccccccccccccccccc",
+          "id": 100
+        }
+      ],
+      "head": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "row": {
+      "legacy": [],
+      "malformed": [
+        {
+          "comment": 0,
+          "problem": "invalid JSON: Expecting value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "an unattributed rejected comment is kept with no seat",
+    "pr": {
+      "comments": [
+        {
+          "body": "head cccccccccccccccccccccccccccccccccccccccc\nVERDICT: accept",
+          "id": 100
+        }
+      ],
+      "head": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "row": {
+      "legacy": [
+        {
+          "comment": 0
+        }
+      ],
+      "malformed": []
+    }
+  }
+]

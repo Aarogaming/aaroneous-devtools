@@ -1,0 +1,10 @@
+{
+  "_comment": "Seat identities (lane C100). A seat is identified by an SSH public key it signs attestations with (ssh-keygen -Y sign, namespace aaroneous-attestation), and optionally by GitHub logins for formal reviews. Keys are added by PR reviewed by the owner; an empty list means the seat has no verifiable identity yet and its attestations are attested-only. The shared owner/automation login is deliberately not a seat.",
+  "owner": ["Aarogaming"],
+  "seats": {
+    "claude": {"logins": [], "keys": []},
+    "mimo": {"logins": [], "keys": []},
+    "codex": {"logins": [], "keys": []},
+    "gemini": {"logins": [], "keys": []}
+  }
+}

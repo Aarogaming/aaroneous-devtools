@@ -1,0 +1,30 @@
+[
+  {
+    "name": "tripped = false",
+    "text": "tripped = false\n"
+  },
+  {
+    "name": "tripped = true",
+    "text": "tripped = true\n"
+  },
+  {
+    "name": "a comment is not the value",
+    "text": "# tripped = false\ntripped = true\n"
+  },
+  {
+    "name": "only a comment is blocked",
+    "text": "# tripped = false\n"
+  },
+  {
+    "name": "a string is not a boolean",
+    "text": "tripped = \"false\"\n"
+  },
+  {
+    "name": "invalid TOML is blocked",
+    "text": "tripped = = false"
+  },
+  {
+    "name": "an empty file is blocked",
+    "text": ""
+  }
+]
