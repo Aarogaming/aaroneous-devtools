@@ -19,6 +19,8 @@ import subprocess
 import sys
 
 TARGET_FILE = "governance/COORDINATION_QUEUE.md"
+PROGRAM_FILE = "governance/MULTITHREAD_PROGRAM.md"
+PROGRAM_TIERS = ("P0", "P1", "P2", "P3", "Done", "Retired")
 
 CLAIM_TABLE_ROW = re.compile(r"^\+\s*\|.*\|\s*Done\s*\|", re.IGNORECASE)
 CLAIM_PHRASES = re.compile(r"\b(Done|PASS(ED)?|gate green|100%\s*green)\b", re.IGNORECASE)
@@ -154,11 +156,37 @@ def lane_row_findings(base_text: str, head_text: str):
     return failures, warnings
 
 
-def show(ref: str):
-    """The queue file at a ref, or None when it does not exist there."""
-    result = subprocess.run(["git", "show", f"{ref}:{TARGET_FILE}"], capture_output=True, text=True, encoding="utf-8",
+def show(ref: str, path: str = TARGET_FILE):
+    """A tracked file at a ref (the queue by default), or None when it does not exist there."""
+    result = subprocess.run(["git", "show", f"{ref}:{path}"], capture_output=True, text=True, encoding="utf-8",
                             errors="replace")
     return result.stdout if result.returncode == 0 else None
+
+
+def program_ids(text: str):
+    """The IDs of the worklist rows: a table row whose first cell is a tier (P0..P3, Done, Retired) names its ID in
+    the second cell."""
+    ids = set()
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in split_cells(line)]
+        if len(cells) > 3 and cells[1] in PROGRAM_TIERS and cells[2]:
+            ids.add(cells[2])
+    return ids
+
+
+def id_overlap_findings(base_queue, head_queue, base_program, head_program):
+    """(failures, warnings) for IDs that appear in both the queue and the worklist. MULTITHREAD_PROGRAM.md says the
+    worklist holds future work and the queue only work ready to own, so one ID in both files is two answers to "is
+    this ready"; the Rust readers merge the two ID sets and no check noticed (live: C106 is a queue row and a P2
+    worklist row). An overlap this change introduces fails; one that was already there is a warning."""
+    now = set(lane_rows(head_queue)[0]) & program_ids(head_program)
+    before = set(lane_rows(base_queue)[0]) & program_ids(base_program)
+    failures = [f"{i}: the ID is now in both {TARGET_FILE} and {PROGRAM_FILE}" for i in sorted(now - before)]
+    warnings = [f"{i}: the ID is in both {TARGET_FILE} and {PROGRAM_FILE} (already so before this change)"
+                for i in sorted(now & before)]
+    return failures, warnings
 
 
 def main() -> int:
@@ -167,6 +195,20 @@ def main() -> int:
         return 2
 
     base, head = sys.argv[1], sys.argv[2]
+    merge_base = subprocess.run(["git", "merge-base", base, head], capture_output=True, text=True).stdout.strip()
+    needed = (show(merge_base) if merge_base else None, show(head), show(merge_base, PROGRAM_FILE) if merge_base else None,
+              show(head, PROGRAM_FILE))
+    if all(text is not None for text in needed):
+        overlap_failures, overlap_warnings = id_overlap_findings(*needed)
+        for warning in overlap_warnings:
+            print(f"WARNING (not a failure): {warning}", file=sys.stderr)
+        if overlap_failures:
+            print(f"ID overlap check failed: {PROGRAM_FILE} is the worklist of future work and {TARGET_FILE} holds "
+                  "only work ready to own:\n")
+            for failure in overlap_failures:
+                print(f"  {failure}")
+            print("\nKeep each ID in one file: move the row, do not copy it.")
+            return 1
     diff = get_diff(base, head)
     if not diff:
         print("No changes to governance/COORDINATION_QUEUE.md; nothing to check.")
@@ -175,7 +217,6 @@ def main() -> int:
     diff_lines = diff.splitlines()
     offenders = check_table_rows(diff_lines) + check_prose_blocks(diff_lines)
 
-    merge_base = subprocess.run(["git", "merge-base", base, head], capture_output=True, text=True).stdout.strip()
     base_text, head_text = (show(merge_base) if merge_base else None), show(head)
     lane_failures, lane_warnings = ([], []) if base_text is None or head_text is None else lane_row_findings(
         base_text, head_text)

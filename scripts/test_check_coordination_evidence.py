@@ -124,6 +124,84 @@ class EndToEndLaneLoss(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
+PROGRAM_HEAD = "| Priority | ID | Bounded work / source | Dependency | Acceptance |\n| --- | --- | --- | --- | --- |\n"
+
+
+def program_text(*rows):
+    return PROGRAM_HEAD + "".join(f"| {tier} | {ident} | work | dep | acceptance |\n" for tier, ident in rows)
+
+
+class IdOverlapFindings(unittest.TestCase):
+    def findings(self, base_ids, head_ids, base_program=(), head_program=()):
+        def queue(ids):
+            return "\n".join(f"| {i} | s | Ready | o | b | t | e |" for i in ids) + "\n"
+        return cce.id_overlap_findings(queue(base_ids), queue(head_ids), program_text(*base_program),
+                                       program_text(*head_program))
+
+    def test_program_ids_read_the_tiered_rows_only(self):
+        text = program_text(("P1", "M5"), ("Done", "M2"), ("Retired", "M9")) + "| Capacity | Use |\n| --- | --- |\n"
+        self.assertEqual(cce.program_ids(text), {"M5", "M2", "M9"})
+
+    def test_an_id_added_to_the_worklist_that_the_queue_owns_fails(self):
+        failures, _ = self.findings(["C7"], ["C7"], [], [("P2", "C7")])
+        self.assertEqual(len(failures), 1)
+        self.assertIn("C7: the ID is now in both", failures[0])
+
+    def test_an_id_added_to_the_queue_that_the_worklist_holds_fails(self):
+        failures, _ = self.findings([], ["C8"], [("P1", "C8")], [("P1", "C8")])
+        self.assertEqual(len(failures), 1)
+
+    def test_an_overlap_that_was_already_there_only_warns(self):
+        failures, warnings = self.findings(["C106"], ["C106"], [("P2", "C106")], [("P2", "C106")])
+        self.assertEqual(failures, [])
+        self.assertEqual(len(warnings), 1)
+
+    def test_distinct_ids_and_a_move_between_the_files_are_fine(self):
+        self.assertEqual(self.findings(["C1"], ["C1"], [("P1", "M1")], [("P1", "M1")]), ([], []))
+        # moving a row: out of the queue and into the worklist in one change
+        self.assertEqual(self.findings(["C9"], [], [], [("P1", "C9")]), ([], []))
+
+
+class EndToEndIdOverlap(unittest.TestCase):
+    SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_coordination_evidence.py")
+
+    def run_change(self, head_queue, head_program):
+        with tempfile.TemporaryDirectory() as repo:
+            os.makedirs(os.path.join(repo, "governance"))
+            queue = os.path.join(repo, "governance", "COORDINATION_QUEUE.md")
+            program = os.path.join(repo, "governance", "MULTITHREAD_PROGRAM.md")
+
+            def write(path, text):
+                with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                    handle.write(text)
+
+            def git(*args):
+                subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", repo, *args],
+                               check=True, capture_output=True)
+
+            write(queue, BASE_QUEUE)
+            write(program, program_text(("P1", "M1")))
+            git("init", "-q")
+            git("add", "-A")
+            git("commit", "-qm", "base")
+            git("tag", "base")
+            write(queue, head_queue)
+            write(program, head_program)
+            git("commit", "-qam", "change")
+            return subprocess.run([sys.executable, self.SCRIPT, "base", "HEAD"], cwd=repo, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace")
+
+    def test_a_worklist_only_change_that_duplicates_a_queue_id_fails(self):
+        # the queue file is untouched, which used to end the check with "nothing to check"
+        result = self.run_change(BASE_QUEUE, program_text(("P1", "M1"), ("P2", "C2")))
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("C2: the ID is now in both", result.stdout)
+
+    def test_a_change_with_no_overlap_passes(self):
+        result = self.run_change(BASE_QUEUE, program_text(("P1", "M1"), ("P2", "M2")))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 class EndToEndWithNonAsciiRows(unittest.TestCase):
     """Run the real script against a throwaway git repository whose added row contains characters the Windows default
     code page cannot decode."""
