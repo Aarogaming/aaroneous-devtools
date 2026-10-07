@@ -25,10 +25,9 @@ fn load(name: &str) -> Value {
 const SCENARIO_MARKER: &str = "(scenario)";
 
 /// Not ported yet. Remove an entry when its family is ported and listed in `check`.
-const PENDING: [&str; 9] = [
+const PENDING: [&str; 8] = [
     "audit",
     "chain",
-    "coverage",
     "gate_breaker",
     "gate_checklist",
     "gate_ci",
@@ -63,6 +62,7 @@ fn check(family: &str) -> Option<Result<(), String>> {
         "rejected" => Some(check_rejected()),
         "receipts" => Some(check_receipts()),
         "stalls" => Some(check_stalls()),
+        "coverage" => Some(check_coverage()),
         "pushes" => Some(check_pushes()),
         _ => None,
     }
@@ -154,6 +154,62 @@ fn check_rejected() -> Result<(), String> {
         ));
     }
     compare(&Value::Array(actual), &load("rejected.out.json"))
+}
+
+fn check_coverage() -> Result<(), String> {
+    use std::collections::BTreeSet;
+    use steward::coverage::{Record, evaluate};
+    let mut actual = Vec::new();
+    for case in load("coverage.in.json")
+        .as_array()
+        .ok_or("coverage.in.json is not a list")?
+    {
+        let originals: Vec<&Value> = case["records"]
+            .as_array()
+            .map(|l| l.iter().collect())
+            .unwrap_or_default();
+        let records: Vec<Record> = originals
+            .iter()
+            .map(|r| Record {
+                head: r["head"].as_str().unwrap_or_default().to_owned(),
+                base_sha: r["base_sha"].as_str().unwrap_or_default().to_owned(),
+                scope: r["scope"].as_str().unwrap_or_default().to_owned(),
+                reviewer: r["reviewer"].as_str().unwrap_or_default().to_owned(),
+                implementers: string_list(&r["implementers"]),
+                verdict: r["verdict"].as_str().unwrap_or_default().to_owned(),
+                from: r["from"].as_str().map(str::to_owned),
+            })
+            .collect();
+        let pairs: BTreeSet<(String, String)> = case["ancestry"]
+            .as_array()
+            .map(|l| {
+                l.iter()
+                    .map(|p| {
+                        (
+                            p[0].as_str().unwrap_or_default().to_owned(),
+                            p[1].as_str().unwrap_or_default().to_owned(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let is_ancestor =
+            |a: &str, b: &str| a == b || pairs.contains(&(a.to_owned(), b.to_owned()));
+        let decision = evaluate(
+            case["head"].as_str().unwrap_or_default(),
+            case["merge_base"].as_str(),
+            &records,
+            &is_ancestor,
+        );
+        actual.push(json!({
+            "covered": decision.covered,
+            "reasons": decision.reasons,
+            "accepts_at_head": decision.accepts_at_head,
+            "counted": decision.counted.iter().map(|&i| originals[i].clone()).collect::<Vec<_>>(),
+            "accept_seats": decision.accept_seats,
+        }));
+    }
+    compare(&Value::Array(actual), &load("coverage.out.json"))
 }
 
 fn check_stalls() -> Result<(), String> {

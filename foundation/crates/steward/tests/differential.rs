@@ -134,6 +134,7 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
                 .push(format!("{case} rust={weak}"));
         }
     }
+    coverage_cases(all, bad);
     for case in all["pushes"].as_array().unwrap() {
         let prs: Vec<PushPr> = case["prs"]
             .as_array()
@@ -161,6 +162,66 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             bad.entry("pushes")
                 .or_default()
                 .push(format!("{case} rust={heads:?} {credited:?}"));
+        }
+    }
+}
+
+fn coverage_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
+    use std::collections::BTreeSet;
+    use steward::coverage::{Record, evaluate};
+    let strings = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .map(|l| {
+                l.iter()
+                    .filter_map(|s| s.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for case in all["coverage"].as_array().unwrap() {
+        let originals: Vec<&Value> = case["records"].as_array().unwrap().iter().collect();
+        let records: Vec<Record> = originals
+            .iter()
+            .map(|r| Record {
+                head: r["head"].as_str().unwrap().to_owned(),
+                base_sha: r["base_sha"].as_str().unwrap().to_owned(),
+                scope: r["scope"].as_str().unwrap().to_owned(),
+                reviewer: r["reviewer"].as_str().unwrap().to_owned(),
+                implementers: strings(&r["implementers"]),
+                verdict: r["verdict"].as_str().unwrap().to_owned(),
+                from: r["from"].as_str().map(str::to_owned),
+            })
+            .collect();
+        let pairs: BTreeSet<(String, String)> = case["ancestry"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                (
+                    p[0].as_str().unwrap().to_owned(),
+                    p[1].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
+        let is_ancestor =
+            |a: &str, b: &str| a == b || pairs.contains(&(a.to_owned(), b.to_owned()));
+        let d = evaluate(
+            case["head"].as_str().unwrap(),
+            case["merge_base"].as_str(),
+            &records,
+            &is_ancestor,
+        );
+        let want = &case["out"];
+        let counted: Vec<Value> = d.counted.iter().map(|&i| originals[i].clone()).collect();
+        let same = d.covered == want["covered"].as_bool().unwrap()
+            && d.reasons == strings(&want["reasons"])
+            && d.accepts_at_head as u64 == want["accepts_at_head"].as_u64().unwrap()
+            && Value::Array(counted) == want["counted"]
+            && d.accept_seats == strings(&want["accept_seats"]);
+        if !same {
+            bad.entry("coverage")
+                .or_default()
+                .push(format!("{case} rust={d:?}"));
         }
     }
 }

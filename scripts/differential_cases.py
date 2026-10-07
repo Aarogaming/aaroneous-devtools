@@ -63,5 +63,25 @@ for _ in range(int(sys.argv[1]) // 5):
     previous = random.choice([None, {}, {str(n): random.choice(["a" * 40, "b" * 40]) for n in range(1, 9) if random.random() < 0.6}])
     heads, credited = sr.pushes(prs, previous)
     push_cases.append({"prs": prs, "previous": previous, "out": {"heads": heads, "credited": credited}})
-json.dump({"text": cases, "stalls": stalls, "pushes": push_cases}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
+HEADS = ["a" * 40, "b" * 40, "c" * 40, "d" * 40]
+NAMES = ["claude", "Claude", "claude-sonnet-5-5", "codex", "Gemini", "Antigravity", "mimo", "Qwen", "Claude, Mimo", "someone else", "gemini/antigravity"]
+coverage = []
+for _ in range(int(sys.argv[1]) // 5):
+    records = []
+    for _ in range(random.randint(0, 5)):
+        scope = random.choice(["whole", "whole", "delta"])
+        record = {"repo": "o/r", "pr": 1, "head": random.choice(HEADS), "base_sha": random.choice(["m" * 40, "m" * 40, "n" * 40]),
+                  "scope": scope, "reviewer": random.choice(NAMES),
+                  "implementers": random.choice([["claude"], ["claude", "codex"], ["Gemini"], ["Claude, Mimo"], ["claude-sonnet-5-5"]]),
+                  "verdict": random.choice(["accept", "accept", "accept", "needs_revision", "changes_requested"])}
+        if scope == "delta":
+            record["from"] = random.choice(HEADS)
+        records.append(record)
+    pairs = [[a, b] for a in HEADS for b in HEADS if a != b and random.random() < 0.4]
+    merge_base = random.choice(["m" * 40, "m" * 40, "n" * 40, "", "unknown", None])
+    head = random.choice(HEADS)
+    known = {(a, b) for a, b in pairs}
+    out = rc.evaluate(head, merge_base, records, lambda a, b: a == b or (a, b) in known)
+    coverage.append({"head": head, "merge_base": merge_base, "records": records, "ancestry": pairs, "out": out})
+json.dump({"text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
 print(len(cases), len(stalls), len(push_cases))
