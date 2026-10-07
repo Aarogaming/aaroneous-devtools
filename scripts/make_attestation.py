@@ -9,7 +9,10 @@ the clone and GitHub instead:
 
 head is the PR's current head, base_sha is `git merge-base origin/<base> <head>`, implementers come from the branch
 prefix and the co-author trailers in base..head (add seats that pushed without a trailer with `--implementer`, which
-repeats). The block is checked with the same `validate` the coverage tool uses, and it refuses (exit 2) to build a
+repeats), after fetching the base branch so a stale origin/<base> cannot give a wrong merge base. `--from` must be a full
+SHA that is an ancestor of the head. With `--key PRIVATE_KEY` the block is signed through attest_sig and the signature
+block is printed with it: the merge gate drops every attestation without a verified signature, so an unsigned block only
+counts in the steward's report. The block is checked with the same `validate` the coverage tool uses, and it refuses (exit 2) to build a
 verdict for a reviewer whose seat is among the implementers: that verdict would never count, so it should not be
 posted. Paste the file's contents as a PR comment; the verdict counts only at this head.
 """
@@ -21,6 +24,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import attest_sig  # noqa: E402
 import collect_state as cs  # noqa: E402
 import review_coverage as rc  # noqa: E402
 
@@ -38,6 +42,8 @@ def build_record(repo, pr, head, base_sha, reviewer, implementers, verdict, scop
     if scope == "delta":
         if not frm:
             return None, "a delta attestation needs --from <the head already reviewed>"
+        if len(frm) != 40 or any(c not in "0123456789abcdef" for c in frm):
+            return None, f"--from must be the full 40-character lower-case SHA, got {frm!r}"
         record["from"] = frm
     problem = rc.validate(record)
     if problem:
@@ -52,7 +58,7 @@ def render_block(record):
     return "```attestation\n" + json.dumps(record, indent=2) + "\n```\n"
 
 
-def gather(repo, repo_dir, pr, extra_implementers, run=None):
+def gather(repo, repo_dir, pr, extra_implementers, run=None, frm=None):
     """(head, base_sha, implementers, error) from the clone and GitHub. `run(*gh args)` returns parsed JSON."""
     run = run or rc.gh_json
     remote = rc.git(repo_dir, "remote", "get-url", "origin")
@@ -60,12 +66,18 @@ def gather(repo, repo_dir, pr, extra_implementers, run=None):
         return None, None, None, f"--repo-dir {repo_dir!r} is not a clone of {repo}"
     info = run("pr", "view", str(pr), "-R", repo, "--json", "headRefOid,baseRefName,headRefName")
     head, base = info["headRefOid"], f"origin/{info['baseRefName']}"
+    fetched = rc.git(repo_dir, "fetch", "--prune", "origin",
+                     f"+refs/heads/{info['baseRefName']}:refs/remotes/{base}")
+    if fetched.returncode != 0:
+        return None, None, None, f"could not refresh {base}, so the base_sha would be a guess: {fetched.stderr.strip()}"
     if rc.git(repo_dir, "cat-file", "-e", head + "^{commit}").returncode != 0:
         return None, None, None, (f"head {head} is not in the clone; fetch it first: "
                                   f"git fetch origin refs/pull/{pr}/head")
     merge_base = rc.git(repo_dir, "merge-base", base, head).stdout.strip()
     if not merge_base:
         return None, None, None, f"no merge base between {base} and {head}; fetch origin first"
+    if frm and rc.git(repo_dir, "merge-base", "--is-ancestor", frm, head).returncode != 0:
+        return None, None, None, f"--from {frm} is not an ancestor of {head}: a delta can only extend a head it contains"
     log = rc.git(repo_dir, "log", "--format=%B", f"{base}..{head}").stdout
     implementers = list(cs.seats_from_trailers(log, info["headRefName"]))
     for name in extra_implementers:
@@ -87,9 +99,10 @@ def main(argv):
     parser.add_argument("--scope", default="whole", choices=("whole", "delta"))
     parser.add_argument("--from", dest="frm", help="for --scope delta: the head you already reviewed")
     parser.add_argument("--implementer", action="append", default=[], help="a seat that pushed without a trailer")
+    parser.add_argument("--key", help="SSH private key of the reviewer seat: also print the signature block the merge gate needs")
     parser.add_argument("--out", help="write the block to this file instead of stdout")
     args = parser.parse_args(argv)
-    head, base_sha, implementers, error = gather(args.repo, args.repo_dir, args.pr, args.implementer)
+    head, base_sha, implementers, error = gather(args.repo, args.repo_dir, args.pr, args.implementer, frm=args.frm)
     if error:
         print(error, file=sys.stderr)
         return 3
@@ -98,7 +111,16 @@ def main(argv):
     if error:
         print(error, file=sys.stderr)
         return 2
-    block = render_block(record)
+    if args.key:
+        try:
+            block = attest_sig.blocks(record, attest_sig.sign(attest_sig.canonical(record), args.key))
+        except RuntimeError as failure:
+            print(str(failure), file=sys.stderr)
+            return 4
+    else:
+        block = render_block(record)
+        print("unsigned: counts in the steward's report, but merge_gate.py drops it (it requires a verified signature); "
+              "pass --key to sign", file=sys.stderr)
     if args.out:
         with open(args.out, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(block)

@@ -58,6 +58,13 @@ class Build(unittest.TestCase):
             self.assertIsNone(record, (reviewer, implementers))
             self.assertIn("can never count", error)
 
+    def test_a_delta_from_must_be_a_full_lower_case_sha(self):
+        # Codex P2 on #112: any non-empty --from was copied in and the accept could never chain.
+        for frm in ("c" * 12, ("C" * 40), "not-a-sha"):
+            record, error = ma.build_record("o/r", 7, HEAD, BASE, "codex", ["claude"], "accept", "delta", frm)
+            self.assertIsNone(record, frm)
+            self.assertIn("--from must be the full", error)
+
     def test_a_non_independent_reviewer_may_still_record_a_rejection(self):
         record, error = ma.build_record("o/r", 7, HEAD, BASE, "claude", ["claude"], "changes_requested")
         self.assertIsNone(error)
@@ -121,6 +128,34 @@ class Gather(unittest.TestCase):
         _, _, _, error = ma.gather("o/r", self.clone, 7, [], run=self.run)
         self.assertIn("git fetch origin refs/pull/7/head", error)
 
+    def test_a_stale_base_ref_is_refreshed_before_the_merge_base_is_taken(self):
+        # Codex P2 on #112: with origin/main stale, the merge base was computed against the old tip and the pasted
+        # verdict did not match what coverage computes from an up-to-date clone.
+        self.fetch_head()
+        self.git(self.work, "checkout", "-q", "main")
+        self.git(self.work, "merge", "-q", "--no-ff", "-m", "main takes the PR", "claude/feature")
+        newer = self.commit("later.txt", "later\n", "main moves on")
+        self.git(self.work, "push", "-q", "origin", "main")
+        self.assertNotEqual(self.git(self.clone, "rev-parse", "origin/main"), newer, "the clone is stale")
+        _, base, _, error = ma.gather("o/r", self.clone, 7, [], run=self.run)
+        self.assertIsNone(error)
+        self.assertEqual(base, self.head, "merge base of main and the head, against the refreshed main")
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin/main"), newer)
+
+    def test_a_failed_base_refresh_is_an_error_not_a_guess(self):
+        self.fetch_head()
+        self.git(self.clone, "remote", "set-url", "origin", os.path.join(self.root, "gone.git").replace(os.sep, "/"))
+        _, _, _, error = ma.gather("o/r", self.clone, 7, [], run=self.run)
+        self.assertIsNotNone(error)
+
+    def test_a_delta_from_that_is_not_an_ancestor_of_the_head_is_refused(self):
+        self.fetch_head()
+        ok = ma.gather("o/r", self.clone, 7, [], run=self.run, frm=self.base)
+        self.assertIsNone(ok[3])
+        unrelated = "e" * 40
+        _, _, _, error = ma.gather("o/r", self.clone, 7, [], run=self.run, frm=unrelated)
+        self.assertIn("is not an ancestor", error)
+
     def test_a_clone_of_another_repository_is_refused(self):
         _, _, _, error = ma.gather("o/other", self.clone, 7, [], run=self.run)
         self.assertIn("is not a clone of o/other", error)
@@ -135,6 +170,43 @@ class Gather(unittest.TestCase):
         _, _, implementers, error = ma.gather("o/r", self.clone, 7, [], run=self.run)
         self.assertIsNone(implementers)
         self.assertIn("--implementer", error)
+
+
+@unittest.skipUnless(shutil.which("ssh-keygen"), "ssh-keygen is not installed")
+class Signed(unittest.TestCase):
+    """Codex P1 on #112: merge_gate drops unsigned attestations, so the tool has to be able to sign."""
+
+    def test_a_signed_block_counts_under_signature_enforcement(self):
+        import json
+        import attest_sig
+        with tempfile.TemporaryDirectory() as tmp:
+            key = os.path.join(tmp, "key")
+            made = subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key], capture_output=True)
+            self.assertEqual(made.returncode, 0, made.stderr)
+            with open(key + ".pub", encoding="utf-8") as handle:
+                public = handle.read().strip()
+            keys = {"seats": {"codex": {"keys": [public]}}}
+            from unittest import mock
+            out = os.path.join(tmp, "block.md")
+            with mock.patch.object(ma, "gather", return_value=(HEAD, BASE, ["claude"], None)):
+                code = ma.main(["--repo", "o/r", "--repo-dir", ".", "--pr", "1", "--reviewer", "codex",
+                                "--verdict", "accept", "--key", key, "--out", out])
+            self.assertEqual(code, 0)
+            with open(out, encoding="utf-8") as handle:
+                block = handle.read()
+            self.assertIn("```attestation-sig", block)
+            record, error = ma.build_record("o/r", 1, HEAD, BASE, "codex", ["claude"], "accept")
+            self.assertIsNone(error)
+            snapshot = {"repo": "o/r", "prs": [{"number": 1, "head": HEAD, "base": "main", "merge_base": BASE,
+                                                "reviews": [], "base_events": [],
+                                                "comments": [{"id": 1, "body": block}]}]}
+            enforced = rc.report_snapshot(snapshot, lambda a, b: True, None, keys, True)[0]
+            self.assertTrue(enforced["covered"], enforced["reasons"])
+            self.assertEqual(enforced["signed_attestations"], 1)
+            unsigned = {"prs": [dict(snapshot["prs"][0], comments=[{"id": 2, "body": ma.render_block(record)}])],
+                        "repo": "o/r"}
+            self.assertFalse(rc.report_snapshot(unsigned, lambda a, b: True, None, keys, True)[0]["covered"])
+            json.dumps(enforced)
 
 
 if __name__ == "__main__":
