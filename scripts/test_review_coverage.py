@@ -95,6 +95,39 @@ class Coverage(unittest.TestCase):
         two = ev(H1, records + [rec(H1, reviewer="Codex", impl=("Claude",))])
         self.assertEqual(two["accept_seats"], ["codex", "gemini"])
 
+    def test_a_model_family_name_without_the_seat_word_names_that_seat(self):
+        # Probe: reviewers "Opus" and "Sonnet" against implementer "claude" were two independent seats and covered.
+        self.assertEqual(rc.seat_names("Opus 5.5"), {"claude"})
+        self.assertEqual(rc.seat_names("claude-opus-4"), {"claude"})
+        self.assertEqual(rc.seat_names("gpt-5.5"), {"codex"})
+        self.assertEqual(rc.seat_names("OpenAI Codex"), {"codex"})
+        for reviewer in ("Opus", "Sonnet 5.5", "Fable 5.1", "Haiku", "Anthropic"):
+            self.assertFalse(ev(H1, [rec(H1, reviewer=reviewer, impl=("claude",))])["covered"], reviewer)
+        self.assertFalse(ev(H1, [rec(H1, reviewer="gpt-5.5", impl=("Codex",))])["covered"])
+        self.assertFalse(ev(H1, [rec(H1, reviewer="Codex", impl=("GPT-5.5",))])["covered"])
+        self.assertFalse(ev(H1, [rec(H1, reviewer="Claude", impl=("Opus 5.5",))])["covered"])
+        self.assertTrue(ev(H1, [rec(H1, reviewer="Gemini", impl=("Opus 5.5",))])["covered"])
+
+    def test_two_labels_for_one_model_family_are_one_accepting_seat(self):
+        two = ev(H1, [rec(H1, reviewer="Opus", impl=("codex",)), rec(H1, reviewer="Sonnet", impl=("codex",))])
+        self.assertEqual(two["accept_seats"], ["claude"])
+
+    def test_an_ambiguous_reviewer_naming_multiple_seats_fails_closed_and_contributes_no_accept_seats(self):
+        # Codex P2 on #111: an attestation claiming multiple seats cannot satisfy independence or contribute multiple seats.
+        self.assertIsNone(rc.canonical_reviewer_seat("Opus/gpt-5.5"))
+        self.assertIsNone(rc.canonical_reviewer_seat("Claude, Mimo"))
+        self.assertEqual(rc.canonical_reviewer_seat("Opus 5.5"), "claude")
+        self.assertEqual(rc.canonical_reviewer_seat("gpt-5.5"), "codex")
+        self.assertEqual(rc.canonical_reviewer_seat("Gemini/Antigravity"), "gemini")
+
+        decision = ev(H1, [rec(H1, reviewer="Opus/gpt-5.5", impl=("mimo",))])
+        self.assertFalse(decision["covered"])
+        self.assertEqual(decision["accept_seats"], [])
+
+        decision2 = ev(H1, [rec(H1, reviewer="Claude, Mimo", impl=("gemini",))])
+        self.assertFalse(decision2["covered"])
+        self.assertEqual(decision2["accept_seats"], [])
+
     def test_model_ids_and_punctuation_forms_name_the_same_seat(self):
         # Skeptic probe on #99: all of these were independent of the reviewer they name, because only the first
         # space-separated word was compared.

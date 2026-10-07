@@ -131,6 +131,13 @@ SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
 # punctuation form (skeptic probe on #99: reviewer "Claude" with implementers ["claude-sonnet-5-5"] was independent).
 KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen")
 
+# A model family named without its seat word still names the seat that runs it: "Opus 5.5" is Claude, "gpt-5.5" is Codex.
+# Without this the string kept its own first token as an "unknown seat", so a Claude session labelling itself "Opus"
+# was independent of an implementer "claude" and two labels ("Opus", "Sonnet") counted as two reviewing seats
+# (skeptic probe on #99 main: both covered a PR whose only implementer was claude).
+MODEL_FAMILY_SEATS = {"opus": "claude", "sonnet": "claude", "haiku": "claude", "fable": "claude", "anthropic": "claude",
+                      "gpt": "codex", "openai": "codex"}
+
 
 def seat_names(name):
     """The set of seats a reviewer or implementer string names. A string may name several ("Claude, Mimo",
@@ -142,6 +149,9 @@ def seat_names(name):
         for seat in KNOWN_SEATS:
             if token.startswith(seat):
                 found.add(SEAT_NAME_ALIASES.get(seat, seat))
+        for family, seat in MODEL_FAMILY_SEATS.items():
+            if token.startswith(family):
+                found.add(seat)
     if not found and tokens:
         found.add(tokens[0])
     return found
@@ -151,6 +161,14 @@ def seat_name(name):
     """One seat for display and de-duplication: the first of the sorted seats `seat_names` finds."""
     seats = sorted(seat_names(name))
     return seats[0] if seats else ""
+
+
+def canonical_reviewer_seat(name):
+    """The single canonical seat an attestation reviewer resolves to.
+    Fails closed (returns None) if the reviewer is ambiguous (names multiple distinct seats) or empty
+    (Codex P2 on #111: an ambiguous reviewer like 'Opus/gpt-5.5' cannot contribute multiple seats to accept_seats)."""
+    seats = seat_names(name)
+    return next(iter(seats)) if len(seats) == 1 else None
 
 
 def independent(record):
@@ -181,6 +199,7 @@ def evaluate(head, merge_base, records, is_ancestor):
         r
         for r in records
         if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base
+        and canonical_reviewer_seat(r["reviewer"]) is not None
     ]
     covered = {r["head"] for r in valid if r["scope"] == "whole"}
     changed = True
@@ -207,7 +226,7 @@ def evaluate(head, merge_base, records, is_ancestor):
         "reasons": reasons,
         "accepts_at_head": len(at_head),
         "counted": counted,
-        "accept_seats": sorted(set().union(*(seat_names(r["reviewer"]) for r in counted)) if counted else []),
+        "accept_seats": sorted({canonical_reviewer_seat(r["reviewer"]) for r in counted if canonical_reviewer_seat(r["reviewer"])}),
     }
 
 
@@ -301,8 +320,10 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
         parsed, problems, legacy = parse_attestations(pr.get("comments", []))
         allowed = attest_sig.allowed_signers(keys) if keys else ""
         for record in parsed:
-            record["verified"] = bool(record.get("_sig")) and attest_sig.verify(
-                record["_canon"], record["_sig"], record["reviewer"], allowed
+            canon = canonical_reviewer_seat(record["reviewer"])
+            principal = canon or record["reviewer"]
+            record["verified"] = bool(record.get("_sig") and canon) and attest_sig.verify(
+                record["_canon"], record["_sig"], principal, allowed
             )
         if require_signatures:
             for record in [r for r in parsed if not r["verified"]]:

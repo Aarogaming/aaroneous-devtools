@@ -371,7 +371,8 @@ COVERAGE = [
 
 SEATS = ["Gemini", "gemini", "Gemini/Antigravity", "Antigravity", "Claude Sonnet 5.5", "Claude (steward)",
          "Mimo (OpenCode)", "Local Qwen", "gemini-3.8-flash", "claude-sonnet-5-5", "Claude, Mimo", "claude+mimo",
-         "codex:session-01a1", "CLAUDE.", "someone else", "!!!", ""]
+         "codex:session-01a1", "CLAUDE.", "someone else", "!!!", "",
+         "Opus 5.5", "Fable", "sonnet-5.5", "Anthropic", "gpt-5.5", "OpenAI Codex"]
 
 
 def evaluate_case(case):
