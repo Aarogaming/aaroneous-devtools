@@ -82,15 +82,32 @@ class Live(unittest.TestCase):
             return qc.live("o/r")
 
     def test_prs_that_do_not_touch_the_queue_are_ignored_and_a_missing_patch_is_reported_not_skipped(self):
-        listing = [{"number": 1}, {"number": 2}, {"number": 3}]
+        listing = [{"number": 1, "baseRefName": "main"}, {"number": 2, "baseRefName": "main"},
+                   {"number": 3, "baseRefName": "main"}]
         files = {
             1: [{"filename": "scripts/x.py", "patch": "+| C1 | x |"}],
             2: [{"filename": qc.QUEUE}],
             3: [{"filename": qc.QUEUE, "patch": "+" + row("C7")}],
         }
-        by_pr, unreadable = self.run_live(listing, files)
-        self.assertEqual(by_pr, {3: {"C7": [row("C7")]}})
+        by_base, unreadable = self.run_live(listing, files)
+        self.assertEqual(by_base, {"main": {3: {"C7": [row("C7")]}}})
         self.assertEqual(unreadable, [2])
+
+    def test_prs_are_grouped_by_the_base_they_target(self):
+        listing = [{"number": 1, "baseRefName": "main"}, {"number": 2, "baseRefName": "proposal/x"}]
+        files = {1: [{"filename": qc.QUEUE, "patch": "+" + row("C1")}],
+                 2: [{"filename": qc.QUEUE, "patch": "+" + row("C1", "Review")}]}
+        by_base, _ = self.run_live(listing, files)
+        self.assertEqual(sorted(by_base), ["main", "proposal/x"])
+
+    def test_a_stacked_pr_that_updates_its_predecessors_lane_is_not_a_collision(self):
+        # Codex P2 on #126: a PR into the predecessor's branch intentionally changes the row that predecessor added.
+        by_base = {"main": {10: {"C5": [row("C5", "Ready")]}}, "proposal/pred": {11: {"C5": [row("C5", "Review")]}}}
+        self.assertEqual(qc.collisions_by_base(by_base), [])
+        by_base["main"][12] = {"C5": [row("C5", "Blocked")]}
+        found = qc.collisions_by_base(by_base)
+        self.assertEqual([(e["base"], e["lane"]) for e in found], [("main", "C5")])
+        self.assertIn("PRs into main", qc.render(found, []))
 
     def test_render_names_unreadable_prs_and_says_so_when_there_is_nothing(self):
         self.assertIn("NOT CHECKED", qc.render([], [9]))
