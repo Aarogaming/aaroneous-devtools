@@ -504,7 +504,7 @@ def main(argv):
     keys = cs.rc.load_keys(args.identities) if args.identities else None
     snapshot = cs.rc.live_snapshot(args.repo, args.repo_dir)
     state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities, keys,
-                       args.require_signatures)
+                       args.require_signatures, snapshot=snapshot)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = tick_under_lock(args.log, state, snapshot, args.tick, now, args.stall_after, args.outbox, args.expect_tip)
     count, tip = result["tip"]["count"], result["tip"]["sha256"]

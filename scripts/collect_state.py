@@ -387,13 +387,15 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
             "done_by": done_receipts(snapshot, repair_owners, implementers_by_pr), "default_branch": default_branch}
 
 
-def collect(repo, repo_dir, agents, backlog, identities=None, keys=None, require_signatures=False):
+def collect(repo, repo_dir, agents, backlog, identities=None, keys=None, require_signatures=False, snapshot=None):
     """Read the live state. ``keys`` (the identity registry) and ``require_signatures`` reach `report_snapshot`, so once
     the owner registers seat keys the steward can stop counting unsigned, spoofable attestation blocks as coverage
-    (Codex P2 on #99: the steward loaded the keys and dropped them). Enforcement without keys fails closed."""
+    (Codex P2 on #99: the steward loaded the keys and dropped them). Enforcement without keys fails closed.
+    ``snapshot`` is a `live_snapshot` the caller already took; reading it again costs about one gh call per open PR per
+    read (a steward tick took 126s, 118s of it two snapshots) and lets the two reads disagree about the same tick."""
     if require_signatures and not (keys and rc.attest_sig.allowed_signers(keys).strip()):
         raise SystemExit("--require-signatures needs --identities with registered seat keys: nothing could verify a signature")
-    snapshot = rc.live_snapshot(repo, repo_dir)
+    snapshot = snapshot if snapshot is not None else rc.live_snapshot(repo, repo_dir)
     meta = {
         p["number"]: p
         for p in rc.gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",

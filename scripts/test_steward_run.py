@@ -704,5 +704,29 @@ class Delivery(unittest.TestCase):
         self.assertEqual(h["last_head"]["gemini|51"], "aaaaaaaa")
 
 
+class OneSnapshotPerTick(unittest.TestCase):
+    def test_main_reads_github_once_and_hands_the_same_snapshot_to_state_and_ingest(self):
+        # Measured: a tick took 126s, 118s of it two live_snapshot passes (one gh call per open PR each).
+        import types
+        from unittest import mock
+        snapshot = {"repo": "o/r", "prs": []}
+        calls = []
+        result = {"tip": {"count": 1, "sha256": "0" * 64}}
+
+        def collect(*args, **kwargs):
+            calls.append(("collect", kwargs.get("snapshot")))
+            return {"prs": []}
+
+        def tick(log, state, snap, *rest, **kwargs):
+            calls.append(("tick", snap))
+            return result
+
+        done = types.SimpleNamespace(stdout="https://github.com/o/r.git", returncode=0)
+        with mock.patch.object(sr.cs.rc, "git", return_value=done),                 mock.patch.object(sr.cs.rc, "checkout_matches", return_value=True),                 mock.patch.object(sr.cs.rc, "live_snapshot", return_value=snapshot) as live,                 mock.patch.object(sr.cs, "collect", side_effect=collect),                 mock.patch.object(sr, "tick_under_lock", side_effect=tick),                 mock.patch.object(sr, "render", return_value="ok"),                 mock.patch("builtins.print"):
+            self.assertEqual(sr.main(["--repo", "o/r", "--repo-dir", ".", "--log", "x.jsonl"]), 0)
+        self.assertEqual(live.call_count, 1)
+        self.assertEqual(calls, [("collect", snapshot), ("tick", snapshot)])
+
+
 if __name__ == "__main__":
     unittest.main()

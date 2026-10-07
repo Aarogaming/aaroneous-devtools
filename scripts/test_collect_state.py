@@ -309,6 +309,16 @@ class Build(unittest.TestCase):
                 mock.patch.object(cs.rc, "live_ancestry", return_value=lambda a, b: True):
             return cs.collect("o/r", ".", ["claude", "gemini"], [], {"gemini": "gemini"}, **kwargs)
 
+    def test_a_snapshot_the_caller_already_took_is_not_read_again(self):
+        # The steward took one snapshot for ingest and collect() took a second: two passes of one gh call per open PR.
+        from unittest import mock
+        state = self.collect_with_an_unsigned_accept(keys=None, require_signatures=False)
+        self.assertEqual(len(state["prs"]), 1)
+        sentinel = {"repo": "o/r", "prs": []}
+        with mock.patch.object(cs.rc, "live_snapshot", side_effect=AssertionError("read the snapshot again")),                 mock.patch.object(cs.rc, "gh_json", side_effect=lambda *args: [] if args[0] == "pr" else
+                                  {"defaultBranchRef": {"name": "main"}}),                 mock.patch.object(cs, "unresolved_by_pr", return_value={}),                 mock.patch.object(cs, "unanswered_by_pr", return_value={}):
+            self.assertEqual(cs.collect("o/r", ".", ["claude"], [], snapshot=sentinel)["prs"], [])
+
     def test_signature_enforcement_reaches_the_coverage_decision(self):
         keys = {"seats": {"gemini": {"keys": ["ssh-ed25519 AAAA test"]}}}
         unenforced = self.collect_with_an_unsigned_accept(keys=keys, require_signatures=False)
