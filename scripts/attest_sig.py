@@ -53,6 +53,11 @@ def valid_key(key):
     return len(parts) >= 2 and parts[0] in KEY_TYPES and KEY_BODY.fullmatch(parts[1]) is not None
 
 
+def plain_login(value):
+    """A GitHub login as written in the file: a non-empty string with no surrounding or inner whitespace."""
+    return isinstance(value, str) and bool(value) and value == value.strip() and not any(c.isspace() for c in value)
+
+
 def validate_identities(data):
     """Problems with an identities file, as sentences; an empty list means it is usable. The file decides who counts as
     an independent reviewer, so a malformed entry must stop the tool rather than be read charitably. Probes on the old
@@ -63,8 +68,9 @@ def validate_identities(data):
     if not isinstance(data, dict) or not isinstance(data.get("seats"), dict):
         return ["the file must be a JSON object with a \"seats\" object"]
     owners = data.get("owner", [])
-    if not isinstance(owners, list) or not all(isinstance(o, str) and o for o in owners):
-        problems.append('"owner" must be a list of GitHub logins')
+    if not isinstance(owners, list) or not all(plain_login(o) for o in owners):
+        # "Aarogaming " would not match the login "Aarogaming" in the exclusion set below (Codex P2 on #123)
+        problems.append('"owner" must be a list of plain GitHub logins (no spaces)')
         owners = []
     owner_set = {o.lower() for o in owners}
     seen = {}
@@ -81,7 +87,7 @@ def validate_identities(data):
             problems.append(f"{seat}: keys must be a list, not {type(keys).__name__}")
             keys = []
         for login in logins:
-            if not isinstance(login, str) or not login or login != login.strip() or " " in login:
+            if not plain_login(login):
                 problems.append(f"{seat}: login {login!r} is not a plain GitHub login")
                 continue
             if login.lower() in owner_set:
@@ -173,6 +179,11 @@ def main(argv):
         return 0
     with open(args.identities, encoding="utf-8") as handle:
         identities = json.load(handle)
+    problems = validate_identities(identities)
+    if problems:
+        print(f"{args.identities} is not a usable identities file:\n  " + "\n  ".join(problems), file=sys.stderr)
+        print("NOT VERIFIED")
+        return 2
     with open(args.sig, encoding="utf-8") as handle:
         signature = handle.read().strip()
     ok = verify(canonical(record), signature, args.seat, allowed_signers(identities))

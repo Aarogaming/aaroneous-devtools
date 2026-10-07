@@ -159,6 +159,31 @@ class IdentitiesFileIsValidated(unittest.TestCase):
             self.assertTrue(self.problems({"seats": {"claude": {"keys": [key]}}}) or key == "ssh-ed25519 AA AA\nx", key)
         self.assertEqual(self.problems({"seats": {"claude": {"logins": ["bob"], "keys": ["ssh-ed25519 AAAA comment"]}}}), [])
 
+    def test_malformed_owner_logins_are_problems_not_a_silently_non_matching_exclusion(self):
+        # Codex P2 on #123: "owner": ["Aarogaming "] did not match the seat login "Aarogaming"
+        for owner in (["Aarogaming "], [" Aarogaming"], ["Aaro gaming"], [""], [None], "Aarogaming"):
+            found = self.problems({"owner": owner, "seats": {"claude": {"logins": ["Aarogaming"]}}})
+            self.assertTrue(any("owner" in p for p in found), (owner, found))
+
+    def test_the_standalone_verifier_refuses_an_invalid_identities_file(self):
+        # Codex P2 on #123: `attest_sig.py verify` read the file without validating it
+        with tempfile.TemporaryDirectory() as tmp:
+            identities = os.path.join(tmp, "identities.json")
+            record = os.path.join(tmp, "record.json")
+            sig = os.path.join(tmp, "sig")
+            for path, content in ((identities, {"owner": ["boss"], "seats": {"claude": {"logins": ["boss"]}}}),
+                                  (record, {"a": 1})):
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(content, handle)
+            with open(sig, "w", encoding="utf-8") as handle:
+                handle.write("x")
+            result = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "attest_sig.py"),
+                                     "verify", "--record", record, "--sig", sig, "--seat", "claude", "--identities", identities],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("NOT VERIFIED", result.stdout)
+            self.assertIn("shared owner login", result.stderr)
+
     def test_a_file_that_is_not_an_object_with_seats_is_a_problem(self):
         for data in ([], {"seats": []}, {"seats": "x"}, None):
             self.assertTrue(self.problems(data), data)
