@@ -9,6 +9,25 @@ audit found the same self-certification pattern recurring five separate
 times. Read this before dispatching work to, or picking up work claimed by,
 another agent — Codex, Gemini/Antigravity, Claude, or local Qwen ("Mimo").
 
+**Open tension, not yet resolved (flagged 2026-10-03):** Product's
+`AGENTS.md` tells an agent to read this file "if you have access to that
+repo" — but `aaroneous-devtools` is private, so that access is conditional
+and nothing in Product forces an agent to check for it. A multi-hour,
+multi-file Product PR (#88) was done entirely outside this queue's
+awareness as a direct result: not concealment, just that nothing prompted
+opening this repo. The owner has named two real fixes — make this repo
+public so a direct pointer from Product always resolves, or build an actual
+sync/notification mechanism between the two repos — and has not chosen
+between them yet; this is still an owner decision, not something to resolve
+unilaterally. Until it's made, the proposed mitigation is a lighter one: a
+nudge in Product's own PR template toward checking/logging a lane here for
+substantial work, which doesn't require Product to assume this repo is
+reachable — pending as `.github/pull_request_template.md` in
+Aarogaming/aaroneous#89 (not yet merged to Product `main` as of this
+writing; `git show origin/main:.github/pull_request_template.md` on
+Product correctly returns nothing until it lands — check that PR's state
+rather than assuming this is already in effect).
+
 ## The mechanical safety net (read this part even if you skip the rest)
 
 As of 2026-09-27, GitHub branch protection is enabled on `main` for both
@@ -51,6 +70,35 @@ produced this repo's history:
    ("No self-certification or automatic merge authority," in the table's own
    header); it is now also mechanically true for anything that touches
    `main`, per the branch protection above.
+
+## Self-certification applies one level down too: your own subagent's report
+
+Everything above is written about one named agent's claim being accepted or
+rejected by a *different* identity. It says nothing about the case where a
+single session delegates to its own background subagent (a `Task`/`Agent`
+tool call, a sub-session, a worker it spawned) and then has to decide
+whether to trust *that* report before acting on it — and that gap is not
+theoretical. During the Product `aaroneous` PR #88 rescue (2026-10-02), a
+Claude session delegated the merge/rename/gate work to a background
+subagent, which reported back "`bash scripts/agent_check.sh` passes clean
+end to end... all 12 gates" with no retained log path, no quoted exit code,
+nothing a reviewer could re-check — and the coordinating session pushed that
+work and opened the PR on the strength of that report before any
+independent check ran. Real CI then failed three more times on checks
+outside what the subagent had actually run. This is the exact shape of C61/
+C65/Phase 38 above, just one level down the delegation stack, where none of
+this document's worked examples explicitly reach.
+
+The rule is the same, not a new one: **a delegated subagent's "done"/"gate
+green" is not evidence until it carries the same packet a cross-agent claim
+needs** — the exact command, the exit code or a quoted success line, and a
+retained/re-runnable log path or commit. A session that cannot produce that
+packet for its own subagent's work has no more grounds to push or open a PR
+than one agent trusting another's unevidenced "Done." Re-running the
+subagent's claimed verification yourself before acting on it is the cheap
+version of the same independent-reviewer requirement the claim queue already
+asks for across identities; skipping it just moves the self-certification
+failure mode inside one session instead of across two.
 
 ## The circuit breaker
 
@@ -165,6 +213,24 @@ red when the actual gate command was green; corrected in the same session,
 logged as a correction rather than silently edited). Worth the reminder:
 being the identity that catches other agents' unevidenced claims doesn't
 exempt this one from the same discipline.
+
+**Cite the exact model identifier, not just "Claude."** This section and
+`COORDINATION_QUEUE.md`'s rows have both tracked "Claude" as one continuous
+identity across what are, in the underlying record, different model
+versions (at minimum "Claude Sonnet 5" and "Claude Sonnet 5.5" appear
+interchangeably in the queue's own history). That's an operator-identity
+gap, not a style nitpick: these per-agent notes exist specifically so a
+pattern of behavior can be attributed and acted on, and "identifying the
+operator" stops being optional once more agents and more autonomous
+dispatch are added — a security and accountability problem, not just a
+bookkeeping one, since a claim, a push, or a merge needs a real operator
+behind it to revoke or hold accountable if it's wrong. Going forward: every
+claim-queue row, review packet, and commit trailer should name the specific
+model identifier that did the work (as commit trailers in this repo's own
+recent history already do, e.g. `Claude-Session:` lines), not a bare
+"Claude" — and if/when this identity's behavior is found to differ across
+model versions, split this section accordingly instead of continuing to
+average them into one profile.
 
 ### Local Qwen ("Mimo")
 

@@ -1,7 +1,5 @@
 mod agentic_registrar;
-// C76: not yet wired into local_worker (separate handoff); dead outside tests until then.
 mod component_inventory;
-#[cfg_attr(not(test), allow(dead_code))]
 mod conformance;
 mod dependency_review;
 mod dogfood;
@@ -84,6 +82,21 @@ enum Command {
     LocalWorkerStatus {
         #[arg(long)]
         config: PathBuf,
+    },
+    /// Read-only lint of every approved job manifest (parse, rules, duplicate ids, evidence exists).
+    LocalWorkerLintJobs {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Move one job's reviewed results from the results directory to the archive (never overwrites).
+    LocalWorkerArchive {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        job_id: String,
+        /// Actually move the files; without it the command only reports what it would do.
+        #[arg(long)]
+        apply: bool,
     },
     /// Adaptive persistent local-worker loop: tick, look at what actually
     /// happened, and decide the next tick's delay from that -- backing off
@@ -192,12 +205,12 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
-    /// Verify cryptographic integrity and schema of an immutable virtual patch set
+    /// Verify cryptographic integrity, schema, and static rule conformance of an immutable virtual patch set (reports warnings; hard gating occurs at materialization)
     VerifyVirtualPatch {
         #[arg(long)]
         patch_set: PathBuf,
     },
-    /// Materialize reviewer-selected virtual patches into an explicit target directory
+    /// Materialize reviewer-selected virtual patches into an explicit target directory (hard-blocks on static rule conformance)
     MaterializeVirtualPatch {
         #[arg(long)]
         patch_set: PathBuf,
@@ -425,6 +438,12 @@ fn main() -> Result<()> {
                 .as_secs();
             local_worker::status(&config, now)
         }
+        Command::LocalWorkerLintJobs { config } => local_worker::lint_jobs(&config),
+        Command::LocalWorkerArchive {
+            config,
+            job_id,
+            apply,
+        } => local_worker::archive(&config, &job_id, apply),
         Command::LocalWorkerServe { config } => local_worker::serve(&config),
         Command::MultithreaderReview { config } => multithreader::run(&config),
         Command::MultithreaderServe {
@@ -473,6 +492,26 @@ fn main() -> Result<()> {
                     format!("invalid virtual patch set JSON in {}", patch_set.display())
                 })?;
             virtual_patch::verify_patch_set(&ps)?;
+            let violations = virtual_patch::check_patch_set_conformance(&ps);
+            if !violations.is_empty() {
+                println!(
+                    "Warning: patch set {} contains {} file(s) with conformance violations:",
+                    ps.patch_set_id,
+                    violations.len()
+                );
+                for (path, hits) in &violations {
+                    for hit in hits {
+                        println!("  {path}:{}: rule violation '{}'", hit.line, hit.rule);
+                    }
+                }
+                bail!(
+                    "patch set {} failed conformance pre-flight: {} file(s) with violations",
+                    ps.patch_set_id,
+                    violations.len()
+                );
+            } else {
+                println!("Conformance pre-flight check passed (0 violations).");
+            }
             println!(
                 "Virtual patch set {} integrity verified successfully ({} patches, base rev {}).",
                 ps.patch_set_id,

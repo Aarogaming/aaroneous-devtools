@@ -16,7 +16,7 @@
 //! never evidence of conformance.
 
 /// Rules for the worker system prompt. Source: AGENTS.md sections 2 and 5.
-pub(crate) const RULE_PACK: &str = "\
+pub const RULE_PACK: &str = "\
 Aaroneous floor rules (a draft that breaks any is rejected):
 1. No std::env::var/var_os/set_var/remove_var/temp_dir/current_dir and no .canonicalize(). Take paths and config through constructor arguments.
 2. No SystemTime::now() or Instant::now() in non-test code. Take time as a parameter (tick or injected clock).
@@ -28,7 +28,7 @@ Aaroneous floor rules (a draft that breaks any is rejected):
 
 /// One rule breach found by [`scan_draft`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Violation {
+pub struct Violation {
     pub rule: &'static str,
     /// 1-based line number within the scanned source.
     pub line: usize,
@@ -68,7 +68,7 @@ const BANNED_OUTSIDE_TESTS: &[(&str, &str)] = &[
 /// brace counting) are exempt from the panic and clock rules only. Comment-only
 /// lines are ignored. A panic-rule hit is waived when the nearest preceding
 /// non-blank line is a `// INFALLIBLE:` comment.
-pub(crate) fn scan_draft(source: &str) -> Vec<Violation> {
+pub fn scan_draft(source: &str) -> Vec<Violation> {
     let mut found = Vec::new();
     let mut depth: i64 = 0;
     // Depth at which the current test region opened; `None` outside one.
@@ -196,17 +196,70 @@ const LINE_SLACK: usize = 10;
 /// `evidence` (compared with whitespace normalised). This catches invented or
 /// paraphrased "findings"; it cannot tell whether a real quote supports the
 /// claim, so it is a floor filter, not review.
+#[cfg(test)]
 pub(crate) fn unanchored_observations(observations: &[String], evidence: &str) -> Vec<usize> {
+    unanchored_with_paths(observations, evidence, &[])
+}
+
+fn unanchored_with_paths(
+    observations: &[String],
+    evidence: &str,
+    known_paths: &[String],
+) -> Vec<usize> {
     let haystack = normalize(evidence);
     observations
         .iter()
         .enumerate()
         .filter(|(_, observation)| {
             let quotes = backtick_quotes(observation);
-            quotes.is_empty() || quotes.iter().any(|q| !haystack.contains(&normalize(q)))
+            if quotes.is_empty() {
+                return true;
+            }
+            let to_check = if is_negative_claim(observation) {
+                evidence_quotes(observation)
+            } else {
+                asserted_quotes(observation)
+            };
+            to_check
+                .iter()
+                .any(|q| !quote_present(&haystack, q, known_paths))
         })
         .map(|(index, _)| index)
         .collect()
+}
+
+/// `true` for an observation that asserts something is absent ("No `#[test]` found"). Its
+/// quoted text cannot be in the evidence, so quote anchoring does not apply to it when it
+/// quotes something; an unquoted negative claim is still reported as unanchored.
+fn is_negative_claim(observation: &str) -> bool {
+    let lower = observation.trim_start().to_ascii_lowercase();
+    [
+        "no ",
+        "not ",
+        "none ",
+        "there is no ",
+        "there are no ",
+        "lacks ",
+    ]
+    .iter()
+    .any(|prefix| lower.starts_with(prefix))
+}
+
+/// `true` when `quote` occurs in the already-normalised `haystack`, either literally or as a
+/// Rust path such as `StateAdaptor::new`, which models write for a method that the source only
+/// shows as `impl StateAdaptor { ... fn new`. A path counts when every `::` segment occurs.
+/// A quote equal to one of the job's declared evidence paths also counts: a file's own path is
+/// never in its contents.
+fn quote_present(haystack: &str, quote: &str, known_paths: &[String]) -> bool {
+    let quote = normalize(quote);
+    if haystack.contains(&quote) || known_paths.iter().any(|path| normalize(path) == quote) {
+        return true;
+    }
+    let segments: Vec<&str> = quote.split("::").collect();
+    segments.len() >= 2
+        && segments
+            .iter()
+            .all(|segment| !segment.is_empty() && haystack.contains(segment))
 }
 
 fn backtick_quotes(text: &str) -> Vec<&str> {
@@ -215,6 +268,65 @@ fn backtick_quotes(text: &str) -> Vec<&str> {
         .filter(|(i, part)| i % 2 == 1 && part.trim().len() >= MIN_ANCHOR_LEN)
         .map(|(_, part)| part)
         .collect()
+}
+
+/// Words that, just before a backtick quote, mean the quote names something that is absent
+/// ("but no `#[cfg(test)]` module"), so it cannot be anchored in the evidence.
+const NEGATIONS: [&str; 6] = ["no ", "not ", "without ", "lacks ", "lack ", "never "];
+
+/// How many characters before a quote are searched for a negation word.
+const NEGATION_WINDOW: usize = 16;
+
+/// For a negative claim ("No guard exists; source: `return Err(..)` at line 40"): only the
+/// quotes that are supporting evidence, meaning the ones followed by a line citation or preceded
+/// by "source", must still be found in the evidence. The quote naming the absent subject is
+/// exempt, an invented evidence quote is not.
+fn evidence_quotes(text: &str) -> Vec<&str> {
+    let mut offset: usize = 0;
+    let mut kept = Vec::new();
+    for (index, part) in text.split('`').enumerate() {
+        if index % 2 == 1 && part.trim().len() >= MIN_ANCHOR_LEN {
+            let before = text[..offset.saturating_sub(1)].to_ascii_lowercase();
+            let after_start = offset + part.len() + 1;
+            let after: String = text
+                .get(after_start..)
+                .unwrap_or("")
+                .chars()
+                .take(16)
+                .collect::<String>()
+                .to_ascii_lowercase();
+            let cited = after.contains("line");
+            let sourced =
+                before.trim_end().ends_with("source:") || before.trim_end().ends_with("source");
+            if cited || sourced {
+                kept.push(part);
+            }
+        }
+        offset += part.len() + 1;
+    }
+    kept
+}
+
+/// Like [`backtick_quotes`], but drops quotes that a negation word directly precedes.
+fn asserted_quotes(text: &str) -> Vec<&str> {
+    let mut offset: usize = 0;
+    let mut kept = Vec::new();
+    for (index, part) in text.split('`').enumerate() {
+        if index % 2 == 1 && part.trim().len() >= MIN_ANCHOR_LEN {
+            let before = &text[..offset.saturating_sub(1)];
+            let tail_start = before
+                .char_indices()
+                .rev()
+                .nth(NEGATION_WINDOW)
+                .map_or(0, |(at, _)| at);
+            let tail = before[tail_start..].to_ascii_lowercase();
+            if !NEGATIONS.iter().any(|word| tail.contains(word)) {
+                kept.push(part);
+            }
+        }
+        offset += part.len() + 1;
+    }
+    kept
 }
 
 /// Parses the first `line N` / `lines A-B` citation in `text` as an inclusive 1-based range.
@@ -248,10 +360,19 @@ fn cited_line_range(text: &str) -> Option<(usize, usize)> {
 /// Returns indices of observations whose cited line range does not contain their quoted text.
 ///
 /// An observation that cites `line N` or `lines A-B` and quotes `backticked` text (8+ chars)
-/// is rejected when any quote is absent from those lines of `evidence`, widened by
+/// is flagged only when NONE of its quotes is present in those lines of `evidence`, widened by
 /// `LINE_SLACK` lines either side (whitespace normalised). Observations without a citation or without a quote are not reported here:
 /// they are unverifiable, not wrong (use [`unanchored_observations`] for quote presence).
+#[cfg(test)]
 pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str) -> Vec<usize> {
+    out_of_range_with_paths(observations, evidence, &[])
+}
+
+fn out_of_range_with_paths(
+    observations: &[String],
+    evidence: &str,
+    known_paths: &[String],
+) -> Vec<usize> {
     let lines: Vec<&str> = evidence.lines().collect();
     observations
         .iter()
@@ -260,7 +381,11 @@ pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str)
             let Some((a, b)) = cited_line_range(observation) else {
                 return false;
             };
-            let quotes = backtick_quotes(observation);
+            let quotes = if is_negative_claim(observation) {
+                evidence_quotes(observation)
+            } else {
+                asserted_quotes(observation)
+            };
             if quotes.is_empty() {
                 return false;
             }
@@ -271,7 +396,9 @@ pub(crate) fn out_of_range_observations(observations: &[String], evidence: &str)
             } else {
                 normalize(&lines[start - 1..end].join("\n"))
             };
-            quotes.iter().any(|q| !window.contains(&normalize(q)))
+            quotes
+                .iter()
+                .all(|q| !quote_present(&window, q, known_paths))
         })
         .map(|(index, _)| index)
         .collect()
@@ -309,15 +436,19 @@ pub(crate) fn draft_flags(rust_draft: &str) -> Vec<String> {
 ///   do occur, they are outside the cited lines (see [`out_of_range_observations`]).
 ///
 /// Observations without a citation are never range-flagged: they are unverifiable.
-pub(crate) fn claim_flags(observations: &[String], evidence_files: &[String]) -> Vec<String> {
+pub(crate) fn claim_flags(
+    observations: &[String],
+    evidence_files: &[String],
+    declared_paths: &[String],
+) -> Vec<String> {
     let mut flags = Vec::new();
     let per_file_unanchored: Vec<Vec<usize>> = evidence_files
         .iter()
-        .map(|file| unanchored_observations(observations, file))
+        .map(|file| unanchored_with_paths(observations, file, declared_paths))
         .collect();
     let per_file_out_of_range: Vec<Vec<usize>> = evidence_files
         .iter()
-        .map(|file| out_of_range_observations(observations, file))
+        .map(|file| out_of_range_with_paths(observations, file, declared_paths))
         .collect();
     for (index, observation) in observations.iter().enumerate() {
         let unanchored_everywhere = !evidence_files.is_empty()
@@ -456,6 +587,129 @@ mod tests {
     }
 
     #[test]
+    fn a_negative_claim_that_quotes_absent_text_is_not_flagged_but_unquoted_ones_still_are() {
+        let evidence = "pub struct ToolRegistry;
+impl ToolRegistry {}
+";
+        let obs = vec![
+            "No `#[cfg(test)]` module or `#[test]` attributes found in the file".to_string(),
+            "No depth guard exists".to_string(),
+        ];
+        assert_eq!(unanchored_observations(&obs, evidence), vec![1]);
+        assert!(out_of_range_observations(&obs, evidence).is_empty());
+    }
+
+    #[test]
+    fn a_bare_identifier_quote_out_of_range_does_not_flag_when_the_source_line_is_in_range() {
+        let mut evidence = String::from(
+            "// Specialist docs
+",
+        );
+        for _ in 0..40 {
+            evidence.push_str(
+                "fn filler() {}
+",
+            );
+        }
+        evidence.push_str(
+            "pub trait Specialist: Send + Sync {
+",
+        );
+        let obs = vec![
+            "File defines `Specialist` trait. Source: `pub trait Specialist: Send + Sync {` at line 40"
+                .to_string(),
+        ];
+        assert!(out_of_range_observations(&obs, &evidence).is_empty());
+        let wrong =
+            vec!["Defines `Specialist` trait: `pub trait Specialist {` at line 20".to_string()];
+        assert_eq!(out_of_range_observations(&wrong, &evidence), vec![0]);
+    }
+
+    #[test]
+    fn a_rust_path_quote_is_anchored_when_every_segment_is_in_the_source() {
+        let evidence = "impl StateAdaptor {
+    pub fn new(a: f32) -> Self { todo_free() }
+}
+";
+        let obs = vec![
+            "Source line 2 defines `StateAdaptor::new` accepting one parameter".to_string(),
+            "Source line 2 defines `StateAdaptor::vanish_method` here".to_string(),
+        ];
+        assert_eq!(unanchored_observations(&obs, evidence), vec![1]);
+        assert!(out_of_range_observations(&obs[..1], evidence).is_empty());
+    }
+
+    #[test]
+    fn a_declared_evidence_path_quote_is_anchored() {
+        let file = "pub fn run() {}
+"
+        .to_string();
+        let obs = vec![
+            "File `crates/compute/src/tensor_kernel.rs` defines `pub fn run() {}`".to_string(),
+        ];
+        let paths = vec!["crates/compute/src/tensor_kernel.rs".to_string()];
+        assert!(claim_flags(&obs, std::slice::from_ref(&file), &paths).is_empty());
+        assert_eq!(claim_flags(&obs, &[file], &[]).len(), 1);
+    }
+
+    #[test]
+    fn real_observations_pass_and_mutated_ones_are_caught() {
+        // Modelled on the hand-graded gateway.rs job: three true observations, then the same
+        // observations with one fact changed each.
+        let source = "pub struct LlmGateway<P> { provider: P }
+impl<P: LLMProvider> LlmGateway<P> {
+    pub async fn chat(&self, system_prompt: &str) -> Result<String> { todo_free() }
+    pub async fn embed(&self, text: &str) -> Result<Vec<f32>> { todo_free() }
+}
+";
+        let paths = vec!["crates/llm_gateway/src/gateway.rs".to_string()];
+        let files = [source.to_string()];
+        let real = vec![
+            "Defines `LlmGateway` with `pub async fn chat(&self, system_prompt: &str)` at line 3"
+                .to_string(),
+            "No `#[cfg(test)]` module found in `crates/llm_gateway/src/gateway.rs`".to_string(),
+            "`LlmGateway::embed` returns `Result<Vec<f32>>`".to_string(),
+        ];
+        assert!(claim_flags(&real, &files, &paths).is_empty());
+        let mutated = vec![
+            "Defines `LlmGateway` with `pub async fn chat_stream(&self, system_prompt: &str)` at line 3".to_string(),
+            "Defines `LlmGateway` with `pub async fn chat(&self, system_prompt: &str)` at line 90".to_string(),
+            "`LlmGateway::shutdown` returns `Result<()>`".to_string(),
+        ];
+        assert_eq!(claim_flags(&mutated, &files, &paths).len(), 3);
+    }
+
+    #[test]
+    fn a_quote_after_a_mid_sentence_negation_is_not_anchored_against_the_source() {
+        let evidence = "pub struct LlmConfig { pub a: u32 }
+";
+        let obs = vec![
+            "Defines `LlmConfig` struct with one field, but no `#[cfg(test)]` module found"
+                .to_string(),
+            "Defines `LlmConfig` struct, plus `fn invented_helper() {}` here".to_string(),
+        ];
+        assert_eq!(unanchored_observations(&obs, evidence), vec![1]);
+    }
+
+    #[test]
+    fn a_negative_claim_still_validates_its_supporting_evidence_quote() {
+        let evidence = "fn walk(depth: u32) {
+    if depth == 0 { return; }
+}
+";
+        let invented =
+            vec!["No depth guard exists; source: `return Err(Overflow)?` at line 2".to_string()];
+        assert_eq!(unanchored_observations(&invented, evidence), vec![0]);
+        assert_eq!(out_of_range_observations(&invented, evidence), vec![0]);
+        let real = vec![
+            "No other guard exists; source: `if depth == 0 { return; }` at line 2".to_string(),
+        ];
+        assert!(unanchored_observations(&real, evidence).is_empty());
+        let absent_subject = vec!["No `#[cfg(test)]` module found in the file".to_string()];
+        assert!(unanchored_observations(&absent_subject, evidence).is_empty());
+    }
+
+    #[test]
     fn invented_or_unquoted_claims_are_rejected() {
         let evidence = "fn walk(depth: u32) { if max_depth == 0 { return; } }";
         let obs = vec![
@@ -552,7 +806,7 @@ mod tests {
             "Wrong place, lines 1-2: `fn normalize_path() {}`".to_string(),
             "No citation, quote `fn walk() {}` only".to_string(),
         ];
-        let flags = claim_flags(&obs, &[file]);
+        let flags = claim_flags(&obs, &[file], &[]);
         assert_eq!(flags.len(), 2, "{flags:?}");
         assert!(flags[0].starts_with("observation 1:"), "{flags:?}");
         assert!(flags[0].contains("not anchored"), "{flags:?}");
@@ -566,13 +820,13 @@ mod tests {
         let a = "alpha\nbeta\n".to_string();
         let b = "gamma\nfn target_fn() {}\n".to_string();
         let obs = vec!["See line 2: `fn target_fn() {}`".to_string()];
-        assert!(claim_flags(&obs, &[a, b]).is_empty());
+        assert!(claim_flags(&obs, &[a, b], &[]).is_empty());
     }
 
     #[test]
     fn claim_flags_with_no_evidence_flags_nothing() {
         let obs = vec!["anything `quoted text`".to_string()];
-        assert!(claim_flags(&obs, &[]).is_empty());
+        assert!(claim_flags(&obs, &[], &[]).is_empty());
     }
 
     #[test]
