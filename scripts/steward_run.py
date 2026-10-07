@@ -493,6 +493,8 @@ def main(argv):
     parser.add_argument("--outbox", help="directory; writes <seat>.md with each seat's current card")
     parser.add_argument("--stall-after", type=int, default=3)
     parser.add_argument("--expect-tip", help="externally anchored SHA-256 of the log's last line")
+    parser.add_argument("--require-signatures", action="store_true",
+                        help="count only attestations whose signature verifies against the registered seat keys")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     remote = cs.rc.git(args.repo_dir, "remote", "get-url", "origin")
@@ -501,7 +503,8 @@ def main(argv):
     identities = cs.rc.load_identities(args.identities) if args.identities else None
     keys = cs.rc.load_keys(args.identities) if args.identities else None
     snapshot = cs.rc.live_snapshot(args.repo, args.repo_dir)
-    state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities)
+    state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities, keys,
+                       args.require_signatures)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = tick_under_lock(args.log, state, snapshot, args.tick, now, args.stall_after, args.outbox, args.expect_tip)
     count, tip = result["tip"]["count"], result["tip"]["sha256"]

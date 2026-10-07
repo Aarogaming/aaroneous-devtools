@@ -387,7 +387,12 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
             "done_by": done_receipts(snapshot, repair_owners, implementers_by_pr), "default_branch": default_branch}
 
 
-def collect(repo, repo_dir, agents, backlog, identities=None):
+def collect(repo, repo_dir, agents, backlog, identities=None, keys=None, require_signatures=False):
+    """Read the live state. ``keys`` (the identity registry) and ``require_signatures`` reach `report_snapshot`, so once
+    the owner registers seat keys the steward can stop counting unsigned, spoofable attestation blocks as coverage
+    (Codex P2 on #99: the steward loaded the keys and dropped them). Enforcement without keys fails closed."""
+    if require_signatures and not (keys and rc.attest_sig.allowed_signers(keys).strip()):
+        raise SystemExit("--require-signatures needs --identities with registered seat keys: nothing could verify a signature")
     snapshot = rc.live_snapshot(repo, repo_dir)
     meta = {
         p["number"]: p
@@ -402,7 +407,7 @@ def collect(repo, repo_dir, agents, backlog, identities=None):
         every = seats_from_trailers(log, meta[p["number"]].get("headRefName", ""))
         seats[p["number"]] = every[0] if every else ""
         p["implementers"] = every
-    rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir), identities)
+    rows = rc.report_snapshot(snapshot, rc.live_ancestry(repo_dir), identities, keys, require_signatures)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     default = rc.gh_json("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
     return build_state(snapshot, rows, meta, unresolved_by_pr(graphql), seats, agents, backlog, now, default,
@@ -417,6 +422,8 @@ def main(argv):
     parser.add_argument("--agents", default="claude,mimo,codex,gemini")
     parser.add_argument("--backlog", help="JSON file: list of {id, task, acceptance}")
     parser.add_argument("--identities", help="identity map JSON (governance/identities.json)")
+    parser.add_argument("--require-signatures", action="store_true",
+                        help="count only attestations whose signature verifies against the registered seat keys")
     args = parser.parse_args(argv)
     remote = rc.git(args.repo_dir, "remote", "get-url", "origin")
     if remote.returncode != 0 or not rc.checkout_matches(remote.stdout, args.repo):
@@ -426,7 +433,9 @@ def main(argv):
         with open(args.backlog, encoding="utf-8") as handle:
             backlog = json.load(handle)
     identities = rc.load_identities(args.identities) if args.identities else None
-    state = collect(args.repo, args.repo_dir, [a for a in args.agents.split(",") if a], backlog, identities)
+    keys = rc.load_keys(args.identities) if args.identities else None
+    state = collect(args.repo, args.repo_dir, [a for a in args.agents.split(",") if a], backlog, identities, keys,
+                    args.require_signatures)
     print(json.dumps(state, indent=1))
     return 0
 

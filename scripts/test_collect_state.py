@@ -1,5 +1,6 @@
 import os
 import subprocess
+import types
 import sys
 import tempfile
 import unittest
@@ -278,6 +279,47 @@ class Build(unittest.TestCase):
         self.assertTrue(cs.eligible_completer("address_review", "codex", ["codex"]))
         self.assertFalse(cs.eligible_completer("address_review", "claude", ["codex"]))
         self.assertFalse(cs.eligible_completer("address_review", "codex", []))
+
+    def collect_with_an_unsigned_accept(self, **kwargs):
+        # collect() against a stubbed GitHub: one PR whose only accept is an unsigned attestation block.
+        import json
+        from unittest import mock
+        head, base = "a" * 40, "d" * 40
+        record = {"repo": "o/r", "pr": 1, "head": head, "base_sha": base, "scope": "whole", "reviewer": "gemini",
+                  "implementers": ["claude"], "verdict": "accept"}
+        snapshot = {"repo": "o/r", "prs": [{"number": 1, "head": head, "base": "main", "merge_base": base,
+                                            "reviews": [], "base_events": [],
+                                            "comments": [{"id": 5, "body": "```attestation\n" + json.dumps(record) + "\n```"}]}]}
+        meta = [{"number": 1, "title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-06T00:00:00Z",
+                 "headRefName": "claude/x", "additions": 1, "deletions": 0, "changedFiles": 1}]
+        graphql = {"data": {"repository": {"pullRequests": {"pageInfo": {"hasNextPage": False}, "nodes": [
+            {"number": 1, "reviewThreads": {"pageInfo": {"hasNextPage": False}, "nodes": []}}]}}}}
+
+        def gh_json(*args):
+            if args[0] == "pr":
+                return meta
+            if args[0] == "api":
+                return graphql
+            return {"defaultBranchRef": {"name": "main"}}
+
+        done = types.SimpleNamespace(stdout="", returncode=0)
+        with mock.patch.object(cs.rc, "live_snapshot", return_value=snapshot), \
+                mock.patch.object(cs.rc, "gh_json", side_effect=gh_json), \
+                mock.patch.object(cs.rc, "git", return_value=done), \
+                mock.patch.object(cs.rc, "live_ancestry", return_value=lambda a, b: True):
+            return cs.collect("o/r", ".", ["claude", "gemini"], [], {"gemini": "gemini"}, **kwargs)
+
+    def test_signature_enforcement_reaches_the_coverage_decision(self):
+        keys = {"seats": {"gemini": {"keys": ["ssh-ed25519 AAAA test"]}}}
+        unenforced = self.collect_with_an_unsigned_accept(keys=keys, require_signatures=False)
+        self.assertTrue(unenforced["prs"][0]["covered"])
+        enforced = self.collect_with_an_unsigned_accept(keys=keys, require_signatures=True)
+        self.assertFalse(enforced["prs"][0]["covered"], "an unsigned accept must stop counting once enforcement is on")
+
+    def test_enforcement_without_registered_keys_fails_closed(self):
+        for keys in (None, {}, {"seats": {}}):
+            with self.assertRaises(SystemExit):
+                self.collect_with_an_unsigned_accept(keys=keys, require_signatures=True)
 
     def test_receipts_for_cards_that_complete_on_github_are_not_read(self):
         head = "c" * 40
