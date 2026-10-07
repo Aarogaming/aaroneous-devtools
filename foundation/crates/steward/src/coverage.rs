@@ -1,6 +1,7 @@
 //! Is a pull request head covered by an independent whole-diff accept? Port of `review_coverage.independent`,
 //! `canonical_reviewer_seat` and `evaluate` (vector family `coverage`), as they are with PRs #111 and #114 applied.
 
+use crate::gate::py_repr_list;
 use crate::seats::seat_names;
 use std::collections::BTreeSet;
 
@@ -41,39 +42,6 @@ pub fn canonical_reviewer_seat(name: &str) -> Option<String> {
     } else {
         None
     }
-}
-
-/// Python's `repr` of a list of strings, for the one reason message that prints the implementers.
-fn py_repr_list(items: &[String]) -> String {
-    let quoted: Vec<String> = items
-        .iter()
-        .map(|item| {
-            let quote = if item.contains('\'') && !item.contains('"') {
-                '"'
-            } else {
-                '\''
-            };
-            let mut out = String::new();
-            out.push(quote);
-            for c in item.chars() {
-                match c {
-                    '\\' => out.push_str("\\\\"),
-                    '\n' => out.push_str("\\n"),
-                    '\r' => out.push_str("\\r"),
-                    '\t' => out.push_str("\\t"),
-                    c if c == quote => {
-                        out.push('\\');
-                        out.push(c);
-                    }
-                    c if c.is_control() => out.push_str(&format!("\\x{:02x}", c as u32)),
-                    c => out.push(c),
-                }
-            }
-            out.push(quote);
-            out
-        })
-        .collect();
-    format!("[{}]", quoted.join(", "))
 }
 
 fn short(sha: &str) -> String {

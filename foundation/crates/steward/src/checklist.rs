@@ -2,7 +2,7 @@
 //! Port of `merge_gate.checklist`, `reconcile` and `decide` (vector families `gate_checklist` and `gate_decide`), as
 //! they are with PR #122 applied: every fact is read strictly, so a missing or mistyped one blocks its box.
 
-use crate::gate::{gate_plan_level, py_repr_list, touches_protected, truthy};
+use crate::gate::{gate_plan_level, py_repr_list, py_repr_str, touches_protected, truthy};
 use serde_json::Value;
 
 const FULL_GATE: [&[&str]; 5] = [
@@ -95,10 +95,7 @@ pub fn py_repr(value: &Value) -> String {
         Value::Bool(true) => "True".to_owned(),
         Value::Bool(false) => "False".to_owned(),
         Value::Number(n) => n.to_string(),
-        Value::String(s) => py_repr_list(std::slice::from_ref(s))
-            .trim_start_matches('[')
-            .trim_end_matches(']')
-            .to_owned(),
+        Value::String(s) => py_repr_str(s),
         Value::Array(items) => format!(
             "[{}]",
             items.iter().map(py_repr).collect::<Vec<_>>().join(", ")

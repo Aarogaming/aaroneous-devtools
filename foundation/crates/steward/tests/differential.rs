@@ -403,10 +403,30 @@ fn card_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             Ok(cards) => want["cards"] == Value::Array(cards.clone()),
         };
         if !same {
-            bad.entry("cards").or_default().push(format!(
-                "tick {} {} rust={got:?}",
-                case["tick"], case["state"]
+            let kind = match (&got, want["error"] == true) {
+                (Ok(_), true) => "cards_A_oracle_errors_rust_ok",
+                (Err(_), false) => "cards_B_oracle_ok_rust_errors",
+                _ => "cards_C_both_ok_different",
+            };
+            bad.entry(kind).or_default().push(format!(
+                "tick {} {} rust={got:?} oracle={}",
+                case["tick"], case["state"], want
             ));
+        }
+        if std::env::var("DIFF_DUMP").is_ok() && !same {
+            let kind = match (&got, want["error"] == true) {
+                (Ok(_), true) => "A",
+                (Err(_), false) => "B",
+                _ => "C",
+            };
+            let rust = match &got {
+                Ok(c) => serde_json::json!({"cards": c}),
+                Err(e) => serde_json::json!({"error": e}),
+            };
+            println!(
+                "DUMP {kind} {}",
+                serde_json::json!({"state": case["state"], "tick": case["tick"], "rust": rust, "oracle": want})
+            );
         }
     }
 }

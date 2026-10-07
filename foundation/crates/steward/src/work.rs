@@ -128,11 +128,7 @@ pub fn item_key(kind: &str, pr: &Value, head: &str) -> String {
 pub fn py_str(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
-        Value::Null => "None".to_owned(),
-        Value::Bool(true) => "True".to_owned(),
-        Value::Bool(false) => "False".to_owned(),
-        Value::Number(n) => n.to_string(),
-        other => other.to_string(),
+        other => crate::checklist::py_repr(other),
     }
 }
 

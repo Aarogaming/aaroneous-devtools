@@ -37,36 +37,79 @@ pub fn touches_protected(paths: &[String]) -> Vec<String> {
     paths.iter().filter(|p| is_owner_only(p)).cloned().collect()
 }
 
+/// Unicode `Cf` (format) code points, as of the Unicode 15.0 that Python 3.12 ships; `char` has no category API.
+const FORMAT_RANGES: [(u32, u32); 21] = [
+    (0xAD, 0xAD),
+    (0x600, 0x605),
+    (0x61C, 0x61C),
+    (0x6DD, 0x6DD),
+    (0x70F, 0x70F),
+    (0x890, 0x891),
+    (0x8E2, 0x8E2),
+    (0x180E, 0x180E),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x2064),
+    (0x2066, 0x206F),
+    (0xFEFF, 0xFEFF),
+    (0xFFF9, 0xFFFB),
+    (0x110BD, 0x110BD),
+    (0x110CD, 0x110CD),
+    (0x13430, 0x1343F),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0001, 0xE0001),
+    (0xE0020, 0xE007F),
+];
+
+/// Python's `str.isprintable` for one character, except for unassigned (`Cn`) code points other than noncharacters:
+/// those depend on the Unicode version of the interpreter, so they print raw here (a documented gap, pinned by a test).
+fn is_printable(c: char) -> bool {
+    let code = c as u32;
+    if c == ' ' {
+        return true;
+    }
+    let private = (0xE000..=0xF8FF).contains(&code) || code >= 0xF_0000;
+    let noncharacter = (0xFDD0..=0xFDEF).contains(&code) || code & 0xFFFE == 0xFFFE;
+    let format = FORMAT_RANGES
+        .iter()
+        .any(|&(lo, hi)| (lo..=hi).contains(&code));
+    !(c.is_control() || c.is_whitespace() || private || noncharacter || format)
+}
+
+/// Python's `repr` of a string: quote choice, backslash and quote escapes, `\n \r \t`, and `\xNN`, `\uNNNN` or
+/// `\UNNNNNNNN` for every non-printable character.
+pub fn py_repr_str(text: &str) -> String {
+    let quote = if text.contains('\'') && !text.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = String::new();
+    out.push(quote);
+    for c in text.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            c if is_printable(c) => out.push(c),
+            c if (c as u32) <= 0xFF => out.push_str(&format!("\\x{:02x}", c as u32)),
+            c if (c as u32) <= 0xFFFF => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push_str(&format!("\\U{:08x}", c as u32)),
+        }
+    }
+    out.push(quote);
+    out
+}
+
 /// Python's `repr` of a list of strings (the owner-only reason prints one).
 pub fn py_repr_list(items: &[String]) -> String {
-    let quoted: Vec<String> = items
-        .iter()
-        .map(|item| {
-            let quote = if item.contains('\'') && !item.contains('"') {
-                '"'
-            } else {
-                '\''
-            };
-            let mut out = String::new();
-            out.push(quote);
-            for c in item.chars() {
-                match c {
-                    '\\' => out.push_str("\\\\"),
-                    '\n' => out.push_str("\\n"),
-                    '\r' => out.push_str("\\r"),
-                    '\t' => out.push_str("\\t"),
-                    c if c == quote => {
-                        out.push('\\');
-                        out.push(c);
-                    }
-                    c if c.is_control() => out.push_str(&format!("\\x{:02x}", c as u32)),
-                    c => out.push(c),
-                }
-            }
-            out.push(quote);
-            out
-        })
-        .collect();
+    let quoted: Vec<String> = items.iter().map(|item| py_repr_str(item)).collect();
     format!("[{}]", quoted.join(", "))
 }
 
@@ -262,6 +305,46 @@ mod tests {
 
     fn paths(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    /// Expected values are Python 3.12's `repr`, produced by running it. Skeptic probe on the dispatcher: the first
+    /// version escaped only control characters, so a seat name holding U+2028 or U+200B printed raw where Python
+    /// prints an escape.
+    #[test]
+    fn py_repr_str_escapes_every_non_printable_character_the_way_python_does() {
+        let cases = [
+            ("\u{2028}", "'\\u2028'"),
+            ("\u{200b}", "'\\u200b'"),
+            ("\u{a0}", "'\\xa0'"),
+            ("\u{ad}", "'\\xad'"),
+            ("\u{7f}", "'\\x7f'"),
+            ("\u{85}", "'\\x85'"),
+            ("\u{feff}", "'\\ufeff'"),
+            ("\u{e000}", "'\\ue000'"),
+            ("\u{e0001}", "'\\U000e0001'"),
+            ("\u{10ffff}", "'\\U0010ffff'"),
+            ("\u{fdd0}", "'\\ufdd0'"),
+            ("\u{fffe}", "'\\ufffe'"),
+            ("\u{1fffe}", "'\\U0001fffe'"),
+            ("\u{3000}", "'\\u3000'"),
+            ("\u{180e}", "'\\u180e'"),
+            ("\0", "'\\x00'"),
+            ("\u{e9}", "'\u{e9}'"),
+            ("\u{1F600}", "'\u{1F600}'"),
+            ("it's", "\"it's\""),
+            ("say \"hi\"", "'say \"hi\"'"),
+            ("it's \"x\"", "'it\\'s \"x\"'"),
+            ("tab\there", "'tab\\there'"),
+        ];
+        for (input, want) in cases {
+            assert_eq!(super::py_repr_str(input), want, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn unassigned_code_points_print_raw_which_is_the_documented_gap() {
+        // U+0378 is unassigned (Cn): Python 3.12 escapes it as '͸'; the port cannot know without a Unicode table.
+        assert_eq!(super::py_repr_str("\u{378}"), "'\u{378}'");
     }
 
     #[test]
