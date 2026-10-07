@@ -1,5 +1,5 @@
-//! Is a pull request head covered by an independent whole-diff accept? Port of `review_coverage.independent` and
-//! `review_coverage.evaluate` (vector family `coverage`), as they are on main.
+//! Is a pull request head covered by an independent whole-diff accept? Port of `review_coverage.independent`,
+//! `canonical_reviewer_seat` and `evaluate` (vector family `coverage`), as they are with PRs #111 and #114 applied.
 
 use crate::seats::seat_names;
 use std::collections::BTreeSet;
@@ -29,6 +29,55 @@ pub struct Decision {
     pub accepts_at_head: usize,
     pub counted: Vec<usize>,
     pub accept_seats: Vec<String>,
+}
+
+/// The single seat a reviewer string resolves to: `None` when it names several seats ("Opus/gpt-5.5") or none, so an
+/// ambiguous reviewer can neither be counted nor contribute two seats.
+#[must_use]
+pub fn canonical_reviewer_seat(name: &str) -> Option<String> {
+    let seats = seat_names(name);
+    if seats.len() == 1 {
+        seats.into_iter().next()
+    } else {
+        None
+    }
+}
+
+/// Python's `repr` of a list of strings, for the one reason message that prints the implementers.
+fn py_repr_list(items: &[String]) -> String {
+    let quoted: Vec<String> = items
+        .iter()
+        .map(|item| {
+            let quote = if item.contains('\'') && !item.contains('"') {
+                '"'
+            } else {
+                '\''
+            };
+            let mut out = String::new();
+            out.push(quote);
+            for c in item.chars() {
+                match c {
+                    '\\' => out.push_str("\\\\"),
+                    '\n' => out.push_str("\\n"),
+                    '\r' => out.push_str("\\r"),
+                    '\t' => out.push_str("\\t"),
+                    c if c == quote => {
+                        out.push('\\');
+                        out.push(c);
+                    }
+                    c if c.is_control() => out.push_str(&format!("\\x{:02x}", c as u32)),
+                    c => out.push(c),
+                }
+            }
+            out.push(quote);
+            out
+        })
+        .collect();
+    format!("[{}]", quoted.join(", "))
+}
+
+fn short(sha: &str) -> String {
+    sha.chars().take(12).collect()
 }
 
 /// The reviewer is not among the implementers, comparing seats: reviewer `gemini` with implementers `["Gemini"]`, or
@@ -64,8 +113,9 @@ pub fn evaluate(
         Some(base) => base,
     };
     let at_head: Vec<&Record> = records.iter().filter(|r| r.head == head).collect();
-    let blockers: Vec<&&Record> = at_head
+    let blockers: Vec<&Record> = at_head
         .iter()
+        .copied()
         .filter(|r| REJECT.contains(&r.verdict.as_str()) && r.base_sha == merge_base)
         .collect();
     let mut reasons = Vec::new();
@@ -75,11 +125,27 @@ pub fn evaluate(
             first.verdict, first.reviewer
         ));
     }
+    // A record is valid only while the merge base equals its base_sha, so a rejection naming another base does not
+    // block; it is reported, because a hand-typed base_sha is the likelier cause.
+    for r in &at_head {
+        if REJECT.contains(&r.verdict.as_str()) && r.base_sha != merge_base {
+            reasons.push(format!(
+                "a rejection by {} names base_sha {}, but the merge base is {}, so it is ignored as stale; if the \
+                 base_sha was mistyped, that reviewer must re-attest against the current merge base",
+                r.reviewer,
+                short(&r.base_sha),
+                short(merge_base)
+            ));
+        }
+    }
     let valid: Vec<usize> = records
         .iter()
         .enumerate()
         .filter(|(_, r)| {
-            ACCEPT.contains(&r.verdict.as_str()) && independent(r) && r.base_sha == merge_base
+            ACCEPT.contains(&r.verdict.as_str())
+                && independent(r)
+                && r.base_sha == merge_base
+                && canonical_reviewer_seat(&r.reviewer).is_some()
         })
         .map(|(i, _)| i)
         .collect();
@@ -117,6 +183,29 @@ pub fn evaluate(
                 "accept at head exists but is not chained to a whole accept at this base"
                     .to_owned(),
             );
+            for r in &at_head {
+                if !ACCEPT.contains(&r.verdict.as_str()) || valid.iter().any(|&i| records[i] == **r)
+                {
+                    continue;
+                }
+                if r.base_sha != merge_base {
+                    reasons.push(format!(
+                        "the accept by {} names base_sha {}, but the merge base is {}: re-attest against the \
+                         current merge base",
+                        r.reviewer,
+                        short(&r.base_sha),
+                        short(merge_base)
+                    ));
+                } else if !independent(r) {
+                    let mut implementers = r.implementers.clone();
+                    implementers.sort();
+                    reasons.push(format!(
+                        "the accept by {} is not independent of its implementers {}",
+                        r.reviewer,
+                        py_repr_list(&implementers)
+                    ));
+                }
+            }
         } else {
             reasons.push("no accept at the current head".to_owned());
         }
@@ -128,7 +217,7 @@ pub fn evaluate(
         .collect();
     let seats: BTreeSet<String> = counted
         .iter()
-        .flat_map(|&i| seat_names(&records[i].reviewer))
+        .filter_map(|&i| canonical_reviewer_seat(&records[i].reviewer))
         .collect();
     Decision {
         covered: ok,
@@ -178,7 +267,10 @@ mod tests {
         assert!(!d.covered);
         assert_eq!(
             d.reasons,
-            ["accept at head exists but is not chained to a whole accept at this base"]
+            [
+                "accept at head exists but is not chained to a whole accept at this base",
+                "the accept by claude is not independent of its implementers ['claude']"
+            ]
         );
     }
 

@@ -5,6 +5,18 @@ use std::collections::BTreeSet;
 /// A seat is recognised by a token that STARTS with its name ("claude-sonnet-5-5", "gemini-3.8-flash").
 const KNOWN_SEATS: [&str; 6] = ["claude", "codex", "gemini", "antigravity", "mimo", "qwen"];
 
+/// A model family named without its seat word still names the seat that runs it ("Opus 5.5" is Claude, "gpt-5.5" is
+/// Codex); otherwise a Claude session labelling itself "Opus" would be independent of an implementer "claude".
+const MODEL_FAMILY_SEATS: [(&str, &str); 7] = [
+    ("opus", "claude"),
+    ("sonnet", "claude"),
+    ("haiku", "claude"),
+    ("fable", "claude"),
+    ("anthropic", "claude"),
+    ("gpt", "codex"),
+    ("openai", "codex"),
+];
+
 /// Seats that are another seat under a different name.
 const ALIASES: [(&str, &str); 2] = [("antigravity", "gemini"), ("qwen", "mimo")];
 
@@ -31,6 +43,11 @@ pub fn seat_names(name: &str) -> BTreeSet<String> {
         for seat in KNOWN_SEATS {
             if token.starts_with(seat) {
                 found.insert(canonical(seat).to_owned());
+            }
+        }
+        for (family, seat) in MODEL_FAMILY_SEATS {
+            if token.starts_with(family) {
+                found.insert(seat.to_owned());
             }
         }
     }

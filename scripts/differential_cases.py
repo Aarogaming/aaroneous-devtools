@@ -64,7 +64,7 @@ for _ in range(int(sys.argv[1]) // 5):
     heads, credited = sr.pushes(prs, previous)
     push_cases.append({"prs": prs, "previous": previous, "out": {"heads": heads, "credited": credited}})
 HEADS = ["a" * 40, "b" * 40, "c" * 40, "d" * 40]
-NAMES = ["claude", "Claude", "claude-sonnet-5-5", "codex", "Gemini", "Antigravity", "mimo", "Qwen", "Claude, Mimo", "someone else", "gemini/antigravity"]
+NAMES = ["claude", "Claude", "claude-sonnet-5-5", "codex", "Gemini", "Antigravity", "mimo", "Qwen", "Claude, Mimo", "someone else", "gemini/antigravity", "Opus 5.5", "sonnet", "gpt-5.5", "Opus/gpt-5.5", "OpenAI Codex"]
 coverage = []
 for _ in range(int(sys.argv[1]) // 5):
     records = []
