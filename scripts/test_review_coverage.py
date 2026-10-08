@@ -237,6 +237,32 @@ class Parsing(unittest.TestCase):
         self.assertFalse(row["covered"])
         self.assertEqual(len(row["malformed"]), 1)
 
+    def test_an_accept_in_the_wrong_case_is_reported_and_never_covers(self):
+        # Gemini's blocks on #62 and #64 used ACCEPT. It parsed, matched nothing and produced no problem: the PR kept
+        # reading "no accept at the current head" with nothing saying why.
+        for verdict in ("ACCEPT", "Accept", "accepted", "ACCEPT-EVIDENCE", "approve", ""):
+            structured, problems, _ = rc.parse_attestations([block(rec(H1, verdict=verdict))])
+            self.assertEqual(structured, [], verdict)
+            self.assertEqual(len(problems), 1, verdict)
+            self.assertIn("unknown verdict", problems[0]["problem"])
+            self.assertIn("lower case", problems[0]["problem"])
+
+    def test_a_rejection_in_the_wrong_case_still_blocks(self):
+        for verdict in ("NEEDS_REVISION", "Needs_Revision", " changes_requested ", "CHANGES_REQUESTED"):
+            structured, problems, _ = rc.parse_attestations([block(rec(H1, verdict=verdict, reviewer="codex"))])
+            self.assertEqual(problems, [], verdict)
+            self.assertEqual(structured[0]["verdict"] in rc.REJECT, True, verdict)
+            decision = ev(H1, [rec(H1), structured[0]])
+            self.assertFalse(decision["covered"], verdict)
+            self.assertTrue(any("standing" in r for r in decision["reasons"]), verdict)
+
+    def test_the_exact_verdict_words_are_unchanged(self):
+        for verdict in ("accept", "needs_revision", "changes_requested"):
+            structured, problems, _ = rc.parse_attestations([block(rec(H1, verdict=verdict))])
+            self.assertEqual((len(structured), problems), (1, []), verdict)
+        structured, problems, _ = rc.parse_attestations([block(dict(rec(H1), verdict=["accept"]))])
+        self.assertEqual((structured, len(problems)), ([], 1))
+
     def test_malformed_blocks_are_reported_not_counted(self):
         comments = [
             {"body": "```attestation\n{not json}\n```"},

@@ -63,6 +63,9 @@ def validate(record):
         return "implementers must be a non-empty list"
     if record["scope"] not in ("whole", "delta"):
         return f"unknown scope: {record['scope']!r}"
+    if not isinstance(record["verdict"], str) or record["verdict"] not in ACCEPT | REJECT:
+        return (f"unknown verdict {record['verdict']!r}: use accept, needs_revision or changes_requested "
+                "(lower case); nothing was counted")
     return None
 
 
@@ -79,6 +82,16 @@ def looks_like_attestation(raw):
     return record if isinstance(head, str) and FULL_SHA.fullmatch(head) else None
 
 
+def fold_rejection(record):
+    """A rejecting verdict spelled in the wrong case still blocks (``NEEDS_REVISION`` is read as ``needs_revision``).
+    An accept does not get the same leniency: it must be spelled exactly, so a misspelt accept never covers a PR, but a
+    misspelt rejection must never be silently ignored while the PR reads as covered."""
+    if isinstance(record, dict) and isinstance(record.get("verdict"), str):
+        folded = record["verdict"].strip().lower()
+        if folded in REJECT:
+            record["verdict"] = folded
+
+
 def parse_attestations(comments):
     """Return (structured, problems, legacy). Malformed records are reported, never counted."""
     structured, problems, legacy = [], [], []
@@ -92,6 +105,7 @@ def parse_attestations(comments):
             except ValueError as error:
                 problems.append({"comment": index, "problem": f"invalid JSON: {error}"})
                 continue
+            fold_rejection(record)
             problem = validate(record)
             if problem:
                 problems.append({"comment": index, "problem": problem})
