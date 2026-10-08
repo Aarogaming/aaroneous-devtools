@@ -89,19 +89,27 @@ bound to). Re-created at the owner's request as `create_new_session_on_fire`, so
 depends on any one session surviving. Trigger id `trig_011JULgTH2EdKVT9FaJv2ykZ`; same account owns
 it as the one-shot check-ins throughout this file.
 
-**Status: NOT VERIFIED.** The first live firing has not been observed. `create_trigger` warned that a
-Routine stores no MCP connectors, and it is unknown whether a fresh session still gets GitHub access
-(`mcp__github__*`) from the environment instead of an account-level grant. Until the first run's own
-history (`list_triggers`/`get_trigger` on the id above) shows it could read CI, inspect pull requests and
-push a branch, treat this routine as installed but unproven, not as active capacity.
+**Status: first live firing observed 2026-10-07 11:48:58Z; it ran but could not do the job.** The run
+(session `cse_018FHT2P8AnndQmpGMy5DmNQ`, status SUCCEEDED, 44 s, 11 turns) reports that the fresh session had
+no GitHub access: `gh` returned HTTP 403 and "GitHub access to this repository is not enabled for this
+session", so it could not read `COORDINATION_QUEUE.md`, CI runs, pull requests or Dependabot, and it made no
+claim, push or change. It applied its lens (7 mod 5 = 2, adversarial reviewer) to a read-only copy of
+`Aarogaming/aaroneous` only and sent a push notification. The trigger stores no MCP connections
+(`mcp_connections: []`). Attaching both repositories to the routine's environment with push access is the
+owner's configuration step and has not been recorded as done; until a later run's history shows it could
+read CI, inspect pull requests and push a branch, treat this routine as installed but not functioning as
+primary-lane capacity. Source: `get` and `get_run_log` on the trigger id above, read 2026-10-08.
 
-**Recovery record.** What the repository retains: the trigger id above, the cadence (daily 11:47 UTC,
-`create_new_session_on_fire`), the lens rotation and the checklist below. What it does not retain: the
-stored prompt text itself, the environment and connector grants, and the pause/recreate procedure. Anyone
-re-creating the routine today would have to read `get_trigger` on the id while it still exists. Following
-the pattern `routines/STEWARD_HEARTBEAT.md` already uses (the trigger is a thin pointer, the procedure
-lives in a reviewed file), moving the stored prompt into a checked-in `routines/` file is the follow-up
-that closes this gap; it is deliberately not done in this documentation change.
+**Recovery record.** What the repository retains: the trigger id, the cadence (daily 11:47 UTC,
+`create_new_session_on_fire`), the lens rotation, the checklist below, and now the stored prompt itself as a
+verbatim record in [routines/DAILY_PRIMARY_LANE_STORED_PROMPT.md](routines/DAILY_PRIMARY_LANE_STORED_PROMPT.md).
+What it does not retain: the environment id and its repository grants, and the pause/recreate procedure
+beyond "create a Routine with that prompt, that cron and `create_new_session_on_fire`". The record is a copy,
+not the source of truth; the trigger owns the live text. Following the pattern
+`routines/STEWARD_HEARTBEAT.md` already uses (the trigger is a thin pointer, the procedure lives in a reviewed
+file) would make the repository the source of truth; that change edits the trigger, so it is the owner's.
+The stored prompt also points at `SCHEDULER_MAINTAINER.md` for a "Cloud primary-lane routine" section that
+file does not have (the section is here); fixing that pointer is likewise an edit to the trigger.
 
 **Lens rotation:** the stored prompt is one fixed string — a Routine has no server-side mechanism
 for varying the literal text per firing — but it opens by having the model compute
