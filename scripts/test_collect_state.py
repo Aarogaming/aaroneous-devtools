@@ -1,5 +1,6 @@
 import os
 import subprocess
+import types
 import sys
 import tempfile
 import unittest
@@ -34,6 +35,15 @@ class AllSeats(unittest.TestCase):
             "---", "fix: c", "", "Co-Authored-By: Claude Sonnet 5.5 <n@a.com>",
         ])
         self.assertEqual(cs.seats_from_trailers(text), ["claude", "codex", "gemini"])
+
+    def test_the_commit_author_name_identifies_a_seat(self):
+        # PR #63: a cloud session commits as "Claude <noreply@anthropic.com>" with no trailer on a branch with no seat
+        # prefix, so the steward kept issuing identify_implementers cards for it.
+        self.assertEqual(cs.seats_from_trailers("git-author: Claude <noreply@anthropic.com>\ndocs: change\n"), ["claude"])
+        self.assertEqual(cs.seats_from_trailers("git-author: Aarog <aarog@example.invalid>\ndocs: change\n"), [])
+        self.assertEqual(
+            cs.seats_from_trailers("git-author: Claude <a@b>\nx\n\ngit-author: Codex <c@d>\ny\n", "gemini/x"),
+            ["gemini", "claude", "codex"])
 
     def test_the_branch_owner_comes_first_and_is_not_duplicated(self):
         text = "Co-Authored-By: Claude Sonnet 5.5 <n@a.com>\nCo-Authored-By: Codex <c@a.com>"
@@ -147,6 +157,26 @@ class Rejections(unittest.TestCase):
         self.assertEqual(cs.rejected_verdicts(pr, row, commit_exists=lambda token: True), [])
         pr = {"head": head, "comments": [{"id": 2, "body": "Seat / agent: Mimo\nhead " + unrelated + "\nVERDICT: accept"}]}
         self.assertEqual(cs.rejected_verdicts(pr, row, commit_exists=lambda token: False), [])
+
+    def test_a_seat_name_right_after_a_completion_receipt_attributes_the_comment(self):
+        head = "a" * 40
+        receipt = f"[done:fix_threads:62:{head}]"
+        for tail, seat in ((" Claude Sonnet 5.5 \u2014 all threads answered", "claude"), (" Claude seat: done", "claude"),
+                           (": Mimo: done", "mimo"), (" Seat / agent: Codex", "codex"),
+                           (" thanks Mimo for the review", ""), (" all done, Claude", ""), ("", "")):
+            self.assertEqual(cs.comment_seat(receipt + tail, strict=True), seat, tail)
+
+    def test_a_receipt_with_the_seat_after_it_completes_the_card_only_for_an_eligible_seat(self):
+        head = "a" * 40
+
+        def done(seat_text, implementers):
+            snap = {"prs": [{"number": 62, "head": head,
+                             "comments": [{"id": 1, "body": f"[done:fix_threads:62:{head}] {seat_text} \u2014 all threads answered"}]}]}
+            return cs.done_keys(snap, {}, {62: implementers})
+
+        self.assertEqual(done("Claude Sonnet 5.5", ["claude"]), ["fix_threads:62:aaaaaaaa"])
+        self.assertEqual(done("Mimo", ["claude"]), [])  # not the author seat
+        self.assertEqual(done("Claude Sonnet 5.5", []), [])  # unknown implementers fail closed
 
     def test_the_titles_the_seats_give_their_reviews_attribute_the_comment(self):
         for body, seat in (("Independent Codex verdict: ACCEPT this attribution delta only", "codex"),
@@ -278,6 +308,57 @@ class Build(unittest.TestCase):
         self.assertTrue(cs.eligible_completer("address_review", "codex", ["codex"]))
         self.assertFalse(cs.eligible_completer("address_review", "claude", ["codex"]))
         self.assertFalse(cs.eligible_completer("address_review", "codex", []))
+
+    def collect_with_an_unsigned_accept(self, **kwargs):
+        # collect() against a stubbed GitHub: one PR whose only accept is an unsigned attestation block.
+        import json
+        from unittest import mock
+        head, base = "a" * 40, "d" * 40
+        record = {"repo": "o/r", "pr": 1, "head": head, "base_sha": base, "scope": "whole", "reviewer": "gemini",
+                  "implementers": ["claude"], "verdict": "accept"}
+        snapshot = {"repo": "o/r", "prs": [{"number": 1, "head": head, "base": "main", "merge_base": base,
+                                            "reviews": [], "base_events": [],
+                                            "comments": [{"id": 5, "body": "```attestation\n" + json.dumps(record) + "\n```"}]}]}
+        meta = [{"number": 1, "title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-06T00:00:00Z",
+                 "headRefName": "claude/x", "additions": 1, "deletions": 0, "changedFiles": 1}]
+        graphql = {"data": {"repository": {"pullRequests": {"pageInfo": {"hasNextPage": False}, "nodes": [
+            {"number": 1, "reviewThreads": {"pageInfo": {"hasNextPage": False}, "nodes": []}}]}}}}
+
+        def gh_json(*args):
+            if args[0] == "pr":
+                return meta
+            if args[0] == "api":
+                return graphql
+            return {"defaultBranchRef": {"name": "main"}}
+
+        done = types.SimpleNamespace(stdout="", returncode=0)
+        with mock.patch.object(cs.rc, "live_snapshot", return_value=snapshot), \
+                mock.patch.object(cs.rc, "gh_json", side_effect=gh_json), \
+                mock.patch.object(cs.rc, "git", return_value=done), \
+                mock.patch.object(cs.rc, "live_ancestry", return_value=lambda a, b: True):
+            return cs.collect("o/r", ".", ["claude", "gemini"], [], {"gemini": "gemini"}, **kwargs)
+
+    def test_a_snapshot_the_caller_already_took_is_not_read_again(self):
+        # The steward took one snapshot for ingest and collect() took a second: two passes of one gh call per open PR.
+        from unittest import mock
+        state = self.collect_with_an_unsigned_accept(keys=None, require_signatures=False)
+        self.assertEqual(len(state["prs"]), 1)
+        sentinel = {"repo": "o/r", "prs": []}
+        with mock.patch.object(cs.rc, "live_snapshot", side_effect=AssertionError("read the snapshot again")),                 mock.patch.object(cs.rc, "gh_json", side_effect=lambda *args: [] if args[0] == "pr" else
+                                  {"defaultBranchRef": {"name": "main"}}),                 mock.patch.object(cs, "unresolved_by_pr", return_value={}),                 mock.patch.object(cs, "unanswered_by_pr", return_value={}):
+            self.assertEqual(cs.collect("o/r", ".", ["claude"], [], snapshot=sentinel)["prs"], [])
+
+    def test_signature_enforcement_reaches_the_coverage_decision(self):
+        keys = {"seats": {"gemini": {"keys": ["ssh-ed25519 AAAA test"]}}}
+        unenforced = self.collect_with_an_unsigned_accept(keys=keys, require_signatures=False)
+        self.assertTrue(unenforced["prs"][0]["covered"])
+        enforced = self.collect_with_an_unsigned_accept(keys=keys, require_signatures=True)
+        self.assertFalse(enforced["prs"][0]["covered"], "an unsigned accept must stop counting once enforcement is on")
+
+    def test_enforcement_without_registered_keys_fails_closed(self):
+        for keys in (None, {}, {"seats": {}}):
+            with self.assertRaises(SystemExit):
+                self.collect_with_an_unsigned_accept(keys=keys, require_signatures=True)
 
     def test_receipts_for_cards_that_complete_on_github_are_not_read(self):
         head = "c" * 40

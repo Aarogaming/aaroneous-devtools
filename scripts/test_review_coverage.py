@@ -1,7 +1,9 @@
 import json
 import os
 import sys
+import types
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 import review_coverage as rc  # noqa: E402
@@ -44,6 +46,36 @@ def ev(head, records, anc=always, mb=MB):
 
 
 class Coverage(unittest.TestCase):
+    def test_a_rejection_naming_another_merge_base_is_stale_but_not_silent(self):
+        # PLATFORM_SPEC.md: a record is valid only while the merge base equals its base_sha, so a rejection against an
+        # old base does not block (Codex P1 on #114). It used to vanish without a word, which is how a mistyped base_sha
+        # lost a reviewer's request for changes (probe: accept + needs_revision with a wrong base_sha, no reasons).
+        wrong = "w" * 40
+        for verdict in ("needs_revision", "changes_requested"):
+            result = ev(H1, [rec(H1), rec(H1, reviewer="codex", verdict=verdict, base=wrong)])
+            self.assertTrue(result["covered"], verdict)
+            self.assertEqual(len(result["reasons"]), 1)
+            self.assertIn("a rejection by codex names base_sha wwwwwwwwwwww", result["reasons"][0])
+            self.assertIn("ignored as stale", result["reasons"][0])
+            # merge_gate finds a standing rejection by these words in the reasons; the note must not contain them
+            self.assertFalse(any("needs_revision" in r or "changes_requested" in r for r in result["reasons"]))
+        right = ev(H1, [rec(H1), rec(H1, reviewer="codex", verdict="needs_revision")])
+        self.assertFalse(right["covered"])
+        self.assertEqual(right["reasons"], ["standing needs_revision at head by codex"])
+
+    def test_a_rejection_at_another_head_does_not_block(self):
+        self.assertTrue(ev(H1, [rec(H1), rec(H2, reviewer="codex", verdict="needs_revision", base="w" * 40)])["covered"])
+
+    def test_an_accept_that_does_not_count_says_why(self):
+        wrong = ev(H1, [rec(H1, reviewer="gemini", base="d" * 40)])
+        self.assertFalse(wrong["covered"])
+        self.assertIn("names base_sha dddddddddddd, but the merge base is mmmmmmmmmmmm", wrong["reasons"][-1])
+        own = ev(H1, [rec(H1, reviewer="claude")])
+        self.assertIn("the accept by claude is not independent of its implementers ['claude']", own["reasons"][-1])
+        # new wording must not trip merge_gate's substring test for a standing rejection
+        for result in (wrong, own):
+            self.assertFalse(any("changes_requested" in r or "needs_revision" in r for r in result["reasons"]))
+
     def test_whole_accept_at_head_covers(self):
         self.assertTrue(ev(H1, [rec(H1)])["covered"])
 
@@ -150,7 +182,40 @@ class Coverage(unittest.TestCase):
         self.assertIn("changes_requested", " ".join(decision["reasons"]))
 
 
+class Subprocesses(unittest.TestCase):
+    """gh and git output is UTF-8. Decoding it with the platform default (cp1252 on Windows) raised UnicodeDecodeError on
+    any comment holding an emoji, so the coverage tool could not run at all on this repository's real comments."""
+
+    def test_gh_and_git_output_is_decoded_as_utf8_with_replacement(self):
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append((command[0], kwargs))
+            return types.SimpleNamespace(stdout="[]", returncode=0)
+
+        with mock.patch.object(rc.subprocess, "run", fake_run):
+            rc.gh_json("pr", "list")
+            rc.git(".", "status")
+        self.assertEqual([c[0] for c in calls], ["gh", "git"])
+        for _, kwargs in calls:
+            self.assertEqual((kwargs.get("encoding"), kwargs.get("errors")), ("utf-8", "replace"))
+
+
 class Parsing(unittest.TestCase):
+    def test_a_lower_case_prose_verdict_is_reported_as_legacy_not_silently_ignored(self):
+        codex = "Independent Codex verdict: ACCEPT PR #69 delta only. Base " + H1 + "\nreviewed."
+        structured, problems, legacy = rc.parse_attestations([{"body": codex}])
+        self.assertEqual((structured, problems, len(legacy)), ([], [], 1))
+        self.assertEqual(legacy[0]["heads_mentioned"], [H1])
+        self.assertFalse(legacy[0]["looks_whole"])
+
+    def test_ordinary_uses_of_the_word_verdict_are_not_legacy_packets(self):
+        for body in ("No verdict yet, still reading the diff.", "The verdict is pending.\nAccept later.",
+                     "verdict. Acceptable work", "Our verdict on the jury: acceptable"):
+            self.assertEqual(rc.parse_attestations([{"body": body}])[2], [], body)
+        for body in ("Verdict: needs_revision", "my verdict - Rejected at this head", "**Verdict**: **ACCEPT-EVIDENCE**"):
+            self.assertEqual(len(rc.parse_attestations([{"body": body}])[2]), 1, body)
+
     def test_structured_block_is_parsed_and_prose_is_not_counted(self):
         comments = [
             {"body": "intro\n```attestation\n" + json.dumps(rec(H1)) + "\n```\nVERDICT: ACCEPT"},
@@ -159,6 +224,63 @@ class Parsing(unittest.TestCase):
         structured, problems, legacy = rc.parse_attestations(comments)
         self.assertEqual((len(structured), problems, len(legacy)), (1, [], 1))
         self.assertTrue(legacy[0]["looks_whole"])
+
+    def test_a_complete_record_in_a_json_fence_is_reported_by_name_and_never_counted(self):
+        # Codex's whole accept of #57 (comment 6016730072) used a json fence; it was not an attestation, not a problem
+        # and, on a base without the prose-verdict rule, not even legacy: nothing told its author why it did not count.
+        for label in ("json", "", "JSON", "yaml", "Attestation", "ATTESTATION", " attestation", "attestation v1"):
+            comments = [{"body": "Reviewer / Seat: Codex\n\n```" + label + "\n" + json.dumps(rec(H1)) + "\n```\nscope: all files"}]
+            structured, problems, legacy = rc.parse_attestations(comments)
+            self.assertEqual(structured, [], label)
+            self.assertEqual(len(problems), 1, label)
+            self.assertIn(H1, problems[0]["problem"])
+            self.assertIn("only a fence labelled attestation is read", problems[0]["problem"])
+            self.assertEqual(legacy, [], label)
+
+    def test_quoting_the_format_or_other_json_is_not_a_problem(self):
+        template = {key: "<" + key + ">" for key in rc.REQUIRED}
+        partial = {"head": H1, "verdict": "accept"}
+        comments = [{"body": "```json\n" + json.dumps(template) + "\n```"},
+                    {"body": "```json\n" + json.dumps(partial) + "\n```"},
+                    {"body": "```json\n{not json}\n```"},
+                    {"body": "```python\nprint(1)\n```"},
+                    {"body": "```attestation\n" + json.dumps(rec(H1)) + "\n```"}]
+        structured, problems, legacy = rc.parse_attestations(comments)
+        # The partial record is still reported as an unstructured verdict (the existing prose rule), never as a problem.
+        self.assertEqual((len(structured), problems, [item["comment"] for item in legacy]), (1, [], [1]))
+
+    def test_a_mislabelled_record_does_not_cover_the_pr(self):
+        snapshot = {"repo": "o/r", "prs": [{"number": 1, "head": H1, "merge_base": MB, "implementers": ["claude"],
+                                            "comments": [{"body": "```json\n" + json.dumps(rec(H1)) + "\n```"}]}]}
+        row = rc.report_snapshot(snapshot, is_ancestor=always)[0]
+        self.assertFalse(row["covered"])
+        self.assertEqual(len(row["malformed"]), 1)
+
+    def test_an_accept_in_the_wrong_case_is_reported_and_never_covers(self):
+        # Gemini's blocks on #62 and #64 used ACCEPT. It parsed, matched nothing and produced no problem: the PR kept
+        # reading "no accept at the current head" with nothing saying why.
+        for verdict in ("ACCEPT", "Accept", "accepted", "ACCEPT-EVIDENCE", "approve", ""):
+            structured, problems, _ = rc.parse_attestations([block(rec(H1, verdict=verdict))])
+            self.assertEqual(structured, [], verdict)
+            self.assertEqual(len(problems), 1, verdict)
+            self.assertIn("unknown verdict", problems[0]["problem"])
+            self.assertIn("lower case", problems[0]["problem"])
+
+    def test_a_rejection_in_the_wrong_case_still_blocks(self):
+        for verdict in ("NEEDS_REVISION", "Needs_Revision", " changes_requested ", "CHANGES_REQUESTED"):
+            structured, problems, _ = rc.parse_attestations([block(rec(H1, verdict=verdict, reviewer="codex"))])
+            self.assertEqual(problems, [], verdict)
+            self.assertEqual(structured[0]["verdict"] in rc.REJECT, True, verdict)
+            decision = ev(H1, [rec(H1), structured[0]])
+            self.assertFalse(decision["covered"], verdict)
+            self.assertTrue(any("standing" in r for r in decision["reasons"]), verdict)
+
+    def test_the_exact_verdict_words_are_unchanged(self):
+        for verdict in ("accept", "needs_revision", "changes_requested"):
+            structured, problems, _ = rc.parse_attestations([block(rec(H1, verdict=verdict))])
+            self.assertEqual((len(structured), problems), (1, []), verdict)
+        structured, problems, _ = rc.parse_attestations([block(dict(rec(H1), verdict=["accept"]))])
+        self.assertEqual((structured, len(problems)), ([], 1))
 
     def test_malformed_blocks_are_reported_not_counted(self):
         comments = [
@@ -262,6 +384,114 @@ class Subject(unittest.TestCase):
     def test_snapshot_without_a_repository_is_rejected(self):
         with self.assertRaises(ValueError):
             rc.report_snapshot({"prs": []})
+
+
+TRAILER_CLAUDE = "docs: change\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>\n"
+NO_TRAILER = "docs: address review findings\n"
+
+
+class StandInComments(unittest.TestCase):
+    """The shared login posts for every seat. "Author Update (operating in lieu of Codex)" is written by a seat that is
+    not Codex and does not say which."""
+
+    def row(self, bodies):
+        pr = {"number": 1, "head": H1, "merge_base": MB, "comments": [{"id": i, "body": b} for i, b in enumerate(bodies)]}
+        return rc.report_snapshot({"repo": "o/r", "prs": [pr]}, is_ancestor=always)[0]
+
+    def test_the_real_phrasing_is_found_and_names_the_seat_being_covered_for(self):
+        self.assertEqual(rc.stand_in_seats([{"body": "### Author Update (operating in lieu of Codex) / PR #60 Intake"}]), ["codex"])
+        self.assertEqual(rc.stand_in_seats([{"body": "Posting on behalf of Antigravity"}]), ["gemini"])
+        self.assertEqual(rc.stand_in_seats([{"body": "x\n\nlater: in lieu of Claude"}]), [], "only the first line is read")
+        self.assertEqual(rc.stand_in_seats([{"body": "Claude seat: not in lieu of anyone"}]), [])
+        self.assertEqual(rc.stand_in_seats(None), [])
+
+    def test_such_a_comment_is_reported_on_the_row_and_does_not_change_coverage(self):
+        row = self.row(["### Author Update (operating in lieu of Codex) / PR #47"])
+        self.assertTrue(any("in lieu of codex" in r for r in row["reasons"]), row["reasons"])
+        self.assertFalse(any("needs_revision" in r or "changes_requested" in r for r in row["reasons"]))
+        self.assertEqual(self.row(["plain comment"])["reasons"], ["no accept at the current head"])
+
+    def test_the_comment_is_not_attributed_to_the_seat_it_stands_in_for(self):
+        import collect_state as cs
+        self.assertEqual(cs.comment_seat("### Author Update (operating in lieu of Codex) / PR #47", strict=True), "")
+
+
+class GitSaysWhoImplemented(unittest.TestCase):
+    """An attestation's `implementers` list is the reviewer's word; git history is not. Probe: Gemini committed to #116,
+    the commit had no trailer, and Gemini's attestation listed only claude, so the accept counted as independent."""
+
+    def row(self, record, commit_log="", branch="proposal/x", reviews=()):
+        pr = {"number": 1, "head": H1, "merge_base": MB, "comments": [block(record)], "commit_log": commit_log,
+              "branch": branch}
+        return rc.report_snapshot({"repo": "o/r", "prs": [pr]}, is_ancestor=always)[0]
+
+    def record(self, reviewer, implementers=("claude",)):
+        return rec(H1, reviewer=reviewer, impl=implementers, repo="o/r", pr=1)
+
+    def test_a_seat_named_in_a_trailer_cannot_review_even_when_the_attestation_omits_it(self):
+        log = "\x1e" + TRAILER_CLAUDE + "\x1e" + "fix\n\nCo-Authored-By: Gemini <g@example.invalid>\n"
+        row = self.row(self.record("gemini"), log)
+        self.assertFalse(row["covered"])
+        self.assertTrue(any("git history names ['gemini']" in r for r in row["reasons"]), row["reasons"])
+        # the same history does not stop a seat that did not write it
+        self.assertTrue(self.row(self.record("codex"), log)["covered"])
+
+    def test_a_seat_named_branch_prefix_counts_as_an_implementer(self):
+        row = self.row(self.record("codex", ("claude",)), "\x1e" + NO_TRAILER, branch="codex/output-lifecycle")
+        self.assertFalse(row["covered"])
+
+    def test_aliases_resolve_to_the_seat(self):
+        log = "\x1e" + "x\n\nCo-Authored-By: Antigravity <a@example.invalid>\n"
+        self.assertFalse(self.row(self.record("Gemini"), log)["covered"])
+
+    def test_a_commit_that_names_no_seat_is_reported_but_does_not_block(self):
+        log = "\x1e" + TRAILER_CLAUDE + "\x1e" + NO_TRAILER
+        row = self.row(self.record("gemini"), log)
+        self.assertTrue(row["covered"], "advisory only: git cannot show the author of that commit")
+        self.assertTrue(any(r.startswith("1 commit(s) in base..head name no implementing seat") for r in row["reasons"]))
+        self.assertFalse(any("needs_revision" in r or "changes_requested" in r for r in row["reasons"]))
+
+    def test_a_seat_named_branch_attributes_every_commit(self):
+        row = self.row(self.record("gemini"), "\x1e" + NO_TRAILER, branch="claude/x")
+        self.assertTrue(row["covered"])
+        self.assertEqual(row["reasons"], [])
+
+    def test_without_git_facts_nothing_changes(self):
+        self.assertTrue(self.row(self.record("gemini"))["covered"])
+        self.assertEqual(self.row(self.record("gemini"))["reasons"], [])
+
+    def test_a_commit_author_named_for_a_seat_attributes_the_commit(self):
+        log = "\x1e" + "git-author: Claude <noreply@anthropic.com>\n" + NO_TRAILER
+        self.assertEqual(rc.git_implementers(log, "docs/x"), {"claude"})
+        self.assertEqual(rc.unattributed_commits(log, "docs/x"), 0)
+        other = "\x1e" + "git-author: Aarog <aarog@example.invalid>\n" + NO_TRAILER
+        self.assertEqual(rc.git_implementers(other, "docs/x"), set())
+        self.assertEqual(rc.unattributed_commits(other, "docs/x"), 1)
+
+    def test_the_helpers_read_a_real_git_log(self):
+        import shutil
+        import subprocess
+        import tempfile
+        root = tempfile.mkdtemp(prefix="git-implementers-")
+        self.addCleanup(shutil.rmtree, root, True)
+
+        def git(*args):
+            result = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", root, *args],
+                                    capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout
+
+        git("init", "-q", "-b", "main")
+        for index, message in enumerate((TRAILER_CLAUDE, NO_TRAILER, "third\n\nContribution-ID: C1/mimo-x\n")):
+            with open(f"{root}/f{index}.txt", "w", encoding="utf-8", newline="\n") as handle:
+                handle.write("x\n")
+            git("add", ".")
+            git("commit", "-q", "-m", message)
+        log = git("log", "--format=%x1egit-author: %an <%ae>%n%B", "HEAD")
+        self.assertEqual(len(rc.commit_chunks(log)), 3)
+        self.assertEqual(rc.git_implementers(log, "proposal/x"), {"claude", "mimo"})
+        self.assertEqual(rc.unattributed_commits(log, "proposal/x"), 1)
+        self.assertEqual(rc.unattributed_commits(log, "codex/x"), 0)
 
 
 if __name__ == "__main__":

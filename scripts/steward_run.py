@@ -120,16 +120,27 @@ def read_events(path):
 
 
 def verify_chain(path):
-    """Return (ok, problem). Every event must carry the digest of the previous raw line."""
-    prev = GENESIS
+    """Return (ok, problem). Every event must carry the digest of the previous raw line and its own sequence number
+    (the count of events up to and including it). A line that is not a JSON object is a problem to report, not an
+    exception: a crash in the middle of a write leaves exactly that as the last line, and a byte-order mark or a hand
+    edit does the same (probe: all three raised JSONDecodeError out of `tick_under_lock` as a traceback)."""
+    prev, ordinal = GENESIS, 0
     with open(path, encoding="utf-8") as handle:
         for number, line in enumerate(handle, 1):
             line = line.rstrip("\n")
             if not line:
                 continue
-            event = json.loads(line)
+            ordinal += 1
+            try:
+                event = json.loads(line)
+            except ValueError as error:
+                return False, f"line {number}: not valid JSON ({error}); a partial write, a byte-order mark or an edit"
+            if not isinstance(event, dict):
+                return False, f"line {number}: not a JSON object"
             if event.get("prev") != prev:
                 return False, f"line {number}: chain broken (history edited or removed)"
+            if event.get("seq") != ordinal:
+                return False, f"line {number}: sequence number {event.get('seq')!r} where {ordinal} was expected"
             prev = digest(line)
     return True, ""
 
@@ -493,6 +504,8 @@ def main(argv):
     parser.add_argument("--outbox", help="directory; writes <seat>.md with each seat's current card")
     parser.add_argument("--stall-after", type=int, default=3)
     parser.add_argument("--expect-tip", help="externally anchored SHA-256 of the log's last line")
+    parser.add_argument("--require-signatures", action="store_true",
+                        help="count only attestations whose signature verifies against the registered seat keys")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     remote = cs.rc.git(args.repo_dir, "remote", "get-url", "origin")
@@ -501,7 +514,8 @@ def main(argv):
     identities = cs.rc.load_identities(args.identities) if args.identities else None
     keys = cs.rc.load_keys(args.identities) if args.identities else None
     snapshot = cs.rc.live_snapshot(args.repo, args.repo_dir)
-    state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities)
+    state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities, keys,
+                       args.require_signatures, snapshot=snapshot)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = tick_under_lock(args.log, state, snapshot, args.tick, now, args.stall_after, args.outbox, args.expect_tip)
     count, tip = result["tip"]["count"], result["tip"]["sha256"]
