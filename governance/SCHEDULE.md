@@ -89,6 +89,20 @@ bound to). Re-created at the owner's request as `create_new_session_on_fire`, so
 depends on any one session surviving. Trigger id `trig_011JULgTH2EdKVT9FaJv2ykZ`; same account owns
 it as the one-shot check-ins throughout this file.
 
+**Status: NOT VERIFIED.** The first live firing has not been observed. `create_trigger` warned that a
+Routine stores no MCP connectors, and it is unknown whether a fresh session still gets GitHub access
+(`mcp__github__*`) from the environment instead of an account-level grant. Until the first run's own
+history (`list_triggers`/`get_trigger` on the id above) shows it could read CI, inspect pull requests and
+push a branch, treat this routine as installed but unproven, not as active capacity.
+
+**Recovery record.** What the repository retains: the trigger id above, the cadence (daily 11:47 UTC,
+`create_new_session_on_fire`), the lens rotation and the checklist below. What it does not retain: the
+stored prompt text itself, the environment and connector grants, and the pause/recreate procedure. Anyone
+re-creating the routine today would have to read `get_trigger` on the id while it still exists. Following
+the pattern `routines/STEWARD_HEARTBEAT.md` already uses (the trigger is a thin pointer, the procedure
+lives in a reviewed file), moving the stored prompt into a checked-in `routines/` file is the follow-up
+that closes this gap; it is deliberately not done in this documentation change.
+
 **Lens rotation:** the stored prompt is one fixed string — a Routine has no server-side mechanism
 for varying the literal text per firing — but it opens by having the model compute
 `day-of-month mod 5` and use that to pick one of five framings before touching the mechanical
