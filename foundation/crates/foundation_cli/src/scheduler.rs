@@ -94,7 +94,7 @@ fn queue_rows(input: &str) -> Vec<(String, String)> {
     input
         .lines()
         .filter_map(|line| {
-            let fields = line.split('|').map(str::trim).collect::<Vec<_>>();
+            let fields = crate::table::cells(line);
             if fields.len() < 4
                 || fields[1] == "ID"
                 || fields[1].is_empty()
@@ -149,5 +149,15 @@ mod tests {
                 ("F7".to_owned(), "Done".to_owned())
             ]
         );
+    }
+
+    #[test]
+    fn an_escaped_pipe_inside_a_cell_does_not_hide_the_row() {
+        // The live C89 row names `kernel\|control\|presentation\|tooling`; splitting on every pipe read its status as
+        // `control\` and the row never reached the schedule.
+        let rows = queue_rows(
+            r#"| C89 | profile = "kernel\|control\|presentation\|tooling" | Ready | Unowned |"#,
+        );
+        assert_eq!(rows, vec![("C89".to_owned(), "Ready".to_owned())]);
     }
 }

@@ -1,0 +1,90 @@
+[
+  {
+    "acceptance": "no artifact required; do not invent work or notify",
+    "agent": "mimo",
+    "evidence": {
+      "backlog": 0,
+      "covered": 1,
+      "not_clean": 0,
+      "open_prs": 1,
+      "unresolved_threads": 0
+    },
+    "if_blocked": "not applicable; if state changes the next card will say so; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "healthy_idle",
+      "pr": null
+    },
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "reviewer",
+    "task": "Healthy idle: no action required this tick",
+    "tick": 1,
+    "why_now": "verified healthy: nothing urgent and no backlog"
+  },
+  {
+    "acceptance": "no artifact required; do not invent work or notify",
+    "agent": "gemini",
+    "evidence": {
+      "backlog": 0,
+      "covered": 1,
+      "not_clean": 0,
+      "open_prs": 1,
+      "unresolved_threads": 0
+    },
+    "if_blocked": "not applicable; if state changes the next card will say so; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "healthy_idle",
+      "pr": null
+    },
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "auditor",
+    "task": "Healthy idle: no action required this tick",
+    "tick": 1,
+    "why_now": "verified healthy: nothing urgent and no backlog"
+  },
+  {
+    "acceptance": "no artifact required; do not invent work or notify",
+    "agent": "codex",
+    "evidence": {
+      "backlog": 0,
+      "covered": 1,
+      "not_clean": 0,
+      "open_prs": 1,
+      "unresolved_threads": 0
+    },
+    "if_blocked": "not applicable; if state changes the next card will say so; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "healthy_idle",
+      "pr": null
+    },
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "skeptic",
+    "task": "Healthy idle: no action required this tick",
+    "tick": 1,
+    "why_now": "verified healthy: nothing urgent and no backlog"
+  },
+  {
+    "acceptance": "no artifact required; do not invent work or notify",
+    "agent": "claude",
+    "evidence": {
+      "backlog": 0,
+      "covered": 1,
+      "not_clean": 0,
+      "open_prs": 1,
+      "unresolved_threads": 0
+    },
+    "if_blocked": "not applicable; if state changes the next card will say so; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "healthy_idle",
+      "pr": null
+    },
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "implementer",
+    "task": "Healthy idle: no action required this tick",
+    "tick": 1,
+    "why_now": "verified healthy: nothing urgent and no backlog"
+  }
+]
