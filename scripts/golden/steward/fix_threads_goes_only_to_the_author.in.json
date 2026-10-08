@@ -1,0 +1,42 @@
+{
+  "state": {
+    "agents": [
+      {
+        "name": "mimo"
+      },
+      {
+        "name": "gemini"
+      },
+      {
+        "name": "codex"
+      },
+      {
+        "name": "claude"
+      }
+    ],
+    "backlog": [],
+    "default_branch": "main",
+    "done": [],
+    "now": "2026-10-05T00:00:00Z",
+    "prs": [
+      {
+        "base": "main",
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "covered": false,
+        "draft": false,
+        "head": "0202020202020202020202020202020202020202",
+        "implementers": [
+          "codex"
+        ],
+        "mergeable_state": "CLEAN",
+        "number": 2,
+        "seat": "codex",
+        "size": "+10/-2 in 1 file(s)",
+        "threads_unresolved": 2,
+        "title": "pr 2",
+        "updated_at": "2026-10-04T23:00:00Z"
+      }
+    ]
+  },
+  "tick": 0
+}

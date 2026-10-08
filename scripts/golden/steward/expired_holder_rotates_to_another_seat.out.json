@@ -1,0 +1,84 @@
+[
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "mimo",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "skeptic",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 7,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Start your comment with the receipt [done:needs_review:9:0909090909090909090909090909090909090909] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
+    "agent": "gemini",
+    "attempt": 2,
+    "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "needs_review",
+      "pr": 9
+    },
+    "lease": {
+      "expires_tick": 13,
+      "key": "needs_review:9:09090909",
+      "renewed": false
+    },
+    "lens": "skeptic",
+    "lens_text": "Earlier handouts of this item did not finish. Assume the obvious path hides a problem: find the two weakest claims in the diff or thread and verify each by running something, not reading.",
+    "marker": "[done:needs_review:9:0909090909090909090909090909090909090909]",
+    "new_since_last": "first time this seat is handed this PR",
+    "owner_blocked": false,
+    "priority": 2,
+    "recipe": [
+      "git fetch --prune origin && git fetch origin pull/9/head   # head must be 0909090909090909090909090909090909090909",
+      "git diff --check bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...0909090909090909090909090909090909090909   # expect exit 0",
+      "git merge-tree --write-tree origin/main 0909090909090909090909090909090909090909   # expect exit 0 (clean trial merge)",
+      "run the PR's own tests if it changes code (python -m unittest discover -s scripts -p 'test_*.py')",
+      "post ONE attestation block with fields: repo, pr=9, head=0909090909090909090909090909090909090909, base_sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, scope=whole, reviewer=<your seat>, implementers=['claude'], verdict"
+    ],
+    "role": "implementer",
+    "state": "PR #9 head 090909090909 on main; +10/-2 in 1 file(s); mergeable=CLEAN; implementers=claude",
+    "task": "Post an independent whole-diff review of PR #9 at its current head, with an attestation block",
+    "then": "no further item is free for you; stand by",
+    "tick": 7,
+    "why_now": "no covered whole-diff accept at the current head"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "codex",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "reviewer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 7,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "claude",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "auditor",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 7,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  }
+]

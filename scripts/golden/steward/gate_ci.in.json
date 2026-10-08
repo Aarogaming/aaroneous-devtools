@@ -1,0 +1,75 @@
+[
+  {
+    "name": "no rollup is missing",
+    "rollup": []
+  },
+  {
+    "name": "all successful",
+    "rollup": [
+      {
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED"
+      },
+      {
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED"
+      },
+      {
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED"
+      }
+    ]
+  },
+  {
+    "name": "one failure fails",
+    "rollup": [
+      {
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED"
+      },
+      {
+        "conclusion": "FAILURE",
+        "status": "COMPLETED"
+      }
+    ]
+  },
+  {
+    "name": "a running check is pending",
+    "rollup": [
+      {
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED"
+      },
+      {
+        "conclusion": "",
+        "status": "IN_PROGRESS"
+      }
+    ]
+  },
+  {
+    "name": "a queued check is pending",
+    "rollup": [
+      {
+        "status": "QUEUED"
+      }
+    ]
+  },
+  {
+    "name": "skipped is not success",
+    "rollup": [
+      {
+        "conclusion": "SKIPPED",
+        "status": "COMPLETED"
+      }
+    ]
+  },
+  {
+    "name": "lower-case conclusions are read",
+    "rollup": [
+      {
+        "conclusion": "success",
+        "status": "completed"
+      }
+    ]
+  }
+]
