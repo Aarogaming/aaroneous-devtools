@@ -36,6 +36,15 @@ class AllSeats(unittest.TestCase):
         ])
         self.assertEqual(cs.seats_from_trailers(text), ["claude", "codex", "gemini"])
 
+    def test_the_commit_author_name_identifies_a_seat(self):
+        # PR #63: a cloud session commits as "Claude <noreply@anthropic.com>" with no trailer on a branch with no seat
+        # prefix, so the steward kept issuing identify_implementers cards for it.
+        self.assertEqual(cs.seats_from_trailers("git-author: Claude <noreply@anthropic.com>\ndocs: change\n"), ["claude"])
+        self.assertEqual(cs.seats_from_trailers("git-author: Aarog <aarog@example.invalid>\ndocs: change\n"), [])
+        self.assertEqual(
+            cs.seats_from_trailers("git-author: Claude <a@b>\nx\n\ngit-author: Codex <c@d>\ny\n", "gemini/x"),
+            ["gemini", "claude", "codex"])
+
     def test_the_branch_owner_comes_first_and_is_not_duplicated(self):
         text = "Co-Authored-By: Claude Sonnet 5.5 <n@a.com>\nCo-Authored-By: Codex <c@a.com>"
         self.assertEqual(cs.seats_from_trailers(text, "codex/foundry"), ["codex", "claude"])

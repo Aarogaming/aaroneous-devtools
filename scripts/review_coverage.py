@@ -161,6 +161,65 @@ def seat_names(name):
     return found
 
 
+def known_seat_names(name):
+    """The KNOWN seats a string names, with no fallback: `seat_names` keeps an unknown string's first token so it can
+    compare with itself; here a string that names no seat names none."""
+    found = set()
+    for token in (t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t):
+        for seat in KNOWN_SEATS:
+            if token.startswith(seat):
+                found.add(SEAT_NAME_ALIASES.get(seat, seat))
+    return found
+
+
+TRAILER = re.compile(r"^(?:co-authored-by|contribution-id|git-author):(.*)$", re.I | re.M)
+
+
+def commit_chunks(commit_log):
+    """The commits of a `git log --format=%x1egit-author: %an <%ae>%n%B` listing, one string per commit."""
+    return [chunk for chunk in str(commit_log or "").split("\x1e") if chunk.strip()]
+
+
+def git_implementers(commit_log, branch):
+    """The seats git itself says implemented a PR: the seat named by the branch prefix ("codex/..."), and every seat
+    named in a Co-Authored-By or Contribution-ID trailer or by the commit author's name, for any commit in base..head. The attestation's own
+    `implementers` list is the reviewer's word; this is the history's, and an accept from a seat in it is not
+    independent however the attestation spells the list (Gemini committed to #116 and attested it as independent)."""
+    seats = known_seat_names(str(branch or "").split("/", 1)[0])
+    for chunk in commit_chunks(commit_log):
+        for trailer in TRAILER.findall(chunk):
+            seats |= known_seat_names(trailer)
+    return seats
+
+
+def unattributed_commits(commit_log, branch):
+    """How many commits in base..head name no implementing seat: no seat trailer, and the branch prefix names none
+    either. With such a commit, git cannot say who wrote part of the diff, so independence rests on the
+    attestation's word alone."""
+    if known_seat_names(str(branch or "").split("/", 1)[0]):
+        return 0
+    return sum(1 for chunk in commit_chunks(commit_log)
+               if not any(known_seat_names(t) for t in TRAILER.findall(chunk)))
+
+
+STAND_IN = re.compile(r"\b(?:in lieu of|on behalf of|acting for|operating for|standing in for)\s+(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+                      re.I)
+
+
+def stand_in_seats(comments):
+    """The seats whose behalf a comment claims to act on ("Author Update (operating in lieu of Codex)"): the shared login
+    posts for every seat, so such a comment is written by a seat it does not name, and the seat it does name is not the
+    one that worked. Only the first non-blank line is read, and "in lieu of X" never attributes the comment to X.
+    Scout sample: three comments on #20, #47 and #60 said this about Codex; text attribution rightly leaves them
+    unattributed, but nothing told a reader that someone other than the branch's seat was pushing."""
+    found = []
+    for comment in comments or []:
+        body = comment.get("body", "") if isinstance(comment, dict) else ""
+        first = next((line for line in body.splitlines() if line.strip()), "")
+        found.extend(SEAT_NAME_ALIASES.get(m.lower(), m.lower()) for m in STAND_IN.findall(first))
+    return sorted(set(found))
+
+
 def seat_name(name):
     """One seat for display and de-duplication: the first of the sorted seats `seat_names` finds."""
     seats = sorted(seat_names(name))
@@ -366,7 +425,29 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
         )
         problems = problems + formal_problems
         ancestry = is_ancestor or pairs_ancestry(pr.get("ancestry", []))
-        decision = evaluate(pr["head"], pr["merge_base"], structured + formal, ancestry)
+        implied = git_implementers(pr.get("commit_log"), pr.get("branch"))
+        records, conflicts = [], []
+        for record in structured + formal:
+            named = set().union(*(seat_names(i) for i in record["implementers"])) if record["implementers"] else set()
+            extra = sorted(implied - named)
+            if extra and record["verdict"] in ACCEPT and record["head"] == pr["head"] and seat_names(record["reviewer"]) & implied:
+                conflicts.append(
+                    f"the accept by {record['reviewer']} is not counted: git history names "
+                    f"{sorted(seat_names(record['reviewer']) & implied)} as an implementer (branch prefix or "
+                    "commit trailer) and the attestation's implementers list does not")
+            records.append(dict(record, implementers=list(record["implementers"]) + extra) if extra else record)
+        decision = evaluate(pr["head"], pr["merge_base"], records, ancestry)
+        decision["reasons"] = decision["reasons"] + conflicts
+        loose = unattributed_commits(pr.get("commit_log"), pr.get("branch"))
+        if loose:
+            decision["reasons"].append(
+                f"{loose} commit(s) in base..head name no implementing seat (no Co-Authored-By trailer, no seat-named "
+                "branch), so git cannot show who wrote them and independence rests on the attestation's word alone")
+        stand_ins = stand_in_seats(pr.get("comments"))
+        if stand_ins:
+            decision["reasons"].append(
+                f"comment(s) on this PR say they were written in lieu of {', '.join(stand_ins)}: the seat that actually "
+                "worked on it is not named, so independence rests on the attestation's word alone")
         rows.append(
             {
                 "pr": pr["number"],
@@ -411,7 +492,7 @@ def checkout_matches(remote_url, repo):
 
 def pr_list_args(repo):
     return ["pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
-            "number,headRefOid,baseRefName"]
+            "number,headRefOid,baseRefName,headRefName"]
 
 
 def gh_json(*args):
@@ -439,10 +520,13 @@ def live_snapshot(repo, repo_dir):
         pages = gh_json("api", f"repos/{repo}/issues/{item['number']}/comments", "--paginate", "--slurp")
         base = f"origin/{item['baseRefName']}"
         mb = git(repo_dir, "merge-base", base, item["headRefOid"]).stdout.strip() or "unknown"
+        log = git(repo_dir, "log", "--format=%x1egit-author: %an <%ae>%n%B", f"{base}..{item['headRefOid']}")
         prs.append(
             {
                 "number": item["number"],
                 "head": item["headRefOid"],
+                "branch": item.get("headRefName", ""),
+                "commit_log": log.stdout if log.returncode == 0 else "",
                 "base": item["baseRefName"],
                 "merge_base": mb,
                 "comments": flatten_pages(pages),
