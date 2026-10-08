@@ -190,8 +190,18 @@ def changed_paths(repo_dir, base_ref, head):
     """Every path the PR touches, both sides of a rename. With rename detection on (git's default) a moved file is
     listed only under its new name, so renaming an owner-only file to an ordinary path would hide the protected source
     path from `tier_of` and `touches_protected` (Codex P1 on #91)."""
-    out = rc.git(repo_dir, "diff", "--name-only", "--no-renames", f"origin/{base_ref}...{head}").stdout
-    return [line for line in out.splitlines() if line]
+    # -z: without it git quotes a path holding a non-ASCII character or a quote ('".github/workflows/\\303\\251.yml"'),
+    # which matches no protected prefix, so `decide` called a PR touching an owner-only workflow eligible (skeptic probe).
+    out = rc.git(repo_dir, "diff", "--name-only", "-z", "--no-renames", f"origin/{base_ref}...{head}").stdout
+    return [path for path in out.split("\0") if path]
+
+
+def breaker_files(repo_dir, default_branch):
+    """Paths of every circuit_breaker_override.toml on the default branch. NUL-separated: splitting the quoted,
+    newline-separated listing on whitespace lost a breaker file under a directory with a space in its name, so a tripped
+    breaker there was never read."""
+    out = rc.git(repo_dir, "ls-tree", "-r", "--name-only", "-z", "origin/" + default_branch).stdout
+    return [path for path in out.split("\0") if path.endswith("circuit_breaker_override.toml")]
 
 
 def trial_merge(repo_dir, base_ref, head):
@@ -341,8 +351,7 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
         facts["threads_open"] = open_threads(data)
     except Exception:
         pass
-    listing = rc.git(repo_dir, "ls-tree", "-r", "--name-only", "origin/" + default_branch).stdout.split()
-    breaker = [f for f in listing if f.endswith("circuit_breaker_override.toml")]
+    breaker = breaker_files(repo_dir, default_branch)
     if breaker:
         text = rc.git(repo_dir, "show", f"origin/{default_branch}:{breaker[0]}").stdout
         facts["breaker_tripped"] = breaker_state(text)
