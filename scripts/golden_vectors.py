@@ -14,6 +14,7 @@ scripts/golden/steward/ so the contract does not depend on Python:
   attribution  collect_state.comment_seat    heads      collect_state.cites_head
   receipts     collect_state.done_receipts   rejected   collect_state.rejected_verdicts
   stalls       steward_run.stalled_seats and attribution_weak
+  seats        review_coverage.seat_names (sorted): which seats a reviewer or implementer string names
   pushes       steward_run.pushes (heads recorded, seats credited with a moved or new head)
   coverage     review_coverage.evaluate      audit      next_task.build_cards across ticks
   Merge-gate vectors (the owner-facing eligibility decision):
@@ -315,11 +316,30 @@ COVERAGE = [
      "records": [rec(A, reviewer="claude")], "ancestry": []},
     {"name": "a standing needs_revision at the head blocks", "head": A, "merge_base": MB,
      "records": [rec(A), rec(A, reviewer="gemini", verdict="needs_revision")], "ancestry": []},
+    {"name": "a rejection naming another merge base is stale and says so, and does not block", "head": A, "merge_base": MB,
+     "records": [rec(A), rec(A, reviewer="codex", verdict="needs_revision", base="d" * 40)], "ancestry": []},
     {"name": "a record bound to another merge base is invalid", "head": A, "merge_base": MB,
      "records": [rec(A, base="d" * 40)], "ancestry": []},
     {"name": "a moved merge base invalidates the record", "head": A, "merge_base": "e" * 40,
      "records": [rec(A)], "ancestry": []},
+    {"name": "the same seat in another case or alias cannot accept its own work", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="Gemini/Antigravity", implementers=("gemini",)),
+                 rec(A, reviewer="gemini", implementers=("Gemini",))], "ancestry": []},
+    {"name": "an implementer named by model id is still that seat", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="Claude", implementers=("claude-sonnet-5-5",)),
+                 rec(A, reviewer="Gemini", implementers=("gemini-3.8-flash",))], "ancestry": []},
+    {"name": "one implementer string may name two seats and neither can accept", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="Mimo", implementers=("Claude, Mimo",)),
+                 rec(A, reviewer="claude", implementers=("claude+mimo",))], "ancestry": []},
+    {"name": "a third seat still covers when an implementer string names two others", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="Codex", implementers=("Claude, Mimo",))], "ancestry": []},
+    {"name": "one seat spelled three ways is one accepting seat", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="Gemini"), rec(A, reviewer="gemini"), rec(A, reviewer="Antigravity")], "ancestry": []},
 ]
+
+SEATS = ["Gemini", "gemini", "Gemini/Antigravity", "Antigravity", "Claude Sonnet 5.5", "Claude (steward)",
+         "Mimo (OpenCode)", "Local Qwen", "gemini-3.8-flash", "claude-sonnet-5-5", "Claude, Mimo", "claude+mimo",
+         "codex:session-01a1", "CLAUDE.", "someone else", "!!!", ""]
 
 
 def evaluate_case(case):
@@ -493,6 +513,8 @@ def build_rule_vectors():
              [e for e in c["events"] if e["type"] == "ingest"], c["window"])} for c in STALLS]
     out["pushes.in.json"] = PUSHES
     out["pushes.out.json"] = [dict(zip(("heads", "credited"), sr.pushes(c["prs"], c["previous"]))) for c in PUSHES]
+    out["seats.in.json"] = SEATS
+    out["seats.out.json"] = [sorted(rc.seat_names(s)) for s in SEATS]
     out["coverage.in.json"] = COVERAGE
     out["coverage.out.json"] = [evaluate_case(c) for c in COVERAGE]
     out["audit.in.json"] = {"ticks": AUDIT_TICKS, "state": audit_scenario(0)[0]}

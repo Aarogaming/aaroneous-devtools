@@ -36,6 +36,9 @@ import attest_sig  # noqa: E402
 
 FENCE = re.compile(r"```attestation\s*\n(.*?)\n```", re.DOTALL)
 FULL_SHA = re.compile(r"\b[0-9a-f]{40}\b")
+# Any fenced block, with its info string. Only a fence labelled ``attestation`` is read; a complete attestation record in
+# a differently labelled fence (```json is what seats reach for) is reported by name instead of vanishing.
+ANY_FENCE = re.compile(r"```([^\n`]*)\n(.*?)\n```", re.DOTALL)
 # A prose verdict: the upper-case VERDICT label the old packets used, or the word "verdict" in any case followed within
 # a few words by an accept or reject word ("Independent Codex verdict: ACCEPT ..."). Without the second form a seat
 # that writes the label in lower case is invisible: not counted, not malformed, not legacy, so nobody tells it why.
@@ -60,7 +63,33 @@ def validate(record):
         return "implementers must be a non-empty list"
     if record["scope"] not in ("whole", "delta"):
         return f"unknown scope: {record['scope']!r}"
+    if not isinstance(record["verdict"], str) or record["verdict"] not in ACCEPT | REJECT:
+        return (f"unknown verdict {record['verdict']!r}: use accept, needs_revision or changes_requested "
+                "(lower case); nothing was counted")
     return None
+
+
+def looks_like_attestation(raw):
+    """The parsed record when ``raw`` is a JSON object carrying every required field and a full 40-hex head, else None.
+    A template with placeholders or a partial example is not one, so quoting the format does not raise a problem."""
+    try:
+        record = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(record, dict) or any(key not in record for key in REQUIRED):
+        return None
+    head = record["head"]
+    return record if isinstance(head, str) and FULL_SHA.fullmatch(head) else None
+
+
+def fold_rejection(record):
+    """A rejecting verdict spelled in the wrong case still blocks (``NEEDS_REVISION`` is read as ``needs_revision``).
+    An accept does not get the same leniency: it must be spelled exactly, so a misspelt accept never covers a PR, but a
+    misspelt rejection must never be silently ignored while the PR reads as covered."""
+    if isinstance(record, dict) and isinstance(record.get("verdict"), str):
+        folded = record["verdict"].strip().lower()
+        if folded in REJECT:
+            record["verdict"] = folded
 
 
 def parse_attestations(comments):
@@ -76,6 +105,7 @@ def parse_attestations(comments):
             except ValueError as error:
                 problems.append({"comment": index, "problem": f"invalid JSON: {error}"})
                 continue
+            fold_rejection(record)
             problem = validate(record)
             if problem:
                 problems.append({"comment": index, "problem": problem})
@@ -84,6 +114,15 @@ def parse_attestations(comments):
             record["_sig"] = signature
             record["comment"] = index
             structured.append(record)
+        for label, raw in ANY_FENCE.findall(body):
+            if label.rstrip() == "attestation":  # exactly what FENCE reads; any other spelling is reported below
+                continue
+            record = looks_like_attestation(raw)
+            if record is not None:
+                found = True
+                problems.append({"comment": index, "problem": (
+                    f"fence labelled {label.strip() or 'plain'!r} holds a complete attestation record for head "
+                    f"{record['head']}, but only a fence labelled attestation is read; nothing was counted")})
         if not found and PROSE_VERDICT.search(body):
             legacy.append(
                 {
@@ -122,6 +161,65 @@ def seat_names(name):
     return found
 
 
+def known_seat_names(name):
+    """The KNOWN seats a string names, with no fallback: `seat_names` keeps an unknown string's first token so it can
+    compare with itself; here a string that names no seat names none."""
+    found = set()
+    for token in (t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t):
+        for seat in KNOWN_SEATS:
+            if token.startswith(seat):
+                found.add(SEAT_NAME_ALIASES.get(seat, seat))
+    return found
+
+
+TRAILER = re.compile(r"^(?:co-authored-by|contribution-id|git-author):(.*)$", re.I | re.M)
+
+
+def commit_chunks(commit_log):
+    """The commits of a `git log --format=%x1egit-author: %an <%ae>%n%B` listing, one string per commit."""
+    return [chunk for chunk in str(commit_log or "").split("\x1e") if chunk.strip()]
+
+
+def git_implementers(commit_log, branch):
+    """The seats git itself says implemented a PR: the seat named by the branch prefix ("codex/..."), and every seat
+    named in a Co-Authored-By or Contribution-ID trailer or by the commit author's name, for any commit in base..head. The attestation's own
+    `implementers` list is the reviewer's word; this is the history's, and an accept from a seat in it is not
+    independent however the attestation spells the list (Gemini committed to #116 and attested it as independent)."""
+    seats = known_seat_names(str(branch or "").split("/", 1)[0])
+    for chunk in commit_chunks(commit_log):
+        for trailer in TRAILER.findall(chunk):
+            seats |= known_seat_names(trailer)
+    return seats
+
+
+def unattributed_commits(commit_log, branch):
+    """How many commits in base..head name no implementing seat: no seat trailer, and the branch prefix names none
+    either. With such a commit, git cannot say who wrote part of the diff, so independence rests on the
+    attestation's word alone."""
+    if known_seat_names(str(branch or "").split("/", 1)[0]):
+        return 0
+    return sum(1 for chunk in commit_chunks(commit_log)
+               if not any(known_seat_names(t) for t in TRAILER.findall(chunk)))
+
+
+STAND_IN = re.compile(r"\b(?:in lieu of|on behalf of|acting for|operating for|standing in for)\s+(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+                      re.I)
+
+
+def stand_in_seats(comments):
+    """The seats whose behalf a comment claims to act on ("Author Update (operating in lieu of Codex)"): the shared login
+    posts for every seat, so such a comment is written by a seat it does not name, and the seat it does name is not the
+    one that worked. Only the first non-blank line is read, and "in lieu of X" never attributes the comment to X.
+    Scout sample: three comments on #20, #47 and #60 said this about Codex; text attribution rightly leaves them
+    unattributed, but nothing told a reader that someone other than the branch's seat was pushing."""
+    found = []
+    for comment in comments or []:
+        body = comment.get("body", "") if isinstance(comment, dict) else ""
+        first = next((line for line in body.splitlines() if line.strip()), "")
+        found.extend(SEAT_NAME_ALIASES.get(m.lower(), m.lower()) for m in STAND_IN.findall(first))
+    return sorted(set(found))
+
+
 def seat_name(name):
     """One seat for display and de-duplication: the first of the sorted seats `seat_names` finds."""
     seats = sorted(seat_names(name))
@@ -147,10 +245,19 @@ def evaluate(head, merge_base, records, is_ancestor):
         return {"covered": False, "reasons": ["merge-base unresolved: coverage cannot be judged"], "accepts_at_head": 0,
                 "counted": [], "accept_seats": []}
     at_head = [r for r in records if r["head"] == head]
+    # A record is valid only while the merge base equals its base_sha (PLATFORM_SPEC.md, attestation record): a retarget
+    # or rebase invalidates a rejection like any other record (Codex P1 on #114). A rejection that names another base is
+    # therefore not a blocker, but it is no longer silent: a hand-typed base_sha is the likelier cause, and ignoring
+    # such a rejection unannounced is how a reviewer's request for changes gets lost.
     blockers = [r for r in at_head if r["verdict"] in REJECT and r["base_sha"] == merge_base]
     reasons = []
     if blockers:
         reasons.append(f"standing {blockers[0]['verdict']} at head by {blockers[0]['reviewer']}")
+    for r in at_head:
+        if r["verdict"] in REJECT and r["base_sha"] != merge_base:
+            reasons.append(f"a rejection by {r['reviewer']} names base_sha {str(r['base_sha'])[:12]}, but the merge base is "
+                           f"{merge_base[:12]}, so it is ignored as stale; if the base_sha was mistyped, that reviewer must "
+                           "re-attest against the current merge base")
 
     valid = [
         r
@@ -174,6 +281,15 @@ def evaluate(head, merge_base, records, is_ancestor):
     if head not in covered:
         if any(r["verdict"] in ACCEPT and r["head"] == head for r in records):
             reasons.append("accept at head exists but is not chained to a whole accept at this base")
+            for r in at_head:
+                if r["verdict"] not in ACCEPT or r in valid:
+                    continue
+                if r["base_sha"] != merge_base:
+                    reasons.append(f"the accept by {r['reviewer']} names base_sha {str(r['base_sha'])[:12]}, but the merge "
+                                   f"base is {merge_base[:12]}: re-attest against the current merge base")
+                elif not independent(r):
+                    reasons.append(f"the accept by {r['reviewer']} is not independent of its implementers "
+                                   f"{sorted(r['implementers'])}")
         else:
             reasons.append("no accept at the current head")
     counted = [r for r in valid if r["head"] == head]
@@ -186,16 +302,25 @@ def evaluate(head, merge_base, records, is_ancestor):
     }
 
 
+def read_identities(path):
+    """The identities file, validated: a file with a problem stops the tool with the problems listed (see
+    `attest_sig.validate_identities`)."""
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    problems = attest_sig.validate_identities(data)
+    if problems:
+        raise SystemExit(f"{path} is not a usable identities file:\n  " + "\n  ".join(problems))
+    return data
+
+
 def load_keys(path):
     """Return the raw identities data (seat -> logins/keys) for signature verification."""
-    with open(path, encoding="utf-8") as handle:
-        return json.load(handle)
+    return read_identities(path)
 
 
 def load_identities(path):
     """Return {login_lower: seat} from governance/identities.json ({"seats": {seat: [logins]}})."""
-    with open(path, encoding="utf-8") as handle:
-        data = json.load(handle)
+    data = read_identities(path)
     mapping = {}
     for seat, entry in data.get("seats", {}).items():
         logins = entry.get("logins", []) if isinstance(entry, dict) else entry
@@ -300,7 +425,29 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
         )
         problems = problems + formal_problems
         ancestry = is_ancestor or pairs_ancestry(pr.get("ancestry", []))
-        decision = evaluate(pr["head"], pr["merge_base"], structured + formal, ancestry)
+        implied = git_implementers(pr.get("commit_log"), pr.get("branch"))
+        records, conflicts = [], []
+        for record in structured + formal:
+            named = set().union(*(seat_names(i) for i in record["implementers"])) if record["implementers"] else set()
+            extra = sorted(implied - named)
+            if extra and record["verdict"] in ACCEPT and record["head"] == pr["head"] and seat_names(record["reviewer"]) & implied:
+                conflicts.append(
+                    f"the accept by {record['reviewer']} is not counted: git history names "
+                    f"{sorted(seat_names(record['reviewer']) & implied)} as an implementer (branch prefix or "
+                    "commit trailer) and the attestation's implementers list does not")
+            records.append(dict(record, implementers=list(record["implementers"]) + extra) if extra else record)
+        decision = evaluate(pr["head"], pr["merge_base"], records, ancestry)
+        decision["reasons"] = decision["reasons"] + conflicts
+        loose = unattributed_commits(pr.get("commit_log"), pr.get("branch"))
+        if loose:
+            decision["reasons"].append(
+                f"{loose} commit(s) in base..head name no implementing seat (no Co-Authored-By trailer, no seat-named "
+                "branch), so git cannot show who wrote them and independence rests on the attestation's word alone")
+        stand_ins = stand_in_seats(pr.get("comments"))
+        if stand_ins:
+            decision["reasons"].append(
+                f"comment(s) on this PR say they were written in lieu of {', '.join(stand_ins)}: the seat that actually "
+                "worked on it is not named, so independence rests on the attestation's word alone")
         rows.append(
             {
                 "pr": pr["number"],
@@ -345,7 +492,7 @@ def checkout_matches(remote_url, repo):
 
 def pr_list_args(repo):
     return ["pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
-            "number,headRefOid,baseRefName,isDraft"]
+            "number,headRefOid,baseRefName,headRefName,isDraft"]
 
 
 def gh_json(*args):
@@ -373,10 +520,13 @@ def live_snapshot(repo, repo_dir):
         pages = gh_json("api", f"repos/{repo}/issues/{item['number']}/comments", "--paginate", "--slurp")
         base = f"origin/{item['baseRefName']}"
         mb = git(repo_dir, "merge-base", base, item["headRefOid"]).stdout.strip() or "unknown"
+        log = git(repo_dir, "log", "--format=%x1egit-author: %an <%ae>%n%B", f"{base}..{item['headRefOid']}")
         prs.append(
             {
                 "number": item["number"],
                 "head": item["headRefOid"],
+                "branch": item.get("headRefName", ""),
+                "commit_log": log.stdout if log.returncode == 0 else "",
                 "base": item["baseRefName"],
                 "draft": item["isDraft"],
                 "merge_base": mb,

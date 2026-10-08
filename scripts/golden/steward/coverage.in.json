@@ -247,6 +247,38 @@
     "ancestry": [],
     "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a rejection naming another merge base is stale and says so, and does not block",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "dddddddddddddddddddddddddddddddddddddddd",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "codex",
+        "scope": "whole",
+        "verdict": "needs_revision"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "name": "a record bound to another merge base is invalid",
     "records": [
       {
@@ -278,6 +310,166 @@
         "pr": 1,
         "repo": "o/r",
         "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "the same seat in another case or alias cannot accept its own work",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "gemini"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Gemini/Antigravity",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "Gemini"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "an implementer named by model id is still that seat",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude-sonnet-5-5"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Claude",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "gemini-3.8-flash"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "one implementer string may name two seats and neither can accept",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "Claude, Mimo"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude+mimo"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "claude",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a third seat still covers when an implementer string names two others",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "Claude, Mimo"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "one seat spelled three ways is one accepting seat",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Antigravity",
         "scope": "whole",
         "verdict": "accept"
       }

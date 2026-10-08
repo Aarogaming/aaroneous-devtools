@@ -132,7 +132,8 @@
     "counted": [],
     "covered": false,
     "reasons": [
-      "accept at head exists but is not chained to a whole accept at this base"
+      "accept at head exists but is not chained to a whole accept at this base",
+      "the accept by claude is not independent of its implementers ['claude']"
     ]
   },
   {
@@ -160,12 +161,27 @@
     ]
   },
   {
-    "accept_seats": [],
-    "accepts_at_head": 1,
-    "counted": [],
-    "covered": false,
+    "accept_seats": [
+      "mimo"
+    ],
+    "accepts_at_head": 2,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
     "reasons": [
-      "accept at head exists but is not chained to a whole accept at this base"
+      "a rejection by codex names base_sha dddddddddddd, but the merge base is bbbbbbbbbbbb, so it is ignored as stale; if the base_sha was mistyped, that reviewer must re-attest against the current merge base"
     ]
   },
   {
@@ -174,7 +190,119 @@
     "counted": [],
     "covered": false,
     "reasons": [
-      "accept at head exists but is not chained to a whole accept at this base"
+      "accept at head exists but is not chained to a whole accept at this base",
+      "the accept by mimo names base_sha dddddddddddd, but the merge base is bbbbbbbbbbbb: re-attest against the current merge base"
     ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 1,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base",
+      "the accept by mimo names base_sha bbbbbbbbbbbb, but the merge base is eeeeeeeeeeee: re-attest against the current merge base"
+    ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 2,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base",
+      "the accept by Gemini/Antigravity is not independent of its implementers ['gemini']",
+      "the accept by gemini is not independent of its implementers ['Gemini']"
+    ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 2,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base",
+      "the accept by Claude is not independent of its implementers ['claude-sonnet-5-5']",
+      "the accept by Gemini is not independent of its implementers ['gemini-3.8-flash']"
+    ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 2,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base",
+      "the accept by Mimo is not independent of its implementers ['Claude, Mimo']",
+      "the accept by claude is not independent of its implementers ['claude+mimo']"
+    ]
+  },
+  {
+    "accept_seats": [
+      "codex"
+    ],
+    "accepts_at_head": 1,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "Claude, Mimo"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
+  },
+  {
+    "accept_seats": [
+      "gemini"
+    ],
+    "accepts_at_head": 3,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "gemini",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Antigravity",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
   }
 ]

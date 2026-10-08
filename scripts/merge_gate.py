@@ -126,9 +126,23 @@ def checklist(facts):
     like an unchecked box; nothing is rounded up to green."""
     head = facts["head"][:12]
     ci = facts.get("ci") or {"state": "missing", "detail": "no CI status found"}
-    seats = facts.get("accept_seats", [])
-    missing_evidence = facts.get("verdicts_missing_evidence", [])
-    counted = facts.get("counted_verdicts", 0)
+    # Every fact is read strictly: a missing key or a value of the wrong type blocks its box, it never reads as "fine".
+    # Probe (scout/skeptic tick): with the old defaults a facts dict without `tier` was Tier B, without
+    # `standing_changes_requested` had no standing rejection, without `verdicts_missing_evidence` had complete
+    # evidence, and `threads_open=False`, `breaker_tripped=0`, `accept_seats=["a", "a"]` or `"ab"` all passed.
+    raw_seats = facts.get("accept_seats")
+    seats_known = isinstance(raw_seats, list) and all(isinstance(s, str) for s in raw_seats)
+    seats = raw_seats if seats_known else []
+    distinct_seats = {s.strip() for s in seats if s.strip()}
+    covered_fact = facts.get("covered")
+    missing_evidence = facts.get("verdicts_missing_evidence")
+    counted = facts.get("counted_verdicts")
+    threads_open = facts.get("threads_open")
+    standing = facts.get("standing_changes_requested")
+    tripped = facts.get("breaker_tripped")
+
+    def is_count(value):
+        return isinstance(value, int) and not isinstance(value, bool)
     checks = [
         ("1", None if ci["state"] == "missing" else ci["state"] == "success",
          f"CI green on head {head}", ci.get("detail", ""), ci.get("detail") or "no CI status found"),
@@ -137,18 +151,26 @@ def checklist(facts):
          f"base={facts['base_ref']}", ""),
         ("2b", None if facts.get("is_draft") is None else not facts["is_draft"], "PR is not a draft", "",
          "draft status unavailable (fail closed)"),
-        ("3", len(seats) >= 2 and facts.get("covered", False),
-         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}", "", ""),
-        ("4", None if facts.get("threads_open") is None else facts["threads_open"] == 0 and not facts.get("standing_changes_requested", False),
-         "Zero open blocking threads", f"count checked: {facts.get('threads_open')}", "thread count unavailable"),
-        ("5", counted > 0 and not missing_evidence, "Each counted verdict cites command + exit code",
-         f"verdicts missing evidence: {missing_evidence}" if missing_evidence else f"counted: {counted}", ""),
+        ("3", None if not seats_known or not isinstance(covered_fact, bool) else len(distinct_seats) >= 2 and covered_fact,
+         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}", "",
+         "accepting seats or coverage unavailable"),
+        ("4", None if not is_count(threads_open) or not isinstance(standing, bool) else threads_open == 0 and not standing,
+         "Zero open blocking threads", f"count checked: {threads_open}",
+         "thread count unavailable" if not is_count(threads_open) else "standing-rejection status unavailable"),
+        ("5", None if not is_count(counted) or not isinstance(missing_evidence, list) else counted > 0 and not missing_evidence,
+         "Each counted verdict cites command + exit code",
+         f"verdicts missing evidence: {missing_evidence}" if missing_evidence else f"counted: {counted}",
+         "verdict evidence facts unavailable"),
         ("6", facts.get("revertible"), "Revertible via plain `git revert` (no migration/external side effect)", "",
          "needs a human classification"),
-        ("7", None if facts.get("breaker_tripped") is None else not facts["breaker_tripped"],
+        ("7", None if not isinstance(tripped, bool) else not tripped,
          "circuit_breaker_override.toml: tripped = false", "", "circuit breaker file not found or unparseable (fail closed)"),
     ]
-    tier, why = facts.get("tier", ("B", ""))
+    raw_tier = facts.get("tier")
+    if isinstance(raw_tier, (tuple, list)) and len(raw_tier) == 2 and all(isinstance(x, str) for x in raw_tier):
+        tier, why = raw_tier
+    else:
+        tier, why = "unclassified", "tier fact missing or malformed"
     # B: eligible box; A: unchecked box; unclassified: [blocked: …] (never assumed safe)
     tier_mark = True if tier == "B" else (False if tier == "A" else None)
     lines = [box(tier_mark, f"0. Tier B (auto-merge eligible)", why)]
@@ -189,8 +211,18 @@ def changed_paths(repo_dir, base_ref, head):
     """Every path the PR touches, both sides of a rename. With rename detection on (git's default) a moved file is
     listed only under its new name, so renaming an owner-only file to an ordinary path would hide the protected source
     path from `tier_of` and `touches_protected` (Codex P1 on #91)."""
-    out = rc.git(repo_dir, "diff", "--name-only", "--no-renames", f"origin/{base_ref}...{head}").stdout
-    return [line for line in out.splitlines() if line]
+    # -z: without it git quotes a path holding a non-ASCII character or a quote ('".github/workflows/\\303\\251.yml"'),
+    # which matches no protected prefix, so `decide` called a PR touching an owner-only workflow eligible (skeptic probe).
+    out = rc.git(repo_dir, "diff", "--name-only", "-z", "--no-renames", f"origin/{base_ref}...{head}").stdout
+    return [path for path in out.split("\0") if path]
+
+
+def breaker_files(repo_dir, default_branch):
+    """Paths of every circuit_breaker_override.toml on the default branch. NUL-separated: splitting the quoted,
+    newline-separated listing on whitespace lost a breaker file under a directory with a space in its name, so a tripped
+    breaker there was never read."""
+    out = rc.git(repo_dir, "ls-tree", "-r", "--name-only", "-z", "origin/" + default_branch).stdout
+    return [path for path in out.split("\0") if path.endswith("circuit_breaker_override.toml")]
 
 
 def trial_merge(repo_dir, base_ref, head):
@@ -340,8 +372,7 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
         facts["threads_open"] = open_threads(data)
     except Exception:
         pass
-    listing = rc.git(repo_dir, "ls-tree", "-r", "--name-only", "origin/" + default_branch).stdout.split()
-    breaker = [f for f in listing if f.endswith("circuit_breaker_override.toml")]
+    breaker = breaker_files(repo_dir, default_branch)
     if breaker:
         text = rc.git(repo_dir, "show", f"origin/{default_branch}:{breaker[0]}").stdout
         facts["breaker_tripped"] = breaker_state(text)
