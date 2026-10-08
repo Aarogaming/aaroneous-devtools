@@ -30,6 +30,7 @@ import review_coverage as rc  # noqa: E402
 RECEIPT_START = re.compile(r"\A\s*\[done:([a-z_]+):([0-9]+):([0-9a-f]{40})\]", re.I)
 NEGATIVE = re.compile(r"\b(not done|not complete[d]?|blocked|could not|cannot|unable|failed)\b", re.I)
 HEX40 = re.compile(r"\b[0-9a-f]{40}\b")
+RECEIPT_PREFIX = re.compile(r"\A\s*\[done:[a-z_]+:\d+:[0-9a-f]{40}\]\s*[:\u2013\u2014-]?\s*", re.I)
 SEAT_WORD = re.compile(r"\b(Claude|Mimo|Codex|Gemini|Antigravity)\s+seat\b", re.I)
 KNOWN_SEATS = ("claude", "codex", "gemini", "mimo", "qwen")
 SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
@@ -51,10 +52,14 @@ def comment_seat(body, strict=False):
     """The seat a comment says it is from ('' when it does not say). Antigravity is the Gemini seat.
 
     strict=True accepts only an explicit declaration ("Seat / agent: X", "Reviewer: X") or a seat name that opens
-    the comment, so a mention of a seat further down a comment never attributes it."""
+    the comment, so a mention of a seat further down a comment never attributes it. A leading completion receipt
+    ("[done:KIND:PR:HEAD]") is not part of the prose, so a seat name right after it opens the comment: the card says
+    "start with the receipt and name your seat on the first line", and "[done:...] Claude Sonnet 5.5 - done" is how
+    that reads."""
     body = body or ""
     if strict:
         first = next((line for line in body.splitlines() if line.strip()), "")
+        first = RECEIPT_PREFIX.sub("", first, count=1)
         found = SEAT_IN_TEXT.search(first) or SEAT_WORD.search(first) or SEAT_DECLARED.search(body)
     else:
         found = SEAT_IN_TEXT.search(body)
@@ -175,7 +180,9 @@ def rejected_verdicts(pr, row, commit_exists=None):
 
 def seats_from_trailers(text, branch=""):
     """Every implementing seat found, deduplicated in order: a seat-named branch prefix first (the
-    branch owner), then every seat named in a co-author or contribution trailer anywhere in the range.
+    branch owner), then every seat named in a co-author or contribution trailer, or in a `git-author:` line (the
+    commit author's name, which the collector adds to each message: a cloud session commits as "Claude"), anywhere in
+    the range.
     Independence needs the whole list, not just the first match."""
     seats = []
 
@@ -188,7 +195,7 @@ def seats_from_trailers(text, branch=""):
     if prefix:
         add(prefix.group(1))
     for line in text.splitlines():
-        if line.lower().startswith(("co-authored-by:", "contribution-id:")):
+        if line.lower().startswith(("co-authored-by:", "contribution-id:", "git-author:")):
             for found in SEAT_PATTERN.finditer(line):
                 add(found.group(1))
     return seats
@@ -389,13 +396,15 @@ def build_state(snapshot, coverage_rows, meta, unresolved, seats, agents, backlo
             "done_by": done_receipts(snapshot, repair_owners, implementers_by_pr), "default_branch": default_branch}
 
 
-def collect(repo, repo_dir, agents, backlog, identities=None, keys=None, require_signatures=False):
+def collect(repo, repo_dir, agents, backlog, identities=None, keys=None, require_signatures=False, snapshot=None):
     """Read the live state. ``keys`` (the identity registry) and ``require_signatures`` reach `report_snapshot`, so once
     the owner registers seat keys the steward can stop counting unsigned, spoofable attestation blocks as coverage
-    (Codex P2 on #99: the steward loaded the keys and dropped them). Enforcement without keys fails closed."""
+    (Codex P2 on #99: the steward loaded the keys and dropped them). Enforcement without keys fails closed.
+    ``snapshot`` is a `live_snapshot` the caller already took; reading it again costs about one gh call per open PR per
+    read (a steward tick took 126s, 118s of it two snapshots) and lets the two reads disagree about the same tick."""
     if require_signatures and not (keys and rc.attest_sig.allowed_signers(keys).strip()):
         raise SystemExit("--require-signatures needs --identities with registered seat keys: nothing could verify a signature")
-    snapshot = rc.live_snapshot(repo, repo_dir)
+    snapshot = snapshot if snapshot is not None else rc.live_snapshot(repo, repo_dir)
     meta = {
         p["number"]: p
         for p in rc.gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
@@ -405,7 +414,7 @@ def collect(repo, repo_dir, agents, backlog, identities=None, keys=None, require
     graphql = rc.gh_json("api", "graphql", "-f", f"query={THREADS_QUERY}", "-F", f"owner={owner}", "-F", f"name={name}")
     seats = {}
     for p in snapshot["prs"]:
-        log = rc.git(repo_dir, "log", "--format=%B", f"origin/{p['base']}..{p['head']}").stdout
+        log = rc.git(repo_dir, "log", "--format=git-author: %an <%ae>%n%B", f"origin/{p['base']}..{p['head']}").stdout
         every = seats_from_trailers(log, meta[p["number"]].get("headRefName", ""))
         seats[p["number"]] = every[0] if every else ""
         p["implementers"] = every

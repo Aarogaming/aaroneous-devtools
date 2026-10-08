@@ -134,5 +134,29 @@
   {
     "body": "ⒶMimo packet",
     "strict": true
+  },
+  {
+    "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Gemini whole-diff packet",
+    "strict": true
+  },
+  {
+    "body": "  [done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc] - Codex",
+    "strict": true
+  },
+  {
+    "body": "[done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc]: Mimo reviewed this",
+    "strict": true
+  },
+  {
+    "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Gemini whole-diff packet",
+    "strict": false
+  },
+  {
+    "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] all threads answered\nGemini whole-diff packet",
+    "strict": true
+  },
+  {
+    "body": "[done:needs_review:7:ccccccccccccccccccccccccccccccccccccccc] Gemini whole-diff packet",
+    "strict": true
   }
 ]

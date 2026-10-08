@@ -10,6 +10,7 @@ mod local_proposal;
 mod local_worker;
 mod multithreader;
 mod scheduler;
+mod table;
 pub mod virtual_patch;
 
 use anyhow::{Context, Result, bail};

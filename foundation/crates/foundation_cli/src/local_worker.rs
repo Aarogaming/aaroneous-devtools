@@ -145,8 +145,8 @@ fn evidence_file(root: &Path, relative: &str) -> Result<PathBuf> {
 }
 fn scope_reserved(queue: &str, evidence: &[String]) -> bool {
     queue.lines().filter(|s| s.starts_with('|')).any(|row| {
-        let cols: Vec<_> = row.split('|').map(str::trim).collect();
-        if cols.len() < 5 || !matches!(cols[3], "Claimed" | "Review") {
+        let cols = crate::table::cells(row);
+        if cols.len() < 5 || !matches!(cols[3].as_str(), "Claimed" | "Review") {
             return false;
         }
         evidence.iter().any(|path| {

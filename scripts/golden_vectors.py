@@ -154,6 +154,14 @@ ATTRIBUTION = [
     {"body": "\u0345Gemini packet", "strict": True},
     {"body": "\u00b2Gemini packet", "strict": True},
     {"body": "\u24b6Mimo packet", "strict": True},
+    # Found by a differential run on the merged tree (20,000 bodies, 581 disagreements): a completion receipt that opens
+    # a comment is not prose, so in strict mode the seat name right after it opens the comment.
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] Gemini whole-diff packet", "strict": True},
+    {"body": "  [done:fix_threads:7:" + "c" * 40 + "] - Codex", "strict": True},
+    {"body": "[done:fix_threads:7:" + "c" * 40 + "]: Mimo reviewed this", "strict": True},
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] Gemini whole-diff packet", "strict": False},
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] all threads answered\nGemini whole-diff packet", "strict": True},
+    {"body": "[done:needs_review:7:" + "c" * 39 + "] Gemini whole-diff packet", "strict": True},
 ]
 
 HEADS = [
@@ -234,6 +242,12 @@ RECEIPTS = [
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "a combining mark inside the attribution does not hide the seat",
      "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "x\u0301Gemini seat: ok")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a seat name that opens the text after the receipt prefix names the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini whole-diff packet")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a dash after the receipt prefix does not hide the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "- Codex whole-diff packet")]),
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "the first eligible receipt names the seat",
      "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini seat: first"),

@@ -120,16 +120,27 @@ def read_events(path):
 
 
 def verify_chain(path):
-    """Return (ok, problem). Every event must carry the digest of the previous raw line."""
-    prev = GENESIS
+    """Return (ok, problem). Every event must carry the digest of the previous raw line and its own sequence number
+    (the count of events up to and including it). A line that is not a JSON object is a problem to report, not an
+    exception: a crash in the middle of a write leaves exactly that as the last line, and a byte-order mark or a hand
+    edit does the same (probe: all three raised JSONDecodeError out of `tick_under_lock` as a traceback)."""
+    prev, ordinal = GENESIS, 0
     with open(path, encoding="utf-8") as handle:
         for number, line in enumerate(handle, 1):
             line = line.rstrip("\n")
             if not line:
                 continue
-            event = json.loads(line)
+            ordinal += 1
+            try:
+                event = json.loads(line)
+            except ValueError as error:
+                return False, f"line {number}: not valid JSON ({error}); a partial write, a byte-order mark or an edit"
+            if not isinstance(event, dict):
+                return False, f"line {number}: not a JSON object"
             if event.get("prev") != prev:
                 return False, f"line {number}: chain broken (history edited or removed)"
+            if event.get("seq") != ordinal:
+                return False, f"line {number}: sequence number {event.get('seq')!r} where {ordinal} was expected"
             prev = digest(line)
     return True, ""
 
@@ -504,7 +515,7 @@ def main(argv):
     keys = cs.rc.load_keys(args.identities) if args.identities else None
     snapshot = cs.rc.live_snapshot(args.repo, args.repo_dir)
     state = cs.collect(args.repo, args.repo_dir, ["claude", "mimo", "codex", "gemini"], [], identities, keys,
-                       args.require_signatures)
+                       args.require_signatures, snapshot=snapshot)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = tick_under_lock(args.log, state, snapshot, args.tick, now, args.stall_after, args.outbox, args.expect_tip)
     count, tip = result["tip"]["count"], result["tip"]["sha256"]
