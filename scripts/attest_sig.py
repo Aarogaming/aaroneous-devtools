@@ -41,14 +41,78 @@ def pairs(body):
         yield raw, (signature or "").strip() or None
 
 
+SEAT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
+KEY_TYPES = ("ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
+             "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com")
+KEY_BODY = re.compile(r"[A-Za-z0-9+/]+={0,2}")
+
+
+def valid_key(key):
+    """True for `<key type> <base64>` (an optional comment after it is ignored) with a known key type."""
+    parts = key.split() if isinstance(key, str) else []
+    return len(parts) >= 2 and parts[0] in KEY_TYPES and KEY_BODY.fullmatch(parts[1]) is not None
+
+
+def plain_login(value):
+    """A GitHub login as written in the file: a non-empty string with no surrounding or inner whitespace."""
+    return isinstance(value, str) and bool(value) and value == value.strip() and not any(c.isspace() for c in value)
+
+
+def validate_identities(data):
+    """Problems with an identities file, as sentences; an empty list means it is usable. The file decides who counts as
+    an independent reviewer, so a malformed entry must stop the tool rather than be read charitably. Probes on the old
+    loader: `"logins": "bob"` mapped the single letters b and o to the seat; one login in two seats went to whichever
+    came last; the shared owner login could be mapped to a seat; a seat named "claude\nmimo" put a key under the
+    principal `mimo` in the allowed_signers file; a key such as "cert-authority ssh-ed25519" became an option."""
+    problems = []
+    if not isinstance(data, dict) or not isinstance(data.get("seats"), dict):
+        return ["the file must be a JSON object with a \"seats\" object"]
+    owners = data.get("owner", [])
+    if not isinstance(owners, list) or not all(plain_login(o) for o in owners):
+        # "Aarogaming " would not match the login "Aarogaming" in the exclusion set below (Codex P2 on #123)
+        problems.append('"owner" must be a list of plain GitHub logins (no spaces)')
+        owners = []
+    owner_set = {o.lower() for o in owners}
+    seen = {}
+    for seat, entry in data["seats"].items():
+        if not isinstance(seat, str) or SEAT_NAME.fullmatch(seat) is None:
+            problems.append(f"seat name {seat!r} must be lower-case letters, digits, '-' or '_', starting with a letter")
+            continue
+        logins = entry.get("logins", []) if isinstance(entry, dict) else entry
+        keys = entry.get("keys", []) if isinstance(entry, dict) else []
+        if not isinstance(logins, list):
+            problems.append(f"{seat}: logins must be a list, not {type(logins).__name__}")
+            logins = []
+        if not isinstance(keys, list):
+            problems.append(f"{seat}: keys must be a list, not {type(keys).__name__}")
+            keys = []
+        for login in logins:
+            if not plain_login(login):
+                problems.append(f"{seat}: login {login!r} is not a plain GitHub login")
+                continue
+            if login.lower() in owner_set:
+                problems.append(f"{seat}: {login!r} is the shared owner login, which is deliberately not a seat")
+            if login.lower() in seen and seen[login.lower()] != seat:
+                problems.append(f"login {login!r} is listed for both {seen[login.lower()]} and {seat}")
+            seen.setdefault(login.lower(), seat)
+        for key in keys:
+            if not valid_key(key):
+                problems.append(f"{seat}: key {str(key)[:40]!r} is not '<known key type> <base64>'")
+    return problems
+
+
 def allowed_signers(identities):
-    """Build an OpenSSH allowed_signers file from identities data: seat -> keys."""
+    """Build an OpenSSH allowed_signers file from identities data: seat -> keys. Only well-formed seats and keys are
+    written (see `validate_identities`); anything else is skipped, so a seat name or key cannot add principals or
+    options to the file."""
     lines = []
     for seat, entry in identities.get("seats", {}).items():
+        if not isinstance(seat, str) or SEAT_NAME.fullmatch(seat) is None:
+            continue
         keys = entry.get("keys", []) if isinstance(entry, dict) else []
-        for key in keys:
-            parts = key.split()
-            if len(parts) >= 2:
+        for key in keys if isinstance(keys, list) else []:
+            if valid_key(key):
+                parts = key.split()
                 lines.append(f'{seat} namespaces="{NAMESPACE}" {parts[0]} {parts[1]}')
     return "\n".join(lines) + ("\n" if lines else "")
 
@@ -115,6 +179,11 @@ def main(argv):
         return 0
     with open(args.identities, encoding="utf-8") as handle:
         identities = json.load(handle)
+    problems = validate_identities(identities)
+    if problems:
+        print(f"{args.identities} is not a usable identities file:\n  " + "\n  ".join(problems), file=sys.stderr)
+        print("NOT VERIFIED")
+        return 2
     with open(args.sig, encoding="utf-8") as handle:
         signature = handle.read().strip()
     ok = verify(canonical(record), signature, args.seat, allowed_signers(identities))
