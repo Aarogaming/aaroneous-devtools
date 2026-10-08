@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "foundation.topic-case",
+  "parent_digest": null,
+  "events": [
+    {
+      "id": "event-1",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "topics",
+          "parent": null,
+          "title": "Topic workflow",
+          "question": "Can topic-bound brainstorming produce measurable reviewed work?",
+          "owner": "proposal-owner",
+          "tags": ["maintenance", "brainstorming"],
+          "evidence": [{"reference": "contracts/topic-case-v1.md", "revision": "fixture-v1"}]
+        }
+      }
+    },
+    {
+      "id": "event-2",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "idea-1",
+          "topic": "topics",
+          "actor": "proposal-author",
+          "kind": "idea",
+          "text": "Export a bounded topic experiment through existing intake.",
+          "lineage": "fixture-discussion-1",
+          "evidence": [{"reference": "fixture/discussion", "revision": "1"}]
+        }
+      }
+    },
+    {
+      "id": "event-3",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "dissent-1",
+          "topic": "topics",
+          "actor": "alternative-author",
+          "kind": "dissent",
+          "text": "Do not interpret an export as permission to execute work.",
+          "lineage": "fixture-discussion-1",
+          "evidence": [{"reference": "fixture/discussion", "revision": "2"}]
+        }
+      }
+    },
+    {
+      "id": "event-4",
+      "event": {
+        "type": "experiment",
+        "experiment": {
+          "id": "experiment-1",
+          "topic": "topics",
+          "contributions": ["idea-1", "dissent-1"],
+          "owner": "proposal-owner",
+          "intended_outcome": "One qualified proposal reaches existing review with dissent preserved.",
+          "metric": "reviewed proposals",
+          "unit": "count",
+          "baseline": {"status": "not_measured", "reason": "Synthetic example; no production baseline collected."},
+          "method": "Count review receipts linked to exported intake proposals.",
+          "direction": "at_least",
+          "threshold": 1.0,
+          "budget": {"value": 0.0, "unit": "USD"},
+          "time_budget_hours": 1.0,
+          "stop_condition": "Stop after one fixture round trip or one hour.",
+          "work_item": "C109",
+          "review_destination": "existing PR review workflow; fixture only",
+          "previous_attempt": null,
+          "revision_delta": null,
+          "intake": {
+            "schema_version": 1,
+            "id": "TOPIC-EXPERIMENT-1",
+            "source": "fixtures/topic-case-v1.json",
+            "priority": "P2",
+            "scope": ["contracts/topic-case-v1.md"],
+            "dependencies": [],
+            "verification": ["Validate the exported artifact with foundation validate-intake."],
+            "decision": "Owner review required; this fixture does not claim or dispatch work."
+          }
+        }
+      }
+    }
+  ]
+}
