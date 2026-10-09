@@ -1,0 +1,78 @@
+[
+  {
+    "acceptance": "a one-command merge line with the full head SHA, the evidence for each merge condition, and the order relative to other ready PRs Start your comment with the receipt [done:ready_to_merge:6:0606060606060606060606060606060606060606] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
+    "agent": "mimo",
+    "attempt": 1,
+    "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "ready_to_merge",
+      "pr": 6
+    },
+    "lease": {
+      "expires_tick": 6,
+      "key": "ready_to_merge:6:06060606",
+      "renewed": false
+    },
+    "lens": "direct",
+    "lens_text": "Do the task as stated.",
+    "marker": "[done:ready_to_merge:6:0606060606060606060606060606060606060606]",
+    "new_since_last": "first time this seat is handed this PR",
+    "owner_blocked": true,
+    "priority": 3,
+    "recipe": [],
+    "role": "implementer",
+    "state": "PR #6 head 060606060606 on main; +10/-2 in 1 file(s); mergeable=CLEAN; implementers=claude",
+    "task": "Prepare the owner merge brief for PR #6",
+    "then": "no further item is free for you; stand by",
+    "tick": 0,
+    "why_now": "covered, CLEAN, no unresolved threads"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "gemini",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": true,
+    "priority": 9,
+    "role": "reviewer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "codex",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": true,
+    "priority": 9,
+    "role": "auditor",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "claude",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": true,
+    "priority": 9,
+    "role": "skeptic",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  }
+]

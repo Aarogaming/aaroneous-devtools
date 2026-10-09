@@ -1,0 +1,54 @@
+[
+  {
+    "category": "mixed",
+    "plan_level": "light"
+  },
+  {
+    "category": "./*.md",
+    "plan_level": "full"
+  },
+  {
+    "category": "mixed",
+    "plan_level": "full"
+  },
+  {
+    "category": "mixed",
+    "plan_level": "light"
+  },
+  {
+    "category": "scripts/*.py",
+    "plan_level": "full"
+  },
+  {
+    "category": "foundation/crates/foundation_cli/src/*.rs",
+    "plan_level": "full"
+  },
+  {
+    "category": "mixed",
+    "plan_level": "full"
+  },
+  {
+    "category": "docs/*.png",
+    "plan_level": "full"
+  },
+  {
+    "category": "notes/*.md",
+    "plan_level": "full"
+  },
+  {
+    "category": "?",
+    "plan_level": "full"
+  },
+  {
+    "category": "mixed",
+    "plan_level": "light"
+  },
+  {
+    "category": "governance/*.json",
+    "plan_level": "light"
+  },
+  {
+    "category": "governance/*.json",
+    "plan_level": "light"
+  }
+]

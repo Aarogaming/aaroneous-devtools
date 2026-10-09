@@ -1,0 +1,55 @@
+[
+  {
+    "credited": {},
+    "heads": {
+      "1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "2": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  {
+    "credited": {},
+    "heads": {
+      "1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "credited": {
+      "claude": 1
+    },
+    "heads": {
+      "1": "cccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  {
+    "credited": {
+      "codex": 1
+    },
+    "heads": {
+      "1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "2": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  {
+    "credited": {
+      "claude": 2
+    },
+    "heads": {
+      "1": "cccccccccccccccccccccccccccccccccccccccc",
+      "2": "dddddddddddddddddddddddddddddddddddddddd"
+    }
+  },
+  {
+    "credited": {},
+    "heads": {
+      "1": "cccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  {
+    "credited": {
+      "claude": 1
+    },
+    "heads": {
+      "1": "cccccccccccccccccccccccccccccccccccccccc"
+    }
+  }
+]

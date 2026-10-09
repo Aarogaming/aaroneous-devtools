@@ -1,0 +1,84 @@
+[
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "mimo",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "implementer",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "a packet with commands run and exit codes, plus one `attestation` JSON block; review_coverage.py then reads covered=True or a stated reason Start your comment with the receipt [done:needs_review:1:0101010101010101010101010101010101010101] (the full 40-character head) and name your seat on the first line, so this task is not re-issued; if you could not complete it, do not use that receipt and say what blocked you.",
+    "agent": "gemini",
+    "attempt": 1,
+    "if_blocked": "say exactly which step is blocked and by whom, then take the next item on the ladder; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "needs_review",
+      "pr": 1
+    },
+    "lease": {
+      "expires_tick": 6,
+      "key": "needs_review:1:01010101",
+      "renewed": false
+    },
+    "lens": "direct",
+    "lens_text": "Do the task as stated.",
+    "marker": "[done:needs_review:1:0101010101010101010101010101010101010101]",
+    "new_since_last": "first time this seat is handed this PR",
+    "owner_blocked": false,
+    "priority": 2,
+    "recipe": [
+      "git fetch --prune origin && git fetch origin pull/1/head   # head must be 0101010101010101010101010101010101010101",
+      "git diff --check bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...0101010101010101010101010101010101010101   # expect exit 0",
+      "git merge-tree --write-tree origin/main 0101010101010101010101010101010101010101   # expect exit 0 (clean trial merge)",
+      "run the PR's own tests if it changes code (python -m unittest discover -s scripts -p 'test_*.py')",
+      "post ONE attestation block with fields: repo, pr=1, head=0101010101010101010101010101010101010101, base_sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, scope=whole, reviewer=<your seat>, implementers=['claude', 'mimo'], verdict"
+    ],
+    "role": "reviewer",
+    "state": "PR #1 head 010101010101 on main; +10/-2 in 1 file(s); mergeable=CLEAN; implementers=claude,mimo",
+    "task": "Post an independent whole-diff review of PR #1 at its current head, with an attestation block",
+    "then": "no further item is free for you; stand by",
+    "tick": 0,
+    "why_now": "no covered whole-diff accept at the current head"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "codex",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "auditor",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  },
+  {
+    "acceptance": "no artifact required; take the next free card when a lease completes or expires",
+    "agent": "claude",
+    "if_blocked": "not applicable; do not report 'pending' as the outcome",
+    "inputs": {
+      "kind": "standby",
+      "pr": null
+    },
+    "marker": "",
+    "owner_blocked": false,
+    "priority": 9,
+    "role": "skeptic",
+    "task": "Standby: every open item is currently leased to another seat",
+    "tick": 0,
+    "why_now": "no free item; duplicating work or inventing a task would be noise"
+  }
+]
