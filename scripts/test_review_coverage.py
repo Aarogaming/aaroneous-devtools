@@ -242,6 +242,17 @@ class ReviewerMustNameASeat(unittest.TestCase):
         for implementers in (["claude"], ["Claude", "codex"], ["gemini-3.8-flash"]):
             self.assertIsNone(rc.validate(rec(H1, impl=implementers)), implementers)
 
+    def test_a_seat_registered_in_identities_json_can_post_a_verdict_without_editing_the_known_list(self):
+        # ubuntu-worker-01 was registered on main (#139) after this check was written; every registered seat must be
+        # able to attest, whatever KNOWN_SEATS says.
+        for seat in sorted(rc.registered_seats()):
+            self.assertIsNone(rc.validate(rec(H1, reviewer=seat)), seat)
+        with mock.patch.object(rc, "registered_seats", return_value={"ubuntu-worker-01"}):
+            for reviewer in ("ubuntu-worker-01", "Ubuntu-Worker-01 (RTX 4090)"):
+                self.assertIsNone(rc.validate(rec(H1, reviewer=reviewer)), reviewer)
+            for reviewer in ("ubuntu-worker", "ubuntu-worker-011", "<your seat>"):
+                self.assertIsNotNone(rc.validate(rec(H1, reviewer=reviewer)), reviewer)
+
     def test_every_known_way_of_naming_a_seat_still_validates(self):
         for reviewer in ("mimo", "Gemini", "Antigravity (gemini-3.8-flash)", "claude-sonnet-5-5", "Codex", "qwen"):
             self.assertIsNone(rc.validate(rec(H1, reviewer=reviewer)), reviewer)
