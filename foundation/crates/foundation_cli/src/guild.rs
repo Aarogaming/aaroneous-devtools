@@ -368,6 +368,12 @@ pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
             .unwrap_or(1)
     };
 
+    if let Some(ref identities) = args.identities {
+        if !identities.exists() {
+            bail!("identities file does not exist: {}", identities.display());
+        }
+    }
+
     // Load state from snapshot file if provided, otherwise invoke live collector
     let state: Value = if let Some(ref snapshot_path) = args.snapshot {
         let content = fs::read_to_string(snapshot_path)
@@ -386,40 +392,57 @@ pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
             let content = fs::read_to_string(&local_snapshot)?;
             serde_json::from_str(&content)?
         } else {
-            // Live collector adapter fallback
-            let python_bin = if Command::new("python3").arg("--version").output().is_ok() {
-                "python3"
-            } else {
-                "python"
-            };
-            let script = repo_dir.join("scripts").join("collect_state.py");
-            if !script.exists() {
-                bail!(
-                    "Neither --snapshot nor scripts/collect_state.py found at {}",
-                    repo_dir.display()
-                );
-            }
-            let out = Command::new(python_bin)
-                .arg(&script)
-                .arg("--repo")
-                .arg(&args.repo)
-                .arg("--repo-dir")
-                .arg(repo_dir)
-                .output()
-                .with_context(|| format!("failed to invoke {python_bin} {script:?}"))?;
-            if !out.status.success() {
-                bail!(
-                    "collect_state.py failed (exit {}): {}",
-                    out.status,
-                    String::from_utf8_lossy(&out.stderr)
-                );
-            }
-            let parsed: Value = serde_json::from_slice(&out.stdout)
-                .with_context(|| "malformed JSON from collect_state.py")?;
-            if let Some(inner) = parsed.get("state") {
-                inner.clone()
-            } else {
-                parsed
+            // Native Rust live collector with fallback to Python script if gh fails or unavailable
+            match crate::guild_collector::collect_live_state(
+                &args.repo,
+                repo_dir,
+                args.identities.as_deref(),
+                false,
+            ) {
+                Ok(collected) => {
+                    if let Some(inner) = collected.get("state") {
+                        inner.clone()
+                    } else {
+                        collected
+                    }
+                }
+                Err(native_err) => {
+                    let script = repo_dir.join("scripts").join("collect_state.py");
+                    if script.exists() {
+                        let python_bin =
+                            if Command::new("python3").arg("--version").output().is_ok() {
+                                "python3"
+                            } else {
+                                "python"
+                            };
+                        let out = Command::new(python_bin)
+                            .arg(&script)
+                            .arg("--repo")
+                            .arg(&args.repo)
+                            .arg("--repo-dir")
+                            .arg(repo_dir)
+                            .output()
+                            .with_context(|| {
+                                format!("native collector failed ({native_err:#}); fallback to {python_bin} {script:?} also failed")
+                            })?;
+                        if !out.status.success() {
+                            bail!(
+                                "collect state failed: native error: {native_err:#}; python error (exit {}): {}",
+                                out.status,
+                                String::from_utf8_lossy(&out.stderr)
+                            );
+                        }
+                        let parsed: Value = serde_json::from_slice(&out.stdout)
+                            .with_context(|| "malformed JSON from collect_state.py")?;
+                        if let Some(inner) = parsed.get("state") {
+                            inner.clone()
+                        } else {
+                            parsed
+                        }
+                    } else {
+                        bail!("native state collection failed: {native_err:#}");
+                    }
+                }
             }
         }
     } else {
@@ -651,6 +674,12 @@ pub fn run_status(args: &StatusArgs) -> Result<()> {
 pub fn run_daemon(args: &DaemonArgs) -> Result<()> {
     if args.interval_seconds == 0 {
         bail!("interval-seconds must be at least 1");
+    }
+    if !args.identities.exists() {
+        bail!(
+            "identities file does not exist: {}",
+            args.identities.display()
+        );
     }
 
     println!(

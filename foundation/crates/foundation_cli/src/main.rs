@@ -5,6 +5,7 @@ mod dependency_review;
 mod dogfood;
 mod feeder;
 pub mod guild;
+pub mod guild_collector;
 mod intake;
 mod intake_generator;
 mod local_proposal;
