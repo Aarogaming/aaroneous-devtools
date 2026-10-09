@@ -163,3 +163,81 @@ fn oversized_persistent_inputs_are_retained_and_rejected() {
         assert_eq!(fs::read(&path).unwrap(), bytes);
     }
 }
+
+#[test]
+fn atomic_replacement_leaves_no_temporary_sidecars_and_updates_content() {
+    let dir = tempfile::tempdir().unwrap();
+    let control_file = dir.path().join("loop-control.json");
+
+    // Control writes loop-control.json via save_json_atomic / write_atomic
+    let out = Command::new(env!("CARGO_BIN_EXE_foundation"))
+        .args(["maintenance", "control", "--runtime-root"])
+        .arg(dir.path())
+        .args(["--state", "run"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "control failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(control_file.is_file());
+
+    // Update state to pause atomically
+    let out2 = Command::new(env!("CARGO_BIN_EXE_foundation"))
+        .args(["maintenance", "control", "--runtime-root"])
+        .arg(dir.path())
+        .args(["--state", "pause"])
+        .output()
+        .unwrap();
+    assert!(
+        out2.status.success(),
+        "control failed: {}",
+        String::from_utf8_lossy(&out2.stderr)
+    );
+
+    let read_back: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&control_file).unwrap()).unwrap();
+    assert_eq!(read_back["state"], "pause");
+
+    // Ensure no .tmp files exist anywhere in runtime root
+    let entries: Vec<_> = fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "tmp"))
+        .collect();
+    assert!(
+        entries.is_empty(),
+        "temporary files were not cleaned up: {:?}",
+        entries
+    );
+}
+
+#[test]
+fn daemon_accepts_explicit_checkout_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake_checkout = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("worker.toml"), "unused test sentinel").unwrap();
+    fs::write(
+        dir.path().join("loop-control.json"),
+        json!({"state":"pause"}).to_string(),
+    )
+    .unwrap();
+
+    // Verify passing --checkout to daemon succeeds without complaining about D:\Aaroneous
+    let output = Command::new(env!("CARGO_BIN_EXE_foundation"))
+        .args(["maintenance", "daemon", "--runtime-root"])
+        .arg(dir.path())
+        .args(["--checkout"])
+        .arg(fake_checkout.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "daemon failed with explicit --checkout: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("daemon exiting on control state: pause"));
+}
