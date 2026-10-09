@@ -61,11 +61,18 @@ def validate(record):
     implementers = record["implementers"]
     if not isinstance(implementers, list) or not implementers:
         return "implementers must be a non-empty list"
+    if not all(isinstance(entry, str) and entry.strip() for entry in implementers):
+        return ("implementers must list seat names as non-blank strings (found "
+                f"{[entry for entry in implementers if not (isinstance(entry, str) and entry.strip())]!r}): "
+                "an empty entry declares no implementer, so independence would be vacuous; nothing was counted")
     if record["scope"] not in ("whole", "delta"):
         return f"unknown scope: {record['scope']!r}"
     if not isinstance(record["verdict"], str) or record["verdict"] not in ACCEPT | REJECT:
         return (f"unknown verdict {record['verdict']!r}: use accept, needs_revision or changes_requested "
                 "(lower case); nothing was counted")
+    if not known_seat_names(record["reviewer"]):
+        return (f"reviewer {record['reviewer']!r} names no known seat ({', '.join(KNOWN_SEATS)}): copy the seat name "
+                "from your own packet, not a template placeholder; nothing was counted")
     return None
 
 
