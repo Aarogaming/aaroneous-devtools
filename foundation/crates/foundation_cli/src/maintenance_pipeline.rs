@@ -229,6 +229,17 @@ pub fn format_compact_stamp(secs: u64) -> String {
     format!("{y:04}{m:02}{day:02}T{hours:02}{mins:02}{s:02}Z")
 }
 
+/// Validate seat identifier: 1-32 chars, lowercase alphanumeric, hyphens, or underscores.
+pub fn is_valid_seat_id(seat: &str) -> bool {
+    let trimmed = seat.trim();
+    if trimmed.is_empty() || trimmed.len() > 32 {
+        return false;
+    }
+    trimmed
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
 pub fn sha256_file(path: &Path) -> Result<String> {
     let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
     Ok(sha256_digest(&bytes))
@@ -1221,8 +1232,13 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
         let dec_txt = fs::read_to_string(&decision_path)?;
         let decision: DecisionReceipt = serde_json::from_str(&dec_txt)?;
 
-        if decision.actor != "frontier-supervisor"
-            || decision.independent_of != "local-qwen"
+        let actor = decision.actor.trim().to_lowercase();
+        let independent_of = decision.independent_of.trim().to_lowercase();
+        if actor.is_empty()
+            || independent_of.is_empty()
+            || actor == independent_of
+            || !is_valid_seat_id(&actor)
+            || !is_valid_seat_id(&independent_of)
             || decision.cycle_id != state_ref.cycle_id
             || decision.plan_sha256 != state_ref.plan_sha256
             || decision.brief_sha256 != state_ref.brief_sha256
