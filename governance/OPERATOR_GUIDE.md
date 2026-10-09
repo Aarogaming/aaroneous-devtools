@@ -55,7 +55,7 @@ service. Anything marked proposal changes no behaviour until the owner accepts i
 | Local worker, multithreader, registrar | Operating as commands | [LOCAL_WORKER_OPERATIONS.md](LOCAL_WORKER_OPERATIONS.md), section 7 |
 | Packet utility (readiness and research packets) | Operating, local | [UTILITY.md](UTILITY.md), [../architecture/JOB_PIPELINE.md](../architecture/JOB_PIPELINE.md) |
 | Daily cloud primary-lane routine | Installed; first run had no GitHub access | [SCHEDULE.md](SCHEDULE.md) section "Cloud primary-lane routine" |
-| Rust steward crate (the proposed Guild component) | Draft PR, golden vectors are the contract | `scripts/golden/steward/README.md`, section 9 |
+| Rust steward crate and the native Guild CLI (`foundation guild tick`, `verify-log`, `status`, `daemon`) | Merged 2026-10-09 (#118, #148; lanes C99, C113). I have not run the Guild CLI: this row rests on the PR description (NOT VERIFIED) | `foundation/crates/foundation_cli/src/guild.rs`, `scripts/golden/steward/README.md`, section 9 |
 | Platform spec v0 | **Proposal**, awaiting owner approval | [PLATFORM_SPEC.md](PLATFORM_SPEC.md) |
 | One operable, autonomous application | Not yet | [DEVTOOLS_STATUS.md](DEVTOOLS_STATUS.md) (dated 2026-09-17) |
 
@@ -67,7 +67,8 @@ service. Anything marked proposal changes no behaviour until the owner accepts i
    paste [ROUND_TABLE_INTRO_PROMPT.md](ROUND_TABLE_INTRO_PROMPT.md) first.
 2. Pick your seat name: `claude`, `codex`, `gemini` (also written Antigravity) or `mimo` (the local Qwen).
    Use it exactly in every comment, attestation and receipt.
-3. Get a signing key and register it (section 3).
+3. Get a signing key, register it, and set up your own GitHub identity so your posts do not show as the owner
+   (section 3).
 4. Fetch, then run the steward against your own persistent log (section 4) and read your card.
 5. Work on a branch in your own worktree. Never touch another seat's dirty checkout or untracked files, and
    never push to `main` (branch protection requires a PR for every credential).
@@ -75,7 +76,7 @@ service. Anything marked proposal changes no behaviour until the owner accepts i
 7. Before saying done, run the checks and quote the command, exit code and a log path or commit hash.
 8. Review someone else's PR with a head-bound attestation (section 6). Never accept your own work.
 
-## 3. Get a seat key and register it
+## 3. Get a seat key and your own GitHub identity
 
 Why: every seat posts under one shared GitHub login, so a pasted verdict block cannot be told from a real
 one. A signature proves the seat holding the private key made the verdict. The full procedure, trust
@@ -90,7 +91,6 @@ cat ~/.ssh/aaroneous_attest_SEAT.pub        # the one line to register; the priv
 - Register the **public** line in that seat's `keys` list in `governance/identities.json` by a PR. Since
   2026-10-09 no devtools path is owner-gated: the same two independent accepts as any other PR are the
   gate. Never put a private key, passphrase or token in the repository.
-  repository.
 - Sign a verdict: `python scripts/make_attestation.py --repo OWNER/NAME --repo-dir . --pr N --reviewer SEAT
   --verdict accept --key ~/.ssh/aaroneous_attest_SEAT` prints the attestation block and the signature block;
   paste both into your review comment. The tool refuses to build a verdict for a seat that is among the
@@ -99,7 +99,39 @@ cat ~/.ssh/aaroneous_attest_SEAT.pub        # the one line to register; the priv
   governance/identities.json --pr N`. The trust level shows as `signed`, `authenticated` or `attested-only`.
 
 Today (2026-10-09) the merge gate always requires signatures, so a seat with no registered key has no
-verdict the gate counts. The claude seat's key is in an open PR; the other three seats have none yet.
+verdict the gate counts. Keys are registered for claude, mimo and gemini; codex has none yet.
+
+### Your own GitHub identity (a GitHub App per seat)
+
+Every seat otherwise posts through the owner's one token, so GitHub shows the owner for everything. Each seat
+should run this once, on the machine where it works, the next time it gets a turn:
+
+```bash
+python scripts/seat_app_setup.py setup --seat SEAT      # --seat all runs every seat in turn
+```
+
+The command opens a browser. The person signed in to GitHub (the owner) clicks GitHub's own **Create GitHub App**
+and **Install** pages; everything else is automatic, and it prints one `done` line when the seat's token reaches the
+repository. Afterwards the seat's posts show as `aaroneous-SEAT-seat[bot]`. It can be re-run and resumes where it
+stopped. A seat that cannot open a browser (a cloud session, for example) asks the owner to run it.
+
+To post as the App, a seat sets its own token and a separate `gh` config so `gh` cannot fall back to the owner's
+login (the full lines are in the seat-apps doc):
+
+```bash
+export GH_CONFIG_DIR="$HOME/.steward/seats/SEAT/gh"
+export GH_TOKEN="$(python scripts/seat_app_setup.py token --seat SEAT)"      # lasts one hour
+```
+
+- The private key stays in `~/.steward/seats/SEAT/`, never in the repository. Seats that share one machine and one
+  operating-system user can read each other's folders, so that separation holds by convention only; real isolation
+  needs separate users or machines.
+- After a seat's App exists, add its login (`aaroneous-SEAT-seat[bot]`) to that seat's `logins` list in
+  `governance/identities.json`, so formal reviews it posts count as `authenticated`. The claude seat's App is set up
+  and its mapping is in an open PR.
+- The helper, the seat-apps doc (`governance/SEAT_APPS.md`), how to revoke an App and what is still unverified are in
+  PR #147 and are on `main` once it merges. Not verified: whether an App's approving review counts toward a
+  required-review rule.
 
 ## 4. The steward: your task card each tick
 
@@ -122,7 +154,8 @@ one card per seat, and logs what it saw in a hash-chained event log. It never ed
   never widen it.
 - **Tests and contract:** `python scripts/golden_vectors.py --check` verifies the golden vectors in
   `scripts/golden/steward/`; they are the behavioural contract any re-implementation must meet.
-- Task-card logic lives in `scripts/next_task.py` and `scripts/collect_state.py`.
+- Task-card logic lives in `scripts/next_task.py` and `scripts/collect_state.py`. A native Rust equivalent, the
+  Guild CLI, exists (section 9); the heartbeat still runs the scripts above unless a seat's instructions say otherwise.
 
 ## 5. Claims and the queue
 
@@ -213,10 +246,15 @@ Choose a path with the table in [LOCAL_WORKER_OPERATIONS.md](LOCAL_WORKER_OPERAT
   (`kernel`, `control`, `presentation` or `tooling`) in its manifest, and rules ratchet forward. The spec is
   in the product repo (`docs/CRATIFY_SPEC.md`). Here, `scripts/profile_manifest_report.py` reports which
   product crates declare a profile.
-- **Guild** is the proposed name for the steward once it graduates into Aaroneous as a Rust component. Today
-  it is a proposal ([proposals/TRANSPARENT_BY_DESIGN_NOTATION.md](proposals/TRANSPARENT_BY_DESIGN_NOTATION.md),
-  [proposals/PATTERNS_FROM_AGENT_RUNTIMES.md](proposals/PATTERNS_FROM_AGENT_RUNTIMES.md)) with a Rust port in
-  progress whose contract is the golden vectors. It is not something you can run as "Guild" yet.
+- **Guild** is the steward promoted to a native Rust service. Its CLI is `foundation guild tick | verify-log |
+  status | daemon` (lane C113, merged 2026-10-09 in #148): `tick` builds the per-seat task cards and appends to the
+  hash-chained event log, `verify-log` checks the chain against its `.tip` sidecar, `status` shows tick counts and
+  active cards, `daemon` loops with adaptive pacing. It builds on the Rust `steward` crate (merged in #118) whose
+  contract is the golden vectors. The Python steward in section 4 is the reference implementation and what the
+  heartbeat runs today; whether any seat's heartbeat now uses the Guild CLI is NOT VERIFIED here. Source:
+  `foundation/crates/foundation_cli/src/guild.rs` and the description of #148. Background and naming:
+  [proposals/TRANSPARENT_BY_DESIGN_NOTATION.md](proposals/TRANSPARENT_BY_DESIGN_NOTATION.md),
+  [proposals/PATTERNS_FROM_AGENT_RUNTIMES.md](proposals/PATTERNS_FROM_AGENT_RUNTIMES.md).
 - Graduation rules: section 0 above and `AGENTS.md` section 4 in the product repo.
 
 ## 10. I want to...

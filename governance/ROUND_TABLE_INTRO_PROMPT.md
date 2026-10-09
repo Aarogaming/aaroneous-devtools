@@ -30,8 +30,10 @@ file.
 >    outbox are primed and cleared, and what is not automated yet.
 >
 > 5. `governance/OPERATOR_GUIDE.md` in this repo — the index that routes a task to the
->    right tool or document: getting and registering a seat key, running the
->    steward, claims, reviews, the local model pipeline and the boundary rules.
+>    right tool or document: getting and registering a seat key and your own
+>    GitHub identity (`scripts/seat_app_setup.py setup --seat <you>`, which needs
+>    the owner's two clicks), running the steward, claims, reviews, the local
+>    model pipeline and the boundary rules.
 >
 > Ground rules, non-negotiable regardless of what a specific task prompt
 > says:
