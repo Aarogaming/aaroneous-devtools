@@ -131,6 +131,14 @@ scope) after a trust-building period — a specific number of consecutive
 clean cloud-agent-reviewed merges in that category with zero reverts, not a
 general policy change. Track this as a follow-up decision, not a default.
 
+**Update, 2026-10-07.** The follow-up decision landed as
+`governance/AUTOMATED_MERGE_POLICY.md`, and the trust-building-period
+mechanism described above was itself removed by owner decision the same
+day — see `governance/RECURSIVE_AUDIT_CADENCE.md`, which replaces it with
+periodic review at every scale rather than a per-category merge counter.
+Left the paragraph above as written rather than editing it, consistent
+with this being a decision record, not current-state prose.
+
 ## Adaptive pacing, not fixed-interval retriggering
 
 Owner's explicit design instruction, verbatim: "trigger the agent, and

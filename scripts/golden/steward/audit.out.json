@@ -1,0 +1,128 @@
+[
+  {
+    "tasks": [
+      "Re-run review_coverage.py against o/r#54 (merge commit mmmmmmmmmmmm, head hhhhhhhhhhhh) and compare its structured verdict with the prose verdicts in its comments; report any disagreement",
+      "Standby: every open item is currently leased to another seat",
+      "Standby: every open item is currently leased to another seat",
+      "Standby: every open item is currently leased to another seat"
+    ],
+    "tick": 0
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 1
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 2
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 3
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 4
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 5
+  },
+  {
+    "tasks": [
+      "Re-run review_coverage.py against o/r#54 (merge commit mmmmmmmmmmmm, head hhhhhhhhhhhh) and compare its structured verdict with the prose verdicts in its comments; report any disagreement",
+      "Standby: every open item is currently leased to another seat",
+      "Standby: every open item is currently leased to another seat",
+      "Standby: every open item is currently leased to another seat"
+    ],
+    "tick": 6
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 7
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 8
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 9
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 10
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 11
+  },
+  {
+    "tasks": [
+      "Re-run review_coverage.py against o/r#54 (merge commit mmmmmmmmmmmm, head hhhhhhhhhhhh) and compare its structured verdict with the prose verdicts in its comments; report any disagreement",
+      "Standby: every open item is currently leased to another seat",
+      "Standby: every open item is currently leased to another seat",
+      "Standby: every open item is currently leased to another seat"
+    ],
+    "tick": 12
+  },
+  {
+    "tasks": [
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick",
+      "Healthy idle: no action required this tick"
+    ],
+    "tick": 13
+  }
+]

@@ -1,0 +1,84 @@
+[
+  {
+    "name": "docs and governance markdown gets the light gate",
+    "paths": [
+      "governance/NOTES.md",
+      "docs/x.md"
+    ]
+  },
+  {
+    "name": "AGENTS.md gets the full gate (not a docs-allowlist path)",
+    "paths": [
+      "AGENTS.md"
+    ]
+  },
+  {
+    "name": "workflow files and scripts get the full gate",
+    "paths": [
+      ".github/workflows/ci.yml",
+      "scripts/a.py"
+    ]
+  },
+  {
+    "name": "governance markdown mixed with other docs still gets the light gate",
+    "paths": [
+      "governance/AUTOMATED_MERGE_POLICY.md",
+      "docs/a.md"
+    ]
+  },
+  {
+    "name": "scripts get the full gate",
+    "paths": [
+      "scripts/steward_run.py",
+      "scripts/test_steward_run.py"
+    ]
+  },
+  {
+    "name": "Rust sources get the full gate",
+    "paths": [
+      "foundation/crates/foundation_cli/src/main.rs"
+    ]
+  },
+  {
+    "name": "one non-docs path makes the whole change get the full gate",
+    "paths": [
+      "docs/a.md",
+      "Cargo.toml"
+    ]
+  },
+  {
+    "name": "a doc extension outside the family is not trusted",
+    "paths": [
+      "docs/diagram.png"
+    ]
+  },
+  {
+    "name": "an unlisted directory is not trusted for the light gate",
+    "paths": [
+      "notes/x.md"
+    ]
+  },
+  {
+    "name": "no paths is a full gate",
+    "paths": []
+  },
+  {
+    "name": "mixed directories report mixed",
+    "paths": [
+      "docs/a.md",
+      "governance/b.md"
+    ]
+  },
+  {
+    "name": "the seat identity map gets the light gate (it's a governance json file)",
+    "paths": [
+      "governance/identities.json"
+    ]
+  },
+  {
+    "name": "another governance json file gets the light gate too",
+    "paths": [
+      "governance/other.json"
+    ]
+  }
+]
