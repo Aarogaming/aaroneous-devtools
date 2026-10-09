@@ -70,7 +70,7 @@ def validate(record):
     if not isinstance(record["verdict"], str) or record["verdict"] not in ACCEPT | REJECT:
         return (f"unknown verdict {record['verdict']!r}: use accept, needs_revision or changes_requested "
                 "(lower case); nothing was counted")
-    if not known_seat_names(record["reviewer"]):
+    if not isinstance(record["reviewer"], str) or not record["reviewer"].strip() or not known_seat_names(record["reviewer"]):
         return (f"reviewer {record['reviewer']!r} names no known seat ({', '.join(KNOWN_SEATS)}): copy the seat name "
                 "from your own packet, not a template placeholder; nothing was counted")
     return None

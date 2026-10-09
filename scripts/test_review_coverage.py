@@ -189,6 +189,14 @@ class ReviewerMustNameASeat(unittest.TestCase):
             self.assertIsNotNone(problem, reviewer)
             self.assertIn("names no known seat", problem)
 
+    def test_a_reviewer_that_is_not_a_string_is_malformed_and_counts_for_nothing(self):
+        # Found by Codex review finding on PR #140: a non-string reviewer like ["codex"] or {"seat": "codex"}
+        # would previously be stringified by known_seat_names() and pass validation, then raise TypeError in attest_sig.verify().
+        for reviewer in (["codex"], {"seat": "codex"}, 123, None):
+            problem = rc.validate(rec(H1, reviewer=reviewer))
+            self.assertIsNotNone(problem, reviewer)
+            self.assertIn("names no known seat", problem)
+
     def test_an_implementers_list_with_a_blank_or_non_string_entry_is_malformed(self):
         # Found by a skeptic probe: implementers [""] and [None] passed the non-empty-list check, so the accept
         # declared no real implementer and counted as independent of nobody (covered=True, accept_seats ["mimo"]).
