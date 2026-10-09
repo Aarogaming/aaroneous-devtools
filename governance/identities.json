@@ -5,6 +5,6 @@
     "claude": {"logins": [], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKl7YYxzb4umZVCMjjM/fNtSLhfsP9KV55cj9jQogc0n"]},
     "mimo": {"logins": [], "keys": []},
     "codex": {"logins": [], "keys": []},
-    "gemini": {"logins": [], "keys": []}
+    "gemini": {"logins": [], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPB2JAZ7RkQZU4fKWL+GxRWSKQzxtk59XXx2PuGfIylX"]}
   }
 }
