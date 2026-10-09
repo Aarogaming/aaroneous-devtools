@@ -11,7 +11,7 @@ import attest_sig as at  # noqa: E402
 import review_coverage as rc  # noqa: E402
 
 HAVE_KEYGEN = shutil.which("ssh-keygen") is not None
-MB = "m" * 40
+MB = "d" * 40
 H1 = "a" * 40
 
 

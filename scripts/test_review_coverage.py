@@ -67,9 +67,9 @@ class Coverage(unittest.TestCase):
         self.assertTrue(ev(H1, [rec(H1), rec(H2, reviewer="codex", verdict="needs_revision", base="w" * 40)])["covered"])
 
     def test_an_accept_that_does_not_count_says_why(self):
-        wrong = ev(H1, [rec(H1, reviewer="gemini", base="d" * 40)])
+        wrong = ev(H1, [rec(H1, reviewer="gemini", base="e" * 40)])
         self.assertFalse(wrong["covered"])
-        self.assertIn("names base_sha dddddddddddd, but the merge base is mmmmmmmmmmmm", wrong["reasons"][-1])
+        self.assertIn("names base_sha eeeeeeeeeeee, but the merge base is dddddddddddd", wrong["reasons"][-1])
         own = ev(H1, [rec(H1, reviewer="claude")])
         self.assertIn("the accept by claude is not independent of its implementers ['claude']", own["reasons"][-1])
         # new wording must not trip merge_gate's substring test for a standing rejection
@@ -264,7 +264,7 @@ class Parsing(unittest.TestCase):
         self.assertIn("head must be a full 40-character lowercase SHA", text)
         self.assertIn("invalid JSON", text)
         self.assertNotIn("#2: ", text.replace("#2    ", ""))
-        self.assertTrue(text.startswith("PR    head      covered  structured  legacy(not counted)  reasons"))
+        self.assertTrue(text.startswith("PR    head      covered  structured  auth  legacy(not counted)  reasons"))
 
     def test_the_default_report_caps_the_lines_per_pr(self):
         comments = [block(dict(rec(H1), head="x")) for _ in range(rc.MAX_PROBLEM_LINES + 3)]
