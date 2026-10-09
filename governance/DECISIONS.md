@@ -61,3 +61,23 @@ come from the repository (the queue, pull requests and this record), not from a 
 The rest of the 2026-09-17 entry stands: same capacity, claim-expiry and native-gate rules, no reserved
 lane. Its first firing (2026-10-07) had no GitHub access in the fresh session and did no queue work; the
 record of that run and the stored prompt are in `SCHEDULE.md` and `routines/DAILY_PRIMARY_LANE_STORED_PROMPT.md`.
+
+## 2026-10-07 — Dropped the trust-building merge counter; built the checker and the merge pipeline
+
+Owner: the trust-building gate above (5 consecutive clean merges per category) was the author's
+own caution, not an owner requirement — "the ONLY reason we've gated PRs as much as we have in
+merging is because of YOUR paranoia" — and quantifying trust by merge count doesn't actually work
+("we can't quantify the quality"). Replaced it with `governance/RECURSIVE_AUDIT_CADENCE.md`: the
+same five audit types (state, roadmap, documentation, code, compliance) this repo already runs,
+applied recursively at every scale (script, crate, program, repository, project, platform) on a
+schedule, not a merge-volume counter. `AUTOMATED_MERGE_POLICY.md` and `scripts/merge_gate.py`
+(which had box 8 blocking every PR unconditionally, since nothing ever populated the trust
+counter it checked) updated to match.
+
+Also built the checker's GitHub-merge wiring named above as still-pending: `scripts/auto_merge.py`
+plus `.github/workflows/auto-merge.yml` (lane C103) actually call `gh pr merge` on whatever
+`merge_gate.evaluate_all()` marks eligible — the "dedicated pipeline" that "takes the agent out of
+the operation" the owner asked for, rather than leaving agents to follow the checklist by
+convention. Hard-refuses to run against any repository but `aaroneous-devtools`: scope stays exactly
+what `AUTOMATED_MERGE_POLICY.md`'s Scope section says (`aaroneous`, the product, is never eligible
+under this document, regardless of tier, until something graduates into it).

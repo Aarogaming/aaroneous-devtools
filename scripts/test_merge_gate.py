@@ -197,7 +197,7 @@ def good_facts(**kw):
         "ci": {"state": "success", "detail": "2 checks: SUCCESS"}, "trial_merge_ok": True,
         "accept_seats": ["mimo", "codex"], "covered": True, "threads_open": 0,
         "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
-        "breaker_tripped": False, "trust": (5, 5), "category": "governance/*.md", "tier": ("B", ""),
+        "breaker_tripped": False, "category": "governance/*.md", "tier": ("B", ""), "is_draft": False,
         "standing_changes_requested": False,
     }
     facts.update(kw)
@@ -248,12 +248,12 @@ class Checklist(unittest.TestCase):
             "1": {"ci": {"state": "failure", "detail": "x"}},
             "2": {"trial_merge_ok": False},
             "2a": {"base_ref": "codex/foundry-transition"},
+            "2b": {"is_draft": True},
             "3": {"accept_seats": ["mimo"]},
             "4": {"threads_open": 2},
             "5": {"verdicts_missing_evidence": [4]},
             "6": {"revertible": False},
             "7": {"breaker_tripped": True},
-            "8": {"trust": (2, 5)},
         }
         for box_no, change in cases.items():
             lines, ok, first = mg.checklist(good_facts(**change))
@@ -262,7 +262,8 @@ class Checklist(unittest.TestCase):
 
     def test_an_unevaluable_box_is_blocked_and_fails_the_gate(self):
         for change, text in (({"ci": None}, "CI"), ({"revertible": None}, "classification"),
-                             ({"breaker_tripped": None}, "circuit"), ({"threads_open": None}, "thread")):
+                             ({"breaker_tripped": None}, "circuit"), ({"threads_open": None}, "thread"),
+                             ({"is_draft": None}, "draft")):
             lines, ok, first = mg.checklist(good_facts(**change))
             self.assertFalse(ok)
             self.assertTrue(any(l.startswith("[blocked:") for l in lines), lines)
