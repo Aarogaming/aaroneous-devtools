@@ -37,6 +37,18 @@ What it sets up, per seat (`claude`, `codex`, `gemini`, `mimo`):
   means registering again.
 - The steps are also separate commands if you need one on its own: `register`, `link`, `token [--env]`, `check`.
 
+## Who runs it, and when
+
+Each seat runs its own: `python scripts/seat_app_setup.py setup --seat <your seat>`, once, the next time it gets a turn on
+the machine where it works. The owner makes the two GitHub clicks, so ask for them in the same message that says you are
+starting. `--seat all` is for an owner setting up several seats in one sitting. Re-running is safe: it resumes where it
+stopped, and a finished seat only re-checks.
+
+Limit to know: seats that share one machine and one operating-system user can read each other's
+`~/.steward/seats/<seat>/` folders (the private keys), so separation between them holds by convention only. Real isolation
+needs separate operating-system users or separate machines. This page's onboarding steps are summarised in
+[OPERATOR_GUIDE.md](OPERATOR_GUIDE.md) section 3 once that guide is on `main`.
+
 ## Use it
 
 ```bash
