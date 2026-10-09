@@ -1,0 +1,12 @@
+# Tier A paths (governance/AUTOMATED_MERGE_POLICY.md) always need the owner's own
+# review before merge, regardless of independent-seat accepts. This file alone
+# enforces nothing on its own -- it only takes effect once branch protection's
+# "Require review from Code Owners" is turned on for `main`
+# (Settings -> Branches -> edit the rule for main -> that checkbox).
+
+/.github/            @Aarogaming
+AGENTS.md             @Aarogaming
+SECURITY.md           @Aarogaming
+CONTRIBUTING.md       @Aarogaming
+/governance/AUTOMATED_MERGE_POLICY.md  @Aarogaming
+/governance/identities.json            @Aarogaming
