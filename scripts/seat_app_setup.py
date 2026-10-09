@@ -27,6 +27,7 @@ import base64
 import html
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -39,7 +40,20 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
 API = "https://api.github.com"
-SEATS = ("claude", "codex", "gemini", "mimo")
+SEATS = ("claude", "codex", "gemini", "mimo")  # the original four; identities.json adds any later seat
+APP_NAME_LIMIT = 34  # GitHub's limit on an App name
+SEAT_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def registered_seats():
+    """The original four plus every seat registered in governance/identities.json, in that order."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "governance", "identities.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            extra = [str(seat).lower() for seat in json.load(handle).get("seats", {})]
+    except (OSError, ValueError, AttributeError):
+        extra = []
+    return tuple(SEATS) + tuple(seat for seat in extra if seat not in SEATS)
 DEFAULT_REPO = "Aarogaming/aaroneous-devtools"
 
 
@@ -47,15 +61,18 @@ def seat_dir(seat, root=None):
     return os.path.join(root or os.path.join(os.path.expanduser("~"), ".steward", "seats"), seat)
 
 
-def build_manifest(seat, repo, redirect_url, allow_workflows=False):
+def build_manifest(seat, repo, redirect_url, allow_workflows=False, name=None):
     """The App definition GitHub shows the owner. Least privilege: branches, pull requests and issue comments; the
     workflows permission only on request, because changing .github/workflows is a separate decision."""
     permissions = {"contents": "write", "pull_requests": "write", "issues": "write", "checks": "read",
                    "statuses": "read"}
     if allow_workflows:
         permissions["workflows"] = "write"
+    name = name or f"aaroneous-{seat}-seat"
+    if len(name) > APP_NAME_LIMIT:
+        raise ValueError(f"the App name {name!r} is {len(name)} characters; GitHub allows {APP_NAME_LIMIT}")
     return {
-        "name": f"aaroneous-{seat}-seat",
+        "name": name,
         "url": f"https://github.com/{repo}",
         "description": f"The {seat} seat's own identity for {repo}: its pull requests, comments and reviews.",
         "redirect_url": redirect_url,
@@ -176,7 +193,7 @@ def save_app(directory, app):
 
 
 def run_setup(seat, repo, root, say, port=0, allow_workflows=False, open_browser=True, now=time.time, api=http_json,
-              convert=convert_code, sleep=time.sleep, on_ready=None, timeout=900, install_timeout=600):
+              convert=convert_code, sleep=time.sleep, on_ready=None, timeout=900, install_timeout=600, name=None):
     """Register, install, link and check one seat. Resumes where an earlier run stopped. Returns (ok, summary)."""
     directory = seat_dir(seat, root)
     if not os.path.exists(os.path.join(directory, "app.json")):
@@ -187,7 +204,7 @@ def run_setup(seat, repo, root, say, port=0, allow_workflows=False, open_browser
             if on_ready:
                 on_ready(url, context)
         info, error = serve_registration(seat, repo, directory, port, allow_workflows, convert=convert, timeout=timeout,
-                                         on_ready=ready)
+                                         on_ready=ready, name=name)
         if error:
             return False, f"[{seat}] registration failed: {error}"
         say(f"[{seat}] created {info['slug']} (id {info['id']}); credentials saved in {directory}")
@@ -269,12 +286,13 @@ def make_handler(context):
 
 
 def serve_registration(seat, repo, directory, port=0, allow_workflows=False, convert=convert_code, timeout=900,
-                       on_ready=None):
+                       on_ready=None, name=None):
     """Serve the landing page on 127.0.0.1 and wait for GitHub's redirect. Returns (info, error)."""
     context = {"seat": seat, "repo": repo, "directory": directory, "state": secrets.token_urlsafe(24),
                "convert": convert, "done": threading.Event(), "info": None, "error": None}
     server = HTTPServer(("127.0.0.1", port), make_handler(context))
-    context["manifest"] = build_manifest(seat, repo, f"http://127.0.0.1:{server.server_port}/callback", allow_workflows)
+    context["manifest"] = build_manifest(seat, repo, f"http://127.0.0.1:{server.server_port}/callback", allow_workflows,
+                                     name)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -292,10 +310,12 @@ def serve_registration(seat, repo, directory, port=0, allow_workflows=False, con
 def main(argv, now=time.time):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("command", choices=("setup", "register", "link", "token", "check"))
-    parser.add_argument("--seat", required=True, choices=SEATS + ("all",))
+    parser.add_argument("--seat", required=True,
+                        help="a seat name (see governance/identities.json) or `all` (setup only)")
     parser.add_argument("--repo", default=DEFAULT_REPO)
     parser.add_argument("--root", help="seat credential root (default ~/.steward/seats)")
     parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--app-name", help="use this App name instead of aaroneous-<seat>-seat (GitHub App names are global; 34 characters at most)")
     parser.add_argument("--allow-workflows", action="store_true",
                         help="also ask for the workflows permission (changing .github/workflows)")
     parser.add_argument("--no-browser", action="store_true")
@@ -304,13 +324,20 @@ def main(argv, now=time.time):
     if args.seat == "all" and args.command != "setup":
         print("--seat all is only for setup", file=sys.stderr)
         return 2
+    if args.seat != "all" and not SEAT_PATTERN.match(args.seat):
+        print(f"{args.seat!r} is not a seat name (lower-case letters, digits and hyphens)", file=sys.stderr)
+        return 2
+    if args.seat != "all" and args.seat not in registered_seats():
+        print(f"note: {args.seat!r} is not registered in governance/identities.json yet; continuing anyway",
+              file=sys.stderr)
     if args.command == "setup":
         failures = 0
-        for seat in (SEATS if args.seat == "all" else (args.seat,)):
+        for seat in (registered_seats() if args.seat == "all" else (args.seat,)):
             try:
                 ok, summary = run_setup(seat, args.repo, args.root, lambda line: print(line, file=sys.stderr), args.port,
-                                        args.allow_workflows, not args.no_browser, now=now)
-            except (RuntimeError, FileNotFoundError, subprocess.CalledProcessError) as error:
+                                        args.allow_workflows, not args.no_browser, now=now,
+                                        name=args.app_name)
+            except (RuntimeError, ValueError, FileNotFoundError, subprocess.CalledProcessError) as error:
                 ok, summary = False, f"[{seat}] error: {error}"
             print(summary, file=sys.stderr)
             failures += 0 if ok else 1

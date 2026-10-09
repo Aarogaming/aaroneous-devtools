@@ -328,5 +328,34 @@ class OneCommandSetup(unittest.TestCase):
         self.assertIn("is it intact", summary2)
 
 
+class SeatList(unittest.TestCase):
+    def test_a_seat_registered_later_is_included_after_the_original_four(self):
+        seats = sa.registered_seats()
+        self.assertEqual(seats[:4], ("claude", "codex", "gemini", "mimo"))
+        self.assertIn("ubuntu-worker-01", seats)
+        self.assertEqual(len(seats), len(set(seats)))
+
+    def test_every_registered_seat_gets_an_app_name_github_accepts(self):
+        for seat in sa.registered_seats():
+            manifest = sa.build_manifest(seat, "o/r", "http://127.0.0.1:5/callback")
+            self.assertLessEqual(len(manifest["name"]), sa.APP_NAME_LIMIT, seat)
+
+    def test_a_seat_name_that_makes_the_app_name_too_long_is_refused_with_the_numbers(self):
+        with self.assertRaises(ValueError) as caught:
+            sa.build_manifest("a" * 30, "o/r", "http://127.0.0.1:5/callback")
+        self.assertIn("allows 34", str(caught.exception))
+
+    def test_an_explicit_app_name_replaces_the_default_and_is_length_checked(self):
+        manifest = sa.build_manifest("claude", "o/r", "http://127.0.0.1:5/callback", name="my-claude-seat-2")
+        self.assertEqual(manifest["name"], "my-claude-seat-2")
+        with self.assertRaises(ValueError):
+            sa.build_manifest("claude", "o/r", "http://127.0.0.1:5/callback", name="x" * 35)
+
+    def test_odd_seat_names_are_rejected_before_anything_runs(self):
+        for bad in ("Claude", "../x", "a b", "-x", ""):
+            self.assertIsNone(sa.SEAT_PATTERN.match(bad), bad)
+        self.assertIsNotNone(sa.SEAT_PATTERN.match("ubuntu-worker-01"))
+
+
 if __name__ == "__main__":
     unittest.main()

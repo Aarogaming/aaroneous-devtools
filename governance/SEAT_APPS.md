@@ -1,83 +1,104 @@
 # Seat GitHub Apps: each seat posts as itself (lane C114)
 
-Today every seat posts through the owner's one token, so GitHub shows the owner login for every comment, review and
-pull request. A **GitHub App per seat** posts as `<app>[bot]` instead. This page says how to register one, how a
-seat uses it, and what is still unproven. It complements, and does not replace, the signed attestations in
-[IDENTITY_SETUP.md](IDENTITY_SETUP.md): a signature proves which seat made a verdict whoever posted it; an App makes
-GitHub itself show who posted.
+Every seat otherwise posts through the owner's one token, so GitHub shows the owner login for every comment, review
+and pull request. A **GitHub App per seat** posts as `aaroneous-<seat>-seat[bot]` instead. This page is a runbook any
+seat can follow on its own. It complements the signed attestations in [IDENTITY_SETUP.md](IDENTITY_SETUP.md): a
+signature proves which seat made a verdict whoever posted it; an App makes GitHub itself show who posted. The wider
+onboarding path is in `governance/OPERATOR_GUIDE.md` section 3 (once that guide is on `main`).
 
-Status as of 2026-10-09: the helper exists and is unit-tested (23 tests); no seat App has been registered with it yet.
+Status as of 2026-10-09: verified live for the claude seat (App created, installed, token reached the repository, a
+comment posted as `aaroneous-claude-seat[bot]`). The other seats have not run it yet.
 
-## One command
+## Run it yourself (about five minutes)
+
+**You need**, on the machine where your seat works:
+
+- Python 3.10 or newer (`python --version`) and `openssl` on the path (`openssl version`; Git for Windows includes it).
+- A checkout of this repository at current `main`, with `governance/identities.json` listing your seat.
+- The repository owner signed in to GitHub in a browser **on this same machine**. The owner makes two clicks; you cannot
+  make them for the owner, and no password or token is ever typed into the command.
+
+**Tell the owner first**, so the clicks are expected. A message you can paste:
+
+> I am starting GitHub App setup for the `<seat>` seat. A browser tab will open. Please click **Create GitHub App**, and
+> on the next page click **Install** and choose only `aaroneous-devtools`. The command waits 15 minutes for the first
+> click and 10 for the second.
+
+**Then run:**
 
 ```bash
-python scripts/seat_app_setup.py setup --seat claude      # or --seat all for every seat in turn
+python scripts/seat_app_setup.py setup --seat <seat>
 ```
 
-That is the whole setup. The command opens your browser; **you click GitHub's own accept pages and nothing else**:
+`<seat>` is your name in `governance/identities.json` (`claude`, `codex`, `gemini`, `mimo`, `ubuntu-worker-01`, ...). What
+you will see, and what the owner sees:
 
-1. **Create GitHub App** on github.com (the helper's local page forwards you there).
-2. **Install**, on the next page GitHub shows (choose only the repository).
+| Step | Terminal | Browser |
+| --- | --- | --- |
+| 1 | `[seat] Opening http://127.0.0.1:PORT/ ...` | a GitHub page for the App with its permissions: **Create GitHub App** |
+| 2 | `[seat] created aaroneous-<seat>-seat (id N); credentials saved in ...` | forwarded to the install page |
+| 3 | `[seat] waiting for you to click Install ...` | **Install**, repository access: only `aaroneous-devtools` |
+| 4 | `[seat] installation N found and saved` | |
+| 5 | `[seat] done: posts as aaroneous-<seat>-seat[bot]; token reaches Aarogaming/aaroneous-devtools` | |
 
-The command carries on by itself between the clicks: it exchanges GitHub's one-time code for the App id and private key,
-waits for the installation to appear, saves it, mints a one-hour token and proves that token reaches the repository.
-It prints one `done` line per seat. It can be re-run at any point and resumes where the last run stopped (an already
-registered seat skips registration; an already installed one skips the wait).
+If you see `done`, setup is finished. `--seat all` runs every registered seat in turn (for an owner setting up several at
+once). The command is safe to re-run: it resumes where it stopped, and a finished seat only re-checks.
 
-GitHub will not create an App without a person confirming it, so those two clicks cannot be removed. Agents must not
-use a device-code login for this either: that token acts as the person, so posts would still show the owner.
+**Prove it posts as you,** with one harmless comment on a PR of your own, then read back the author:
 
-What it sets up, per seat (`claude`, `codex`, `gemini`, `mimo`):
+```bash
+export GH_CONFIG_DIR="$HOME/.steward/seats/<seat>/gh"      # a gh config that never holds the owner's login
+export GH_TOKEN="$(python scripts/seat_app_setup.py token --seat <seat>)"      # lasts one hour
+gh api repos/OWNER/REPO/issues/N/comments -f body='<seat> seat identity check' --jq '.user.login'
+```
+
+It must print `aaroneous-<seat>-seat[bot]`. If it prints the owner login, `gh` is using the owner's stored login: check
+that `GH_CONFIG_DIR` and `GH_TOKEN` are set in the same shell.
+
+**Finish with a small PR** adding `aaroneous-<seat>-seat[bot]` to your seat's `logins` list in
+`governance/identities.json`, so formal reviews you post count as `authenticated`. It needs the normal two independent
+accepts like any other PR. Set `git config user.name` and `user.email` to your seat as well, and sign commits with your
+seat key, so commit authorship matches.
+
+## If something goes wrong
+
+| Symptom | Cause and fix |
+| --- | --- |
+| The browser did not open | Open the printed `http://127.0.0.1:PORT/` yourself. The redirect returns to `127.0.0.1` on this machine, so the browser must run here. Over SSH, forward the port (`ssh -L PORT:127.0.0.1:PORT host`) and pass `--port PORT` |
+| Timed out before the first click | Nothing was created until the click. Run `setup` again |
+| `registration failed` mentioning the name | GitHub App names are global and may be taken. Pick another: `--app-name aaroneous-<seat>-seat-2` (34 characters at most) |
+| Timed out waiting for Install | The App exists; run `setup` again and it resumes at the install step |
+| `the App is not installed on <owner>'s account yet` | It was installed on a different account or organisation. Install it on the owner's personal account |
+| `the token does not reach <repo>` | Installed without the repository. Open the App's installation settings and add `aaroneous-devtools`, then run `check` |
+| The wrong GitHub account clicked Create | The App now lives on that account. Delete it there (Settings, Developer settings, GitHub Apps), delete `~/.steward/seats/<seat>/`, and start again |
+| `openssl could not sign` | The saved key is damaged or `openssl` is missing. Delete `~/.steward/seats/<seat>/` and the App, then register again |
+| You lost the private key | It cannot be recovered. Delete the App and register again |
+
+The steps are also separate commands if you need one alone: `register`, `link`, `token [--env]`, `check`.
+
+## What it sets up
 
 - An App named `aaroneous-<seat>-seat`, private, asking for contents, pull requests and issues write, and checks and
   statuses read. It does **not** ask for `workflows`; add `--allow-workflows` only if that seat must change
   `.github/workflows`, and say so in the PR.
 - Credentials in `~/.steward/seats/<seat>/` (`app.json`, `private-key.pem`), never in the repository (`--root` moves
-  them). The webhook and client secrets GitHub returns are discarded. Back the key up like any private key; losing it
-  means registering again.
-- The steps are also separate commands if you need one on its own: `register`, `link`, `token [--env]`, `check`.
+  them). The webhook and client secrets GitHub returns are discarded. Back the key up like any private key.
+- A one-hour installation token on demand (`token`). A token is attributed to the App itself.
 
-## Who runs it, and when
+GitHub will not create an App without a person confirming it, so the two clicks cannot be removed. Do not use a
+device-code login for this: that token acts as the person, so posts would still show the owner. Never print a token
+into a log or a comment.
 
-Each seat runs its own: `python scripts/seat_app_setup.py setup --seat <your seat>`, once, the next time it gets a turn on
-the machine where it works. The owner makes the two GitHub clicks, so ask for them in the same message that says you are
-starting. `--seat all` is for an owner setting up several seats in one sitting. Re-running is safe: it resumes where it
-stopped, and a finished seat only re-checks.
+## Limits and what is not verified
 
-Limit to know: seats that share one machine and one operating-system user can read each other's
-`~/.steward/seats/<seat>/` folders (the private keys), so separation between them holds by convention only. Real isolation
-needs separate operating-system users or separate machines. This page's onboarding steps are summarised in
-[OPERATOR_GUIDE.md](OPERATOR_GUIDE.md) section 3 once that guide is on `main`.
-
-## Use it
-
-```bash
-export GH_CONFIG_DIR="$HOME/.steward/seats/claude/gh"                 # a gh config that never holds the owner's login
-export GH_TOKEN="$(python scripts/seat_app_setup.py token --seat claude)"   # lasts one hour; mint a new one when needed
-gh pr comment 123 --body-file note.md                                  # now posts as the App
-git push "https://x-access-token:${GH_TOKEN}@github.com/OWNER/REPO.git" HEAD:refs/heads/my-branch
-```
-
-Set `git config user.name`/`user.email` per seat as well, and sign commits with the seat key, so commit authorship
-matches. Never print the token into a log or a comment.
-
-## After the Apps exist
-
-1. Add each App's login (`aaroneous-<seat>-seat[bot]`) to that seat's `logins` list in `governance/identities.json`
-   (a PR): formal reviews by that login then count as `authenticated`.
-2. The owner may later require one approving review on `main`. GitHub does not let an identity approve its own pull
-   request, so author and reviewer must then differ natively.
-
-## Not verified (test on one seat before relying on it)
-
-- The manifest field names and permission names were written from GitHub's documentation, not from a live
-  registration; the first `register` run is the test.
-- The JWT `iss` claim is the numeric App id; GitHub documents either the App id or the client id.
-- Whether an App's approving review counts toward a required-review rule, and how `identities.json` should spell the
-  `[bot]` login, are untested. Try them on a throwaway PR first.
-- The helper has been run only up to its landing page and in tests with faked GitHub replies; no real App has been created with it, so the poll for the installation and the final repository check are untested against GitHub.
+- Seats that share one machine and one operating-system user can read each other's `~/.steward/seats/<seat>/` folders,
+  so their separation holds by convention only. Real isolation needs separate operating-system users or machines.
+- Verified live (claude seat, 2026-10-09): the manifest GitHub accepted, the token's issuer claim, the wait for the
+  install, the repository check, and a comment posted as the App.
+- Not verified: whether an App's approving review counts toward a required-review rule, and whether the reviews
+  endpoint returns the same `[bot]` login as comments do. Try both on a throwaway PR before relying on them.
 
 ## Revoking
 
-An App can be suspended or deleted at Settings, Developer settings, GitHub Apps, which stops that seat posting at
-once. Delete the seat's folder under `~/.steward/seats/` after.
+Suspend or delete an App at Settings, Developer settings, GitHub Apps: that seat stops posting at once. Then delete its
+folder under `~/.steward/seats/`.
