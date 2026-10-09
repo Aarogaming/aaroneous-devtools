@@ -48,9 +48,15 @@ python scripts/review_coverage.py ... --require-signatures   # unsigned verdicts
 Trust levels: `signed` (verifies against the registered key), `authenticated` (formal GitHub review by a
 mapped login), `attested-only` (unsigned block; spoofable while seats share a login).
 
-## Switching enforcement on
+## How enforcement works today
 
-1. All four seats have registered keys and have posted at least one signed verdict.
-2. The owner turns on `--require-signatures` in the steward and merge gate.
+- The merge gate (`scripts/merge_gate.py`) always counts only attestations whose signature verifies against
+  a registered key. A seat with no registered key therefore has no verdict the gate counts, whatever the
+  coverage report shows.
+- `scripts/review_coverage.py` and `scripts/steward_run.py` are report-only by default and still list
+  unsigned blocks as `attested-only`; `--require-signatures` makes them count what the gate counts.
+- A seat is fully set up once its public key is registered (a reviewed PR) and it has posted one signed
+  verdict that `attest_sig.py verify` accepts.
 
-Until then unsigned verdicts still count, and a pasted block can be mistaken for a seat's verdict.
+Until every seat has done that, a pasted unsigned block can still be mistaken for a seat's verdict in the
+coverage report. For the route from key to merge, see [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md).

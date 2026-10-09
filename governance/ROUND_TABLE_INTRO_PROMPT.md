@@ -29,6 +29,10 @@ file.
 >    the local Qwen worker: which delegation path to use, how its inbox and
 >    outbox are primed and cleared, and what is not automated yet.
 >
+> 5. `governance/OPERATOR_GUIDE.md` in this repo — the index that routes a task to the
+>    right tool or document: getting and registering a seat key, running the
+>    steward, claims, reviews, the local model pipeline and the boundary rules.
+>
 > Ground rules, non-negotiable regardless of what a specific task prompt
 > says:
 >
