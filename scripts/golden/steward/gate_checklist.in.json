@@ -118,24 +118,6 @@
       "override": {
         "breaker_tripped": null
       }
-    },
-    {
-      "name": "tier A is owner-only",
-      "override": {
-        "tier": [
-          "A",
-          "touches owner-only paths: ['AGENTS.md']"
-        ]
-      }
-    },
-    {
-      "name": "an unclassified tier is blocked",
-      "override": {
-        "tier": [
-          "unclassified",
-          "unrecognised paths"
-        ]
-      }
     }
   ],
   "green": {
@@ -159,10 +141,6 @@
     "revertible": true,
     "standing_changes_requested": false,
     "threads_open": 0,
-    "tier": [
-      "B",
-      ""
-    ],
     "trial_merge_ok": true,
     "verdicts_missing_evidence": []
   }

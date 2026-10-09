@@ -115,57 +115,6 @@
   },
   {
     "decide": {
-      "eligible": false,
-      "plan": {
-        "commands": [
-          [
-            "git",
-            "diff",
-            "--check",
-            "{base}...HEAD"
-          ],
-          [
-            "python",
-            "scripts/check_coordination_evidence.py",
-            "{base}",
-            "HEAD"
-          ],
-          [
-            "cargo",
-            "fmt",
-            "--all",
-            "--",
-            "--check"
-          ],
-          [
-            "cargo",
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings"
-          ],
-          [
-            "cargo",
-            "test",
-            "-p",
-            "foundation_cli"
-          ]
-        ],
-        "level": "full"
-      },
-      "reasons": [
-        "f: touches protected paths without owner confirmation: ['AGENTS.md']"
-      ]
-    },
-    "reconciled_with_all_green_checklist": {
-      "eligible": false,
-      "first_blocker": null
-    }
-  },
-  {
-    "decide": {
       "eligible": true,
       "plan": {
         "commands": [
@@ -258,8 +207,7 @@
       "reasons": [
         "a: not covered by a signed independent whole-diff accept at the current head",
         "b: trial merge into the base conflicts",
-        "d: base is proposal/x, not main",
-        "f: touches protected paths without owner confirmation: ['.github/workflows/x.yml']"
+        "d: base is proposal/x, not main"
       ]
     },
     "reconciled_with_all_green_checklist": {

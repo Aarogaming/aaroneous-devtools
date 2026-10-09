@@ -5,8 +5,11 @@ Decides whether a PR may merge, from signed attestations plus checks run in a cl
 GitHub is only the transport; its review state and branch protection are not consulted.
 
 This version is a dry-run decision tool: it prints the decision, the check plan and the evidence, and
-never merges or pushes. Applying a merge is a separate, owner-run step (the gate holds the only
-credential that can push `main`; agents do not).
+never merges or pushes. Applying a merge is a separate step, run by whichever identity (human or
+agent) holds push access — see governance/AUTOMATED_MERGE_POLICY.md's Scope section: within
+aaroneous-devtools nothing here is owner-gated by path; aaroneous (the product) stays entirely
+owner-gated, but that boundary is enforced by scripts/auto_merge.py's repository guard, not by this
+module.
 
 Conditions (mirroring the routine's step 3, with local equivalents):
   a. covered: a signed, independent, whole-diff accept chained to the current head and merge-base
@@ -14,15 +17,22 @@ Conditions (mirroring the routine's step 3, with local equivalents):
   c. checks: the path-based plan passes in a clean worktree (only when --run-checks is given)
   d. base is `main`
   e. no standing changes_requested at the head (part of coverage)
-  f. protected paths need explicit owner confirmation: AGENTS.md, .github/workflows, settings
 
 The default output path runs gather_facts() + checklist() for every PR and reconciles both
-verdicts through reconcile(): decide()'s reasons (a/b/d/f) are necessary, the checklist (CI state,
-unresolved threads, circuit breaker, tier) is sufficient, and neither alone can
+verdicts through reconcile(): decide()'s reasons (a/b/d) are necessary, the checklist (CI state,
+unresolved threads, circuit breaker) is sufficient, and neither alone can
 print an eligibility verdict. --run-checks remains the extra local-gate layer (condition c) on top.
 
 Trust-building (a per-category clean-merge counter) was dropped by owner decision 2026-10-07;
 see governance/RECURSIVE_AUDIT_CADENCE.md for the periodic-audit mechanism that replaced it.
+
+Owner-only path gating (the former Tier A / "protected paths" concept, including this file's own
+former `TIER_A_PATHS`/`PROTECTED`/`touches_protected`/`tier_of` and checklist box 0, and decide()'s
+former condition f) was dropped by owner decision 2026-10-09: "I DO NOT want this system dependent
+on me, and I do not want to manually review ANYTHING going on in devtools" — the mechanical
+conditions below (especially >=2 independent accept seats) are now the only gate for any path
+within aaroneous-devtools, workflow files, identities.json and this policy document included. See
+governance/AUTOMATED_MERGE_POLICY.md and governance/DECISIONS.md (2026-10-09 entry).
 
 Usage:
   merge_gate.py --repo OWNER/NAME --repo-dir CLONE --identities governance/identities.json [--pr N]
@@ -39,14 +49,6 @@ import tomllib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import review_coverage as rc  # noqa: E402
 
-# One list of owner-only paths, used by both the default decision (f) and the checklist (box 0).
-# governance/identities.json maps logins to seats and holds the public keys signed attestations are verified against: it
-# decides who counts as an independent reviewer. IDENTITY_SETUP.md calls registering a key "a reviewed PR,
-# owner-approved", but as a governance .json it classified as Tier B, so a PR adding a login or key could auto-merge on
-# two verdicts and then make its own forged verdicts count.
-TIER_A_PATHS = (".github/", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "governance/AUTOMATED_MERGE_POLICY.md",
-                "governance/identities.json")
-PROTECTED = TIER_A_PATHS
 DOCS_ALLOWLIST = ("governance/", "docs/", "architecture/")
 # `git diff --check` with no revision inspects only uncommitted changes, and run_checks runs it in a clean detached worktree,
 # so it always exited 0 whatever whitespace errors the PR committed (Codex P2 on #98). The range form checks the PR itself.
@@ -63,49 +65,10 @@ LIGHT_GATE = [
 ]
 
 
-def touches_protected(paths):
-    return [p for p in paths if any(p == x or p.startswith(x) for x in PROTECTED)]
-
-
 def gate_plan(paths):
     """Path-based plan: only an allowlist of docs/ledger paths runs the light gate; all else is full."""
     docs_only = bool(paths) and all(p.endswith((".md", ".json")) and p.startswith(DOCS_ALLOWLIST) for p in paths)
     return {"level": "light" if docs_only else "full", "commands": LIGHT_GATE if docs_only else FULL_GATE}
-
-
-SAFE_FAMILIES = (
-    ("governance/", (".md", ".json", ".toml", ".txt")),
-    ("docs/", (".md", ".txt")),
-    ("architecture/", (".md",)),
-    ("scripts/", (".py", ".sh", ".ps1", ".md")),
-    ("inventories/", (".md",)),
-    ("contracts/", (".md", ".json")),
-)
-
-
-def tier_of(paths):
-    """Tier A is owner-only. Tier B requires a positively recognised safe family
-    (docs/governance/scripts/contracts/inventories with a safe extension);
-    everything else — kernel/unsafe/credentials/dependency-admission risk, or
-    any path this classifier does not recognise — is unclassified and never
-    assumed safe (the checklist renders it [blocked]). Foundation tooling
-    crates join SAFE_FAMILIES only after the owner records their profiles
-    (C89-style) — the conservative default costs a manual merge, never safety."""
-    hits = [p for p in paths if any(p == t or p.startswith(t) for t in TIER_A_PATHS)]
-    if hits:
-        return ("A", f"touches owner-only paths: {hits}")
-    if not paths:
-        return ("B", "")
-    if all(
-        any(p.startswith(prefix) and p.endswith(exts) for prefix, exts in SAFE_FAMILIES)
-        for p in paths
-    ):
-        return ("B", "")
-    return (
-        "unclassified",
-        "unrecognised or kernel/unsafe/credentials/dependency-admission paths cannot be "
-        "judged from paths alone; owner must classify — never assumed safe",
-    )
 
 
 def box(ok, label, detail=""):
@@ -127,7 +90,7 @@ def checklist(facts):
     head = facts["head"][:12]
     ci = facts.get("ci") or {"state": "missing", "detail": "no CI status found"}
     # Every fact is read strictly: a missing key or a value of the wrong type blocks its box, it never reads as "fine".
-    # Probe (scout/skeptic tick): with the old defaults a facts dict without `tier` was Tier B, without
+    # Probe (scout/skeptic tick): with the old defaults a facts dict without
     # `standing_changes_requested` had no standing rejection, without `verdicts_missing_evidence` had complete
     # evidence, and `threads_open=False`, `breaker_tripped=0`, `accept_seats=["a", "a"]` or `"ab"` all passed.
     raw_seats = facts.get("accept_seats")
@@ -166,15 +129,8 @@ def checklist(facts):
         ("7", None if not isinstance(tripped, bool) else not tripped,
          "circuit_breaker_override.toml: tripped = false", "", "circuit breaker file not found or unparseable (fail closed)"),
     ]
-    raw_tier = facts.get("tier")
-    if isinstance(raw_tier, (tuple, list)) and len(raw_tier) == 2 and all(isinstance(x, str) for x in raw_tier):
-        tier, why = raw_tier
-    else:
-        tier, why = "unclassified", "tier fact missing or malformed"
-    # B: eligible box; A: unchecked box; unclassified: [blocked: …] (never assumed safe)
-    tier_mark = True if tier == "B" else (False if tier == "A" else None)
-    lines = [box(tier_mark, f"0. Tier B (auto-merge eligible)", why)]
-    first = None if tier == "B" else f"0 ({why})"
+    lines = []
+    first = None
     for number, ok, label, detail, blocked_reason in checks:
         lines.append(box(ok, f"{number}. {label}", blocked_reason if ok is None else detail))
         if ok is not True and first is None:
@@ -186,14 +142,14 @@ def reconcile(decide_ok, facts):
     """One verdict: decide()'s reasons are necessary, the checklist is sufficient; both must pass.
 
     Returns (lines, eligible, first_blocker). eligible is True only when decide() said eligible
-    AND every checklist box (tier, CI, conflict, base, draft status, accepts, threads, evidence,
+    AND every checklist box (CI, conflict, base, draft status, accepts, threads, evidence,
     revertible, breaker) is green — so the default path can never print ELIGIBLE with red CI, a
     draft PR, open threads, or a tripped breaker, which checklist() would block."""
     lines, would_merge, first = checklist(facts)
     return lines, bool(decide_ok) and would_merge, first
 
 
-def decide(pr_row, paths, base_ref, trial_merge_ok, owner_confirmed_protected=False):
+def decide(pr_row, paths, base_ref, trial_merge_ok):
     reasons = []
     if not pr_row["covered"]:
         reasons.append("a: not covered by a signed independent whole-diff accept at the current head")
@@ -201,18 +157,13 @@ def decide(pr_row, paths, base_ref, trial_merge_ok, owner_confirmed_protected=Fa
         reasons.append("b: trial merge into the base conflicts")
     if base_ref != "main":
         reasons.append(f"d: base is {base_ref}, not main")
-    protected = touches_protected(paths)
-    if protected and not owner_confirmed_protected:
-        reasons.append(f"f: touches protected paths without owner confirmation: {protected}")
     return {"eligible": not reasons, "reasons": reasons, "plan": gate_plan(paths)}
 
 
 def changed_paths(repo_dir, base_ref, head):
-    """Every path the PR touches, both sides of a rename. With rename detection on (git's default) a moved file is
-    listed only under its new name, so renaming an owner-only file to an ordinary path would hide the protected source
-    path from `tier_of` and `touches_protected` (Codex P1 on #91)."""
-    # -z: without it git quotes a path holding a non-ASCII character or a quote ('".github/workflows/\\303\\251.yml"'),
-    # which matches no protected prefix, so `decide` called a PR touching an owner-only workflow eligible (skeptic probe).
+    """Every path the PR touches, both sides of a rename."""
+    # -z: without it git quotes a path holding a non-ASCII character or a quote, which broke downstream
+    # consumers that matched on raw path strings (Codex P1 on #91, skeptic probe).
     out = rc.git(repo_dir, "diff", "--name-only", "-z", "--no-renames", f"origin/{base_ref}...{head}").stdout
     return [path for path in out.split("\0") if path]
 
@@ -354,7 +305,7 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
         "trial_merge_ok": trial_ok, "covered": row["covered"], "accept_seats": row["accept_seats"],
         "counted_verdicts": row["counted_verdicts"], "verdicts_missing_evidence": row["verdicts_missing_evidence"],
         "standing_changes_requested": any("changes_requested" in r or "needs_revision" in r for r in row["reasons"]),
-        "tier": tier_of(paths), "category": category_of(paths), "is_draft": pr.get("draft"),
+        "category": category_of(paths), "is_draft": pr.get("draft"),
         "breaker_tripped": None, "threads_open": None, "ci": None,
     }
     tip = rc.git(repo_dir, "rev-parse", f"origin/{pr['base']}").stdout.strip()
