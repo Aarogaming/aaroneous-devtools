@@ -96,6 +96,25 @@ class Signatures(unittest.TestCase):
         row = rc.report_snapshot(self.snapshot([comment(rec, forged)]), None, None, self.identities, True)[0]
         self.assertFalse(row["covered"])
 
+    def test_model_family_aliases_verify_under_canonical_seat(self):
+        # Codex P2 on #111: model-family reviewer labels verify under their canonical seat in allowed_signers.
+        rec_qwen = record(reviewer="Local Qwen")
+        sig_qwen = at.sign(at.canonical(rec_qwen), self.mimo_key)
+        row = rc.report_snapshot(self.snapshot([comment(rec_qwen, sig_qwen)]), None, None, self.identities, True)[0]
+        self.assertTrue(row["covered"])
+        self.assertEqual(row["signed_attestations"], 1)
+
+        rec_gpt = record(reviewer="gpt-5.5")
+        sig_gpt = at.sign(at.canonical(rec_gpt), self.codex_key)
+        row_gpt = rc.report_snapshot(self.snapshot([comment(rec_gpt, sig_gpt)]), None, None, self.identities, True)[0]
+        self.assertTrue(row_gpt["covered"])
+        self.assertEqual(row_gpt["signed_attestations"], 1)
+
+        rec_ambig = record(reviewer="Opus/gpt-5.5")
+        sig_ambig = at.sign(at.canonical(rec_ambig), self.codex_key)
+        row_ambig = rc.report_snapshot(self.snapshot([comment(rec_ambig, sig_ambig)]), None, None, self.identities, True)[0]
+        self.assertFalse(row_ambig["covered"])
+
     def test_cli_sign_then_verify_round_trip(self):
         rec_path = os.path.join(self.tmp, "rec.json")
         with open(rec_path, "w", encoding="utf-8") as handle:
