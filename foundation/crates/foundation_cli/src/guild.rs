@@ -368,6 +368,12 @@ pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
             .unwrap_or(1)
     };
 
+    if let Some(ref identities) = args.identities {
+        if !identities.exists() {
+            bail!("identities file does not exist: {}", identities.display());
+        }
+    }
+
     // Load state from snapshot file if provided, otherwise invoke live collector
     let state: Value = if let Some(ref snapshot_path) = args.snapshot {
         let content = fs::read_to_string(snapshot_path)
@@ -668,6 +674,12 @@ pub fn run_status(args: &StatusArgs) -> Result<()> {
 pub fn run_daemon(args: &DaemonArgs) -> Result<()> {
     if args.interval_seconds == 0 {
         bail!("interval-seconds must be at least 1");
+    }
+    if !args.identities.exists() {
+        bail!(
+            "identities file does not exist: {}",
+            args.identities.display()
+        );
     }
 
     println!(

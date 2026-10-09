@@ -497,3 +497,123 @@ fn test_maintenance_advance_rejects_self_review() {
         "unexpected stderr: {stderr}"
     );
 }
+
+#[test]
+fn test_maintenance_advance_rejects_unregistered_seats() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let runtime_root = temp.path().join("maintenance");
+    let checkout = setup_mock_checkout(temp.path());
+    let ref_out = cli(&[
+        "maintenance",
+        "refresh",
+        "--runtime-root",
+        runtime_root.to_str().unwrap(),
+        "--checkout",
+        checkout.to_str().unwrap(),
+        "--component",
+        "crates/test_component",
+    ]);
+    assert!(ref_out.status.success());
+
+    let init_adv = cli(&[
+        "maintenance",
+        "advance",
+        "--runtime-root",
+        runtime_root.to_str().unwrap(),
+    ]);
+    assert!(init_adv.status.success());
+
+    let pipe_dir = runtime_root.join("pipeline");
+    let decisions_dir = pipe_dir.join("decisions");
+    let reviews_dir = runtime_root.join("reviews");
+    fs::create_dir_all(&decisions_dir).unwrap();
+    fs::create_dir_all(&reviews_dir).unwrap();
+
+    let initial_state: Value =
+        serde_json::from_str(&fs::read_to_string(pipe_dir.join("state.json")).unwrap()).unwrap();
+    let cycle_id = initial_state["cycle_id"].as_str().unwrap().to_string();
+    let evidence_key = initial_state["evidence_key"].as_str().unwrap().to_string();
+
+    let ticket = serde_json::json!({
+        "schema_version": 1,
+        "cycle_id": &cycle_id,
+        "responsibility": "test",
+        "authority": "test",
+        "non_overlap": "test",
+        "evidence_key": &evidence_key,
+        "mechanical_counts": [],
+        "limits": [],
+        "independent_review": {},
+        "review_sha256": "rev-sha",
+        "feedback": null
+    });
+    fs::write(
+        runtime_root.join("evidence").join("pipeline-ticket.json"),
+        serde_json::to_string(&ticket).unwrap(),
+    )
+    .unwrap();
+
+    let review_rel = "reviews/rev3.txt";
+    let review_full = runtime_root.join(review_rel);
+    fs::write(&review_full, "unregistered seat review attempt").unwrap();
+
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::default();
+    hasher.update(b"unregistered seat review attempt");
+    let review_sha256 = format!("{:x}", hasher.finalize());
+
+    let state = serde_json::json!({
+        "schema_version": 1,
+        "task_kind": "inventory-integrity",
+        "cycle_id": &cycle_id,
+        "evidence_key": &evidence_key,
+        "stage": "awaiting-independent-review",
+        "attempt": 0,
+        "plan_job": "",
+        "brief_job": "",
+        "plan_result": "",
+        "brief_result": "",
+        "plan_sha256": "plan-hash",
+        "brief_sha256": "brief-hash",
+        "decision_sha256": "",
+        "next_action": "",
+        "whole_job_accepted": false
+    });
+    fs::write(
+        pipe_dir.join("state.json"),
+        serde_json::to_string(&state).unwrap(),
+    )
+    .unwrap();
+
+    // Unregistered seats: untrusted-a and untrusted-b
+    let decision = serde_json::json!({
+        "actor": "untrusted-a",
+        "independent_of": "untrusted-b",
+        "cycle_id": &cycle_id,
+        "evidence_key": &evidence_key,
+        "plan_sha256": "plan-hash",
+        "brief_sha256": "brief-hash",
+        "verdict": "revise",
+        "review_path": review_rel,
+        "review_sha256": review_sha256,
+        "notes": "unregistered seat review"
+    });
+    fs::write(
+        decisions_dir.join(format!("{cycle_id}-R0.json")),
+        serde_json::to_string(&decision).unwrap(),
+    )
+    .unwrap();
+
+    let adv_out = cli(&[
+        "maintenance",
+        "advance",
+        "--runtime-root",
+        runtime_root.to_str().unwrap(),
+    ]);
+    assert!(!adv_out.status.success());
+    let stderr = String::from_utf8_lossy(&adv_out.stderr);
+    assert!(
+        stderr.contains("Unbound or invalid independent decision"),
+        "unexpected stderr: {stderr}"
+    );
+}

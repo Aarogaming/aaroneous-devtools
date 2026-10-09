@@ -144,6 +144,154 @@ pub fn seats_from_trailers(text: &str, branch: &str) -> Vec<String> {
     seats
 }
 
+pub const KNOWN_KEY_TYPES: &[&str] = &[
+    "ssh-ed25519",
+    "ssh-rsa",
+    "ecdsa-sha2-nistp256",
+    "ecdsa-sha2-nistp384",
+    "ecdsa-sha2-nistp521",
+    "sk-ssh-ed25519@openssh.com",
+    "sk-ecdsa-sha2-nistp256@openssh.com",
+];
+
+pub fn is_plain_login(val: &str) -> bool {
+    !val.is_empty() && val == val.trim() && !val.chars().any(char::is_whitespace)
+}
+
+pub fn is_valid_key(key: &str) -> bool {
+    let parts: Vec<&str> = key.split_whitespace().collect();
+    if parts.len() < 2 {
+        return false;
+    }
+    if !KNOWN_KEY_TYPES.contains(&parts[0]) {
+        return false;
+    }
+    let body = parts[1];
+    let key_body_re = match Regex::new(r"^[A-Za-z0-9+/]+={0,2}$") {
+        Ok(re) => re,
+        Err(_) => return false,
+    };
+    key_body_re.is_match(body)
+}
+
+/// Validate identities JSON matching governance/identities.json specification.
+pub fn validate_identities(data: &Value) -> Result<()> {
+    let mut problems = Vec::new();
+    let Some(seats) = data.get("seats").and_then(Value::as_object) else {
+        bail!("the file must be a JSON object with a \"seats\" object");
+    };
+
+    let mut owner_set = BTreeSet::new();
+    if let Some(owners) = data.get("owner") {
+        if let Some(owners_arr) = owners.as_array() {
+            let mut all_plain = true;
+            for o in owners_arr {
+                if let Some(s) = o.as_str() {
+                    if is_plain_login(s) {
+                        owner_set.insert(s.to_lowercase());
+                    } else {
+                        all_plain = false;
+                        break;
+                    }
+                } else {
+                    all_plain = false;
+                    break;
+                }
+            }
+            if !all_plain {
+                problems.push(
+                    "\"owner\" must be a list of plain GitHub logins (no spaces)".to_string(),
+                );
+                owner_set.clear();
+            }
+        } else {
+            problems
+                .push("\"owner\" must be a list of plain GitHub logins (no spaces)".to_string());
+        }
+    }
+
+    let seat_re = Regex::new(r"^[a-z][a-z0-9_-]{0,31}$").unwrap();
+    let mut seen_logins: BTreeMap<String, String> = BTreeMap::new();
+
+    for (seat, entry) in seats {
+        if !seat_re.is_match(seat) {
+            problems.push(format!(
+                "seat name {seat:?} must be lower-case letters, digits, '-' or '_', starting with a letter"
+            ));
+            continue;
+        }
+
+        let logins = match entry.get("logins") {
+            Some(Value::Array(arr)) => arr.clone(),
+            Some(other) => {
+                problems.push(format!("{seat}: logins must be a list, not {other}"));
+                Vec::new()
+            }
+            None => {
+                if let Some(arr) = entry.as_array() {
+                    arr.clone()
+                } else {
+                    Vec::new()
+                }
+            }
+        };
+
+        let keys = match entry.get("keys") {
+            Some(Value::Array(arr)) => arr.clone(),
+            Some(other) => {
+                problems.push(format!("{seat}: keys must be a list, not {other}"));
+                Vec::new()
+            }
+            None => Vec::new(),
+        };
+
+        for login_val in logins {
+            let Some(login) = login_val.as_str() else {
+                problems.push(format!("{seat}: login is not a string"));
+                continue;
+            };
+            if !is_plain_login(login) {
+                problems.push(format!(
+                    "{seat}: login {login:?} is not a plain GitHub login"
+                ));
+                continue;
+            }
+            let login_lower = login.to_lowercase();
+            if owner_set.contains(&login_lower) {
+                problems.push(format!(
+                    "{seat}: {login:?} is the shared owner login, which is deliberately not a seat"
+                ));
+            }
+            if let Some(prev_seat) = seen_logins.get(&login_lower) {
+                if prev_seat != seat {
+                    problems.push(format!(
+                        "login {login:?} is listed for both {prev_seat} and {seat}"
+                    ));
+                }
+            }
+            seen_logins.insert(login_lower, seat.clone());
+        }
+
+        for key_val in keys {
+            let Some(key_str) = key_val.as_str() else {
+                problems.push(format!("{seat}: key is not a string"));
+                continue;
+            };
+            if !is_valid_key(key_str) {
+                let preview: String = key_str.chars().take(40).collect();
+                problems.push(format!(
+                    "{seat}: key {preview:?} is not '<known key type> <base64>'"
+                ));
+            }
+        }
+    }
+
+    if !problems.is_empty() {
+        bail!("invalid identities: {}", problems.join("; "));
+    }
+    Ok(())
+}
+
 /// Build OpenSSH allowed_signers string from identities data.
 pub fn build_allowed_signers(identities: &Value) -> String {
     let mut lines = Vec::new();
@@ -163,8 +311,8 @@ pub fn build_allowed_signers(identities: &Value) -> String {
             .unwrap_or_default();
         for key in keys {
             if let Some(key_str) = key.as_str() {
-                let parts: Vec<&str> = key_str.split_whitespace().collect();
-                if parts.len() >= 2 {
+                if is_valid_key(key_str) {
+                    let parts: Vec<&str> = key_str.split_whitespace().collect();
                     lines.push(format!(
                         "{seat} namespaces=\"{NAMESPACE}\" {} {}",
                         parts[0], parts[1]
@@ -629,17 +777,26 @@ pub fn collect_live_state(
 
     // 2. Load identities and registered seat keys
     let identities_val = if let Some(path) = identities_path {
-        if path.exists() {
-            let content = fs::read_to_string(path)?;
-            Some(serde_json::from_str::<Value>(&content)?)
-        } else {
-            None
+        if !path.exists() {
+            bail!("identities file does not exist: {}", path.display());
         }
+        let content = fs::read_to_string(path)?;
+        let val: Value = serde_json::from_str(&content)
+            .with_context(|| format!("failed to parse identities JSON at {}", path.display()))?;
+        validate_identities(&val)?;
+        Some(val)
     } else {
         let default_path = repo_dir.join("governance").join("identities.json");
         if default_path.exists() {
             let content = fs::read_to_string(&default_path)?;
-            Some(serde_json::from_str::<Value>(&content)?)
+            let val: Value = serde_json::from_str(&content).with_context(|| {
+                format!(
+                    "failed to parse identities JSON at {}",
+                    default_path.display()
+                )
+            })?;
+            validate_identities(&val)?;
+            Some(val)
         } else {
             None
         }
@@ -733,6 +890,7 @@ pub fn collect_live_state(
     }
 
     let mut unresolved_by_pr: BTreeMap<i64, usize> = BTreeMap::new();
+    let mut threads_has_next_by_pr: BTreeMap<i64, bool> = BTreeMap::new();
     let mut raw_threads_by_pr: BTreeMap<i64, Vec<Value>> = BTreeMap::new();
     if let Some(nodes) = pull_requests
         .and_then(|p| p.get("nodes"))
@@ -758,15 +916,16 @@ pub fn collect_live_state(
                     }
                 }
             }
-            if threads
+            let has_next = threads
                 .and_then(|t| t.get("pageInfo"))
                 .and_then(|pi| pi.get("hasNextPage"))
                 .and_then(Value::as_bool)
-                .unwrap_or(false)
-            {
+                .unwrap_or(false);
+            if has_next {
                 count += 1;
             }
             unresolved_by_pr.insert(num, count);
+            threads_has_next_by_pr.insert(num, has_next);
             raw_threads_by_pr.insert(num, threads_list);
         }
     }
@@ -865,8 +1024,7 @@ pub fn collect_live_state(
             &format!("repos/{repo}/issues/{number}/comments"),
             "--paginate",
             "--slurp",
-        ])
-        .unwrap_or(Value::Array(Vec::new()));
+        ])?;
         let comment_nodes = flatten_pages(&comments_raw);
         let steward_comments: Vec<steward::rejected::Comment> = comment_nodes
             .iter()
@@ -886,8 +1044,7 @@ pub fn collect_live_state(
             &format!("repos/{repo}/pulls/{number}/reviews"),
             "--paginate",
             "--slurp",
-        ])
-        .unwrap_or(Value::Array(Vec::new()));
+        ])?;
         let review_nodes = flatten_pages(&reviews_raw);
 
         // Fetch timeline base events
@@ -896,8 +1053,7 @@ pub fn collect_live_state(
             &format!("repos/{repo}/issues/{number}/timeline"),
             "--paginate",
             "--slurp",
-        ])
-        .unwrap_or(Value::Array(Vec::new()));
+        ])?;
         let timeline_nodes = flatten_pages(&timeline_raw);
         let mut base_events: Vec<String> = timeline_nodes
             .iter()
@@ -1021,7 +1177,7 @@ pub fn collect_live_state(
         // Calculate unanswered threads
         let unresolved_count = unresolved_by_pr.get(&number).copied().unwrap_or(0);
         let unanswered_count = if let Some(threads) = raw_threads_by_pr.get(&number) {
-            threads
+            let mut count = threads
                 .iter()
                 .filter(|t| {
                     !t.get("isResolved")
@@ -1029,7 +1185,15 @@ pub fn collect_live_state(
                         .unwrap_or(false)
                         && is_thread_unanswered(t, &implementers, &attribution)
                 })
-                .count()
+                .count();
+            if threads_has_next_by_pr
+                .get(&number)
+                .copied()
+                .unwrap_or(false)
+            {
+                count += 1;
+            }
+            count
         } else {
             unresolved_count
         };
@@ -1123,5 +1287,69 @@ mod tests {
         let blocker = parse_standing_blocker(&reasons).expect("found blocker");
         assert_eq!(blocker["verdict"], "needs_revision");
         assert_eq!(blocker["by"], "claude");
+    }
+
+    #[test]
+    fn test_validate_identities_valid() {
+        let valid = json!({
+            "owner": ["Aarogaming"],
+            "seats": {
+                "claude": {"logins": ["claude-bot"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKl7YYxzb4umZVCMjjM/fNtSLhfsP9KV55cj9jQogc0n"]},
+                "mimo": {"logins": [], "keys": []}
+            }
+        });
+        assert!(validate_identities(&valid).is_ok());
+    }
+
+    #[test]
+    fn test_validate_identities_rejects_owner_as_seat_login() {
+        let invalid = json!({
+            "owner": ["Aarogaming"],
+            "seats": {
+                "claude": {"logins": ["aarogaming"], "keys": []}
+            }
+        });
+        let err = validate_identities(&invalid).unwrap_err();
+        assert!(err.to_string().contains("shared owner login"));
+    }
+
+    #[test]
+    fn test_validate_identities_rejects_duplicate_login() {
+        let invalid = json!({
+            "owner": ["Aarogaming"],
+            "seats": {
+                "claude": {"logins": ["shared-bot"], "keys": []},
+                "mimo": {"logins": ["shared-bot"], "keys": []}
+            }
+        });
+        let err = validate_identities(&invalid).unwrap_err();
+        assert!(err.to_string().contains("is listed for both"));
+    }
+
+    #[test]
+    fn test_validate_identities_rejects_invalid_key_format() {
+        let invalid = json!({
+            "owner": ["Aarogaming"],
+            "seats": {
+                "claude": {"logins": [], "keys": ["cert-authority ssh-ed25519 not-valid-base64!!!"]}
+            }
+        });
+        let err = validate_identities(&invalid).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("is not '<known key type> <base64>'")
+        );
+    }
+
+    #[test]
+    fn test_validate_identities_rejects_invalid_seat_name() {
+        let invalid = json!({
+            "owner": ["Aarogaming"],
+            "seats": {
+                "Claude\nEvil": {"logins": [], "keys": []}
+            }
+        });
+        let err = validate_identities(&invalid).unwrap_err();
+        assert!(err.to_string().contains("seat name"));
     }
 }

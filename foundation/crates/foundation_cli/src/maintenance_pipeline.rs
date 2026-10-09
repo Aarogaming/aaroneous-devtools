@@ -240,6 +240,37 @@ pub fn is_valid_seat_id(seat: &str) -> bool {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
 }
 
+pub const KNOWN_REGISTERED_SEATS: &[&str] =
+    &["claude", "mimo", "codex", "gemini", "ubuntu-worker-01"];
+
+/// Validate that a seat is registered in governance/identities.json or matches known registered seats.
+pub fn is_registered_seat(seat: &str, identities_path: Option<&Path>) -> bool {
+    let seat = seat.trim().to_lowercase();
+    if !is_valid_seat_id(&seat) {
+        return false;
+    }
+    if let Some(path) = identities_path {
+        if path.is_file() {
+            if let Ok(content) = fs::read_to_string(path) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(owners) = val.get("owner").and_then(serde_json::Value::as_array) {
+                        if owners
+                            .iter()
+                            .any(|o| o.as_str().map(|s| s.to_lowercase()).as_deref() == Some(&seat))
+                        {
+                            return false;
+                        }
+                    }
+                    if let Some(seats) = val.get("seats").and_then(serde_json::Value::as_object) {
+                        return seats.contains_key(&seat);
+                    }
+                }
+            }
+        }
+    }
+    KNOWN_REGISTERED_SEATS.contains(&seat.as_str())
+}
+
 pub fn sha256_file(path: &Path) -> Result<String> {
     let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
     Ok(sha256_digest(&bytes))
@@ -902,6 +933,7 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
 
     // Verify source files have not changed since capture
     let checkout = Path::new(&index.checkout);
+    let identities_path = checkout.join("governance").join("identities.json");
     let mut stale = Vec::new();
     for entry in &index.files {
         let orig = checkout.join(&entry.path);
@@ -1237,8 +1269,8 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
         if actor.is_empty()
             || independent_of.is_empty()
             || actor == independent_of
-            || !is_valid_seat_id(&actor)
-            || !is_valid_seat_id(&independent_of)
+            || !is_registered_seat(&actor, Some(&identities_path))
+            || !is_registered_seat(&independent_of, Some(&identities_path))
             || decision.cycle_id != state_ref.cycle_id
             || decision.plan_sha256 != state_ref.plan_sha256
             || decision.brief_sha256 != state_ref.brief_sha256
