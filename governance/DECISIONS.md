@@ -50,3 +50,14 @@ here, before that category's automatic merging goes live). Self-certification st
 circuit breaker stays the one kill switch for both local-model promotion and this mechanism. The
 checker and its GitHub-merge wiring are not yet built — this is the policy the implementation
 targets next.
+
+## 2026-10-06 — Cloud routine re-created as a fresh session per firing (supersedes part of 2026-09-17)
+
+The 2026-09-17 entry above bound the primary-lane routine to the user's persistent cloud session so
+run-to-run context survived. That clause is superseded: by 2026-10-06 the persistent session had gone
+quiet and no live recurring trigger remained, so the routine was re-created as
+`trig_011JULgTH2EdKVT9FaJv2ykZ` with `create_new_session_on_fire`, daily at 11:47 UTC. Context now has to
+come from the repository (the queue, pull requests and this record), not from a surviving session.
+The rest of the 2026-09-17 entry stands: same capacity, claim-expiry and native-gate rules, no reserved
+lane. Its first firing (2026-10-07) had no GitHub access in the fresh session and did no queue work; the
+record of that run and the stored prompt are in `SCHEDULE.md` and `routines/DAILY_PRIMARY_LANE_STORED_PROMPT.md`.
