@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 import urllib.error
 import urllib.request
 
@@ -13,6 +14,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import seat_app_setup as sa  # noqa: E402
 
 HAVE_OPENSSL = shutil.which("openssl") is not None
+PEM = "-----BEGIN RSA PRIVATE KEY-----\nplaceholder\n-----END RSA PRIVATE KEY-----\n"
 
 
 def read_text(path):
@@ -195,6 +197,135 @@ class Paths(unittest.TestCase):
         path = sa.seat_dir("claude")
         self.assertTrue(path.endswith(os.path.join(".steward", "seats", "claude")))
         self.assertEqual(sa.seat_dir("mimo", root="/x/y"), os.path.join("/x/y", "mimo"))
+
+
+class OneCommandSetup(unittest.TestCase):
+    """`setup` registers, waits for the install click, links and checks, with the GitHub pages as the only manual steps."""
+
+    def test_the_landing_page_submits_itself_and_the_callback_page_forwards_to_the_install_page(self):
+        manifest = sa.build_manifest("claude", "o/r", "http://127.0.0.1:5/callback")
+        self.assertIn("document.forms[0].submit()", sa.landing_page(manifest, "S", "claude", "o/r"))
+        directory = tempfile.mkdtemp(prefix="seat-app-test-")
+        self.addCleanup(shutil.rmtree, directory, True)
+        seen = {}
+
+        def ready(url, context):
+            seen["callback"] = fetch(f"{url}callback?code=abc&state={context['state']}")
+            context["done"].set()
+
+        sa.serve_registration("claude", "o/r", directory, convert=fake_conversion, timeout=10, on_ready=ready)
+        install = "https://github.com/apps/aaroneous-claude-seat/installations/new"
+        self.assertIn(f"http-equiv=refresh content='1;url={install}'", seen["callback"][1])
+
+    def waiting_fixture(self, answers):
+        directory = tempfile.mkdtemp(prefix="seat-app-test-")
+        self.addCleanup(shutil.rmtree, directory, True)
+        sa.save_credentials(directory, {"id": 7, "slug": "aaroneous-claude-seat", "pem": PEM})
+        clock = {"t": 1_000_000.0}
+        calls = []
+
+        def api(method, url, headers=None, body=None, opener=None):
+            calls.append(url)
+            return answers(url, len(calls))
+
+        def sleep(seconds):
+            clock["t"] += seconds
+        return directory, clock, calls, api, sleep
+
+    def test_it_polls_until_the_owner_has_installed_the_app(self):
+        def answers(url, n):
+            return 200, ([] if n < 3 else [{"id": 99, "account": {"login": "Aarogaming"}}])
+        directory, clock, calls, api, sleep = self.waiting_fixture(answers)
+        with unittest.mock.patch.object(sa, "make_jwt", return_value="jwt"):
+            found = sa.wait_for_installation(directory, "Aarogaming/r", lambda: clock["t"], api, sleep, timeout=60,
+                                             interval=3)
+        self.assertEqual(found, 99)
+        self.assertEqual(len(calls), 3)
+
+    def test_it_gives_up_with_an_instruction_when_the_install_click_never_comes(self):
+        directory, clock, calls, api, sleep = self.waiting_fixture(lambda url, n: (200, []))
+        with unittest.mock.patch.object(sa, "make_jwt", return_value="jwt"):
+            with self.assertRaises(RuntimeError) as caught:
+                sa.wait_for_installation(directory, "Aarogaming/r", lambda: clock["t"], api, sleep, timeout=10,
+                                         interval=3)
+        self.assertIn("run setup again", str(caught.exception))
+
+    def test_a_rejected_credential_stops_the_wait_at_once(self):
+        directory, clock, calls, api, sleep = self.waiting_fixture(lambda url, n: (401, {"message": "bad"}))
+        with unittest.mock.patch.object(sa, "make_jwt", return_value="jwt"):
+            with self.assertRaises(RuntimeError) as caught:
+                sa.wait_for_installation(directory, "Aarogaming/r", lambda: clock["t"], api, sleep, timeout=600)
+        self.assertNotIn("not installed", str(caught.exception))
+        self.assertEqual(len(calls), 1)
+
+    def full_setup(self, installed_after, repos):
+        root = tempfile.mkdtemp(prefix="seat-app-test-")
+        self.addCleanup(shutil.rmtree, root, True)
+        clock = {"t": 1_000_000.0}
+        steps = []
+
+        def api(method, url, headers=None, body=None, opener=None):
+            if url.endswith("/app/installations"):
+                n = sum(1 for s in steps if s == "poll")
+                steps.append("poll")
+                return 200, ([] if n < installed_after else [{"id": 55, "account": {"login": "Aarogaming"}}])
+            if url.endswith("/access_tokens"):
+                return 201, {"token": "ghs_tok", "expires_at": "2026-10-09T09:00:00Z"}
+            if url.endswith("/installation/repositories"):
+                return 200, {"repositories": [{"full_name": r} for r in repos]}
+            raise AssertionError(url)
+
+        def ready(url, context):
+            fetch(f"{url}callback?code=abc&state={context['state']}")
+
+        said = []
+        with unittest.mock.patch.object(sa, "make_jwt", return_value="jwt"):
+            ok, summary = sa.run_setup("claude", "Aarogaming/r", root, said.append, open_browser=False,
+                                       now=lambda: clock["t"], api=api, convert=fake_conversion,
+                                       sleep=lambda s: clock.__setitem__("t", clock["t"] + s), on_ready=ready, timeout=10)
+        return root, ok, summary, said, steps
+
+    def test_one_run_registers_waits_for_the_install_links_and_proves_the_token_reaches_the_repo(self):
+        root, ok, summary, said, steps = self.full_setup(installed_after=2, repos=["Aarogaming/r"])
+        self.assertTrue(ok, summary)
+        self.assertIn("posts as aaroneous-claude-seat[bot]", summary)
+        self.assertEqual(sa.load_app(sa.seat_dir("claude", root))["installation_id"], 55)
+        self.assertTrue(any("waiting for you to click Install" in line for line in said))
+        self.assertNotIn("ghs_tok", summary + "".join(said))
+
+    def test_a_token_that_does_not_reach_the_repository_fails_with_the_fix(self):
+        root, ok, summary, said, steps = self.full_setup(installed_after=0, repos=["Aarogaming/other"])
+        self.assertFalse(ok)
+        self.assertIn("install the App on that repository", summary)
+
+    def test_a_second_run_resumes_instead_of_registering_again(self):
+        root, ok, summary, said, steps = self.full_setup(installed_after=0, repos=["Aarogaming/r"])
+        self.assertTrue(ok)
+        calls = []
+
+        def api(method, url, headers=None, body=None, opener=None):
+            calls.append(url)
+            if url.endswith("/access_tokens"):
+                return 201, {"token": "t", "expires_at": ""}
+            return 200, {"repositories": [{"full_name": "Aarogaming/r"}]}
+
+        def must_not_register(code):
+            raise AssertionError("registered again")
+
+        with unittest.mock.patch.object(sa, "make_jwt", return_value="jwt"):
+            ok2, summary2 = sa.run_setup("claude", "Aarogaming/r", root, lambda line: None, now=lambda: 1_000_000.0,
+                                         api=api, convert=must_not_register)
+        self.assertTrue(ok2, summary2)
+        self.assertFalse(any(url.endswith("/app/installations") for url in calls))
+
+    @unittest.skipUnless(HAVE_OPENSSL, "openssl not installed")
+    def test_an_unusable_private_key_is_reported_not_raised(self):
+        root, ok, summary, said, steps = self.full_setup(installed_after=0, repos=["Aarogaming/r"])
+        self.assertTrue(ok)
+        ok2, summary2 = sa.run_setup("claude", "Aarogaming/r", root, lambda line: None, now=lambda: 1_000_000.0,
+                                     api=lambda *a, **k: (200, {}), convert=fake_conversion)
+        self.assertFalse(ok2)
+        self.assertIn("is it intact", summary2)
 
 
 if __name__ == "__main__":

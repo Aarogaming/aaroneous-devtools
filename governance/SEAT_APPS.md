@@ -6,31 +6,36 @@ seat uses it, and what is still unproven. It complements, and does not replace, 
 [IDENTITY_SETUP.md](IDENTITY_SETUP.md): a signature proves which seat made a verdict whoever posted it; an App makes
 GitHub itself show who posted.
 
-Status as of 2026-10-09: the helper exists and is unit-tested; no seat App has been registered yet.
+Status as of 2026-10-09: the helper exists and is unit-tested (23 tests); no seat App has been registered with it yet.
 
-## What needs a person
-
-GitHub will not create an App without a person confirming it. The helper therefore uses GitHub's manifest flow, and
-the owner makes **two clicks per seat**: **Create GitHub App** (on github.com, after the helper opens its page), then
-**Install** (choose only the repository). Everything else is done by the helper. Agents cannot create an App silently,
-and they must not use a device-code login for this: that token acts as the person, so posts would still show the
-owner.
-
-## Register a seat (once per seat, on the machine where that seat works)
+## One command
 
 ```bash
-python scripts/seat_app_setup.py register --seat claude      # opens a local page; owner clicks Create GitHub App
-python scripts/seat_app_setup.py link --seat claude          # after the owner installed it: saves the installation id
-python scripts/seat_app_setup.py check --seat claude         # proves the token reaches the repository, as which App
+python scripts/seat_app_setup.py setup --seat claude      # or --seat all for every seat in turn
 ```
 
-- `register` serves one page on `127.0.0.1`, waits up to 15 minutes, and exchanges GitHub's one-time code (valid one
-  hour) for the App id and private key. The webhook and client secrets in GitHub's reply are discarded.
-- Seats: `claude`, `codex`, `gemini`, `mimo`. The App is named `aaroneous-<seat>-seat`, private, and asks for
-  contents, pull requests and issues write, and checks and statuses read. It does **not** ask for `workflows`; add
-  `--allow-workflows` only if that seat must change `.github/workflows`, and say so in the PR.
-- Credentials are kept in `~/.steward/seats/<seat>/` (`app.json`, `private-key.pem`), never in the repository. Pass
-  `--root` to keep them elsewhere. Back the key up like any private key; losing it means registering again.
+That is the whole setup. The command opens your browser; **you click GitHub's own accept pages and nothing else**:
+
+1. **Create GitHub App** on github.com (the helper's local page forwards you there).
+2. **Install**, on the next page GitHub shows (choose only the repository).
+
+The command carries on by itself between the clicks: it exchanges GitHub's one-time code for the App id and private key,
+waits for the installation to appear, saves it, mints a one-hour token and proves that token reaches the repository.
+It prints one `done` line per seat. It can be re-run at any point and resumes where the last run stopped (an already
+registered seat skips registration; an already installed one skips the wait).
+
+GitHub will not create an App without a person confirming it, so those two clicks cannot be removed. Agents must not
+use a device-code login for this either: that token acts as the person, so posts would still show the owner.
+
+What it sets up, per seat (`claude`, `codex`, `gemini`, `mimo`):
+
+- An App named `aaroneous-<seat>-seat`, private, asking for contents, pull requests and issues write, and checks and
+  statuses read. It does **not** ask for `workflows`; add `--allow-workflows` only if that seat must change
+  `.github/workflows`, and say so in the PR.
+- Credentials in `~/.steward/seats/<seat>/` (`app.json`, `private-key.pem`), never in the repository (`--root` moves
+  them). The webhook and client secrets GitHub returns are discarded. Back the key up like any private key; losing it
+  means registering again.
+- The steps are also separate commands if you need one on its own: `register`, `link`, `token [--env]`, `check`.
 
 ## Use it
 
@@ -58,7 +63,7 @@ matches. Never print the token into a log or a comment.
 - The JWT `iss` claim is the numeric App id; GitHub documents either the App id or the client id.
 - Whether an App's approving review counts toward a required-review rule, and how `identities.json` should spell the
   `[bot]` login, are untested. Try them on a throwaway PR first.
-- The helper has been run only up to its landing page; no real App has been created with it.
+- The helper has been run only up to its landing page and in tests with faked GitHub replies; no real App has been created with it, so the poll for the installation and the final repository check are untested against GitHub.
 
 ## Revoking
 

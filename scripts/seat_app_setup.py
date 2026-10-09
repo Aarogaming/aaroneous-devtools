@@ -7,10 +7,15 @@ flow: this script serves one local page, the owner clicks "Create GitHub App" on
 here with a one-time code, and the script exchanges it for the App id and private key. The owner then installs the App
 on the repository (second click). Stdlib plus `openssl` only; nothing is installed and nothing is posted.
 
-  seat_app_setup.py register --seat claude          # serve the page, wait for the owner's click, save id and key
-  seat_app_setup.py link     --seat claude          # after the owner installed the App: find and save its install id
-  seat_app_setup.py token    --seat claude [--env]  # print a one-hour installation token (prints only the token)
-  seat_app_setup.py check    --seat claude          # prove the token reaches the repository, as which App
+  seat_app_setup.py setup --seat claude             # the whole thing: register, install, link, check
+  seat_app_setup.py setup --seat all                # every seat in turn (two GitHub accept pages each)
+
+`setup` opens the browser, the owner clicks "Create GitHub App" and then "Install" on github.com's own pages (the only
+manual steps), and the command carries on by itself: the local page forwards to the install page, the command waits for
+the installation to appear, saves it, mints a token and proves it reaches the repository. It can be re-run: it resumes
+where a previous run stopped. The steps are also separate commands:
+
+  seat_app_setup.py register | link | token [--env] | check    (--seat claude)
 
 Credentials live under `~/.steward/seats/<seat>/` (override with --root), never in the repository: `app.json` (ids
 only) and `private-key.pem`. The webhook secret and client secret in GitHub's reply are discarded: no webhook is used.
@@ -71,6 +76,7 @@ def landing_page(manifest, state, seat, repo):
         f"<form method=post action='https://github.com/settings/apps/new?state={html.escape(state)}'>"
         f"<input type=hidden name=manifest value='{html.escape(json.dumps(manifest), quote=True)}'>"
         "<button type=submit>Continue to GitHub</button></form>"
+        "<script>document.forms[0].submit()</script>"
     )
 
 
@@ -146,6 +152,69 @@ def find_installation(app_jwt, repo, api=http_json):
     raise RuntimeError(f"the App is not installed on {owner}'s account yet: open the install link first")
 
 
+def wait_for_installation(directory, repo, now, api=http_json, sleep=time.sleep, timeout=600, interval=3,
+                          openssl="openssl"):
+    """Poll until the owner has installed the App; returns the installation id."""
+    app = load_app(directory)
+    pem = os.path.join(directory, "private-key.pem")
+    deadline = now() + timeout
+    while True:
+        try:
+            return find_installation(make_jwt(app["id"], pem, now(), openssl), repo, api)
+        except RuntimeError as error:
+            if "not installed" not in str(error):
+                raise
+        if now() >= deadline:
+            raise RuntimeError("timed out waiting for the install click: open the install page and run setup again")
+        sleep(interval)
+
+
+def save_app(directory, app):
+    with open(os.path.join(directory, "app.json"), "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(app, handle, indent=2)
+        handle.write("\n")
+
+
+def run_setup(seat, repo, root, say, port=0, allow_workflows=False, open_browser=True, now=time.time, api=http_json,
+              convert=convert_code, sleep=time.sleep, on_ready=None, timeout=900, install_timeout=600):
+    """Register, install, link and check one seat. Resumes where an earlier run stopped. Returns (ok, summary)."""
+    directory = seat_dir(seat, root)
+    if not os.path.exists(os.path.join(directory, "app.json")):
+        def ready(url, context):
+            say(f"[{seat}] Opening {url} : GitHub will ask you to click 'Create GitHub App'.")
+            if open_browser:
+                webbrowser.open(url)
+            if on_ready:
+                on_ready(url, context)
+        info, error = serve_registration(seat, repo, directory, port, allow_workflows, convert=convert, timeout=timeout,
+                                         on_ready=ready)
+        if error:
+            return False, f"[{seat}] registration failed: {error}"
+        say(f"[{seat}] created {info['slug']} (id {info['id']}); credentials saved in {directory}")
+    app = load_app(directory)
+    if "installation_id" not in app:
+        say(f"[{seat}] waiting for you to click Install on https://github.com/apps/{app['slug']}/installations/new "
+            "(choose only the repository)...")
+        try:
+            app["installation_id"] = wait_for_installation(directory, repo, now, api, sleep, install_timeout)
+        except RuntimeError as error:
+            return False, f"[{seat}] {error}"
+        save_app(directory, app)
+        say(f"[{seat}] installation {app['installation_id']} found and saved")
+    try:
+        token, expires = mint_token(directory, now(), api)
+    except RuntimeError as error:
+        return False, f"[{seat}] {error}"
+    except subprocess.CalledProcessError:
+        return False, f"[{seat}] openssl could not sign with the saved private key in {directory}: is it intact?"
+    status, data = api("GET", f"{API}/installation/repositories", headers={"Authorization": f"Bearer {token}"})
+    names = [r.get("full_name") for r in data.get("repositories", [])] if status == 200 else []
+    if repo not in names:
+        return False, f"[{seat}] the token does not reach {repo}: install the App on that repository only"
+    return True, (f"[{seat}] done: posts as {app['slug']}[bot]; token reaches {repo}; mint one with: "
+                  f"python scripts/seat_app_setup.py token --seat {seat} --env")
+
+
 def mint_token(directory, now, api=http_json, openssl="openssl"):
     app = load_app(directory)
     if "installation_id" not in app:
@@ -188,10 +257,11 @@ def make_handler(context):
                     self.reply(500, "Registration failed: " + html.escape(str(error)))
                 else:
                     slug = html.escape(context["info"]["slug"])
-                    self.reply(200, "<!doctype html><meta charset=utf-8><h1>App created</h1>"
-                                    f"<p>Now install it: <a href='https://github.com/apps/{slug}/installations/new'>"
-                                    f"https://github.com/apps/{slug}/installations/new</a></p>"
-                                    "<p>Choose only the repository, then return to the terminal.</p>")
+                    install = f"https://github.com/apps/{slug}/installations/new"
+                    self.reply(200, f"<!doctype html><meta charset=utf-8><meta http-equiv=refresh content='1;url={install}'>"
+                                    "<h1>App created</h1>"
+                                    f"<p>Taking you to the install page: <a href='{install}'>{install}</a></p>"
+                                    "<p>Choose only the repository, click Install, then return to the terminal.</p>")
                 context["done"].set()
             else:
                 self.reply(404, "not found")
@@ -221,8 +291,8 @@ def serve_registration(seat, repo, directory, port=0, allow_workflows=False, con
 
 def main(argv, now=time.time):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("register", "link", "token", "check"))
-    parser.add_argument("--seat", required=True, choices=SEATS)
+    parser.add_argument("command", choices=("setup", "register", "link", "token", "check"))
+    parser.add_argument("--seat", required=True, choices=SEATS + ("all",))
     parser.add_argument("--repo", default=DEFAULT_REPO)
     parser.add_argument("--root", help="seat credential root (default ~/.steward/seats)")
     parser.add_argument("--port", type=int, default=0)
@@ -231,6 +301,20 @@ def main(argv, now=time.time):
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--env", action="store_true", help="token: print `GH_TOKEN=<token>` instead of the bare token")
     args = parser.parse_args(argv)
+    if args.seat == "all" and args.command != "setup":
+        print("--seat all is only for setup", file=sys.stderr)
+        return 2
+    if args.command == "setup":
+        failures = 0
+        for seat in (SEATS if args.seat == "all" else (args.seat,)):
+            try:
+                ok, summary = run_setup(seat, args.repo, args.root, lambda line: print(line, file=sys.stderr), args.port,
+                                        args.allow_workflows, not args.no_browser, now=now)
+            except (RuntimeError, FileNotFoundError, subprocess.CalledProcessError) as error:
+                ok, summary = False, f"[{seat}] error: {error}"
+            print(summary, file=sys.stderr)
+            failures += 0 if ok else 1
+        return 1 if failures else 0
     directory = seat_dir(args.seat, args.root)
     try:
         if args.command == "register":
