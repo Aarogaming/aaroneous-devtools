@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -254,6 +255,24 @@ pub fn append_event_line(
     ts: &str,
     prev_tip: &str,
 ) -> Result<String> {
+    // Validate existing tip sidecar if present to catch truncation
+    let tip_path = PathBuf::from(format!("{}.tip", log_path.display()));
+    if tip_path.exists() {
+        let raw = fs::read_to_string(&tip_path)?;
+        let trimmed = raw.trim();
+        if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
+            if let Some(recorded_tip) = parsed.get("tip").and_then(Value::as_str) {
+                if prev_tip != recorded_tip && prev_tip != steward::chain::GENESIS {
+                    bail!(
+                        "sidecar tip mismatch before append: expected prev '{}', recorded in sidecar '{}'",
+                        prev_tip,
+                        recorded_tip
+                    );
+                }
+            }
+        }
+    }
+
     let line = steward::chain::event_line(seq, ts, event_type, data, prev_tip);
     let new_tip = steward::chain::digest(&line);
 
@@ -272,7 +291,6 @@ pub fn append_event_line(
     file.flush()?;
 
     // Update <log_path>.tip sidecar matching steward_run.py convention: {"count": seq, "tip": "..."}
-    let tip_path = PathBuf::from(format!("{}.tip", log_path.display()));
     let tip_json = json!({
         "count": seq,
         "tip": new_tip,
@@ -293,6 +311,9 @@ pub fn write_card_atomically(
     ts: &str,
     tick: i64,
 ) -> Result<PathBuf> {
+    if seat.contains('/') || seat.contains('\\') || seat.contains("..") || seat.is_empty() {
+        bail!("invalid agent name in card: {}", seat);
+    }
     fs::create_dir_all(outbox)?;
     let target = outbox.join(format!("{seat}.md"));
     let temp = outbox.join(format!("{seat}.md.tmp"));
@@ -313,18 +334,41 @@ pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
     let now_ts = format_iso8601(unix_secs_now());
     let (events, mut current_tip) = read_and_verify_log(&args.log)?;
 
+    // Verify sidecar matches current tip before proceeding to detect truncation
+    let tip_path = PathBuf::from(format!("{}.tip", args.log.display()));
+    if tip_path.exists() {
+        let raw = fs::read_to_string(&tip_path)?;
+        let trimmed = raw.trim();
+        if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
+            if let Some(recorded_tip) = parsed.get("tip").and_then(Value::as_str) {
+                if current_tip != recorded_tip && current_tip != steward::chain::GENESIS {
+                    bail!(
+                        "tip sidecar mismatch: expected '{}', sidecar recorded '{}'",
+                        current_tip,
+                        recorded_tip
+                    );
+                }
+            }
+        }
+    }
+
     // Determine current tick count from events if not explicitly passed
     let derived_tick = if let Some(t) = args.tick {
         t
     } else {
-        // Count previous "cards" events in the chain log
         events
             .iter()
-            .filter(|e| e.get("type").and_then(Value::as_str) == Some("cards"))
-            .count() as i64
+            .filter_map(|e| {
+                e.get("data")
+                    .and_then(|d| d.get("tick"))
+                    .and_then(Value::as_i64)
+            })
+            .max()
+            .map(|t| t + 1)
+            .unwrap_or(1)
     };
 
-    // Load state from snapshot file if provided, otherwise fail-closed with instructions
+    // Load state from snapshot file if provided, otherwise invoke live collector
     let state: Value = if let Some(ref snapshot_path) = args.snapshot {
         let content = fs::read_to_string(snapshot_path)
             .with_context(|| format!("failed to read snapshot at {}", snapshot_path.display()))?;
@@ -337,19 +381,46 @@ pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
             parsed
         }
     } else if let Some(ref repo_dir) = args.repo_dir {
-        // Fallback: check if an offline snapshot or collect_state can be invoked
         let local_snapshot = repo_dir.join(".guild_snapshot.json");
         if local_snapshot.exists() {
             let content = fs::read_to_string(&local_snapshot)?;
             serde_json::from_str(&content)?
         } else {
-            bail!(
-                "No --snapshot provided and live GitHub collection requires an explicit snapshot or --snapshot flag. \
-                 Generate one via `python scripts/collect_state.py --repo {} --repo-dir {} > snapshot.json` \
-                 or pass --snapshot.",
-                args.repo,
-                repo_dir.display()
-            );
+            // Live collector adapter fallback
+            let python_bin = if Command::new("python3").arg("--version").output().is_ok() {
+                "python3"
+            } else {
+                "python"
+            };
+            let script = repo_dir.join("scripts").join("collect_state.py");
+            if !script.exists() {
+                bail!(
+                    "Neither --snapshot nor scripts/collect_state.py found at {}",
+                    repo_dir.display()
+                );
+            }
+            let out = Command::new(python_bin)
+                .arg(&script)
+                .arg("--repo")
+                .arg(&args.repo)
+                .arg("--repo-dir")
+                .arg(repo_dir)
+                .output()
+                .with_context(|| format!("failed to invoke {python_bin} {script:?}"))?;
+            if !out.status.success() {
+                bail!(
+                    "collect_state.py failed (exit {}): {}",
+                    out.status,
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+            let parsed: Value = serde_json::from_slice(&out.stdout)
+                .with_context(|| "malformed JSON from collect_state.py")?;
+            if let Some(inner) = parsed.get("state") {
+                inner.clone()
+            } else {
+                parsed
+            }
         }
     } else {
         bail!("Either --snapshot or --repo-dir must be provided to run a Guild tick.");
@@ -359,21 +430,7 @@ pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
     let cards = steward::cards::build_cards(&state, derived_tick)
         .map_err(|e| anyhow::anyhow!("steward card dispatcher failed: {e}"))?;
 
-    let mut written_files = Vec::new();
-
-    // If outbox directory is configured, write the cards
-    if let Some(ref outbox_dir) = args.outbox {
-        for card in &cards {
-            if let Some(agent) = card.get("agent").and_then(Value::as_str) {
-                let card_body = render_card(card);
-                let path =
-                    write_card_atomically(outbox_dir, agent, &card_body, &now_ts, derived_tick)?;
-                written_files.push(path.display().to_string());
-            }
-        }
-    }
-
-    // Append "cards" event to event log
+    // Append "cards" event to event log FIRST before publishing cards
     let actionable: Vec<&str> = cards
         .iter()
         .filter(|c| {
@@ -407,6 +464,19 @@ pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
         &now_ts,
         &current_tip,
     )?;
+
+    // Publish cards to outbox only after durable log append succeeded
+    let mut written_files = Vec::new();
+    if let Some(ref outbox_dir) = args.outbox {
+        for card in &cards {
+            if let Some(agent) = card.get("agent").and_then(Value::as_str) {
+                let card_body = render_card(card);
+                let path =
+                    write_card_atomically(outbox_dir, agent, &card_body, &now_ts, derived_tick)?;
+                written_files.push(path.display().to_string());
+            }
+        }
+    }
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&cards)?);
@@ -524,24 +594,33 @@ pub fn run_status(args: &StatusArgs) -> Result<()> {
 
 /// Run the persistent Guild daemon loop.
 pub fn run_daemon(args: &DaemonArgs) -> Result<()> {
+    if args.interval_seconds == 0 {
+        bail!("interval-seconds must be at least 1");
+    }
+
     println!(
         "Starting Guild persistent daemon for {} (interval: {}s)...",
         args.repo, args.interval_seconds
     );
 
-    // Handle lock file
+    // Handle exclusive lock file
     let lock_path = args
         .lock_file
         .clone()
         .unwrap_or_else(|| args.log.with_extension("loop.lock"));
 
-    if lock_path.exists() {
-        eprintln!(
-            "Warning: lock file {} exists. Another daemon may be running, or one crashed. Continuing...",
-            lock_path.display()
-        );
-    }
-    fs::write(&lock_path, format!("pid={}\n", std::process::id()))?;
+    let mut lock_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to acquire exclusive lock {}: another daemon is running or stale lock exists ({e})",
+                lock_path.display()
+            )
+        })?;
+    writeln!(lock_file, "pid={}", std::process::id())?;
+    lock_file.flush()?;
 
     let tick_args = TickArgs {
         repo: args.repo.clone(),
