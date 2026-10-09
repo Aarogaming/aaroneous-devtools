@@ -556,6 +556,8 @@ pub struct DecisionReceipt {
     pub notes: String,
     #[serde(default)]
     pub archive_reviewed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -582,6 +584,10 @@ pub struct PipelineTicket {
     pub feedback: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub housekeeping_snapshot: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_revision: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1118,6 +1124,11 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
             review_sha256: seed_sha,
             feedback: None,
             housekeeping_snapshot: None,
+            contribution_id: Some(format!("C117/gemini-maintenance-cycle-{cycle}-v1")),
+            origin_revision: Some(
+                crate::agentic_registrar::git_current_revision(checkout)
+                    .unwrap_or_else(|_| index_sha.clone()),
+            ),
         };
 
         if task_kind == "housekeeping-brief" {
@@ -1278,6 +1289,35 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
             || decision.review_path.trim().is_empty()
         {
             bail!("Unbound or invalid independent decision");
+        }
+
+        if let Some(ref cid) = decision.contribution_id {
+            if crate::contribution::ContributionId::parse(cid).is_err() {
+                bail!("Malformed contribution_id in decision receipt: {cid}");
+            }
+        }
+
+        // Finding 4: Bind decision to the ticket's contribution_id
+        let ticket_path = runtime_root.join("evidence").join("pipeline-ticket.json");
+        if ticket_path.is_file() {
+            let ticket: PipelineTicket = serde_json::from_str(&fs::read_to_string(&ticket_path)?)?;
+            if let Some(ref ticket_cid) = ticket.contribution_id {
+                match &decision.contribution_id {
+                    Some(dec_cid) if dec_cid != ticket_cid => {
+                        bail!(
+                            "Decision contribution_id '{dec_cid}' does not match ticket \
+                             contribution_id '{ticket_cid}'"
+                        );
+                    }
+                    None => {
+                        bail!(
+                            "Ticket requires contribution_id '{ticket_cid}' but decision \
+                             omits it"
+                        );
+                    }
+                    _ => {} // matches — proceed
+                }
+            }
         }
 
         let review = runtime_root.join(&decision.review_path);
