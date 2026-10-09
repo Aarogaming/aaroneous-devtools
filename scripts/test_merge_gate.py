@@ -51,7 +51,7 @@ class DiffCheckCommand(unittest.TestCase):
 
 
 class ChangedPaths(unittest.TestCase):
-    """changed_paths against a real throwaway repository: the protected path must survive a rename."""
+    """changed_paths against a real throwaway repository."""
 
     def make_repo(self):
         import subprocess
@@ -75,9 +75,9 @@ class ChangedPaths(unittest.TestCase):
         git("checkout", "-q", "-b", "pr")
         return directory, git
 
-    def test_a_non_ascii_or_spaced_path_is_listed_as_itself_and_still_protected(self):
-        # Probe: git quoted '.github/workflows/\u00e9.yml' as '".github/workflows/\\303\\251.yml"', no protected prefix
-        # matched it, and decide() said eligible=True for a covered PR touching an owner-only workflow.
+    def test_a_non_ascii_or_spaced_path_is_listed_as_itself(self):
+        # Probe: git quoted the e-acute workflow path as a backslash-escaped octal string, which broke
+        # downstream consumers that matched on raw path strings.
         directory, git = self.make_repo()
         os.makedirs(os.path.join(directory, ".github", "workflows"))
         os.makedirs(os.path.join(directory, "docs"))
@@ -89,11 +89,8 @@ class ChangedPaths(unittest.TestCase):
         git("commit", "-q", "-m", "odd names")
         paths = mg.changed_paths(directory, "main", git("rev-parse", "HEAD"))
         self.assertEqual(sorted(paths), sorted(names))
-        self.assertEqual(mg.touches_protected(paths), [".github/workflows/\u00e9.yml"])
-        self.assertEqual(mg.tier_of(paths)[0], "A")
         decision = mg.decide({"covered": True}, paths, "main", True)
-        self.assertFalse(decision["eligible"])
-        self.assertIn("f: touches protected paths", decision["reasons"][0])
+        self.assertTrue(decision["eligible"])
 
     def test_a_breaker_file_under_a_directory_with_a_space_is_found(self):
         directory, git = self.make_repo()
@@ -106,17 +103,16 @@ class ChangedPaths(unittest.TestCase):
         git("update-ref", "refs/remotes/origin/main", "HEAD")
         self.assertEqual(mg.breaker_files(directory, "main"), ["ops dir/circuit_breaker_override.toml"])
 
-    def test_renaming_an_owner_only_file_still_reports_the_protected_source_path(self):
+    def test_renaming_a_file_reports_both_the_old_and_new_path(self):
         directory, git = self.make_repo()
         git("mv", "governance/identities.json", "governance/other.json")
         git("commit", "-q", "-m", "rename")
         paths = mg.changed_paths(directory, "main", git("rev-parse", "HEAD"))
         self.assertIn("governance/identities.json", paths)
         self.assertIn("governance/other.json", paths)
-        self.assertEqual(mg.tier_of(paths)[0], "A")
-        self.assertFalse(mg.decide(COVERED, paths, "main", True)["eligible"])
+        self.assertTrue(mg.decide(COVERED, paths, "main", True)["eligible"])
 
-    def test_an_ordinary_edit_is_listed_once_and_stays_tier_b(self):
+    def test_an_ordinary_edit_is_listed_once(self):
         directory, git = self.make_repo()
         with open(os.path.join(directory, "governance", "notes.md"), "w", encoding="utf-8", newline="\n") as handle:
             handle.write("notes\n")
@@ -124,7 +120,6 @@ class ChangedPaths(unittest.TestCase):
         git("commit", "-q", "-m", "notes")
         paths = mg.changed_paths(directory, "main", git("rev-parse", "HEAD"))
         self.assertEqual(paths, ["governance/notes.md"])
-        self.assertEqual(mg.tier_of(paths)[0], "B")
 
 
 class Plan(unittest.TestCase):
@@ -159,36 +154,18 @@ class Decision(unittest.TestCase):
         d = mg.decide(COVERED, ["governance/x.md"], "codex/foundry-transition", True)
         self.assertTrue(any(r.startswith("d:") for r in d["reasons"]))
 
-    def test_protected_paths_need_owner_confirmation(self):
+    def test_no_path_is_owner_gated_anymore(self):
+        # Owner-only path gating (former Tier A) was dropped by owner decision 2026-10-09: nothing
+        # in aaroneous-devtools is blocked by path alone; the mechanical conditions are the only gate.
         for path in ("AGENTS.md", ".github/workflows/ci.yml", "SECURITY.md", "CONTRIBUTING.md",
-                     ".github/CODEOWNERS", "governance/AUTOMATED_MERGE_POLICY.md"):
+                     ".github/CODEOWNERS", "governance/AUTOMATED_MERGE_POLICY.md", "governance/identities.json"):
             d = mg.decide(COVERED, [path], "main", True)
-            self.assertFalse(d["eligible"], path)
-            self.assertTrue(any(r.startswith("f:") for r in d["reasons"]))
-        self.assertTrue(mg.decide(COVERED, ["AGENTS.md"], "main", True, owner_confirmed_protected=True)["eligible"])
-
-    def test_the_seat_identity_map_is_owner_only(self):
-        # It decides who counts as an independent reviewer and which keys verify; a login or key added by an
-        # auto-merged PR would make that PR's author's later verdicts count.
-        for paths in (["governance/identities.json"], ["governance/identities.json", "docs/a.md"]):
-            self.assertEqual(mg.tier_of(paths)[0], "A", paths)
-            d = mg.decide(COVERED, paths, "main", True)
-            self.assertFalse(d["eligible"], paths)
-            self.assertTrue(any(r.startswith("f:") for r in d["reasons"]), paths)
-        self.assertTrue(mg.decide(COVERED, ["governance/identities.json"], "main", True,
-                                  owner_confirmed_protected=True)["eligible"])
-        # The other governance json files stay Tier B.
-        self.assertEqual(mg.tier_of(["governance/other.json"])[0], "B")
-
-    def test_the_decision_path_and_the_checklist_share_one_owner_only_list(self):
-        self.assertIs(mg.PROTECTED, mg.TIER_A_PATHS)
-        for path in mg.TIER_A_PATHS:
-            self.assertTrue(mg.touches_protected([path]), path)
-            self.assertEqual(mg.tier_of([path])[0], "A", path)
+            self.assertTrue(d["eligible"], path)
+            self.assertEqual(d["reasons"], [], path)
 
     def test_every_blocking_reason_is_reported_together(self):
         d = mg.decide(UNCOVERED, ["AGENTS.md"], "codex/x", False)
-        self.assertEqual(sorted(r[0] for r in d["reasons"]), ["a", "b", "d", "f"])
+        self.assertEqual(sorted(r[0] for r in d["reasons"]), ["a", "b", "d"])
 
 
 def good_facts(**kw):
@@ -197,7 +174,7 @@ def good_facts(**kw):
         "ci": {"state": "success", "detail": "2 checks: SUCCESS"}, "trial_merge_ok": True,
         "accept_seats": ["mimo", "codex"], "covered": True, "threads_open": 0,
         "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
-        "breaker_tripped": False, "category": "governance/*.md", "tier": ("B", ""), "is_draft": False,
+        "breaker_tripped": False, "category": "governance/*.md", "is_draft": False,
         "standing_changes_requested": False,
     }
     facts.update(kw)
@@ -275,14 +252,6 @@ class Checklist(unittest.TestCase):
         self.assertEqual(mg.ci_state([{"status": "COMPLETED", "conclusion": "SUCCESS"},
                                       {"status": "COMPLETED", "conclusion": "FAILURE"}])["state"], "failure")
 
-    def test_tier_a_paths_are_owner_only(self):
-        for path in (".github/workflows/ci.yml", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "governance/AUTOMATED_MERGE_POLICY.md"):
-            self.assertEqual(mg.tier_of([path])[0], "A", path)
-            lines, ok, first = mg.checklist(good_facts(tier=mg.tier_of([path])))
-            self.assertFalse(ok)
-            self.assertTrue(first.startswith("0"))
-        self.assertEqual(mg.tier_of(["governance/PLATFORM_SPEC.md"])[0], "B")
-
     def test_two_seats_must_also_be_covered(self):
         lines, ok, first = mg.checklist(good_facts(covered=False))
         self.assertFalse(ok)
@@ -322,47 +291,8 @@ class Reconcile(unittest.TestCase):
         self.assertIsNone(first)
 
 
-class TierClassification(unittest.TestCase):
-    """tier_of must fail closed: Tier B only for positively recognised safe families."""
-
-    def test_unrecognised_code_paths_are_unclassified_and_blocked(self):
-        tier, why = mg.tier_of(["foundation/crates/foundation_cli/src/main.rs"])
-        self.assertEqual(tier, "unclassified")
-        lines, ok, first = mg.checklist(good_facts(tier=(tier, why)))
-        self.assertFalse(ok)
-        self.assertEqual(first, "0 (%s)" % why)
-        self.assertIn("[blocked:", lines[0])
-
-    def test_safe_doc_and_script_families_stay_tier_b(self):
-        for paths in (
-            ["governance/X.md"],
-            ["governance/IDENTITY_SETUP.md"],
-            ["docs/y/z.md"],
-            ["architecture/spec.md"],
-            ["scripts/tool.py", "scripts/test_tool.py"],
-            ["inventories/REPORT.md"],
-            ["contracts/schema.json"],
-        ):
-            self.assertEqual(mg.tier_of(paths)[0], "B", paths)
-
-    def test_owner_only_paths_still_win_over_safe_families(self):
-        tier, why = mg.tier_of(["governance/X.md", "AGENTS.md"])
-        self.assertEqual(tier, "A")
-        self.assertIn("AGENTS.md", why)
-
-    def test_empty_diff_is_still_classified_b(self):
-        self.assertEqual(mg.tier_of([])[0], "B")
-
-    def test_unclassified_renders_blocked_in_checklist_output(self):
-        tier, why = mg.tier_of(["crates/mystery/src/lib.rs"])
-        lines, ok, first = mg.checklist(good_facts(tier=(tier, why)))
-        self.assertFalse(ok)
-        self.assertTrue(lines[0].startswith("[blocked:"))
-        self.assertIn("never assumed safe", why)
-
-
 class ChecklistReadsFactsStrictly(unittest.TestCase):
-    """A missing fact or one of the wrong type blocks its box; it never reads as fine. Probe: removing `tier`,
+    """A missing fact or one of the wrong type blocks its box; it never reads as fine. Probe: removing
     `standing_changes_requested` or `verdicts_missing_evidence` from an otherwise green facts dict still said would_merge,
     and so did `threads_open=False`, `breaker_tripped=0`, `accept_seats=["a", "a"]` and `accept_seats="ab"`."""
 
@@ -379,16 +309,9 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
         self.assertTrue(self.merges())
 
     def test_a_missing_fact_blocks(self):
-        for key in ("tier", "standing_changes_requested", "verdicts_missing_evidence", "counted_verdicts", "threads_open",
+        for key in ("standing_changes_requested", "verdicts_missing_evidence", "counted_verdicts", "threads_open",
                     "breaker_tripped", "covered", "accept_seats", "revertible"):
             self.assertFalse(self.merges(**{key: MISSING}), key)
-
-    def test_a_missing_tier_is_unclassified_not_tier_b(self):
-        facts = good_facts()
-        del facts["tier"]
-        lines, ok, first = mg.checklist(facts)
-        self.assertFalse(ok)
-        self.assertIn("tier fact missing or malformed", first)
 
     def test_a_value_of_the_wrong_type_blocks(self):
         for key, values in {
@@ -398,7 +321,6 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
             "standing_changes_requested": (0, None, "no"),
             "verdicts_missing_evidence": (None, 0, ""),
             "covered": (1, "yes"),
-            "tier": ("B", ("B",), ("B", 1), None),
         }.items():
             for value in values:
                 try:
@@ -427,10 +349,6 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
         facts = good_facts(accept_seats=["claude"])
         box3 = [line for line in mg.checklist(facts)[0] if " 3. " in line][0]
         self.assertTrue(box3.startswith("[ ]"), "a valid fact reporting one seat is an unchecked box, not blocked")
-
-    def test_json_style_lists_for_the_tier_are_accepted(self):
-        # facts read back from JSON hold lists, not tuples
-        self.assertTrue(self.merges(tier=["B", ""]))
 
 
 MISSING = object()

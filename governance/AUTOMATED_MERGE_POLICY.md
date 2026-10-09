@@ -19,17 +19,18 @@ work, and independent review stays mandatory. What changes is *who* presses
 merge once every one of those conditions has already been met in public,
 retained evidence.
 
-**Scope, owner decision 2026-10-07.** This policy's Tier B automation
-applies only within `Aarogaming/aaroneous-devtools`. `Aarogaming/aaroneous`
-(the product) is never eligible for automatic merging under this document,
-regardless of what tier a change would otherwise fall into — it stays
-entirely owner-gated until a devtools-built capability graduates into it
-through the component-graduation process in
+**Scope, owner decision 2026-10-07, reaffirmed 2026-10-09.** This policy's
+automation applies only within `Aarogaming/aaroneous-devtools`.
+`Aarogaming/aaroneous` (the product) is never eligible for automatic
+merging under this document, regardless of what path or kind of change is
+involved — it stays entirely owner-gated until a devtools-built capability
+graduates into it through the component-graduation process in
 `LOCAL_MODEL_AUTONOMY_POLICY.md`, at which point *that* merge is the
 owner's checkpoint. Auditing Aaroneous (reading it, reporting drift,
 proposing a fix PR) is in scope for the cadence in
 [`RECURSIVE_AUDIT_CADENCE.md`](RECURSIVE_AUDIT_CADENCE.md); merging into it
-automatically is not, ever, under this document.
+automatically is not, ever, under this document. This is the one absolute
+boundary this document does not relax, below or anywhere else in it.
 
 ## Why gate here instead of relaxing the evidence bar
 
@@ -44,38 +45,46 @@ it does not lower how much evidence is required, and it does not let
 any party certify its own work (self-certification stays banned exactly as
 `CROSS_AGENT_COORDINATION_PROTOCOL.md` already requires).
 
-## Eligibility tiers
+## No path-based owner gating (revised, owner decision 2026-10-09)
 
-**Tier A — never auto-merged, always the owner.** Anything touching a
-`kernel`-profile crate (per Aaroneous `AGENTS.md` section 1), anything
-containing generated `unsafe` code, anything changing branch protection,
-**any CI/CD workflow file, unconditionally** (added, modified, or
-removed — there is no carve-out for a new workflow file, below or
-anywhere else in this document), credentials, dependency-admission
-verdicts, **any repository "constitution" or protected file** — `AGENTS.md`,
-`SECURITY.md`, `CONTRIBUTING.md` (any file whose rules section restates
-AGENTS.md's content), and any settings or permissions file under
-`.github/` (workflows, `settings.yml`, CODEOWNERS, anything governing who
-can do what) — or this policy document itself. Matches the existing high-risk allowlist pattern
-in `LOCAL_MODEL_AUTONOMY_POLICY.md`'s Tier 2. No trust-building period
-changes this tier — it is a permanent floor, not a starting point. (A new
-workflow file is exactly the case Aaroneous `AGENTS.md` section 6 flags
-post-#89: adding one without its matching local gate and drift test
-silently reopens the CI/local-gate coverage gap that section exists to
-close, so it stays owner-only rather than earning a carve-out. The
-constitution-file carve-in matches `scripts/merge_gate.py`'s (`#51`)
-existing `TIER_A_PATHS`/`PROTECTED` lists (`AGENTS.md`, `SECURITY.md`,
-`.github/workflows/`, `.github/settings`) — that code was already ahead
-of this document; without this carve-in, Tier B's "documentation,
-governance process docs" sweep would have made `AGENTS.md` itself
-auto-mergeable, which is exactly the "change the constitution via a
-doc-tier merge" case this policy cannot allow.)
+An earlier version of this document split changes into "Tier A" (anything
+touching a `kernel`-profile crate, generated `unsafe` code, branch
+protection, any CI/CD workflow file, credentials, dependency-admission
+verdicts, any repository "constitution" file — `AGENTS.md`, `SECURITY.md`,
+`CONTRIBUTING.md` — any settings/permissions file under `.github/`, or
+this policy document itself — never auto-merged, always the owner) and
+"Tier B" (everything else, auto-mergeable once the mechanical conditions
+below passed). `scripts/merge_gate.py` enforced Tier A as a blocking
+checklist box and a `decide()` condition (`TIER_A_PATHS`/`PROTECTED`,
+`touches_protected()`, `tier_of()`, the former box 0, and condition f).
 
-**Tier B — auto-mergeable once the checks below pass.** Everything else:
-documentation, governance process docs, `control`/`presentation`/`tooling`
-profile crates, test-only files, Dependabot version bumps already covered
-by `cargo-semver-checks`. This is the category this policy actually
-activates automation for.
+The owner's direct, repeated, forceful correction: *"I DO NOT want this
+system dependent on me, and I DO not want to manually review ANYTHING
+going on in devtools. I only need to review things for aaroneous.
+devtools should be the automation system behind Aaroneous, and in turn
+devtools needs to be automated."* And, when an owner-review requirement
+(`CODEOWNERS` for `aaroneous-devtools`) was drafted anyway: *"the entire
+time you were building those I kept telling you to stop including me in
+the loop on PR's. Those are there FROM YOU"* — the Tier A split, like the
+trust-building counter the 2026-10-07 entry below removed, was this
+document's own author being cautious beyond what was asked for, not a bar
+the owner set.
+
+**Tier A is removed. There is no tiering.** Nothing within
+`Aarogaming/aaroneous-devtools` is gated by path — not workflow files, not
+`AGENTS.md`/`SECURITY.md`/`CONTRIBUTING.md`, not `governance/identities.json`,
+not this policy document itself. The mechanical conditions below
+(especially condition 3's ≥2-independent-accept-seat bar) are the only
+gate, for every path, with no exception carved out for any file in this
+repository. `scripts/merge_gate.py` no longer has a tier concept at all:
+`TIER_A_PATHS`, `PROTECTED`, `touches_protected()`, `tier_of()`, the
+former checklist box 0, and `decide()`'s former condition f are deleted,
+not merely disabled.
+
+This removal applies only within `aaroneous-devtools`, per the Scope
+section above — `Aarogaming/aaroneous` stays entirely owner-gated
+regardless of path, with no tier concept to begin with, since this
+document never granted it automatic merging of anything.
 
 ## Mechanical conditions (all required, checked by tooling, not by a model's say-so)
 
@@ -88,7 +97,7 @@ For a given PR head commit, before anything merges it automatically:
 2. **No merge conflict** against the current base branch tip.
 2a. **Base is the repository's default branch.** A PR stacked on a
     non-default base (a sequencing branch like `codex/foundry-transition`)
-    is never auto-merge-eligible, regardless of tier or trust status —
+    is never auto-merge-eligible, regardless of path or trust status —
     stacked-landing sequencing stays an explicit owner or author-seat
     decision, matching the steward-grant precedent in `#44`.
 3. **≥2 independent accept verdicts** at that exact head, from reviewer
@@ -112,17 +121,19 @@ For a given PR head commit, before anything merges it automatically:
    a verdict without that is not counted toward condition 3.
 6. **Reversibility.** The change must be revertible with a plain
    `git revert` (no manual data migration, no irreversible external side
-   effect like a published release or a credential rotation). If it isn't,
-   it's Tier A regardless of what else is true about it.
+   effect like a published release or a credential rotation). If it
+   isn't, it is not eligible for automatic merge, regardless of what else
+   is true about it — this condition has no path-based carve-out.
 7. **Circuit breaker clear.** `circuit_breaker_override.toml` has
-   `tripped = false`. A trip blocks every automatic merge across every
-   tier until a human clears it, exactly as it already blocks local-model
-   promotion.
+   `tripped = false`. A trip blocks every automatic merge until a human
+   clears it, exactly as it already blocks local-model promotion.
 
 Any PR failing condition 1, 2, 2a, 3, 4, 6, or 7 is not eligible for
-automatic merge at that head, full stop — it waits for the owner like
-every PR does today. Condition 5 is a quality bar on condition 3, not a
-separate gate.
+automatic merge at that head, full stop — it waits until the failing
+condition is actually met (CI goes green, a second independent seat
+accepts, the breaker clears, and so on), by whichever identity next makes
+that happen; nothing here routes the wait to the owner specifically.
+Condition 5 is a quality bar on condition 3, not a separate gate.
 
 ## Literal checklist the checker must output per PR (not a prose summary)
 
@@ -211,23 +222,28 @@ stops.
 
 ## Mechanism (what actually presses the button)
 
-This is infrastructure to build, not yet built as of this document:
+Built: `scripts/merge_gate.py` (the checker — evaluates conditions 1-7
+including 2a and 2b against the live repo, producing the literal
+checklist above, no path-based tier anywhere in it per the section
+above) and `scripts/auto_merge.py` plus `.github/workflows/auto-merge.yml`
+(the pipeline — calls `merge_gate.evaluate_all()` and runs `gh pr merge`
+on whatever it marks eligible; hard-refuses any repository but
+`aaroneous-devtools`). What this looked like as a plan, before it
+existed:
 
-- A small checker (xtask subcommand in Aaroneous, or a script here) that
-  takes a PR number and evaluates conditions 1-7 (including 2a) against
-  the GitHub API,
-  producing a pass/fail with the specific condition(s) that failed.
+- A small checker that takes a PR number and evaluates conditions 1-7
+  (including 2a) against the GitHub API, producing a pass/fail with the
+  specific condition(s) that failed. (`scripts/merge_gate.py`.)
 - A kill switch: the same `circuit_breaker_override.toml` mechanism
   already used for local-model promotion, extended to also block this
   checker's merge action when tripped. One file, one meaning, reused
   rather than inventing a second breaker to keep in sync.
-- The cloud-agent PR-babysitting loop (already running today) calls this
-  checker once a PR it's driving reaches green+accepted state. On pass,
-  for any PR within `aaroneous-devtools` (see Scope, above), it merges via
-  the same GitHub access it already uses to push fixes — no new
-  credential, no new always-on writer, per the standing rule against
-  adding either casually. On fail, it reports which box failed and stops,
-  same as it does today.
+- Something that calls this checker once a PR reaches green+accepted
+  state. On pass, for any PR within `aaroneous-devtools` (see Scope,
+  above), it merges — no new credential, no new always-on writer, per
+  the standing rule against adding either casually. On fail, it reports
+  which box failed and stops. (`auto_merge.py`'s hard repo-guard plus the
+  workflow's scheduled and event-triggered runs.)
 - Every automatic merge logs a line in `DECISIONS.md`: PR, head sha,
   which conditions were checked, and the two-plus accept verdicts it
   relied on — so an automatic merge has *more* retained evidence than a
@@ -237,9 +253,9 @@ This is infrastructure to build, not yet built as of this document:
 
 - Self-certification is still banned. An implementer's own "looks good to
   me" never counts toward condition 3, automated or not.
-- Tier A changes are never automatic, with no trust-building path to
-  make them automatic later — that's a permanent floor, revisit only by
-  explicit owner decision recorded here.
+- `Aarogaming/aaroneous` stays entirely owner-gated, with no path or
+  category that becomes automatic under this document — that's a
+  permanent floor, revisit only by explicit owner decision recorded here.
 - A human can still merge anything by hand at any time; this policy only
   adds a path that doesn't require them to.
 - The circuit breaker, once tripped by any party for any reason, blocks
@@ -252,7 +268,7 @@ This is infrastructure to build, not yet built as of this document:
   single-accept practice (e.g. `PLATFORM_SPEC.md`'s merged convention).
   Intentional, and recorded here as an owner decision rather than left
   implicit, but worth revisiting if it turns out to be the pacing
-  bottleneck once Tier B is actually live.
+  bottleneck now that automatic merging is live for every path.
 - Who owns building the checker tool itself and on what timeline —
   tracked as a queue item, not committed to in this document. A
   report-only implementation already exists in `scripts/merge_gate.py`

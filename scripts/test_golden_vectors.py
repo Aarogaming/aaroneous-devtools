@@ -18,7 +18,7 @@ import steward_run as sr  # noqa: E402
 
 DIR = gv.DIR
 RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "pushes", "seats", "coverage", "audit",
-                 "gate_tier", "gate_ci", "gate_breaker", "gate_threads", "gate_checklist", "gate_decide")
+                 "gate_plan", "gate_ci", "gate_breaker", "gate_threads", "gate_checklist", "gate_decide")
 
 
 def load(name):
@@ -70,11 +70,10 @@ class Golden(unittest.TestCase):
              for t in audit["ticks"]], load("audit.out.json"))
 
     def test_every_merge_gate_vector_reproduces_its_committed_results_exactly(self):
-        tier = load("gate_tier.in.json")
+        plan = load("gate_plan.in.json")
         self.assertEqual(
-            [{"tier": list(mg.tier_of(c["paths"])), "protected": mg.touches_protected(c["paths"]),
-              "plan_level": mg.gate_plan(c["paths"])["level"], "category": mg.category_of(c["paths"])} for c in tier],
-            load("gate_tier.out.json"))
+            [{"plan_level": mg.gate_plan(c["paths"])["level"], "category": mg.category_of(c["paths"])} for c in plan],
+            load("gate_plan.out.json"))
         self.assertEqual([mg.ci_state(c["rollup"]) for c in load("gate_ci.in.json")], load("gate_ci.out.json"))
         self.assertEqual([mg.breaker_state(c["text"]) for c in load("gate_breaker.in.json")], load("gate_breaker.out.json"))
         self.assertEqual([mg.open_threads(c["data"]) for c in load("gate_threads.in.json")], load("gate_threads.out.json"))
@@ -88,7 +87,7 @@ class Golden(unittest.TestCase):
         self.assertEqual(results, load("gate_checklist.out.json"))
         decided = []
         for c in load("gate_decide.in.json"):
-            result = mg.decide(c["row"], c["paths"], c["base"], c["trial"], c["owner"])
+            result = mg.decide(c["row"], c["paths"], c["base"], c["trial"])
             _, eligible, first = mg.reconcile(result["eligible"], json.loads(json.dumps(checklist["green"])))
             decided.append({"decide": result, "reconciled_with_all_green_checklist": {"eligible": eligible, "first_blocker": first}})
         self.assertEqual(decided, load("gate_decide.out.json"))
@@ -109,14 +108,10 @@ class Golden(unittest.TestCase):
         self.assertEqual(checklist["one accept seat is not enough"]["first_blocker"], "3")
         self.assertEqual(checklist["an open thread blocks"]["first_blocker"], "4")
         self.assertEqual(checklist["a tripped breaker blocks"]["first_blocker"], "7")
-        self.assertTrue(checklist["tier A is owner-only"]["first_blocker"].startswith("0"))
-        tier = named("gate_tier")
-        self.assertEqual(tier["AGENTS.md is owner-only"]["tier"][0], "A")
-        self.assertEqual(tier["workflow files are owner-only"]["tier"][0], "A")
-        self.assertEqual(tier["Rust sources are unclassified, never assumed safe"]["tier"][0], "unclassified")
-        self.assertEqual(tier["docs and governance markdown is tier B with the light gate"]["plan_level"], "light")
-        self.assertEqual(tier["scripts are tier B but get the full gate"]["plan_level"], "full")
-        self.assertEqual(tier["a lookalike prefix is also owner-only (prefix match, fails closed)"]["protected"], ["AGENTS.md.bak"])
+        plan = named("gate_plan")
+        self.assertEqual(plan["docs and governance markdown gets the light gate"]["plan_level"], "light")
+        self.assertEqual(plan["scripts get the full gate"]["plan_level"], "full")
+        self.assertEqual(plan["AGENTS.md gets the full gate (not a docs-allowlist path)"]["plan_level"], "full")
         ci = named("gate_ci")
         self.assertEqual(ci["no rollup is missing"]["state"], "missing")
         self.assertEqual(ci["all successful"]["state"], "success")
@@ -135,8 +130,8 @@ class Golden(unittest.TestCase):
             self.assertIsNone(threads[unknown], unknown)
         decide = named("gate_decide")
         self.assertTrue(decide["covered clean docs PR on main is eligible"]["decide"]["eligible"])
-        self.assertEqual(len(decide["every blocking reason is reported together"]["decide"]["reasons"]), 4)
-        self.assertTrue(decide["owner confirmation lifts only condition f"]["decide"]["eligible"])
+        self.assertEqual(len(decide["every blocking reason is reported together"]["decide"]["reasons"]), 3)
+        self.assertTrue(decide["a workflow file path is not owner-gated and is eligible"]["decide"]["eligible"])
 
     def test_the_rule_vectors_pin_the_decisions_merge_safety_depends_on(self):
         out = {name: load(f"{name}.out.json") for name in RULE_FAMILIES}
