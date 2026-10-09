@@ -264,6 +264,9 @@ def evaluate(head, merge_base, records, is_ancestor):
         for r in records
         if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base
     ]
+    # Only a `whole` accept seeds coverage (governance/PLATFORM_SPEC.md section 3: "Delta accepts compose only when
+    # chained from a whole-diff accept"). A delta that starts at the merge base reviewed the whole PR diff, but its
+    # author must say so by labelling it `whole`; the tool tells them (see the reason below) and does not guess.
     covered = {r["head"] for r in valid if r["scope"] == "whole"}
     changed = True
     while changed:
@@ -280,7 +283,11 @@ def evaluate(head, merge_base, records, is_ancestor):
     ok = head in covered and not blockers
     if head not in covered:
         if any(r["verdict"] in ACCEPT and r["head"] == head for r in records):
-            reasons.append("accept at head exists but is not chained to a whole accept at this base")
+            reason = "accept at head exists but is not chained to a whole accept at this base"
+            if any(r["scope"] == "delta" and r["head"] == head and r["from"] == merge_base for r in valid):
+                reason += (f"; its delta starts at the merge base {merge_base[:8]}, which is the whole PR diff, so if the "
+                           "reviewer read all of base...head they should re-post it with scope \"whole\"")
+            reasons.append(reason)
             for r in at_head:
                 if r["verdict"] not in ACCEPT or r in valid:
                     continue
@@ -492,7 +499,7 @@ def checkout_matches(remote_url, repo):
 
 def pr_list_args(repo):
     return ["pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
-            "number,headRefOid,baseRefName,headRefName"]
+            "number,headRefOid,baseRefName,headRefName,isDraft"]
 
 
 def gh_json(*args):
@@ -528,6 +535,7 @@ def live_snapshot(repo, repo_dir):
                 "branch": item.get("headRefName", ""),
                 "commit_log": log.stdout if log.returncode == 0 else "",
                 "base": item["baseRefName"],
+                "draft": item["isDraft"],
                 "merge_base": mb,
                 "comments": flatten_pages(pages),
                 "reviews": flatten_pages(

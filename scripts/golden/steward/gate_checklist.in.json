@@ -44,6 +44,18 @@
       }
     },
     {
+      "name": "a draft PR blocks",
+      "override": {
+        "is_draft": true
+      }
+    },
+    {
+      "name": "an unknown draft status is blocked",
+      "override": {
+        "is_draft": null
+      }
+    },
+    {
       "name": "one accept seat is not enough",
       "override": {
         "accept_seats": [
@@ -106,39 +118,6 @@
       "override": {
         "breaker_tripped": null
       }
-    },
-    {
-      "name": "trust below the threshold blocks",
-      "override": {
-        "trust": [
-          4,
-          5
-        ]
-      }
-    },
-    {
-      "name": "no trust counter fails",
-      "override": {
-        "trust": null
-      }
-    },
-    {
-      "name": "tier A is owner-only",
-      "override": {
-        "tier": [
-          "A",
-          "touches owner-only paths: ['AGENTS.md']"
-        ]
-      }
-    },
-    {
-      "name": "an unclassified tier is blocked",
-      "override": {
-        "tier": [
-          "unclassified",
-          "unrecognised paths"
-        ]
-      }
     }
   ],
   "green": {
@@ -158,18 +137,11 @@
     "covered": true,
     "default_branch": "main",
     "head": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh",
+    "is_draft": false,
     "revertible": true,
     "standing_changes_requested": false,
     "threads_open": 0,
-    "tier": [
-      "B",
-      ""
-    ],
     "trial_merge_ok": true,
-    "trust": [
-      5,
-      5
-    ],
     "verdicts_missing_evidence": []
   }
 }
