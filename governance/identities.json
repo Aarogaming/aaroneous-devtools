@@ -3,7 +3,7 @@
   "owner": ["Aarogaming"],
   "seats": {
     "claude": {"logins": [], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKl7YYxzb4umZVCMjjM/fNtSLhfsP9KV55cj9jQogc0n"]},
-    "mimo": {"logins": [], "keys": []},
+    "mimo": {"logins": [], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFLtJceCVyHHBO+WxlUVGbapfaoHvcLUevlrx1Ao4APs"]},
     "codex": {"logins": [], "keys": []},
     "gemini": {"logins": [], "keys": []}
   }
