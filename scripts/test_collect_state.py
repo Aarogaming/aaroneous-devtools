@@ -204,6 +204,12 @@ class Rejections(unittest.TestCase):
         far = "Seat / agent:" + " " * 40 + "Claude"
         self.assertEqual(cs.comment_seat(far, strict=True), "", far)
 
+    def test_declaration_padding_does_not_cross_newlines(self):
+        # Found by Codex review finding on PR #141: an empty declaration followed by markdown underline/separator
+        # and a subsequent line mentioning a seat should not attribute the comment in strict mode.
+        text = "Seat / agent:\n------------\nClaude reviewed this earlier"
+        self.assertEqual(cs.comment_seat(text, strict=True), "")
+
     def test_a_seat_name_further_down_a_comment_does_not_attribute_it(self):
         self.assertEqual(cs.comment_seat("My note.\nMimo reviewed this earlier.\n", strict=True), "")
         self.assertEqual(cs.comment_seat("Mimo reviewed this earlier.\n", strict=False), "mimo")
