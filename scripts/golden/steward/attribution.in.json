@@ -54,5 +54,25 @@
   {
     "body": "### Independent review",
     "strict": true
+  },
+  {
+    "body": "REVIEW PACKET\nSeat / agent:        Claude (this session, Sonnet 5)\n",
+    "strict": true
+  },
+  {
+    "body": "REVIEW PACKET\nSeat / agent:        Claude (this session, Sonnet 5)\n",
+    "strict": false
+  },
+  {
+    "body": "```text\nReviewer / Seat:          Gemini\n```\n",
+    "strict": true
+  },
+  {
+    "body": "Reviewer seat:\t\t\tCodex\n",
+    "strict": true
+  },
+  {
+    "body": "Seat / agent:                                        Claude",
+    "strict": true
   }
 ]
