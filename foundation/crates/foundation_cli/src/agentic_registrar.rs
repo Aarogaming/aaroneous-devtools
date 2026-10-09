@@ -117,6 +117,12 @@ pub struct Record {
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub virtual_patch_set: Option<crate::virtual_patch::VirtualPatchSet>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<crate::contribution::ContributionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub envelope: Option<crate::contribution::ContributionEnvelope>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -963,6 +969,29 @@ fn dispatch_locked(config: &RegistrarConfig, target_task_id: Option<&str>, now: 
         task.instruction.clone()
     };
 
+    let parsed_cid = crate::contribution::ContributionId::parse(&task.id).ok();
+    let origin_rev = git_current_revision(&config.checkout).ok();
+    let base_content_sha = crate::virtual_patch::sha256_digest(existing_code.as_bytes());
+    let evidence_key = crate::virtual_patch::sha256_digest(
+        format!(
+            "task_id:{}\ncrate:{}\ntarget:{}\ninstruction:{}\nbase_sha256:{}",
+            task.id, task.crate_name, task.target_file, instruction, base_content_sha
+        )
+        .as_bytes(),
+    );
+    let initial_envelope = match (parsed_cid.as_ref(), origin_rev.as_ref()) {
+        (Some(cid), Some(rev)) => crate::contribution::ContributionEnvelope::new(
+            cid.clone(),
+            rev,
+            &task.crate_name,
+            &task.target_file,
+            &instruction,
+            evidence_key,
+        )
+        .ok(),
+        _ => None,
+    };
+
     let mut record = Record {
         schema_version: 1,
         artifact_kind: "foundation.agentic-registrar-result".into(),
@@ -976,6 +1005,9 @@ fn dispatch_locked(config: &RegistrarConfig, target_task_id: Option<&str>, now: 
         proposal: None,
         error: None,
         virtual_patch_set: None,
+        contribution_id: parsed_cid,
+        origin_revision: origin_rev,
+        envelope: initial_envelope,
     };
 
     let system_prompt = format!(
@@ -1052,6 +1084,9 @@ review — it will not be applied or committed automatically.",
                         replace_block: rust_source,
                     }],
                 ) {
+                    if let Some(ref mut env) = record.envelope {
+                        let _ = env.bind_virtual_patch(&vps);
+                    }
                     record.virtual_patch_set = Some(vps);
                 }
             }
@@ -1201,6 +1236,47 @@ fn promote_locked(config: &RegistrarConfig, task_id: &str) -> Result<()> {
     }
 
     validate_target(&config.checkout, &record.crate_name, &record.target_file)?;
+
+    // Verify bound virtual patch set and envelope before git checkout or file mutation
+    if let Some(ref vps) = record.virtual_patch_set {
+        crate::virtual_patch::verify_patch_set(vps)
+            .context("virtual patch set failed integrity verification before promotion")?;
+
+        let matching_patch = vps
+            .patches
+            .iter()
+            .find(|p| p.file_path == record.target_file)
+            .context("virtual patch set does not contain a patch for target_file")?;
+
+        if matching_patch.replace_block != draft.rust_source {
+            bail!("promoted source does not match virtual patch set replace block");
+        }
+
+        if let Some(ref env) = record.envelope {
+            if let Some(ref env_patch_id) = env.virtual_patch_set_id {
+                if env_patch_id != &vps.patch_set_id {
+                    bail!(
+                        "envelope virtual_patch_set_id '{env_patch_id}' does not match record patch_set_id '{}'",
+                        vps.patch_set_id
+                    );
+                }
+            }
+            if let Some(ref patch_sha) = env.patch_sha256 {
+                if patch_sha != &vps.patch_set_digest {
+                    bail!(
+                        "envelope patch_sha256 '{patch_sha}' does not match record patch_set_digest '{}'",
+                        vps.patch_set_digest
+                    );
+                }
+            }
+            env.validate(Some(&config.checkout))
+                .context("envelope validation failed before promotion")?;
+        }
+    } else if let Some(ref env) = record.envelope {
+        env.validate(Some(&config.checkout))
+            .context("envelope validation failed before promotion")?;
+    }
+
     let full_target_path = config.checkout.join(&record.target_file);
     let pre_existing = full_target_path.exists();
 
@@ -1244,6 +1320,7 @@ fn promote_locked(config: &RegistrarConfig, task_id: &str) -> Result<()> {
                     &record.crate_name,
                     &record.target_file,
                     &record.instruction,
+                    record.contribution_id.as_ref(),
                 )?;
                 match git_push_branch(&config.checkout, &branch_name) {
                     Ok(()) => Ok(PromoteOutcome::Pushed(hash)),
@@ -2230,6 +2307,7 @@ fn git_stage_and_commit(
     crate_name: &str,
     target_file: &str,
     instruction: &str,
+    contribution_id: Option<&crate::contribution::ContributionId>,
 ) -> Result<String> {
     let add_status = Command::new("git")
         .args(["add", "--", target_file])
@@ -2241,7 +2319,17 @@ fn git_stage_and_commit(
         bail!("git add failed for target file: {target_file}");
     }
 
-    let commit_msg = format!("feat({crate_name}): {instruction} ({task_id})");
+    let parsed_cid = contribution_id
+        .cloned()
+        .or_else(|| crate::contribution::ContributionId::parse(task_id).ok());
+
+    let commit_msg = if let Some(cid) = parsed_cid {
+        let trailers = cid.as_trailers(None).join("\n");
+        format!("feat({crate_name}): {instruction} ({task_id})\n\n{trailers}")
+    } else {
+        format!("feat({crate_name}): {instruction} ({task_id})")
+    };
+
     let commit_out = Command::new("git")
         .args(["commit", "-m", &commit_msg])
         .current_dir(checkout)
@@ -2968,6 +3056,9 @@ mod tests {
             }),
             error: None,
             virtual_patch_set: None,
+            contribution_id: None,
+            origin_revision: None,
+            envelope: None,
         };
         persist(&config.results_directory, &record).expect("persist");
 
@@ -3011,6 +3102,9 @@ mod tests {
             }),
             error: None,
             virtual_patch_set: None,
+            contribution_id: None,
+            origin_revision: None,
+            envelope: None,
         }
     }
 
@@ -3479,5 +3573,53 @@ mod tests {
         let tools = v["result"]["tools"].as_array().unwrap();
         assert!(tools.iter().any(|t| t["name"] == "verify_gate_suite"));
         assert!(tools.iter().any(|t| t["name"] == "get_repository_status"));
+    }
+
+    #[test]
+    fn git_stage_and_commit_generates_canonical_trailers() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path();
+
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let file = repo.join("test.txt");
+        std::fs::write(&file, "hello world").unwrap();
+
+        let cid =
+            crate::contribution::ContributionId::parse("C117/gemini-contribution-lifecycle-v1")
+                .unwrap();
+        let hash = git_stage_and_commit(
+            repo,
+            "C117/gemini-contribution-lifecycle-v1",
+            "foundation_cli",
+            "test.txt",
+            "test instruction",
+            Some(&cid),
+        )
+        .unwrap();
+        assert!(!hash.is_empty());
+
+        let log = Command::new("git")
+            .args(["log", "-n", "1", "--format=%B"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let body = String::from_utf8_lossy(&log.stdout);
+        assert!(body.contains("Contribution-ID: C117/gemini-contribution-lifecycle-v1"));
+        assert!(body.contains("Co-Authored-By: Gemini <gemini@aarogaming.local>"));
     }
 }

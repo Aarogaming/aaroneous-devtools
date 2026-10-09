@@ -166,6 +166,29 @@
         "claude"
       ]
     },
+    "name": "a receipt whose PR number is written in non-ASCII digits does not count",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:fix_threads:٧:cccccccccccccccccccccccccccccccccccccccc] Claude seat: ok",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
     "name": "only the author completes thread fixes",
     "repair_owners": {},
     "snapshot": {
@@ -375,6 +398,75 @@
             {
               "body": "[done:not_mergeable:7:cccccccccccccccccccccccccccccccccccccccc] Claude seat: fixed",
               "id": 2
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "a combining mark inside the attribution does not hide the seat",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] x́Gemini seat: ok",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "a seat name that opens the text after the receipt prefix names the seat",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Gemini whole-diff packet",
+              "id": 1
+            }
+          ],
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "number": 7
+        }
+      ]
+    }
+  },
+  {
+    "implementers_by_pr": {
+      "7": [
+        "claude"
+      ]
+    },
+    "name": "a dash after the receipt prefix does not hide the seat",
+    "repair_owners": {},
+    "snapshot": {
+      "prs": [
+        {
+          "comments": [
+            {
+              "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] - Codex whole-diff packet",
+              "id": 1
             }
           ],
           "head": "cccccccccccccccccccccccccccccccccccccccc",

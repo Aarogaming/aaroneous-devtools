@@ -44,6 +44,8 @@ pub enum Action {
         #[arg(long)]
         runtime_root: PathBuf,
         #[arg(long)]
+        checkout: Option<PathBuf>,
+        #[arg(long)]
         serve: bool,
     },
     /// Read-only status report across loop lease, control, pipeline state, and last cycle.
@@ -107,8 +109,9 @@ pub fn run(action: Action) -> Result<()> {
         }
         Action::Daemon {
             runtime_root,
+            checkout,
             serve,
-        } => daemon(&runtime_root, serve),
+        } => daemon(&runtime_root, checkout.as_deref(), serve),
         Action::Status { runtime_root } => status(&runtime_root),
         Action::Control {
             runtime_root,
@@ -226,6 +229,48 @@ pub fn format_compact_stamp(secs: u64) -> String {
     format!("{y:04}{m:02}{day:02}T{hours:02}{mins:02}{s:02}Z")
 }
 
+/// Validate seat identifier: 1-32 chars, lowercase alphanumeric, hyphens, or underscores.
+pub fn is_valid_seat_id(seat: &str) -> bool {
+    let trimmed = seat.trim();
+    if trimmed.is_empty() || trimmed.len() > 32 {
+        return false;
+    }
+    trimmed
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+pub const KNOWN_REGISTERED_SEATS: &[&str] =
+    &["claude", "mimo", "codex", "gemini", "ubuntu-worker-01"];
+
+/// Validate that a seat is registered in governance/identities.json or matches known registered seats.
+pub fn is_registered_seat(seat: &str, identities_path: Option<&Path>) -> bool {
+    let seat = seat.trim().to_lowercase();
+    if !is_valid_seat_id(&seat) {
+        return false;
+    }
+    if let Some(path) = identities_path {
+        if path.is_file() {
+            if let Ok(content) = fs::read_to_string(path) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(owners) = val.get("owner").and_then(serde_json::Value::as_array) {
+                        if owners
+                            .iter()
+                            .any(|o| o.as_str().map(|s| s.to_lowercase()).as_deref() == Some(&seat))
+                        {
+                            return false;
+                        }
+                    }
+                    if let Some(seats) = val.get("seats").and_then(serde_json::Value::as_object) {
+                        return seats.contains_key(&seat);
+                    }
+                }
+            }
+        }
+    }
+    KNOWN_REGISTERED_SEATS.contains(&seat.as_str())
+}
+
 pub fn sha256_file(path: &Path) -> Result<String> {
     let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
     Ok(sha256_digest(&bytes))
@@ -235,7 +280,7 @@ pub fn sha256_file_uppercase(path: &Path) -> Result<String> {
     Ok(sha256_file(path)?.to_uppercase())
 }
 
-pub fn save_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path
         .parent()
         .context("target file must have a parent directory")?;
@@ -249,12 +294,23 @@ pub fn save_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
             .get(0..8)
             .unwrap_or("tmp")
     ));
-    let json = serde_json::to_vec_pretty(value)?;
-    fs::write(&tmp, json).with_context(|| format!("failed to write {}", tmp.display()))?;
-    fs::copy(&tmp, path)
-        .with_context(|| format!("failed to copy {} to {}", tmp.display(), path.display()))?;
-    let _ = fs::remove_file(&tmp);
+    fs::write(&tmp, bytes).with_context(|| format!("failed to write {}", tmp.display()))?;
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e).with_context(|| {
+            format!(
+                "failed to replace {} with {}",
+                path.display(),
+                tmp.display()
+            )
+        });
+    }
     Ok(())
+}
+
+pub fn save_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    let json = serde_json::to_vec_pretty(value)?;
+    write_atomic(path, &json)
 }
 
 struct FileLockGuard {
@@ -283,6 +339,77 @@ impl Drop for FileLockGuard {
         drop(self.file.take());
         let _ = fs::remove_file(&self.path);
     }
+}
+
+// Missing files permit initialization; every other read/parse failure preserves
+// the artifact and stops the caller rather than resetting persistent decisions.
+fn read_optional_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error).with_context(|| format!("cannot inspect {}", path.display()));
+        }
+        Ok(metadata) if !metadata.is_file() => {
+            bail!(
+                "expected regular JSON file at {}; retained for recovery",
+                path.display()
+            );
+        }
+        Ok(_) => {}
+    }
+    let text = crate::intake::read_bounded(path, 65536)
+        .with_context(|| format!("cannot read {}; retained for recovery", path.display()))?;
+    serde_json::from_str(&text)
+        .map(Some)
+        .with_context(|| format!("invalid JSON at {}; retained for recovery", path.display()))
+}
+
+fn load_pipeline_state(path: &Path) -> Result<Option<PipelineState>> {
+    let state: Option<PipelineState> = read_optional_json(path)?;
+    if let Some(state) = &state {
+        if state.schema_version != 1
+            || state.attempt > 1
+            || !matches!(
+                state.stage.as_str(),
+                "plan-ready"
+                    | "brief-ready"
+                    | "awaiting-independent-review"
+                    | "blocked-transport"
+                    | "blocked-contract"
+                    | "blocked-calibration"
+                    | "handed-off"
+            )
+        {
+            bail!(
+                "unsupported pipeline state at {}; retained for recovery",
+                path.display()
+            );
+        }
+    }
+    Ok(state)
+}
+
+fn load_loop_control(path: &Path) -> Result<Option<LoopControl>> {
+    let control: Option<LoopControl> = read_optional_json(path)?;
+    if let Some(control) = &control {
+        if !matches!(control.state.as_str(), "run" | "pause" | "restart") {
+            bail!(
+                "invalid loop control state at {}; retained for recovery",
+                path.display()
+            );
+        }
+    }
+    Ok(control)
+}
+
+fn daemon_control(root: &Path) -> Result<LoopControl> {
+    Ok(
+        load_loop_control(&root.join("loop-control.json"))?.unwrap_or(LoopControl {
+            state: "run".to_string(),
+            requested_at_utc: None,
+            route: None,
+        }),
+    )
 }
 
 // ============================================================================
@@ -429,6 +556,8 @@ pub struct DecisionReceipt {
     pub notes: String,
     #[serde(default)]
     pub archive_reviewed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -455,6 +584,10 @@ pub struct PipelineTicket {
     pub feedback: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub housekeeping_snapshot: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_revision: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -793,12 +926,7 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
     };
 
     let state_path = pipe_dir.join("state.json");
-    let mut state: Option<PipelineState> = if state_path.is_file() {
-        let txt = fs::read_to_string(&state_path)?;
-        serde_json::from_str(&txt).ok()
-    } else {
-        None
-    };
+    let mut state = load_pipeline_state(&state_path)?;
 
     let facts_path = runtime_root.join("evidence").join("inventory-facts.json");
     let index_path = runtime_root.join("evidence").join("source-index.json");
@@ -811,6 +939,7 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
 
     // Verify source files have not changed since capture
     let checkout = Path::new(&index.checkout);
+    let identities_path = checkout.join("governance").join("identities.json");
     let mut stale = Vec::new();
     for entry in &index.files {
         let orig = checkout.join(&entry.path);
@@ -995,6 +1124,11 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
             review_sha256: seed_sha,
             feedback: None,
             housekeeping_snapshot: None,
+            contribution_id: Some(format!("C117/gemini-maintenance-cycle-{cycle}-v1")),
+            origin_revision: Some(
+                crate::agentic_registrar::git_current_revision(checkout)
+                    .unwrap_or_else(|_| index_sha.clone()),
+            ),
         };
 
         if task_kind == "housekeeping-brief" {
@@ -1141,8 +1275,13 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
         let dec_txt = fs::read_to_string(&decision_path)?;
         let decision: DecisionReceipt = serde_json::from_str(&dec_txt)?;
 
-        if decision.actor != "frontier-supervisor"
-            || decision.independent_of != "local-qwen"
+        let actor = decision.actor.trim().to_lowercase();
+        let independent_of = decision.independent_of.trim().to_lowercase();
+        if actor.is_empty()
+            || independent_of.is_empty()
+            || actor == independent_of
+            || !is_registered_seat(&actor, Some(&identities_path))
+            || !is_registered_seat(&independent_of, Some(&identities_path))
             || decision.cycle_id != state_ref.cycle_id
             || decision.plan_sha256 != state_ref.plan_sha256
             || decision.brief_sha256 != state_ref.brief_sha256
@@ -1150,6 +1289,35 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
             || decision.review_path.trim().is_empty()
         {
             bail!("Unbound or invalid independent decision");
+        }
+
+        if let Some(ref cid) = decision.contribution_id {
+            if crate::contribution::ContributionId::parse(cid).is_err() {
+                bail!("Malformed contribution_id in decision receipt: {cid}");
+            }
+        }
+
+        // Finding 4: Bind decision to the ticket's contribution_id
+        let ticket_path = runtime_root.join("evidence").join("pipeline-ticket.json");
+        if ticket_path.is_file() {
+            let ticket: PipelineTicket = serde_json::from_str(&fs::read_to_string(&ticket_path)?)?;
+            if let Some(ref ticket_cid) = ticket.contribution_id {
+                match &decision.contribution_id {
+                    Some(dec_cid) if dec_cid != ticket_cid => {
+                        bail!(
+                            "Decision contribution_id '{dec_cid}' does not match ticket \
+                             contribution_id '{ticket_cid}'"
+                        );
+                    }
+                    None => {
+                        bail!(
+                            "Ticket requires contribution_id '{ticket_cid}' but decision \
+                             omits it"
+                        );
+                    }
+                    _ => {} // matches — proceed
+                }
+            }
         }
 
         let review = runtime_root.join(&decision.review_path);
@@ -1456,7 +1624,7 @@ fn publish_plan(runtime_root: &Path, state: &mut PipelineState) -> Result<()> {
     let jobs_dir = runtime_root.join("jobs");
     fs::create_dir_all(&jobs_dir)?;
     let toml_content = toml::to_string_pretty(&job)?;
-    fs::write(jobs_dir.join("route-plan.toml"), toml_content)?;
+    write_atomic(&jobs_dir.join("route-plan.toml"), toml_content.as_bytes())?;
     Ok(())
 }
 
@@ -1497,7 +1665,7 @@ fn publish_brief(runtime_root: &Path, state: &mut PipelineState) -> Result<()> {
     let jobs_dir = runtime_root.join("jobs");
     fs::create_dir_all(&jobs_dir)?;
     let toml_content = toml::to_string_pretty(&job)?;
-    fs::write(jobs_dir.join("route-brief.toml"), toml_content)?;
+    write_atomic(&jobs_dir.join("route-brief.toml"), toml_content.as_bytes())?;
     Ok(())
 }
 
@@ -1514,15 +1682,9 @@ pub fn housekeeping(runtime_root: &Path) -> Result<HousekeepingReport> {
     }
     let pipe_dir = runtime_root.join("pipeline");
     let state_path = pipe_dir.join("state.json");
-    let stage = if state_path.is_file() {
-        fs::read_to_string(&state_path)
-            .ok()
-            .and_then(|t| serde_json::from_str::<PipelineState>(&t).ok())
-            .map(|s| s.stage)
-            .unwrap_or_else(|| "unknown".to_string())
-    } else {
-        "unknown".to_string()
-    };
+    let stage = load_pipeline_state(&state_path)?
+        .map(|s| s.stage)
+        .unwrap_or_else(|| "unknown".to_string());
 
     let count_json = |dir: &Path| -> usize {
         if !dir.is_dir() {
@@ -1642,7 +1804,7 @@ fn collect_file_metrics(
 // 5. Daemon, Status & Control
 // ============================================================================
 
-pub fn daemon(runtime_root: &Path, serve: bool) -> Result<()> {
+pub fn daemon(runtime_root: &Path, checkout_dir: Option<&Path>, serve: bool) -> Result<()> {
     if !runtime_root.is_absolute() {
         bail!(
             "runtime_root must be an absolute path: {}",
@@ -1675,28 +1837,9 @@ pub fn daemon(runtime_root: &Path, serve: bool) -> Result<()> {
         runtime_root.display()
     );
 
-    let get_control = |root: &Path| -> LoopControl {
-        let path = root.join("loop-control.json");
-        if path.is_file() {
-            fs::read_to_string(&path)
-                .ok()
-                .and_then(|t| serde_json::from_str::<LoopControl>(&t).ok())
-                .unwrap_or(LoopControl {
-                    state: "run".to_string(),
-                    requested_at_utc: None,
-                    route: None,
-                })
-        } else {
-            LoopControl {
-                state: "run".to_string(),
-                requested_at_utc: None,
-                route: None,
-            }
-        }
-    };
-
     loop {
-        let control = get_control(runtime_root);
+        let control = daemon_control(runtime_root)?;
+        load_pipeline_state(&runtime_root.join("pipeline/state.json"))?;
         if control.state == "pause" || control.state == "restart" {
             println!("daemon exiting on control state: {}", control.state);
             break;
@@ -1717,23 +1860,30 @@ pub fn daemon(runtime_root: &Path, serve: bool) -> Result<()> {
             outcome = "shared-reservation-active".to_string();
         } else {
             // Step 1: Refresh inventory
-            let checkout_dir = Path::new("D:\\Aaroneous");
-            let comps = default_components();
-            match refresh_inventory(runtime_root, checkout_dir, &comps) {
-                Ok(ref_res) => {
-                    commands_log.push(serde_json::json!({
-                        "command": "refresh_inventory",
-                        "evidence_digest": ref_res.evidence_digest,
-                        "exit_code": 0
-                    }));
+            if let Some(checkout) = checkout_dir {
+                let comps = default_components();
+                match refresh_inventory(runtime_root, checkout, &comps) {
+                    Ok(ref_res) => {
+                        commands_log.push(serde_json::json!({
+                            "command": "refresh_inventory",
+                            "evidence_digest": ref_res.evidence_digest,
+                            "exit_code": 0
+                        }));
+                    }
+                    Err(e) => {
+                        commands_log.push(serde_json::json!({
+                            "command": "refresh_inventory",
+                            "error": e.to_string(),
+                            "exit_code": 1
+                        }));
+                    }
                 }
-                Err(e) => {
-                    commands_log.push(serde_json::json!({
-                        "command": "refresh_inventory",
-                        "error": e.to_string(),
-                        "exit_code": 1
-                    }));
-                }
+            } else {
+                commands_log.push(serde_json::json!({
+                    "command": "refresh_inventory",
+                    "notice": "no --checkout provided; skipped inventory refresh",
+                    "exit_code": 0
+                }));
             }
 
             // Step 2: Advance pipeline
@@ -1771,8 +1921,10 @@ pub fn daemon(runtime_root: &Path, serve: bool) -> Result<()> {
                 }
             }
 
+            // Recheck persisted state after advance and before any model dispatch.
+            load_pipeline_state(&runtime_root.join("pipeline/state.json"))?;
             // Step 4: Tick local worker
-            let ctrl = get_control(runtime_root);
+            let ctrl = daemon_control(runtime_root)?;
             if ctrl.state == "run" {
                 let now = unix_secs_now();
                 let minute = ((now / 60) % 60) as u32;
@@ -1816,7 +1968,7 @@ pub fn daemon(runtime_root: &Path, serve: bool) -> Result<()> {
 
         // Adaptive sleep in 10s slices up to 120s
         for _ in 0..12 {
-            let ctrl = get_control(runtime_root);
+            let ctrl = daemon_control(runtime_root)?;
             if ctrl.state != "run" {
                 break;
             }
@@ -1845,13 +1997,7 @@ pub fn status(runtime_root: &Path) -> Result<()> {
     };
 
     let control_path = runtime_root.join("loop-control.json");
-    let control: Option<LoopControl> = if control_path.is_file() {
-        fs::read_to_string(&control_path)
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-    } else {
-        None
-    };
+    let control = load_loop_control(&control_path)?;
 
     let results_dir = runtime_root.join("results");
     let pending = if results_dir.is_dir() {
@@ -1874,13 +2020,7 @@ pub fn status(runtime_root: &Path) -> Result<()> {
     };
 
     let state_path = runtime_root.join("pipeline").join("state.json");
-    let pipeline: Option<PipelineState> = if state_path.is_file() {
-        fs::read_to_string(&state_path)
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-    } else {
-        None
-    };
+    let pipeline = load_pipeline_state(&state_path)?;
 
     let last_cycle_path = runtime_root.join("last-cycle.json");
     let last_cycle: Option<serde_json::Value> = if last_cycle_path.is_file() {

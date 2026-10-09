@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Foundation Contribution Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_kind",
+    "contribution_id",
+    "origin_revision",
+    "lane",
+    "producer",
+    "slug",
+    "version",
+    "target_crate",
+    "target_file",
+    "instruction",
+    "evidence_key",
+    "verification_commands",
+    "trailers",
+    "created_at_secs"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "artifact_kind": { "const": "foundation.contribution-envelope" },
+    "contribution_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+/[a-z0-9_.-]+-v[0-9]+$"
+    },
+    "origin_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{7,64}$"
+    },
+    "lane": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "producer": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$"
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "target_crate": {
+      "type": "string"
+    },
+    "target_file": {
+      "type": "string"
+    },
+    "instruction": {
+      "type": "string"
+    },
+    "evidence_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "patch_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "virtual_patch_set_id": {
+      "type": ["string", "null"],
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "verification_commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "exit_code"],
+        "properties": {
+          "command": { "type": "string" },
+          "exit_code": { "type": "integer" }
+        }
+      }
+    },
+    "independent_review": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["actor", "independent_of", "review_sha256", "verdict"],
+      "properties": {
+        "actor": { "type": "string" },
+        "independent_of": { "type": "string" },
+        "review_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "verdict": { "type": "string" }
+      }
+    },
+    "trailers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "created_at_secs": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

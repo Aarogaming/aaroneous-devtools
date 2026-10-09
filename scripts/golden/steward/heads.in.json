@@ -26,5 +26,25 @@
   {
     "body": "head cccccccccccccccccccccccccccccccccccccccc",
     "head": ""
+  },
+  {
+    "body": "head cccccccć",
+    "head": "cccccccccccccccccccccccccccccccccccccccc"
+  },
+  {
+    "body": "head ccccccccั",
+    "head": "cccccccccccccccccccccccccccccccccccccccc"
+  },
+  {
+    "body": "head cccccccc‿",
+    "head": "cccccccccccccccccccccccccccccccccccccccc"
+  },
+  {
+    "body": "head cccccccc²",
+    "head": "cccccccccccccccccccccccccccccccccccccccc"
+  },
+  {
+    "body": "head ²cccccccc",
+    "head": "cccccccccccccccccccccccccccccccccccccccc"
   }
 ]
