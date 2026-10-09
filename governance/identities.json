@@ -4,7 +4,7 @@
   "seats": {
     "claude": {"logins": ["aaroneous-claude-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKl7YYxzb4umZVCMjjM/fNtSLhfsP9KV55cj9jQogc0n"]},
     "mimo": {"logins": [], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFLtJceCVyHHBO+WxlUVGbapfaoHvcLUevlrx1Ao4APs"]},
-    "codex": {"logins": [], "keys": []},
+    "codex": {"logins": ["aaroneous-codex-seat[bot]"], "keys": []},
     "gemini": {"logins": [], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPB2JAZ7RkQZU4fKWL+GxRWSKQzxtk59XXx2PuGfIylX"]},
     "ubuntu-worker-01": {"logins": [], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDO3kuStrwBZK7lzdcbYwr6k87qFMAzjeCo8wD8hs9X7"]}
   }
