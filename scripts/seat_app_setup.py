@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Per-seat GitHub App setup (lane C112): each seat registers its own GitHub App and posts under that App's identity.
+"""Per-seat GitHub App setup (lane C114): each seat registers its own GitHub App and posts under that App's identity.
 
 Why: every seat posts through the owner's one token, so GitHub shows the owner login for everything. A GitHub App per
 seat posts as `<app>[bot]`. GitHub will not create an App without a person confirming it, so this uses the manifest

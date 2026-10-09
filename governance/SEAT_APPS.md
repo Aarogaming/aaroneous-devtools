@@ -1,4 +1,4 @@
-# Seat GitHub Apps: each seat posts as itself (lane C112)
+# Seat GitHub Apps: each seat posts as itself (lane C114)
 
 Today every seat posts through the owner's one token, so GitHub shows the owner login for every comment, review and
 pull request. A **GitHub App per seat** posts as `<app>[bot]` instead. This page says how to register one, how a
