@@ -2,7 +2,7 @@
 
 Why: every seat posts under one shared GitHub login, so a pasted attestation block is indistinguishable
 from a real one. Unsigned coverage is therefore "attested-only". A signed attestation proves the seat
-holding the private key made the verdict. This is the owner-run setup; no network service is involved.
+holding the private key made the verdict. Each seat sets up its own key; no network service is involved.
 
 ## One-time, per seat (run on the machine where that seat works)
 
@@ -15,7 +15,7 @@ cat ~/.ssh/aaroneous_attest_SEAT.pub
 
 Replace `SEAT` with `claude`, `mimo`, `codex` or `gemini`. Keep the private key on that seat's machine only.
 
-## Register the public key (a reviewed PR, owner-approved)
+## Register the public key (a reviewed PR)
 
 Add the **public** key line (`ssh-ed25519 AAAA... comment`) to that seat's `keys` list in
 `governance/identities.json`:

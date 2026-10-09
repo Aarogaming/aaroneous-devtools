@@ -32,7 +32,7 @@ Inside devtools the layers are, from least to most authority:
 | Cloud seats (Claude, Codex, Gemini/Antigravity) | Implement, review, take over a local model's pushed branch | Open PRs and post independent reviews; never self-accept |
 | Steward | Reads GitHub and the queue, hands each seat one task card, logs what happened | Advises; changes nothing by itself |
 | Merge gate | Decides offline whether a PR is eligible | Report-only today; the owner presses merge |
-| Owner | Owner-only paths, policy, merging | Final |
+| Owner | The Aaroneous product repo, policy and priorities; devtools has no owner-gated paths since 2026-10-09 | Final |
 
 The end state the owner is working toward is the local model operating autonomously, with cloud agents
 pinged to take over, wrapped into one operable application built on Aaroneous to build and enhance
@@ -50,7 +50,7 @@ service. Anything marked proposal changes no behaviour until the owner accepts i
 | Signed attestations (seat keys) | Mechanism operating; keys not all registered | [IDENTITY_SETUP.md](IDENTITY_SETUP.md) |
 | Steward (task cards, receipts, event log) | Operating as scripts, run per seat by a heartbeat | [routines/STEWARD_HEARTBEAT.md](routines/STEWARD_HEARTBEAT.md), section 4 |
 | Merge gate and eligibility checklist | Operating, report-only | [AUTOMATED_MERGE_POLICY.md](AUTOMATED_MERGE_POLICY.md), `scripts/merge_gate.py` |
-| Automatic merging | Not built; the workflow that would press merge is an open draft PR | [AUTOMATED_MERGE_POLICY.md](AUTOMATED_MERGE_POLICY.md) section "Mechanism" |
+| Automatic merging | Merged 2026-10-09 (#108). The workflow runs on PR events and every 20 minutes and merges only what the gate marks eligible, in devtools only. Its first runs completed; whether it has merged anything is NOT VERIFIED here | [AUTOMATED_MERGE_POLICY.md](AUTOMATED_MERGE_POLICY.md), `scripts/auto_merge.py`, `.github/workflows/auto-merge.yml` |
 | Scheduler review (`foundation schedule-review`) | Operating | [SCHEDULER_MAINTAINER.md](SCHEDULER_MAINTAINER.md) |
 | Local worker, multithreader, registrar | Operating as commands | [LOCAL_WORKER_OPERATIONS.md](LOCAL_WORKER_OPERATIONS.md), section 7 |
 | Packet utility (readiness and research packets) | Operating, local | [UTILITY.md](UTILITY.md), [../architecture/JOB_PIPELINE.md](../architecture/JOB_PIPELINE.md) |
@@ -87,8 +87,9 @@ ssh-keygen -t ed25519 -f ~/.ssh/aaroneous_attest_SEAT -C "SEAT attestation key" 
 cat ~/.ssh/aaroneous_attest_SEAT.pub        # the one line to register; the private file never leaves your machine
 ```
 
-- Register the **public** line in that seat's `keys` list in `governance/identities.json`, by a PR the owner
-  reviews and merges (that file is an owner-only path). Never put a private key, passphrase or token in the
+- Register the **public** line in that seat's `keys` list in `governance/identities.json` by a PR. Since
+  2026-10-09 no devtools path is owner-gated: the same two independent accepts as any other PR are the
+  gate. Never put a private key, passphrase or token in the repository.
   repository.
 - Sign a verdict: `python scripts/make_attestation.py --repo OWNER/NAME --repo-dir . --pr N --reviewer SEAT
   --verdict accept --key ~/.ssh/aaroneous_attest_SEAT` prints the attestation block and the signature block;
@@ -149,14 +150,16 @@ other claim PRs and say so in the PR.
   branch. A PR that carries another open PR's commits is also not independent of that PR's authors.
 - **Rubric:** [REVIEW_RUBRIC.md](REVIEW_RUBRIC.md). **Coverage report:** `scripts/review_coverage.py`.
 - **Merge gate:** `python scripts/merge_gate.py --repo OWNER/NAME --repo-dir CLONE --identities
-  governance/identities.json [--pr N] [--json]` prints, per PR, a literal checklist (tier, CI, conflicts,
+  governance/identities.json [--pr N] [--json]` prints, per PR, a literal checklist (CI, conflicts,
   base, two independent accepts, open threads, evidence, revertibility, circuit breaker). It decides; it
   merges nothing.
-- **Tiers and owner-only paths:** Tier A (never automatic) includes `AGENTS.md`, `.github/`, `SECURITY.md`,
-  `CONTRIBUTING.md`, `governance/identities.json` and the merge policy itself. Read
-  [AUTOMATED_MERGE_POLICY.md](AUTOMATED_MERGE_POLICY.md) for the tiers and the conditions. An agent never
-  merges a PR that touches those paths without the owner's confirmation in chat, and never merges without a
-  current grant from the owner; if the harness denies a merge, stop and report once.
+- **No path tiers inside devtools:** the owner removed the old Tier A / owner-only-paths split on 2026-10-09
+  (see [AUTOMATED_MERGE_POLICY.md](AUTOMATED_MERGE_POLICY.md) and the 2026-10-09 entry in
+  [DECISIONS.md](DECISIONS.md)). Within `aaroneous-devtools` the mechanical conditions, above all two
+  independent accept seats, are the only gate, for every path. The `Aarogaming/aaroneous` product repo
+  stays entirely owner-gated, enforced by `scripts/auto_merge.py`'s repository guard. Some seats also carry
+  limits written into their own instructions by the owner (for example a merge grant with an expiry);
+  those still bind that seat. If the harness denies a merge, stop and report once.
 - **Commands:** merges use `gh pr merge N --merge --match-head-commit <full head>`; history is kept (no
   squash).
 
@@ -237,7 +240,7 @@ Choose a path with the table in [LOCAL_WORKER_OPERATIONS.md](LOCAL_WORKER_OPERAT
 - Never push to `main`; never force-push except `--force-with-lease` on your own branch; never delete what you
   did not create; never touch another seat's dirty checkout.
 - Never self-accept; a new head makes every earlier review stale.
-- Never merge a PR that touches an owner-only path, or merge at all without a current owner grant.
+- Never merge in the product repo. In devtools, merge only what the gate and your own instructions allow, and never without two independent accepts at the current head.
 - Never run a script that contains `gh pr merge` or any other write to GitHub as a "test". Read it, check its
   syntax, or run a copy whose `gh` calls were replaced by `echo`.
 - No claim of done without the command, its exit code and a log path or commit hash.
@@ -251,4 +254,4 @@ Choose a path with the table in [LOCAL_WORKER_OPERATIONS.md](LOCAL_WORKER_OPERAT
   table in section 1 carries a date; refresh the date when you refresh the row.
 - A section that a seat could not follow without asking a question is a defect in this page. Open a PR
   against it with the question and the answer.
-- The `AGENTS.md` file in each repo is owner-only. This guide may be pointed to from there only by the owner.
+- The product repo's `AGENTS.md` is owner-gated. This guide may be pointed to from there only by the owner.
