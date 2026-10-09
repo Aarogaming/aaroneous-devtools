@@ -417,8 +417,15 @@ real reference, as done here.
 
 **Verification & Push**: read-only investigation in the product repo (no
 commit there); this entry committed to devtools `origin/main`.
+## Live Operating Notes
 
+### C96 Burn-In, 2026-10-09T05:46:36Z
 
+Source history shows C96 slices 1-4 already landed on `main` before this claim: `21360db` config-driven dispatch windows, `9891acd` deterministic feeder, `2f8e862` shadow validator scan, and `c9ca7cb` read-only worker status. C91 lint/archive commands are also present; #138 (`789e378`) is separate maintenance infrastructure, not C96 provenance. This claim therefore owns slice 5: live shadow-only burn-in and bounded operations evidence, not duplicate Rust work.
+
+On `aaroneoushome`, `aaroneous-worker.service`, `aaroneous-feeder.timer` (one mechanical fixture card/hour, paused at 8 pending results), and `aaroneous-beacon.timer` are active under owner authorization. The worker uses the explicit product checkout, local Ollama and continuous `[[0, 59]]` windows. `local-worker-lint-jobs` passed on five staged valid manifests. A manual `COMPLIANCE-AUDITOR-REVIEW` tick exited 0 in 22.7 seconds; the adaptive worker then processed the other four valid cards and retained all five as `pending-owner-review` with shadow flags. Direct two-way availability beacons now read across Tailscale SSH.
+
+Two tracked inbox blockers remain deliberately untouched because they need their own manifest-path claim: `40-safety-comment-fixtures.toml` names missing product evidence and `PHASE-38-CAPABILITY-BROKER.toml` has unsupported mode `complete`. Burn-in remains Claimed pending independent review, bounded-feeder observation and an owner decision whether to widen.
 
 ## Historical evidence - not dispatch input
 
