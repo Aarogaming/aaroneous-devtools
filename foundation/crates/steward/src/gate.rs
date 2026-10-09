@@ -1,42 +1,11 @@
 //! Facts the merge gate derives from paths, CI, the circuit-breaker file and review threads.
-//! Port of `merge_gate.tier_of`, `touches_protected`, `gate_plan`, `category_of`, `ci_state`, `breaker_state` and
-//! `open_threads` (vector families `gate_tier`, `gate_ci`, `gate_breaker`, `gate_threads`).
+//! Port of `merge_gate.gate_plan`, `category_of`, `ci_state`, `breaker_state` and `open_threads` (vector
+//! families `gate_plan`, `gate_ci`, `gate_breaker`, `gate_threads`). The owner-only path tiers were removed in #134.
 
 use serde_json::Value;
 use std::collections::BTreeSet;
 
-/// Owner-only paths, matched by prefix, so a lookalike such as `AGENTS.md.bak` is owner-only too (fails closed).
-const TIER_A_PATHS: [&str; 6] = [
-    ".github/",
-    "AGENTS.md",
-    "SECURITY.md",
-    "CONTRIBUTING.md",
-    "governance/AUTOMATED_MERGE_POLICY.md",
-    "governance/identities.json",
-];
 const DOCS_ALLOWLIST: [&str; 3] = ["governance/", "docs/", "architecture/"];
-const SAFE_FAMILIES: [(&str, &[&str]); 6] = [
-    ("governance/", &[".md", ".json", ".toml", ".txt"]),
-    ("docs/", &[".md", ".txt"]),
-    ("architecture/", &[".md"]),
-    ("scripts/", &[".py", ".sh", ".ps1", ".md"]),
-    ("inventories/", &[".md"]),
-    ("contracts/", &[".md", ".json"]),
-];
-
-const UNCLASSIFIED_REASON: &str = "unrecognised or kernel/unsafe/credentials/dependency-admission paths cannot be \
-judged from paths alone; owner must classify \u{2014} never assumed safe";
-
-fn is_owner_only(path: &str) -> bool {
-    TIER_A_PATHS.iter().any(|t| path.starts_with(t))
-}
-
-/// The paths that are owner-only.
-#[must_use]
-pub fn touches_protected(paths: &[String]) -> Vec<String> {
-    paths.iter().filter(|p| is_owner_only(p)).cloned().collect()
-}
-
 /// Unicode `Cf` (format) code points, as of the Unicode 15.0 that Python 3.12 ships; `char` has no category API.
 const FORMAT_RANGES: [(u32, u32); 21] = [
     (0xAD, 0xAD),
@@ -111,32 +80,6 @@ pub fn py_repr_str(text: &str) -> String {
 pub fn py_repr_list(items: &[String]) -> String {
     let quoted: Vec<String> = items.iter().map(|item| py_repr_str(item)).collect();
     format!("[{}]", quoted.join(", "))
-}
-
-/// `(tier, reason)`: `"A"` is owner-only; `"B"` needs every path in a recognised safe family with a safe extension;
-/// anything else is `"unclassified"` and never assumed safe. No paths is tier B.
-#[must_use]
-pub fn tier_of(paths: &[String]) -> (String, String) {
-    let hits = touches_protected(paths);
-    if !hits.is_empty() {
-        return (
-            "A".to_owned(),
-            format!("touches owner-only paths: {}", py_repr_list(&hits)),
-        );
-    }
-    if paths.is_empty() {
-        return ("B".to_owned(), String::new());
-    }
-    let all_safe = paths.iter().all(|p| {
-        SAFE_FAMILIES
-            .iter()
-            .any(|(prefix, exts)| p.starts_with(prefix) && exts.iter().any(|e| p.ends_with(e)))
-    });
-    if all_safe {
-        ("B".to_owned(), String::new())
-    } else {
-        ("unclassified".to_owned(), UNCLASSIFIED_REASON.to_owned())
-    }
 }
 
 /// `"light"` only when every path is a markdown or JSON file under the docs allowlist, otherwise `"full"`.
@@ -299,7 +242,6 @@ pub fn open_threads(data: &Value) -> Option<usize> {
 mod tests {
     use super::{
         CiCheck, breaker_state, category_of, ci_state, extension, gate_plan_level, open_threads,
-        tier_of,
     };
     use serde_json::json;
 
@@ -345,25 +287,6 @@ mod tests {
     fn unassigned_code_points_print_raw_which_is_the_documented_gap() {
         // U+0378 is unassigned (Cn): Python 3.12 escapes it as '͸'; the port cannot know without a Unicode table.
         assert_eq!(super::py_repr_str("\u{378}"), "'\u{378}'");
-    }
-
-    #[test]
-    fn owner_only_paths_win_and_lookalikes_count() {
-        assert_eq!(tier_of(&paths(&["AGENTS.md.bak"])).0, "A");
-        assert_eq!(
-            tier_of(&paths(&[
-                "governance/AUTOMATED_MERGE_POLICY.md",
-                "docs/a.md"
-            ]))
-            .0,
-            "A"
-        );
-        assert_eq!(
-            tier_of(&paths(&["docs/a.md"])),
-            ("B".to_owned(), String::new())
-        );
-        assert_eq!(tier_of(&paths(&["Cargo.toml"])).0, "unclassified");
-        assert_eq!(tier_of(&[]).0, "B");
     }
 
     #[test]

@@ -8,9 +8,11 @@ mod intake;
 mod intake_generator;
 mod local_proposal;
 mod local_worker;
+pub mod maintenance_pipeline;
 mod multithreader;
 mod scheduler;
 mod table;
+mod topic_case;
 pub mod virtual_patch;
 
 use anyhow::{Context, Result, bail};
@@ -31,6 +33,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Local model operations pipeline (in-process replacement for maintenance PowerShell scripts)
+    Maintenance {
+        #[command(subcommand)]
+        action: maintenance_pipeline::Action,
+    },
+    /// Topic contributions, qualified experiments and feedback through immutable case revisions.
+    TopicCase {
+        #[command(subcommand)]
+        action: topic_case::Action,
+    },
     /// Agentic Queue Registrar & Dispatch Control Plane
     AgenticRegistrar {
         #[command(subcommand)]
@@ -335,6 +347,8 @@ struct InputReport {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
+        Command::Maintenance { action } => maintenance_pipeline::run(action),
+        Command::TopicCase { action } => topic_case::run(action),
         Command::AgenticRegistrar { action } => match action {
             RegistrarAction::Status { config } => agentic_registrar::print_status(&config),
             RegistrarAction::Dashboard { config, output } => {

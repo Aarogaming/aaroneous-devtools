@@ -1,0 +1,93 @@
+name: Auto-merge (devtools)
+
+# Tier B auto-merge pipeline (lane C103). scripts/auto_merge.py is the one place that actually
+# presses merge; it hard-refuses to run against any repository other than this one, so
+# Aarogaming/aaroneous (the product) can never be auto-merged into by this workflow, regardless
+# of what tier a change would otherwise fall into (governance/AUTOMATED_MERGE_POLICY.md, Scope).
+#
+# This workflow file is itself Tier A (any .github/workflows/* change is owner-only under that
+# same policy) -- changes to this file always need a human merge, on purpose.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+  check_suite:
+    types: [completed]
+  schedule:
+    # Fixed-channel safety net: a review, attestation comment, or CI result can land without
+    # firing an event this workflow listens to (e.g. a check re-run GitHub doesn't report as a
+    # new check_suite). This floor catches it within 20 minutes either way.
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Limit evaluation to one PR number (optional)"
+        required: false
+      dry_run:
+        description: "Report eligibility without merging"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: auto-merge-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate-and-merge:
+    name: Evaluate and merge eligible PRs
+    runs-on: ubuntu-latest
+    # Defense in depth: this check mirrors auto_merge.py's own ALLOWED_REPO guard. Both have to
+    # agree before anything merges.
+    if: github.repository == 'Aarogaming/aaroneous-devtools'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Fetch every open PR's head
+        # actions/checkout with fetch-depth 0 brings every branch tip, but not refs/pull/*/head
+        # (which also covers PRs from forks). merge_gate reads each PR's head commit by SHA via
+        # git plumbing, so it has to exist locally first.
+        run: git fetch origin '+refs/pull/*/head:refs/pull/*'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Evaluate and merge eligible PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_INPUT: ${{ github.event.inputs.pr }}
+          DRY_RUN_INPUT: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          # Checkout is pinned to the default branch on purpose (see the checkout step above):
+          # the gate and merge logic must always run from main's own copy of these scripts, never
+          # from whatever a triggering PR's own branch proposes to change them to -- otherwise a
+          # PR could rewrite its own gate and have that version run with write access to merge.
+          # One consequence: the PR that first adds this script (this one) can never see it on
+          # main until it is merged, so there is nothing to run yet. That is bootstrap, not a
+          # failure.
+          if [[ ! -f scripts/auto_merge.py ]]; then
+            echo "scripts/auto_merge.py is not on the default branch yet (this is likely the PR that introduces it, still unmerged) -- nothing to evaluate."
+            exit 0
+          fi
+          args=(--repo "${{ github.repository }}" --repo-dir "${{ github.workspace }}" \
+                --identities governance/identities.json)
+          if [[ -n "${PR_INPUT:-}" ]]; then
+            args+=(--pr "${PR_INPUT}")
+          fi
+          if [[ "${DRY_RUN_INPUT:-}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          python3 scripts/auto_merge.py "${args[@]}"

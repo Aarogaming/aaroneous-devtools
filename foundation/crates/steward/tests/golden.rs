@@ -37,7 +37,7 @@ const RULE_FAMILIES: [&str; 15] = [
     "seats",
     "coverage",
     "audit",
-    "gate_tier",
+    "gate_plan",
     "gate_ci",
     "gate_breaker",
     "gate_threads",
@@ -58,7 +58,7 @@ fn check(family: &str) -> Option<Result<(), String>> {
         "gate_checklist" => Some(check_gate_checklist()),
         "gate_decide" => Some(check_gate_decide()),
         "audit" => Some(check_audit()),
-        "gate_tier" => Some(check_gate_tier()),
+        "gate_plan" => Some(check_gate_plan()),
         "gate_ci" => Some(check_gate_ci()),
         "gate_breaker" => Some(check_gate_breaker()),
         "gate_threads" => Some(check_gate_threads()),
@@ -235,7 +235,6 @@ fn check_gate_decide() -> Result<(), String> {
             &string_list(&case["paths"]),
             case["base"].as_str().unwrap_or_default(),
             truthy(&case["trial"]),
-            truthy(&case["owner"]),
         );
         let (eligible, first) = reconcile(d.eligible, &green)?;
         actual.push(json!({
@@ -246,20 +245,17 @@ fn check_gate_decide() -> Result<(), String> {
     compare(&Value::Array(actual), &load("gate_decide.out.json"))
 }
 
-fn check_gate_tier() -> Result<(), String> {
-    use steward::gate::{category_of, gate_plan_level, tier_of, touches_protected};
+fn check_gate_plan() -> Result<(), String> {
+    use steward::gate::{category_of, gate_plan_level};
     let mut actual = Vec::new();
-    for case in load("gate_tier.in.json").as_array().ok_or("not a list")? {
+    for case in load("gate_plan.in.json").as_array().ok_or("not a list")? {
         let paths = string_list(&case["paths"]);
-        let (tier, reason) = tier_of(&paths);
         actual.push(json!({
-            "tier": [tier, reason],
-            "protected": touches_protected(&paths),
             "plan_level": gate_plan_level(&paths),
             "category": category_of(&paths),
         }));
     }
-    compare(&Value::Array(actual), &load("gate_tier.out.json"))
+    compare(&Value::Array(actual), &load("gate_plan.out.json"))
 }
 
 fn check_gate_ci() -> Result<(), String> {
@@ -564,12 +560,14 @@ const MIN_CASES: [(&str, usize); 16] = [
     ("stalls", 9),
     ("pushes", 7),
     ("coverage", 16),
-    ("gate_tier", 14),
+    ("gate_plan", 13),
     ("gate_ci", 7),
     ("gate_breaker", 7),
     ("gate_threads", 5),
-    ("gate_checklist", 28),
-    ("gate_decide", 7),
+    // Lowered from 28 and 7 by main's #134 and #106: the tier, owner-path and trust cases were deleted with the
+    // features they tested, so the families shrank on purpose; the floor now matches what remains.
+    ("gate_checklist", 18),
+    ("gate_decide", 6),
     ("chain", 3),
     ("audit", 14),
 ];

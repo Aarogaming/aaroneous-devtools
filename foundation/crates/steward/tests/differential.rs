@@ -233,8 +233,7 @@ fn coverage_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
 
 fn gate_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
     use steward::gate::{
-        CiCheck, breaker_state, category_of, ci_state, gate_plan_level, open_threads, tier_of,
-        touches_protected,
+        CiCheck, breaker_state, category_of, ci_state, gate_plan_level, open_threads,
     };
     let strings = |v: &Value| -> Vec<String> {
         v.as_array()
@@ -245,18 +244,14 @@ fn gate_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             })
             .unwrap_or_default()
     };
-    for case in all["gate_tier"].as_array().unwrap() {
+    for case in all["gate_plan"].as_array().unwrap() {
         let paths = strings(&case["paths"]);
-        let (tier, reason) = tier_of(&paths);
         let want = &case["out"];
-        let same = want["tier"][0] == tier.as_str()
-            && want["tier"][1] == reason.as_str()
-            && strings(&want["protected"]) == touches_protected(&paths)
-            && want["plan_level"] == gate_plan_level(&paths)
+        let same = want["plan_level"] == gate_plan_level(&paths)
             && want["category"] == category_of(&paths).as_str();
         if !same {
-            bad.entry("gate_tier").or_default().push(format!(
-                "{case} rust={tier} {reason} {} {}",
+            bad.entry("gate_plan").or_default().push(format!(
+                "{case} rust={} {}",
                 gate_plan_level(&paths),
                 category_of(&paths)
             ));
@@ -346,7 +341,6 @@ fn checklist_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             &strings(&case["paths"]),
             case["base"].as_str().unwrap(),
             truthy(&case["trial"]),
-            truthy(&case["owner"]),
         );
         let want = &case["out"]["decide"];
         let same = want["eligible"] == d.eligible

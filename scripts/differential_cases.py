@@ -89,11 +89,10 @@ def random_path():
     path = random.choice(DIRS) + random.choice(NAMES2)
     if random.random() < 0.1: path = random.choice(["AGENTS.md", "governance/AUTOMATED_MERGE_POLICY.md", "governance/identities.json"])
     return path
-gate_tier = []
+gate_plan = []
 for _ in range(int(sys.argv[1]) // 5):
     paths = [random_path() for _ in range(random.randint(0, 4))]
-    gate_tier.append({"paths": paths, "out": {"tier": list(mg.tier_of(paths)), "protected": mg.touches_protected(paths),
-                                              "plan_level": mg.gate_plan(paths)["level"], "category": mg.category_of(paths)}})
+    gate_plan.append({"paths": paths, "out": {"plan_level": mg.gate_plan(paths)["level"], "category": mg.category_of(paths)}})
 gate_ci = []
 for _ in range(int(sys.argv[1]) // 5):
     rollup = []
@@ -148,9 +147,8 @@ ODD = {
     "verdicts_missing_evidence": [[], [3], ["a", None], None, 0, "", {"a": 1}, [[1, 2]], ["it's"]],
     "revertible": [True, False, None, "yes", 1],
     "breaker_tripped": [True, False, None, 0, ""],
-    "trust": [None, [5, 5], [4, 5], [0, 0], [5, 0], [-1, -2], [10, 3]],
+    "is_draft": [True, False, None, 0, 1, "yes", ""],
     "category": ["scripts/*.py", "mixed", None, "caf\u00e9"],
-    "tier": [["B", ""], ["A", "touches owner-only paths: ['x']"], ["unclassified", "why"], ["B", 1], "B", None, ["B"], ["b", ""]],
 }
 checklist_cases = []
 for _ in range(int(sys.argv[1]) // 5):
@@ -173,10 +171,9 @@ for _ in range(int(sys.argv[1]) // 5):
     row = {"covered": random.choice([True, False, None, 0, 1, "", "x", []])}
     base = random.choice(["main", "proposal/x", "", "Main"])
     trial = random.choice([True, False, None, 0, 1])
-    owner = random.choice([True, False, 0, 1, None])
-    result = mg.decide(row, paths, base, trial, owner)
+    result = mg.decide(row, paths, base, trial)
     _, eligible, first = mg.reconcile(result["eligible"], json.loads(json.dumps(GREEN)))
-    decide_cases.append({"row": row, "paths": paths, "base": base, "trial": trial, "owner": owner,
+    decide_cases.append({"row": row, "paths": paths, "base": base, "trial": trial,
                          "out": {"decide": result, "reconciled": {"eligible": eligible, "first_blocker": first}}})
 def json_value(depth=0):
     kind = random.random()
@@ -269,5 +266,5 @@ for _ in range(int(sys.argv[1]) // 5):
     except Exception:
         out = {"error": True}
     card_cases.append({"state": state, "tick": tick, "out": out})
-json.dump({"cards": card_cases, "work": work_cases, "chain": chain_cases, "text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_tier": gate_tier, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
+json.dump({"cards": card_cases, "work": work_cases, "chain": chain_cases, "text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_plan": gate_plan, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
 print(len(cases), len(stalls), len(push_cases))

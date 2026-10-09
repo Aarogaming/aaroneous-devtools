@@ -50,3 +50,78 @@ here, before that category's automatic merging goes live). Self-certification st
 circuit breaker stays the one kill switch for both local-model promotion and this mechanism. The
 checker and its GitHub-merge wiring are not yet built — this is the policy the implementation
 targets next.
+
+## 2026-10-06 — Cloud routine re-created as a fresh session per firing (supersedes part of 2026-09-17)
+
+The 2026-09-17 entry above bound the primary-lane routine to the user's persistent cloud session so
+run-to-run context survived. That clause is superseded: by 2026-10-06 the persistent session had gone
+quiet and no live recurring trigger remained, so the routine was re-created as
+`trig_011JULgTH2EdKVT9FaJv2ykZ` with `create_new_session_on_fire`, daily at 11:47 UTC. Context now has to
+come from the repository (the queue, pull requests and this record), not from a surviving session.
+The rest of the 2026-09-17 entry stands: same capacity, claim-expiry and native-gate rules, no reserved
+lane. Its first firing (2026-10-07) had no GitHub access in the fresh session and did no queue work; the
+record of that run and the stored prompt are in `SCHEDULE.md` and `routines/DAILY_PRIMARY_LANE_STORED_PROMPT.md`.
+
+## 2026-10-07 — Dropped the trust-building merge counter; built the checker and the merge pipeline
+
+Owner: the trust-building gate above (5 consecutive clean merges per category) was the author's
+own caution, not an owner requirement — "the ONLY reason we've gated PRs as much as we have in
+merging is because of YOUR paranoia" — and quantifying trust by merge count doesn't actually work
+("we can't quantify the quality"). Replaced it with `governance/RECURSIVE_AUDIT_CADENCE.md`: the
+same five audit types (state, roadmap, documentation, code, compliance) this repo already runs,
+applied recursively at every scale (script, crate, program, repository, project, platform) on a
+schedule, not a merge-volume counter. `AUTOMATED_MERGE_POLICY.md` and `scripts/merge_gate.py`
+(which had box 8 blocking every PR unconditionally, since nothing ever populated the trust
+counter it checked) updated to match.
+
+Also built the checker's GitHub-merge wiring named above as still-pending: `scripts/auto_merge.py`
+plus `.github/workflows/auto-merge.yml` (lane C103) actually call `gh pr merge` on whatever
+`merge_gate.evaluate_all()` marks eligible — the "dedicated pipeline" that "takes the agent out of
+the operation" the owner asked for, rather than leaving agents to follow the checklist by
+convention. Hard-refuses to run against any repository but `aaroneous-devtools`: scope stays exactly
+what `AUTOMATED_MERGE_POLICY.md`'s Scope section says (`aaroneous`, the product, is never eligible
+under this document, regardless of tier, until something graduates into it).
+
+## 2026-10-09 — Dropped Tier A owner-path-gating in devtools entirely; the aaroneous exclusion is untouched
+
+Owner, direct and repeated: "I DO NOT want this system dependent on me, and I DO not want to
+manually review ANYTHING going on in devtools. I only need to review things for aaroneous.
+devtools should be the automation system behind Aaroneous, and in turn devtools needs to be
+automated." This followed a session in which a `CODEOWNERS` file requiring the owner's review on
+`aaroneous-devtools`'s CI/constitution paths was opened as PR #131 — closed unmerged once the
+directive landed — and the owner's direct correction on the Tier A design itself: "the entire time
+you were building those I kept telling you to stop including me in the loop on PR's. Those are
+there FROM YOU." Tier A (anything touching a `kernel`-profile crate, generated `unsafe`, branch
+protection, any CI/CD workflow file, credentials, `AGENTS.md`/`SECURITY.md`/`CONTRIBUTING.md`,
+`governance/identities.json`, or `AUTOMATED_MERGE_POLICY.md` itself — never auto-merged, always the
+owner) was, like the trust-building counter the 2026-10-07 entry above removed, caution added by
+this document's own author beyond what was asked for.
+
+Removed entirely, not merely disabled: `scripts/merge_gate.py`'s `TIER_A_PATHS`, `PROTECTED`,
+`touches_protected()`, `tier_of()`, the former checklist box 0, and `decide()`'s former condition f
+and `owner_confirmed_protected` parameter are deleted from the code, not left inert behind a flag.
+`governance/AUTOMATED_MERGE_POLICY.md` rewritten to match: no tiering of any kind within
+`aaroneous-devtools` — the seven (now six-lettered: a/b/d plus numbered 1-7) mechanical conditions,
+especially condition 3's ≥2-independent-accept-seat bar, are the only gate, for every path,
+workflow files and this policy document included. `scripts/test_merge_gate.py`,
+`scripts/golden_vectors.py` and `scripts/test_golden_vectors.py` updated to match (the
+`gate_tier` golden-vector family renamed `gate_plan` and stripped of tier/protected fields, which
+were never about CI-gate depth, only about owner-path gating).
+
+What this does not change: the `Aarogaming/aaroneous` exclusion in `AUTOMATED_MERGE_POLICY.md`'s
+Scope section. The product repository stays entirely owner-gated regardless of path or category —
+that boundary was never part of the Tier A/B split being removed here, it is enforced separately by
+`scripts/auto_merge.py`'s hard repository guard, and nothing in this entry touches it. Also
+unaffected: self-certification stays banned, the circuit breaker stays the one kill switch, and
+`RECURSIVE_AUDIT_CADENCE.md` (2026-10-07) remains the standing quality-upkeep mechanism in place of
+a merge-count trust gate.
+
+A known residual consideration, carried forward rather than acted on unilaterally: removing
+owner-gating from `governance/identities.json` (which decides who counts as an independent
+reviewer) means a PR modifying it can, in principle, be evaluated by the same mechanical conditions
+as any other change — `scripts/merge_gate.py`'s own prior comment on this file called out that a
+login or key added by such a PR could let its author's later verdicts count. Condition 3's
+≥2-independent-seat bar and the existing honour-system identity rule in
+`CROSS_AGENT_COORDINATION_PROTOCOL.md` are the controls that remain; no new control was added for
+this specific file, per the owner's explicit instruction not to single out devtools paths for
+special review.
