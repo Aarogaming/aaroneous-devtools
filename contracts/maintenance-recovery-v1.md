@@ -32,8 +32,13 @@ place of files, unsupported state version/stage, exhausted retry bounds, valid c
 and daemon refusal before refresh/dispatch. All test inputs are isolated temporary artifacts; no model
 call or deployed runtime is needed. Run Foundation formatting, all-target workspace tests and strict Clippy.
 
-This increment does not implement automatic restart reconciliation, stale-lease reclamation, semantic
-state authentication, atomic replacement of the existing JSON writer, or power-loss durability. Lease
-and last-cycle status parsing still follows the previous behavior. These are separate follow-ups.
+This increment does not implement automatic restart reconciliation, stale-lease reclamation, or semantic
+state authentication. Lease and last-cycle status parsing still follows the previous behavior. These are separate follow-ups.
 No model authority, automatic acceptance/merge, credential, schedule, deployment, or product behavior changes.
 Rollback reverts this increment while preserving runtime evidence.
+
+## Atomic replacement and explicit inputs (C114)
+
+C114 builds upon C112 by implementing atomic file replacement and explicit checkout parameters:
+- `save_json_atomic` and `write_atomic` write to a temporary file in the same directory and perform an atomic `fs::rename` over the target, ensuring power-loss durability and eliminating partially-written state or job files.
+- `maintenance daemon` accepts an explicit `--checkout <PATH>` parameter, eliminating hardcoded host paths (`D:\Aaroneous`) for zero ambient authority across operating systems. When `--checkout` is omitted, it logs an explicit notice and continues without failing.

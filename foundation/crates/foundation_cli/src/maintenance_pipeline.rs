@@ -44,6 +44,8 @@ pub enum Action {
         #[arg(long)]
         runtime_root: PathBuf,
         #[arg(long)]
+        checkout: Option<PathBuf>,
+        #[arg(long)]
         serve: bool,
     },
     /// Read-only status report across loop lease, control, pipeline state, and last cycle.
@@ -107,8 +109,9 @@ pub fn run(action: Action) -> Result<()> {
         }
         Action::Daemon {
             runtime_root,
+            checkout,
             serve,
-        } => daemon(&runtime_root, serve),
+        } => daemon(&runtime_root, checkout.as_deref(), serve),
         Action::Status { runtime_root } => status(&runtime_root),
         Action::Control {
             runtime_root,
@@ -235,7 +238,7 @@ pub fn sha256_file_uppercase(path: &Path) -> Result<String> {
     Ok(sha256_file(path)?.to_uppercase())
 }
 
-pub fn save_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path
         .parent()
         .context("target file must have a parent directory")?;
@@ -249,12 +252,23 @@ pub fn save_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
             .get(0..8)
             .unwrap_or("tmp")
     ));
-    let json = serde_json::to_vec_pretty(value)?;
-    fs::write(&tmp, json).with_context(|| format!("failed to write {}", tmp.display()))?;
-    fs::copy(&tmp, path)
-        .with_context(|| format!("failed to copy {} to {}", tmp.display(), path.display()))?;
-    let _ = fs::remove_file(&tmp);
+    fs::write(&tmp, bytes).with_context(|| format!("failed to write {}", tmp.display()))?;
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e).with_context(|| {
+            format!(
+                "failed to replace {} with {}",
+                path.display(),
+                tmp.display()
+            )
+        });
+    }
     Ok(())
+}
+
+pub fn save_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    let json = serde_json::to_vec_pretty(value)?;
+    write_atomic(path, &json)
 }
 
 struct FileLockGuard {
@@ -1522,7 +1536,7 @@ fn publish_plan(runtime_root: &Path, state: &mut PipelineState) -> Result<()> {
     let jobs_dir = runtime_root.join("jobs");
     fs::create_dir_all(&jobs_dir)?;
     let toml_content = toml::to_string_pretty(&job)?;
-    fs::write(jobs_dir.join("route-plan.toml"), toml_content)?;
+    write_atomic(&jobs_dir.join("route-plan.toml"), toml_content.as_bytes())?;
     Ok(())
 }
 
@@ -1563,7 +1577,7 @@ fn publish_brief(runtime_root: &Path, state: &mut PipelineState) -> Result<()> {
     let jobs_dir = runtime_root.join("jobs");
     fs::create_dir_all(&jobs_dir)?;
     let toml_content = toml::to_string_pretty(&job)?;
-    fs::write(jobs_dir.join("route-brief.toml"), toml_content)?;
+    write_atomic(&jobs_dir.join("route-brief.toml"), toml_content.as_bytes())?;
     Ok(())
 }
 
@@ -1702,7 +1716,7 @@ fn collect_file_metrics(
 // 5. Daemon, Status & Control
 // ============================================================================
 
-pub fn daemon(runtime_root: &Path, serve: bool) -> Result<()> {
+pub fn daemon(runtime_root: &Path, checkout_dir: Option<&Path>, serve: bool) -> Result<()> {
     if !runtime_root.is_absolute() {
         bail!(
             "runtime_root must be an absolute path: {}",
@@ -1758,23 +1772,30 @@ pub fn daemon(runtime_root: &Path, serve: bool) -> Result<()> {
             outcome = "shared-reservation-active".to_string();
         } else {
             // Step 1: Refresh inventory
-            let checkout_dir = Path::new("D:\\Aaroneous");
-            let comps = default_components();
-            match refresh_inventory(runtime_root, checkout_dir, &comps) {
-                Ok(ref_res) => {
-                    commands_log.push(serde_json::json!({
-                        "command": "refresh_inventory",
-                        "evidence_digest": ref_res.evidence_digest,
-                        "exit_code": 0
-                    }));
+            if let Some(checkout) = checkout_dir {
+                let comps = default_components();
+                match refresh_inventory(runtime_root, checkout, &comps) {
+                    Ok(ref_res) => {
+                        commands_log.push(serde_json::json!({
+                            "command": "refresh_inventory",
+                            "evidence_digest": ref_res.evidence_digest,
+                            "exit_code": 0
+                        }));
+                    }
+                    Err(e) => {
+                        commands_log.push(serde_json::json!({
+                            "command": "refresh_inventory",
+                            "error": e.to_string(),
+                            "exit_code": 1
+                        }));
+                    }
                 }
-                Err(e) => {
-                    commands_log.push(serde_json::json!({
-                        "command": "refresh_inventory",
-                        "error": e.to_string(),
-                        "exit_code": 1
-                    }));
-                }
+            } else {
+                commands_log.push(serde_json::json!({
+                    "command": "refresh_inventory",
+                    "notice": "no --checkout provided; skipped inventory refresh",
+                    "exit_code": 0
+                }));
             }
 
             // Step 2: Advance pipeline
