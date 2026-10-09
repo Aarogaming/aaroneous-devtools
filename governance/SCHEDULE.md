@@ -72,25 +72,76 @@ Windows task `Aaroneous-Devtools-Multithreader` reviews the declared evidence ho
 
 `Aaroneous-Devtools-LocalWorker` polls approved `worker-jobs/` every two minutes, dispatching only in minutes 06–20 and 41–50 and yielding to the shared review reservation. It generates scratch Rust drafts and bounded analysis, suppresses unchanged inputs and pauses at eight pending results. See [LOCAL_WORKER_SERVICE.md](LOCAL_WORKER_SERVICE.md). Windows supports the installed task while logged in; S4U logged-out registration was denied. Only native candidate review remains hourly at :00. Existing worker quiet windows remain unchanged, including the former :30 slot; scheduling consolidation belongs to the native maintenance program.
 
-## Cloud primary-lane routine (installed 2026-09-17)
+## Cloud primary-lane routine (installed 2026-09-17; re-created with lens rotation 2026-10-06)
 
-A Claude Code cloud Routine wakes a persistent session daily at 12:00 UTC and, on Mondays and the
-1st of the month, runs additional weekly/monthly scope in the same wake. Unlike the native
-candidate reviewer and local worker above (suggestion-only, no CI check, no promotion), this
-routine can actually claim a `COORDINATION_QUEUE.md` lane, implement it, run Aaroneous's full
-native gate, and push/open a pull request — it is the primary-lane capacity this schedule assumed
-before a maintained local or GUI equivalent existed (see `README.md`'s "What works today").
+A Claude Code cloud Routine wakes a **fresh session** daily at 11:47 UTC (jittered off the plain
+12:00 mark) and, on Mondays and the 1st of the month, runs additional weekly/monthly scope in the
+same wake. Unlike the native candidate reviewer and local worker above (suggestion-only, no CI
+check, no promotion), this routine can actually claim a `COORDINATION_QUEUE.md` lane, implement it,
+run Aaroneous's full native gate, and push/open a pull request — it is the primary-lane capacity
+this schedule assumed before a maintained local or GUI equivalent existed (see `README.md`'s "What
+works today").
+
+The 2026-09-17 original bound to one persistent session and, by the time it was next inspected on
+2026-10-06, had gone quiet with no live recurring trigger behind it (every trigger on the account
+was a one-shot CI check-in that had already fired — the routine likely died with the session it was
+bound to). Re-created at the owner's request as `create_new_session_on_fire`, so it no longer
+depends on any one session surviving. Trigger id `trig_011JULgTH2EdKVT9FaJv2ykZ`; same account owns
+it as the one-shot check-ins throughout this file.
+
+**Status: first live firing observed 2026-10-07 11:48:58Z; it ran but could not do the job.** The run
+(session `cse_018FHT2P8AnndQmpGMy5DmNQ`, status SUCCEEDED, 44 s, 11 turns) reports that the fresh session had
+no GitHub access: `gh` returned HTTP 403 and "GitHub access to this repository is not enabled for this
+session", so it could not read `COORDINATION_QUEUE.md`, CI runs, pull requests or Dependabot, and it made no
+claim, push or change. It applied its lens (7 mod 5 = 2, adversarial reviewer) to a read-only copy of
+`Aarogaming/aaroneous` only and sent a push notification. The trigger stores no MCP connections
+(`mcp_connections: []`). Attaching both repositories to the routine's environment with push access is the
+owner's configuration step and has not been recorded as done; until a later run's history shows it could
+read CI, inspect pull requests and push a branch, treat this routine as installed but not functioning as
+primary-lane capacity. Source: `get` and `get_run_log` on the trigger id above, read 2026-10-08.
+
+**Recovery record.** What the repository retains: the trigger id, the cadence (daily 11:47 UTC,
+`create_new_session_on_fire`), the lens rotation, the checklist below, and now the stored prompt itself as a
+verbatim record in [routines/DAILY_PRIMARY_LANE_STORED_PROMPT.md](routines/DAILY_PRIMARY_LANE_STORED_PROMPT.md).
+What it does not retain: the environment id and its repository grants, and the pause/recreate procedure
+beyond "create a Routine with that prompt, that cron and `create_new_session_on_fire`". The record is a copy,
+not the source of truth; the trigger owns the live text. Following the pattern
+`routines/STEWARD_HEARTBEAT.md` already uses (the trigger is a thin pointer, the procedure lives in a reviewed
+file) would make the repository the source of truth; that change edits the trigger, so it is the owner's.
+The stored prompt also points at `SCHEDULER_MAINTAINER.md` for a "Cloud primary-lane routine" section that
+file does not have (the section is here); fixing that pointer is likewise an edit to the trigger.
+
+**Lens rotation:** the stored prompt is one fixed string — a Routine has no server-side mechanism
+for varying the literal text per firing — but it opens by having the model compute
+`day-of-month mod 5` and use that to pick one of five framings before touching the mechanical
+checklist below, so effort and emphasis actually change day to day instead of the same boilerplate
+getting rephrased with synonyms:
+
+0. Skeptical auditor — re-derive every "Done"/green claim instead of trusting it (pull the actual
+   CI run, exit code, cited log).
+1. Queue health — spend the day on the queue's shape (stale claims, duplicate lanes, Done/doc
+   drift) rather than today's CI.
+2. Adversarial reviewer — pick one claimed-Done item from the last week and actively try to break
+   it; report what was tried, not just a verdict.
+3. Forward motion — don't stop at triage: if capacity allows and a Ready/P0/P1 item has clear
+   scope, claim it, implement a real increment, and push it.
+4. Cross-repo consistency — check aaroneous and aaroneous-devtools against each other and against
+   reality (gate description vs. `xtask/gate.rs`, queue claims vs. actual PR state, this file
+   included).
 
 - **Daily:** review Aaroneous CI and the coordination queue; if capacity allows (fewer than three
   primary lanes claimed system-wide) and a Ready/P0/P1 item has clear scope, claim exactly one lane,
   make one small mergeable increment, and update the queue. Otherwise do nothing and report nothing
-  — an idle day is a valid outcome, per this schedule's own no-status-noise rule.
+  — an idle day is a valid outcome, per this schedule's own no-status-noise rule, but only once
+  today's lens has actually been engaged, not skipped.
 - **Weekly (Monday):** additionally reconcile expired (>24h) or stale queue claims, and work through
   the oldest unattended Dependabot pull request on `Aarogaming/aaroneous`.
 - **Monthly (1st):** additionally check for roadmap/documentation drift against actual code and CI
-  evidence (the `M28`/`M30`–`M33` reconciliation lane) and flag anything in devtools that
-  `FOUNDATION_BOUNDARY.md` says should be retired.
+  evidence (the `M28`/`M30`–`M33` reconciliation lane), flag anything in devtools that
+  `FOUNDATION_BOUNDARY.md` says should be retired, and check whether the quarterly audit above is
+  due.
 
-Owned by the user's Claude Code session; see that session for run history. Capacity, claim, and gate
-rules are unchanged — this routine is one more thread under `MULTITHREAD_PROGRAM.md`'s existing
-limits, not an exception to them.
+Capacity, claim, and gate rules are unchanged — this routine is one more thread under
+`MULTITHREAD_PROGRAM.md`'s existing limits, not an exception to them. Because each firing is a fresh
+session, "see that session for run history" no longer applies — check this Routine's own run history
+(`list_triggers`/`get_trigger` on its id) instead of a persistent session's transcript.
