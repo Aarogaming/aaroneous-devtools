@@ -19,6 +19,18 @@ work, and independent review stays mandatory. What changes is *who* presses
 merge once every one of those conditions has already been met in public,
 retained evidence.
 
+**Scope, owner decision 2026-10-07.** This policy's Tier B automation
+applies only within `Aarogaming/aaroneous-devtools`. `Aarogaming/aaroneous`
+(the product) is never eligible for automatic merging under this document,
+regardless of what tier a change would otherwise fall into — it stays
+entirely owner-gated until a devtools-built capability graduates into it
+through the component-graduation process in
+`LOCAL_MODEL_AUTONOMY_POLICY.md`, at which point *that* merge is the
+owner's checkpoint. Auditing Aaroneous (reading it, reporting drift,
+proposing a fix PR) is in scope for the cadence in
+[`RECURSIVE_AUDIT_CADENCE.md`](RECURSIVE_AUDIT_CADENCE.md); merging into it
+automatically is not, ever, under this document.
+
 ## Why gate here instead of relaxing the evidence bar
 
 The existing process (draft PR + CI + independent review packets, see
@@ -127,7 +139,6 @@ checklist, not a narrative — a check that can't be rendered as one of
 [ ] 5. Each counted verdict cites command + exit code (verdict ids: ...)
 [ ] 6. Revertible via plain `git revert` (no migration/external side effect)
 [ ] 7. circuit_breaker_override.toml: tripped = false
-[ ] 8. Category <pattern> has cleared trust-building threshold (X/5)
 ```
 
 Any unchecked box stops the loop at "would merge, blocked on box N" — it
@@ -158,12 +169,6 @@ judgment:
   fail closed exactly as `promote` already does for the same file
   (`LOCAL_MODEL_AUTONOMY_POLICY.md`'s "~~Revert-triggered circuit breaker
   trips.~~ Closed (C27)" entry) — never proceed as if untripped.
-- **Trust-building counter for a category is missing or ambiguous**
-  (e.g. the category pattern matches files from two different declared
-  categories) → treat as not-yet-cleared (box 8 `[ ]`), report the
-  ambiguity, and let a human either split the pattern or declare which
-  category governs, rather than averaging or picking the looser one.
-
 In every one of these cases the checker does the stated fallback itself —
 it does not pause and ask a model to decide, because the entire point of
 this mechanism is a deterministic gate a model's judgment can't soften.
@@ -185,24 +190,24 @@ its own work is a weak signal regardless of how the re-check is framed, so
 this pass must be re-derivable by a different run or a different party
 from the same retained evidence, not merely re-asserted by the same one.
 
-## Trust-building period before this applies to any real category
+## No trust-building waiting period (revised, owner decision 2026-10-07)
 
-Per `LOCAL_MODEL_AUTONOMY_POLICY.md`'s own deferred criterion: before
-Tier B auto-merge is *live* for a given file-pattern category (e.g.
-`governance/*.md`, or `**/tests/*.rs`), that category needs a logged
-track record — a specific number of consecutive PRs in that category that
-met all conditions above (1, 2, 2a, 3-7) and were merged by the owner manually with
-zero reverts afterward. Proposed starting threshold: **5 consecutive
-clean manual merges in that category, zero reverts, logged in
-`DECISIONS.md`**, before automatic merging is turned on for it. This
-number is deliberately conservative and owner-adjustable; it exists so the
-first automatic merge in any category is never the first time that
-category's evidence pattern has been checked.
+An earlier draft of this document proposed a consecutive-clean-merge
+counter (5 manual merges per category, zero reverts, before automation
+turns on for it) before Tier B auto-merge went live anywhere. The owner's
+direct correction: that counter was this document's author being
+cautious beyond what was asked for, not a bar the owner set. Tier B
+auto-merge is live immediately, for every category Tier B already covers,
+with no waiting period and no per-category counter to clear.
 
-Until a category clears that bar, the mechanism below still *runs* (so its
-checks get exercised and proven against real PRs) but only *reports*
-"would merge" instead of merging — logged visibly so the gap between
-"ready" and "merged" is itself evidence toward the threshold, not silence.
+The replacement trust mechanism is not a gate in front of merging at all —
+it's [`RECURSIVE_AUDIT_CADENCE.md`](RECURSIVE_AUDIT_CADENCE.md): periodic
+state/roadmap/documentation/code/compliance review, applied recursively
+at every scale from a single script up through the whole repository, on a
+standing schedule that doesn't depend on merge volume. It catches drift
+*after* merging rather than withholding merges until a count is reached.
+Quality isn't quantifiable as a threshold to cross; it's upkeep that never
+stops.
 
 ## Mechanism (what actually presses the button)
 
@@ -217,13 +222,12 @@ This is infrastructure to build, not yet built as of this document:
   checker's merge action when tripped. One file, one meaning, reused
   rather than inventing a second breaker to keep in sync.
 - The cloud-agent PR-babysitting loop (already running today) calls this
-  checker once a PR it's driving reaches green+accepted state. On pass
-  *and* the category has cleared its trust-building threshold, it merges
-  via the same GitHub access it already uses to push fixes — no new
+  checker once a PR it's driving reaches green+accepted state. On pass,
+  for any PR within `aaroneous-devtools` (see Scope, above), it merges via
+  the same GitHub access it already uses to push fixes — no new
   credential, no new always-on writer, per the standing rule against
-  adding either casually. On pass but category not yet trusted, it posts
-  "would auto-merge once trust period X/5 clears" and stops, same as it
-  does today.
+  adding either casually. On fail, it reports which box failed and stops,
+  same as it does today.
 - Every automatic merge logs a line in `DECISIONS.md`: PR, head sha,
   which conditions were checked, and the two-plus accept verdicts it
   relied on — so an automatic merge has *more* retained evidence than a
@@ -244,35 +248,16 @@ This is infrastructure to build, not yet built as of this document:
 
 ## Open items
 
-- Exact category list for the first trust-building cohorts (proposed
-  starting point: `governance/*.md` docs here, and `tests/*.rs`-only
-  diffs in Aaroneous, mirroring the "narrow, proven-safe category"
-  example — new test-only files — in `LOCAL_MODEL_AUTONOMY_POLICY.md`'s
-  "Why no auto-merge yet" section, not Tier 1, which is the unrelated
-  local-worker-dispatch tier).
-- Whether the 5-clean-merge threshold should vary by category risk, or
-  stay uniform for simplicity until there's evidence either way.
-- Condition 3's ≥2-accept bar is stricter than today's typical
-  single-accept practice; since each of the 5 trust-building merges
-  needs 2 accepts, a category will clear its threshold slower than
-  recent merge history alone would suggest. Worth it for the bar this
-  closes, but the pacing is real and owner-adjustable if it's too slow.
+- Condition 3's ≥2-accept bar is a tightening versus today's typical
+  single-accept practice (e.g. `PLATFORM_SPEC.md`'s merged convention).
+  Intentional, and recorded here as an owner decision rather than left
+  implicit, but worth revisiting if it turns out to be the pacing
+  bottleneck once Tier B is actually live.
 - Who owns building the checker tool itself and on what timeline —
   tracked as a queue item, not committed to in this document. A
   report-only implementation already exists in `scripts/merge_gate.py`
   (`#51`, `--checklist` mode) and renders this policy's boxes; whether it
   becomes *the* checker or a second one gets built is still open.
-- Box 8 (trust-building threshold) has no machine-readable source today —
-  the counter lives as prose in `DECISIONS.md`, which a checker can't
-  parse, so box 8 would stay `[ ]` forever as written. Needs a small
-  structured counter (one file per category) before any category can
-  actually clear the bar.
-- Condition 3's ≥2-accept bar is a tightening versus today's typical
-  single-accept practice (e.g. `PLATFORM_SPEC.md`'s merged convention) —
-  intentional per the pacing note above, but it's an owner decision that
-  should be recorded as such (here) rather than left implicit.
-- The "Mechanism" section has the cloud-agent PR-babysitting loop press
-  merge itself via its existing GitHub access. That's a real grant of
-  merge authority to an agent, distinct from a local, signed-identity
-  checker just reporting pass/fail — which executes the merge is still
-  open and is the owner's call, not assumed by this document.
+- `RECURSIVE_AUDIT_CADENCE.md`'s counters (merged-PR count and elapsed
+  time per scope) need their own golden vectors before a Guild/Rust port
+  can reproduce them — tracked there, not here.
