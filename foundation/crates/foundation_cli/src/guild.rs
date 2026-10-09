@@ -426,7 +426,62 @@ pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
         bail!("Either --snapshot or --repo-dir must be provided to run a Guild tick.");
     };
 
-    // Build deterministic task cards via steward::cards::build_cards
+    // Build deterministic task cards via steward::cards::build_cards with stall detection and lease support
+    let mut state = state;
+    let engagement_events: Vec<steward::engagement::Event> = events
+        .iter()
+        .map(|e| {
+            let kind = e
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let tick = e
+                .get("data")
+                .and_then(|d| d.get("tick"))
+                .and_then(Value::as_i64);
+            let agents = e
+                .get("data")
+                .and_then(|d| d.get("agents"))
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default();
+            steward::engagement::Event {
+                kind,
+                tick,
+                agents,
+                per_seat: Default::default(),
+                pushes: Default::default(),
+                unattributed: 0,
+            }
+        })
+        .collect();
+
+    let agent_names: Vec<String> = state
+        .get("agents")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| a.get("name").and_then(Value::as_str))
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let stalled =
+        steward::engagement::stalled_seats(&engagement_events, &agent_names, args.stall_after);
+    if let Some(obj) = state.as_object_mut() {
+        obj.insert("stalled".to_string(), json!(stalled));
+        if !obj.contains_key("leases") {
+            obj.insert("leases".to_string(), json!({}));
+        }
+    }
+
     let cards = steward::cards::build_cards(&state, derived_tick)
         .map_err(|e| anyhow::anyhow!("steward card dispatcher failed: {e}"))?;
 
