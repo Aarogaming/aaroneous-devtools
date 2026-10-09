@@ -229,6 +229,48 @@ pub fn format_compact_stamp(secs: u64) -> String {
     format!("{y:04}{m:02}{day:02}T{hours:02}{mins:02}{s:02}Z")
 }
 
+/// Validate seat identifier: 1-32 chars, lowercase alphanumeric, hyphens, or underscores.
+pub fn is_valid_seat_id(seat: &str) -> bool {
+    let trimmed = seat.trim();
+    if trimmed.is_empty() || trimmed.len() > 32 {
+        return false;
+    }
+    trimmed
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+pub const KNOWN_REGISTERED_SEATS: &[&str] =
+    &["claude", "mimo", "codex", "gemini", "ubuntu-worker-01"];
+
+/// Validate that a seat is registered in governance/identities.json or matches known registered seats.
+pub fn is_registered_seat(seat: &str, identities_path: Option<&Path>) -> bool {
+    let seat = seat.trim().to_lowercase();
+    if !is_valid_seat_id(&seat) {
+        return false;
+    }
+    if let Some(path) = identities_path {
+        if path.is_file() {
+            if let Ok(content) = fs::read_to_string(path) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(owners) = val.get("owner").and_then(serde_json::Value::as_array) {
+                        if owners
+                            .iter()
+                            .any(|o| o.as_str().map(|s| s.to_lowercase()).as_deref() == Some(&seat))
+                        {
+                            return false;
+                        }
+                    }
+                    if let Some(seats) = val.get("seats").and_then(serde_json::Value::as_object) {
+                        return seats.contains_key(&seat);
+                    }
+                }
+            }
+        }
+    }
+    KNOWN_REGISTERED_SEATS.contains(&seat.as_str())
+}
+
 pub fn sha256_file(path: &Path) -> Result<String> {
     let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
     Ok(sha256_digest(&bytes))
@@ -514,6 +556,8 @@ pub struct DecisionReceipt {
     pub notes: String,
     #[serde(default)]
     pub archive_reviewed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -540,6 +584,10 @@ pub struct PipelineTicket {
     pub feedback: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub housekeeping_snapshot: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_revision: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -891,6 +939,7 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
 
     // Verify source files have not changed since capture
     let checkout = Path::new(&index.checkout);
+    let identities_path = checkout.join("governance").join("identities.json");
     let mut stale = Vec::new();
     for entry in &index.files {
         let orig = checkout.join(&entry.path);
@@ -1075,6 +1124,11 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
             review_sha256: seed_sha,
             feedback: None,
             housekeeping_snapshot: None,
+            contribution_id: Some(format!("C117/gemini-maintenance-cycle-{cycle}-v1")),
+            origin_revision: Some(
+                crate::agentic_registrar::git_current_revision(checkout)
+                    .unwrap_or_else(|_| index_sha.clone()),
+            ),
         };
 
         if task_kind == "housekeeping-brief" {
@@ -1221,8 +1275,13 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
         let dec_txt = fs::read_to_string(&decision_path)?;
         let decision: DecisionReceipt = serde_json::from_str(&dec_txt)?;
 
-        if decision.actor != "frontier-supervisor"
-            || decision.independent_of != "local-qwen"
+        let actor = decision.actor.trim().to_lowercase();
+        let independent_of = decision.independent_of.trim().to_lowercase();
+        if actor.is_empty()
+            || independent_of.is_empty()
+            || actor == independent_of
+            || !is_registered_seat(&actor, Some(&identities_path))
+            || !is_registered_seat(&independent_of, Some(&identities_path))
             || decision.cycle_id != state_ref.cycle_id
             || decision.plan_sha256 != state_ref.plan_sha256
             || decision.brief_sha256 != state_ref.brief_sha256
@@ -1230,6 +1289,35 @@ pub fn advance_pipeline(runtime_root: &Path) -> Result<String> {
             || decision.review_path.trim().is_empty()
         {
             bail!("Unbound or invalid independent decision");
+        }
+
+        if let Some(ref cid) = decision.contribution_id {
+            if crate::contribution::ContributionId::parse(cid).is_err() {
+                bail!("Malformed contribution_id in decision receipt: {cid}");
+            }
+        }
+
+        // Finding 4: Bind decision to the ticket's contribution_id
+        let ticket_path = runtime_root.join("evidence").join("pipeline-ticket.json");
+        if ticket_path.is_file() {
+            let ticket: PipelineTicket = serde_json::from_str(&fs::read_to_string(&ticket_path)?)?;
+            if let Some(ref ticket_cid) = ticket.contribution_id {
+                match &decision.contribution_id {
+                    Some(dec_cid) if dec_cid != ticket_cid => {
+                        bail!(
+                            "Decision contribution_id '{dec_cid}' does not match ticket \
+                             contribution_id '{ticket_cid}'"
+                        );
+                    }
+                    None => {
+                        bail!(
+                            "Ticket requires contribution_id '{ticket_cid}' but decision \
+                             omits it"
+                        );
+                    }
+                    _ => {} // matches — proceed
+                }
+            }
         }
 
         let review = runtime_root.join(&decision.review_path);
