@@ -131,6 +131,54 @@ mis-rated work shows up, and the rating rules are adjusted from that evidence.
 to brief each one (routing, trust, context, examples). It does not change any model's weights. Using accepted
 outcomes and taste decisions as training data would be a separate decision with consent and is not proposed.
 
+### 5.1 Outside evidence: what an independent evaluator can and cannot do for a promotion
+
+Owner question, 2026-10-10: is there an independent third party that can quantify the models' capability, so a model
+"applies for a raise" by reaching the next milestones, without us running every kind of test in house?
+
+**Independent evaluators exist.** Found by web search on 2026-10-10 from secondary sources (blogs, forum posts,
+aggregators); the figures were not checked at the primary sites and are not repeated here. Treat the list as leads.
+- **METR** measures the length of software task that an agent completes at a given success rate (a "time horizon").
+  Its suite is limited, and estimates near its measurement ceiling carry wide confidence intervals.
+- **Epoch AI** publishes a capability index that combines many benchmarks with an item-response-theory model, and runs
+  SWE-bench Verified with its own scaffold.
+- **Artificial Analysis** publishes a composite intelligence index (it added agentic benchmarks such as Terminal-Bench)
+  with speed and price data.
+- **Refreshing, contamination-resistant benchmarks** such as LiveCodeBench and LiveBench, the SWE-bench family, and
+  (from my own knowledge, not checked now) human-preference arenas and EleutherAI's open `lm-evaluation-harness` for
+  running standard benchmarks yourself.
+
+**Why they cannot decide a promotion here.**
+1. They mostly cover frontier cloud models. Our local quantised model with our context size and sampling settings is
+   not on any of them.
+2. A score belongs to model plus scaffold. The same model scores differently under a different agent harness, and ours
+   is different.
+3. Public benchmarks leak into training data and saturate; a survey of 283 benchmarks reported widespread contamination.
+   One secondary report says about half of SWE-bench-passing patches were rejected by maintainers for quality and
+   convention reasons: a pass is not the same as mergeable.
+4. None of them measure our conventions, our gates or our repositories, which is what a promotion is about.
+5. A third party cannot grade our private tasks without seeing them. Independence and secrecy trade off.
+
+**What they are good for:** priors and cross-checks. They suggest which models to admit, the starting level to
+try, and routing hints, and a large disagreement between a model's outside ranking and our own ledger is a signal to
+investigate. They are **not** promotion criteria.
+
+**Promotion rests on our own milestone suites, built to avoid the "mixed review" problem.**
+- Each level has a suite of tasks taken from our repositories' history (a commit before and after, with its tests) or
+  small variants of it, **each with a deterministic verifier**: tests, golden vectors, the project gate. Pass or fail
+  needs no reviewer's opinion.
+- A hidden holdout is rotated so a model cannot memorise it. Results are reported as a pass rate with a confidence
+  bound (for example the lower bound of a Wilson interval), because a suite of twenty tasks is a small sample.
+- A promotion needs the suite **and** accepted work in the live ledger over time, not one exam.
+- Where a verifier cannot exist (taste, readability), a model judge may be used only with these rules: a different
+  model family from the candidate, answer order swapped, length controlled, never self-grading, and the judge's
+  agreement with test outcomes measured. A reported failure mode is judges that favour answers that look like a
+  clean reference over answers that work; agreement with tests is how it would show. The owner's taste samples are the
+  human spot-check.
+- Review independence: the author, any co-author and any **guide** of the work are never its independent reviewer.
+  An Ubuntu local worker guided by an OpenCode session is a party; the guide cannot be the one who clears it.
+- The thresholds for each level are settings, so a "raise" is a mechanical result of evidence, not a negotiation.
+
 ## 6. Identity and registration
 
 - **Operators:** unchanged. `identities.json`, keys, the seat Apps. Levels are stored beside the profile, not inside
@@ -156,10 +204,10 @@ machines; remote strangers stay deferred (G7).
 
 | Member | Kind | Runs where | Notes |
 |---|---|---|---|
-| Windows local-model worker | local model (Ollama today) | the Windows machine | GPU shared with the UI and the 3D view |
+| Windows local-model worker | local model served by Ollama, vLLM or LM Studio | the Windows machine | GPU shared with the UI and the 3D view |
 | Windows OpenCode session | agent harness | the Windows machine | I believe the registered `mimo` seat is the OpenCode seat (from the earlier rename question); to confirm |
-| Ubuntu local-model worker | local model | `aaroneoushome` (RTX 4060 per its seat-status file) | registered as `ubuntu-worker-01` |
-| Ubuntu OpenCode session | agent harness | the Ubuntu machine | same question as above |
+| Ubuntu local-model worker | local model | `aaroneoushome` (RTX 4060 per its seat-status file) | registered as `ubuntu-worker-01`; currently guided by the Ubuntu OpenCode session (a party, see 5.1) |
+| Ubuntu OpenCode session | agent harness running a cloud model in a loop | the Ubuntu machine | guides the Ubuntu local worker; same seat question as above |
 | Codex, Claude, Gemini | cloud-backed agents | wherever each session runs | which are local sessions and which are cloud sessions decides whether they can reach the LAN directly |
 | Guildmaster | the owner | the Windows machine | gives inspiration and guidance; see 7.4 |
 
@@ -219,6 +267,36 @@ existing registration route.
 
 Everything in the table is configuration over parts that exist or are proposed; none of it is new authority.
 
+### 7.5 Domains: one hall per repository and machine, with crossplay
+
+Owner idea, 2026-10-10: run several devtools sessions with different clocks, one pointed at each repository. The Ubuntu
+machine works on the Aaroneous repository, with devtools as the source of operations and Aaroneous as the pristine
+base; devtools keeps advancing; because devtools is built on Aaroneous, both improve by dogfooding.
+
+**Domain** = one hall + one repository + one machine, with its own settings layers, queue, permission floor and
+**clock** (tick interval, lease length, heartbeat; all settings). A fast clock suits the interactive Windows hall; a slow
+batch clock suits the Ubuntu build machine.
+
+**Proposed first arrangement:** hall A on Windows over the devtools repository; hall B on Ubuntu over the Aaroneous
+repository. The two halls do not share mutable state. Each repository keeps its own coordination queue, and lanes are
+claimed only by a claim PR in the repository that owns the lane (the existing rule), so there is no cross-hall
+lock to get wrong.
+
+**Crossplay** means lending an instance: a worker registered with its home hall serves a job from the other hall under a
+*visiting contract*. The home hall keeps the identity and the trust ledger; the visited hall issues leases scoped to its
+repository; credentials are never shared; the result returns as git refs and receipts. Trust earned while visiting counts
+in the home ledger only for the skills it actually exercised there, and only after the home hall verifies the receipts.
+Skills are domain-specific: kernel-style Rust in Aaroneous is not the same skill as documents in devtools.
+
+**The dogfood loop and the dependency rule.**
+- Devtools pins an Aaroneous revision as its base and moves the pin by reviewed pull request.
+- Aaroneous stays pristine because it changes only through its own gate and its graduation rule (code arriving from
+  outside is proven in its origin, placed behind a workspace trait, landed inert, and the origin copy deleted).
+- Hall B proposes changes to Aaroneous as pull requests under the product's rules; devtools depends on Aaroneous and
+  never the reverse, and Aaroneous never depends on devtools.
+- Whether hall B's operators may merge in the Aaroneous repository is the owner's decision; the default here is that
+  they open pull requests and do not merge.
+
 ## 8. Terminology
 
 The guild-hall language is good for the interface (reception, supervisor, quest-board style status). Code, crates and
@@ -258,6 +336,8 @@ the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later with
 7. **Operators and instances.** Are the two OpenCode sessions one operator (`mimo`) or two? Does the Windows worker get its own seat (`windows-worker-01`)?
 8. **Which machine hosts the hall,** and how the machines are joined (existing overlay network, certificate-pinned TLS, or SSH tunnels).
 9. **Which of Codex, Claude and Gemini run as local sessions on these machines,** and which as cloud sessions.
+10. **Domains (7.5):** first arrangement hall A on Windows over devtools, hall B on Ubuntu over Aaroneous; and whether hall B's operators merge in the Aaroneous repository (default: pull requests only).
+11. **Outside benchmarks are priors only;** promotion rests on milestone suites built from our own repositories with deterministic verifiers (5.1). Confirm.
 
 ## 12. Not verified
 
@@ -269,6 +349,9 @@ the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later with
   formats but have not built the derivation.
 - That a rule engine extended with roles stays simple; to be checked when G1 is designed.
 - The strength of isolation needed for strangers; undetermined until the security review in G7.
+- The owner's roster statement was "4 models, I believe 3 established seats between them"; which worker maps to which seat is not settled (decision 7).
+- The names, scope and figures of outside evaluators in 5.1 come from search results and my own knowledge, not from their primary sites.
+- Whether our milestone suites can be built from repository history with enough tasks per level; unmeasured.
 - That the machines share an encrypted overlay network; the `100.x` address is only suggestive.
 - That `mimo` is the OpenCode seat, and how the OpenCode sessions authenticate and report today.
 - That a pull-and-heartbeat design matches how each tool (OpenCode, Codex, Claude, Gemini) can actually call the hall; MCP support in each client must be tested (HUD v2 P1b).

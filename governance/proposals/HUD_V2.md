@@ -287,7 +287,17 @@ are **not** run from the HUD in the first phases; the HUD links to the PR instea
 8. **Accounting.** Every model call records input/output token counts, the tier that answered, and cache hit/miss in the
    retained log. The HUD shows tokens saved by tier and cache hits. Without this, none of the above is verifiable.
 
-Savings figures are not claimed in this document; they are to be measured by item 8.
+9. **Dense handles: choose the encoding by measurement.** The owner's idea, 2026-10-10: send tokens cheaper by
+   re-encoding numbers into a higher base (decimal to base 36 or 64), done by software. Measured result in Appendix A:
+   on the local model's tokenizer it is **true for dense, incompressible data** (digests, large numbers, packed
+   telemetry) and **false for ordinary text**. Policy: identifiers, digests and sequence numbers that go into a prompt
+   use a dense alphabet chosen per backend from a calibration run; content the model must read or reason about
+   stays plain; the software decodes. Caveats: the best alphabet depends on each tokenizer (the digit-splitting seen
+   here is not universal), a model decodes dense strings unreliably so they must be opaque handles software resolves,
+   and the larger saving is not sending the payload at all (handles to stored packs, items 2 to 5).
+
+Savings figures are not claimed in this document except the measurement in Appendix A; the rest are to be measured by item 8.
+
 
 ## 6. Security and safety
 
@@ -485,3 +495,60 @@ brief compiler's survey?
 - That a light local model fills brief slots reliably enough as structured output; to be measured against the slot schema before the survey is trusted.
 - Whether the HIAL, Socratic pinning, intent mirror and `.si` twin payload exist anywhere other than the specification; my search of `crates/*.rs` found none.
 - That the `omni` layout code can be driven from a workspace trait and rendered inside the chosen GUI; not read in depth.
+
+## Appendix A. Token cost of encodings, measured 2026-10-10
+
+Method: the script below sends each encoding of the same 512 random bytes (4096 bits of information, fixed seed)
+to the local Ollama model `qwen3.5:9b-q6` with `raw` prompting and `num_predict = 1`, and reads `prompt_eval_count`,
+the model's own token count. The wrapper overhead was 1 token and is subtracted. Run on the owner's Windows machine; one
+tokenizer only.
+
+| Encoding | Characters | Tokens | Bits per token |
+|---|---:|---:|---:|
+| decimal (base10) | 1233 | 1232 | 3.32 |
+| hex | 1024 | 906 | 4.52 |
+| base36 | 793 | 561 | 7.30 |
+| base32 (lower case) | 820 | 527 | 7.77 |
+| base62 | 688 | 521 | 7.86 |
+| base85 | 640 | 500 | 8.19 |
+| base64 | 684 | 499 | 8.21 |
+
+Also measured: a 64-bit identifier written as 13 base-36 characters cost 9 tokens. A prose sample with identifiers and
+timestamps came to 2.46 characters per token.
+
+Reading: on this tokenizer every decimal digit is its own token, so decimal carries 3.32 bits per token and base 64
+carries about 8.2, roughly 2.5 times more. A secondary source on other tokenizers reports that base64 still beats hex
+but costs about 2 to 2.5 characters per token on pseudo-random data, and that other tokenizers split digits
+differently (so the decimal baseline, and the gain, will differ). **Not measured:** any cloud model's tokenizer,
+decode accuracy when a model must read the string, and the end-to-end saving on real prompts. Those need the
+calibration run in item 9, using each backend's reported usage.
+
+```python
+import base64, json, random, string, urllib.request
+MODEL, URL = "qwen3.5:9b-q6", "http://127.0.0.1:11434/api/generate"
+
+def tokens(prompt):
+    body = json.dumps({"model": MODEL, "prompt": prompt, "stream": False, "raw": True,
+                       "options": {"num_predict": 1, "temperature": 0}}).encode()
+    req = urllib.request.Request(URL, body, {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=300) as r:
+        return json.load(r)["prompt_eval_count"]
+
+def to_base(n, alphabet):
+    out = []
+    while n:
+        n, rem = divmod(n, len(alphabet)); out.append(alphabet[rem])
+    return "".join(reversed(out)) or alphabet[0]
+
+payload = bytes(random.Random(7).randrange(256) for _ in range(512))
+n = int.from_bytes(payload, "big")
+b36, b62 = string.digits + string.ascii_lowercase, string.digits + string.ascii_uppercase + string.ascii_lowercase
+encodings = {"hex": payload.hex(), "decimal": str(n),
+             "base32": base64.b32encode(payload).decode().lower().rstrip("="),
+             "base36": to_base(n, b36), "base62": to_base(n, b62),
+             "base64": base64.b64encode(payload).decode(), "base85": base64.b85encode(payload).decode()}
+base = tokens("x")
+for name, text in encodings.items():
+    cost = tokens(text) - base
+    print(name, len(text), cost, round(4096 / cost, 2))
+```
