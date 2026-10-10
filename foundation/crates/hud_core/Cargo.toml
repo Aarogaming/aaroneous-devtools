@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "HUD core: layered settings and the permission engine (lane C120, HUD v2 phase P1a)"
 
+[package.metadata.cratify]
+profile = "control"
+
 [dependencies]
 # Admission: serde and toml are already used by maintenance_ui and foundation_cli. The crate reads no files, no
 # environment and no clock; callers pass each settings layer in as text.
