@@ -396,6 +396,73 @@ not evaluated any crate below against those criteria; the list says where to loo
 If any of this ever crosses into the Aaroneous product repo, `AGENTS.md` section 4 admission scoring applies, not the
 devtools criteria. Aaroneous never depends on devtools or on external tooling.
 
+## 10b. Extensions under discussion (ideas, not commitments)
+
+Owner thoughts in chat, 2026-10-10: liven up the interface with light 3D interactivity, in the spirit of a
+location-based exploration game; "data mining ideas from people" as mental mapping; maybe a psychology portion; maybe a
+full digital twin of the owner. Recorded here with how each maps onto what already exists. Nothing in this section is
+scheduled, and each item would be its own lane with its own review.
+
+**What the canonical Aaroneous architecture already specifies (read from the product repo, 2026-10-10).**
+`docs/architecture/human_interface_intent_mirror.md` and Pillar 6 of `MASTER_ARCHITECTURE.md` define a decoupled
+**Human Node** reached through a Human-Interface Abstraction Layer (HIAL); **Socratic Vector Pinning** along three
+axes (invariants, dependencies, trade-offs) compiled into an Intent DAG; a **3-Option Intent Mirror** (conservative,
+redesign, quick validate) shown before non-trivial changes; a personalised **`.si` digital twin cartridge** that
+"encodes developer preferences, architectural tolerances, coding idioms, and verification budgets"; and a viewport
+mode that renders "3D concept constellations" with `wgpu` shared into `egui`. The `omni` crate already holds galaxy,
+constellation and spatial-layout code, and `studio_hud` uses `egui`/`eframe`. I searched `crates/*.rs` for HIAL,
+the intent mirror and Socratic pinning and found no matches, so I read these as specification, not working code
+(NOT VERIFIED beyond that search). I found no code that defines a preference payload for the `.si` twin; the
+`si_format` crate covers the container, alignment, capability masks and verification.
+
+**Consequences for this proposal.**
+- The brief compiler (4.3a) and Socratic pinning are the same idea. The brief template's slots should include the three
+  pinning axes, and the approval screen for a brief should be the three-option mirror. This keeps one design instead
+  of two.
+- The 3D analogy view (4.3b) should reuse the `omni` layout and constellation code through a workspace trait rather
+  than a new renderer, and the native application should use the `egui`/`eframe` stack the product already chose.
+  That answers the toolkit question in decision 2 as a default; the spike still has to pass its tests. Devtools may
+  depend on Aaroneous crates, never the reverse.
+- The digital twin is Aaroneous's concept, so devtools should build the **data** and the **use** of it, not a rival
+  format: an inspectable record of the owner's stated preferences and decisions with provenance, shaped so it can be
+  exported into the `.si` twin cartridge when that format exists.
+
+**Exploration layer (light 3D interactivity).** Treat the idea graph as a map. Unexplored places are things the system
+does not know yet: an analogy with status `unverified`, an empty required brief slot, an open question from the
+queue. Visiting one opens the survey question for it; answering or confirming it "claims" it. This is a skin over the
+same data and the same permission rules, controlled by a setting (`ui.exploration`, off or on, with the intensity
+left to configuration). Guardrails: rewards attach to **confirmed, evidenced** answers, not to volume, so the loop
+cannot teach people to answer quickly rather than truthfully; no streak or loss mechanics; and every screen must
+still work without the 3D view.
+
+**Eliciting ideas from people.** Plain, established elicitation methods fit the survey: card sorting, laddering
+("why does that matter?"), and concept maps. They produce structured slots and graph edges, which is what the
+compiler needs. Who the "people" are matters: the owner and the registered seats need nothing beyond the retention
+rules already in place. Collecting from anyone else would need their knowledge and agreement, a stated purpose,
+minimal retention and local-only storage, decided before building, not after.
+
+**Psychology portion.** Proposed scope: elicitation and mapping of **what a person says they want and decide**.
+Out of scope: inferring traits, moods or mental state, scoring people, or anything presented as diagnosis. Those
+claims are not supportable from this kind of data and would put unverified conclusions about real people into the
+system.
+
+**Digital twin, staged so each step is measurable.**
+1. A decision and preference log: the owner's standing directives (for example the rules already stated in
+   `AGENTS.md`, the operating model and chat), each with source, date, scope and confidence. Viewable and editable by
+   the owner; deletable.
+2. Use it only to **pre-fill brief slots as `proposed`**, never `confirmed`, so a wrong guess costs one correction.
+3. Measure it: the share of proposed slots the owner accepts unchanged, per slot type. This is the twin's quality
+   figure and the evidence for or against expanding it.
+4. Only then consider simulation (asking "what would the owner decide?") and export to the `.si` cartridge.
+Constraints that apply from step 1: the twin may propose and never approve; it grants no merge, review or
+attestation authority and is bound by the permission floor; it is stored in the user settings layer and is not sent to
+any cloud model unless a setting allows that specific use; every use is logged; and it is labelled as a model of
+stated preferences that can be wrong.
+
+**Open questions for the owner.** Which people beyond the owner and the seats are meant by "people"? Is the twin for the
+owner alone? Is exploration a default-on feature or opt-in? Should the first step be the preference log, ahead of the
+brief compiler's survey?
+
 ## 11. Not verified
 
 - No code was written or run for this proposal. All numbers in section 5 are targets, not measurements.
@@ -412,3 +479,5 @@ devtools criteria. Aaroneous never depends on devtools or on external tooling.
 - That any Rust GUI option can do the packet editor (4.4) acceptably on the owner's machine; to be settled by the spike in decision 2.
 - That a 3D renderer, the local model and the 2D panels can share the owner's GPU acceptably; to be measured in the toolkit spike.
 - That a light local model fills brief slots reliably enough as structured output; to be measured against the slot schema before the survey is trusted.
+- Whether the HIAL, Socratic pinning, intent mirror and `.si` twin payload exist anywhere other than the specification; my search of `crates/*.rs` found none.
+- That the `omni` layout code can be driven from a workspace trait and rendered inside the chosen GUI; not read in depth.
