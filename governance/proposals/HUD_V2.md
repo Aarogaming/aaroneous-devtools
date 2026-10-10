@@ -398,6 +398,8 @@ devtools criteria. Aaroneous never depends on devtools or on external tooling.
 
 ## 10b. Extensions under discussion (ideas, not commitments)
 
+The operating model for users, contributors and operators (intake, triage, skill-gated delegation, earned trust) is in the companion `GUILD_HALL.md`.
+
 Owner thoughts in chat, 2026-10-10: liven up the interface with light 3D interactivity, in the spirit of a
 location-based exploration game; "data mining ideas from people" as mental mapping; maybe a psychology portion; maybe a
 full digital twin of the owner. Recorded here with how each maps onto what already exists. Nothing in this section is
