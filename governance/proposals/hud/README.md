@@ -31,18 +31,18 @@ advisory guild workers.
 
 ## The documents
 
-| # | Proposal |
-|---|---|
-| 01 | [Settings layers and the permission engine](01-settings-and-permissions.md) |
-| 02 | [Agent door and MCP adapter](02-agent-door-and-mcp.md) |
-| 03 | [LAN roster, wire and domains](03-lan-roster-and-domains.md) |
-| 04 | [Token optimization](04-token-optimization.md) |
-| 05 | [Model profiles and prompt adaptation](05-model-profiles-and-prompt-adaptation.md) |
-| 06 | [Brief compiler and packets](06-brief-compiler-and-packets.md) |
-| 07 | [Guild workers, staff roles and inspection](07-guild-workers-staff-and-inspection.md) |
-| 08 | [Roles, skill gating and earned trust](08-roles-skills-and-trust.md) |
-| 09 | [Visualizer, exploration and digital twin](09-visualizer-exploration-and-twin.md) |
-| 10 | [Native application, operations panel and reuse](10-native-app-operations-and-reuse.md) |
+| # | Proposal | Pull request |
+|---|---|---|
+| 01 | [Settings layers and the permission engine](01-settings-and-permissions.md) | [#163](https://github.com/Aarogaming/aaroneous-devtools/pull/163) |
+| 02 | [Agent door and MCP adapter](02-agent-door-and-mcp.md) | [#164](https://github.com/Aarogaming/aaroneous-devtools/pull/164) |
+| 03 | [LAN roster, wire and domains](03-lan-roster-and-domains.md) | [#165](https://github.com/Aarogaming/aaroneous-devtools/pull/165) |
+| 04 | [Token optimization](04-token-optimization.md) | [#166](https://github.com/Aarogaming/aaroneous-devtools/pull/166) |
+| 05 | [Model profiles and prompt adaptation](05-model-profiles-and-prompt-adaptation.md) | [#167](https://github.com/Aarogaming/aaroneous-devtools/pull/167) |
+| 06 | [Brief compiler and packets](06-brief-compiler-and-packets.md) | [#168](https://github.com/Aarogaming/aaroneous-devtools/pull/168) |
+| 07 | [Guild workers, staff roles and inspection](07-guild-workers-staff-and-inspection.md) | [#169](https://github.com/Aarogaming/aaroneous-devtools/pull/169) |
+| 08 | [Roles, skill gating and earned trust](08-roles-skills-and-trust.md) | [#170](https://github.com/Aarogaming/aaroneous-devtools/pull/170) |
+| 09 | [Visualizer, exploration and digital twin](09-visualizer-exploration-and-twin.md) | [#171](https://github.com/Aarogaming/aaroneous-devtools/pull/171) |
+| 10 | [Native application, operations panel and reuse](10-native-app-operations-and-reuse.md) | [#172](https://github.com/Aarogaming/aaroneous-devtools/pull/172) |
 
 **Suggested review order:** 01, 02, 03 (foundations), then 06, 07, 08 (behaviour), then 04, 05 (economy), then 10, 09
 (interface). Each document ends with a "Review focus" list, its own decisions and its own "Not verified" list.
