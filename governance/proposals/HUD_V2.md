@@ -89,11 +89,44 @@ lets them report in). The 120 s poll and the 1 KiB body cap make it unsuitable a
   accepts the human session token and the human door never accepts a seat token. The Host-header check stays for both,
   which keeps the DNS-rebinding defence.
 
+### 4.1a One core, several transports: MCP for models, a native app for people
+
+Owner direction, 2026-10-10: use the HUD as an MCP (or LSP) server, and prefer a standard application to a webview.
+
+**What exists (read from `origin/main`, 2026-10-10).**
+- Devtools already has a loopback MCP endpoint: `foundation_cli/src/agentic_registrar.rs` serves `POST /mcp`
+  (JSON-RPC 2.0, protocol revision 2024-11-05, service name `aaroneous-mcp-foundation`) with an `X-Devtools-Token`
+  header, a 64 KiB body cap, and five tools: `verify_gate_suite`, `get_repository_status`, `register_vibe_task`,
+  `dispatch_queue_tick`, `audit_ast_invariants`. It runs as a separate server from the HUD on 8787.
+- The product repo has a `mcp_server` crate with `mcp_service` (auth, capability, http_api, transport) and a
+  capability broker, built on tokio/tower. I have only listed its files, not read its design.
+- I found **no LSP** anywhere in devtools. LSP is for editor language intelligence (diagnostics, completion for source
+  files); it does not fit cards, work and availability. MCP does, and it is what the cloud and local agent tools already
+  speak.
+
+**Proposal.** The HUD core (settings, permissions, store, router, accounting) is a library with **no transport and no
+UI**. Everything else is an adapter over the same operations and the same permission engine:
+
+| Adapter | Audience | Notes |
+|---|---|---|
+| MCP server (stdio for tools launched by a seat; HTTP on loopback with a bearer token for long-running ones) | models and seats | Tools: `get_card`, `list_work`, `get_availability`, `set_availability`, `submit_inquiry`, and later `report_result`. Resources: the card, the work list, the events feed. Each tool is one row of the section 4.2 table |
+| Plain loopback HTTP | scripts, the steward, health checks | Same operations; this is the section 4.2 API |
+| Native desktop application | people | Calls the core **in-process**, so the human path needs no port, no session token and no Host/Origin defences |
+
+Consequences: one permission engine and one audit log for every path; the existing registrar MCP tools become
+operations registered in the core rather than a second server; and the 8787 webview page becomes an optional
+adapter, not the product. Which MCP protocol revision and transport the seats' client tools actually speak, and
+whether the existing endpoint is reachable from them today, is NOT VERIFIED; P1 must test it with a real client.
+
+Boundary: devtools may depend on Aaroneous crates; Aaroneous never depends on devtools. Reusing the product
+`mcp_server` crate would be allowed in that direction, but it brings tokio/tower into a tool that is synchronous
+today, so it needs the async-justified case from `OPERATING_MODEL.md` and is not assumed here.
+
 ### 4.2 Agent API (read-first)
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /agent/v1/card` | The seat's current task card (what `steward_run.py` writes today), with `ETag`; `304` with no body when unchanged |
+| `GET /agent/v1/card` (MCP `get_card`) | The seat's current task card (what `steward_run.py` writes today), with `ETag`; `304` with no body when unchanged |
 | `GET /agent/v1/work` | Open lanes/jobs this seat may take, filtered by availability and capability, with `ETag` |
 | `PUT /agent/v1/availability` | Seat reports `{state, model, limits, until}`; this is the C112 seat-status record served over HTTP |
 | `GET /agent/v1/availability` | Everyone's availability, so a seat can see who is free |
@@ -218,6 +251,7 @@ Savings figures are not claimed in this document; they are to be measured by ite
 |---|---|---|---|
 | P0 | This proposal reviewed and the section 9 decisions made | owner | recorded decisions |
 | P1 | Settings layers and permission engine (`defaults.toml`, schema, precedence, locks, effective-value view); then the agent door (bearer tokens) with `GET card`, `GET work`, `GET/PUT availability`, `ETag/304`; token issue/revoke command; tests | C112 seat-status format, C106 for work shape | schema and precedence tests; a seat fetches its card over HTTP under `read-only`; a write is refused until a rule allows it; 304 on unchanged |
+| P1b | MCP adapter over the same operations (stdio and loopback HTTP), tested with a real MCP client; the registrar's five tools registered as core operations | P1 | a seat calls `get_card` through MCP under `read-only` |
 | P2 | Event stream (long-poll with sequence numbers); retire the fixed 120 s poll for seats | P1 | a seat wakes within a second of a change |
 | P3 | Inquiry intake in the HUD to typed jobs (C106) with the software classifier and answer-from-evidence class | C106 | an inquiry answered from retained evidence with zero model calls |
 | P4 | Local-model glue with context packs, result cache and token accounting; user-assisted packet editing with revisions | P3 | accounting shows tier and cache; a packet edited and revised in the HUD |
@@ -242,15 +276,13 @@ Each phase is a separate lane/PR; this document claims no code.
 1. **Agent write access.** DECIDED in chat 2026-10-10: default is read-only, modelled on the permission modes of the
    agent tools in use, and everything is configuration (section 4.2a). Remaining detail for review: whether the
    availability PUT is allowed by default (proposed yes) or also starts as `ask`.
-2. **UI technology.** Owner preference, 2026-10-10: Rust for the interface, if it is not too limited. The server side is
-   already Rust; only the screen is JavaScript. Proposed: build the HUD **API-first** (sections 4.1-4.2a), so the
-   screen is a replaceable client of the same endpoints and the same permission rules. Then the language of the
-   screen is a spike, not a bet. Options to compare in that spike (properties are from general knowledge, NOT VERIFIED):
-   (a) a native client in an immediate-mode Rust GUI crate: pure Rust, simple, good for dashboards and status; weaker for
-   long-form text editing and accessibility, and adds a large dependency; (b) a UI written in Rust and compiled to
-   WebAssembly, served by the HUD: no hand-written JavaScript, still a browser engine underneath; (c) a Rust desktop
-   shell around the same web UI: not a language change. The packet editor (4.4) is the demanding screen, so the spike
-   should build that first. The existing vanilla-JS page stays until a Rust client matches it.
+2. **UI technology.** DECIDED direction in chat 2026-10-10: a standard application, not a webview. Proposed default: a
+   native Rust desktop application that embeds the HUD core in-process (section 4.1a), built after the core and MCP
+   adapter exist. The webview page stays only as a fallback adapter until the native app matches it. The first screen
+   to build, and the test of whether the chosen GUI crate is good enough, is the packet editor (4.4), because long
+   text editing and accessibility are the weak points of most Rust GUI toolkits (general knowledge, NOT VERIFIED).
+   Toolkit choice (an immediate-mode crate is the lowest-effort candidate) is made by a short spike behind the core's
+   interface, so the choice stays cheap to reverse.
 3. **Glue model.** Recommended: keep the Ollama `qwen3.5:9b-q6` endpoint the HUD already uses as the initial value of a
    `models` setting, not a constant;
    the product `AGENTS.md` names vLLM Qwen2.5-Coder-14B at :8000, which was not reachable when checked.
