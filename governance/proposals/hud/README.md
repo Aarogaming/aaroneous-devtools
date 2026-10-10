@@ -43,9 +43,11 @@ advisory guild workers.
 | 08 | [Roles, skill gating and earned trust](08-roles-skills-and-trust.md) | [#170](https://github.com/Aarogaming/aaroneous-devtools/pull/170) |
 | 09 | [Visualizer, exploration and digital twin](09-visualizer-exploration-and-twin.md) | [#171](https://github.com/Aarogaming/aaroneous-devtools/pull/171) |
 | 10 | [Native application, operations panel and reuse](10-native-app-operations-and-reuse.md) | [#172](https://github.com/Aarogaming/aaroneous-devtools/pull/172) |
+| 11 | [Hall host election and handoff](11-hall-host-election-and-handoff.md) | [#173](https://github.com/Aarogaming/aaroneous-devtools/pull/173) |
+| 12 | [Compliance with Aaroneous, thin base and thick frontier](12-compliance-and-graduation.md) | [#174](https://github.com/Aarogaming/aaroneous-devtools/pull/174) |
 
-**Suggested review order:** 01, 02, 03 (foundations), then 06, 07, 08 (behaviour), then 04, 05 (economy), then 10, 09
-(interface). Each document ends with a "Review focus" list, its own decisions and its own "Not verified" list.
+**Suggested review order:** 01, 02, 03 (foundations), 12 (how everything is built), then 11 (hosting), 06, 07, 08
+(behaviour), 04, 05 (economy), and last 10, 09 (interface). Each document ends with a "Review focus" list, its own decisions and its own "Not verified" list.
 
 ## Requirements
 
@@ -118,6 +120,8 @@ taking work as job cards at its own level (see [07](07-guild-workers-staff-and-i
 | P4 | 04, 05 | token accounting and caches, model profiles and prompt adapters |
 | P5, P7 | 10 | operations panel, native application shell |
 | P7 (part), twin | 09 | 3D analogy view, exploration layer, preference log and twin |
+| H1 to H6 | 11 | election and handoff reducer, qualification, signed certificates, handoff over the wire, failure handling, owner controls |
+| C1 to C4 | 12 | profile metadata, component inventory rings, advisory auditor in CI, first graduation candidate |
 | G7, P6 | 03, 08 | hosting for remote users, cloud dispatch; both deferred, each needing its own review |
 
 Each phase is its own lane and review; this set claims no code.
@@ -140,6 +144,10 @@ This records chat instructions; it is not an attestation. "OPEN" items are liste
 | Which machine hosts the hall and how machines are joined; which agents are local sessions; domain arrangement and merge rights in Aaroneous | OPEN | 03 |
 | Inspector role holders, sampling rates, trace retention | OPEN | 07 |
 | Taste boundary, levels, who promotes, stranger's program location, fine-tuning off, outside benchmarks as priors | OPEN | 08 |
+| The most capable qualified machine hosts operations; leadership moves by a handoff protocol and no session is shut down | DECIDED in principle | 11 |
+| Score weights, certificate signer, leadership per domain, git tie-breaker, hot standby | OPEN | 11 |
+| Build modularly and Aaroneous-compliant by construction; thin base, thick frontier; library grows from what survives the frontier | DECIDED in principle | 12 |
+| Rings, auditors in devtools CI, first graduation candidate, attestation-namespace exception | OPEN | 12 |
 | Prompts as reviewed files | OPEN | 05 |
 | Twin and exploration scope questions | OPEN | 09 |
 
