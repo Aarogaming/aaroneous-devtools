@@ -49,6 +49,20 @@ So the guild hall is mostly **wiring and one new idea**: a per-operator, per-ski
 reviewed outcomes* and checked when work is handed out. The autonomy policy's `is_high_risk` list and circuit breaker
 are the seed of it, applied to one tier today.
 
+### 2.1 Three layers
+
+Owner framing, 2026-10-10: the HUD-HUB manages a **stable Aaroneous core**, with devtools as an **operational layer**
+on top, and the **machine-dependent models** we host tied to their machine as local workers.
+
+| Layer | What it is | Rule |
+|---|---|---|
+| Aaroneous core | the product repository and its crates; the pinned base | changes only through its own gate; devtools depends on it, never the reverse |
+| Devtools (operational layer) | the hall: intake, queue, policy, steward and Guild, packets, settings | operates on repositories; holds no product authority |
+| Hosted models | the local model on each machine, served by Ollama, vLLM or LM Studio | bound to its machine and its sponsor seat; low permission |
+
+The user is the **guild manager**. The local model is the **staff** (secretary, organiser, bookkeeper, auditor, cleaner),
+taking work as job cards at its own level (3.3).
+
 ## 3. Roles
 
 | Role | Who | How identified | May do |
@@ -119,6 +133,58 @@ worker's promotion; another seat or the deterministic validators are.
 defaults are narrower, following the owner's direction above: the HUD gives workers advisory classes only and never
 calls `promote`. The existing tools are unchanged; the difference should be reconciled in review, and the owner can widen
 the classes later with one setting.
+
+### 3.3 Staff roles are job-card types on the worker queue
+
+The local model takes staff duties as ordinary job cards. Each role is a bundle of the worker classes in 3.2, so a role is a
+card type with a fixed, checkable output, not a free-form assistant:
+
+| Staff role | Typical cards | Classes used |
+|---|---|---|
+| Secretary | summarise a thread or a day's events, draft a status note, take a request through intake | W0, W2 |
+| Organiser | tag and cross-link documents and lanes, keep the index and the idea graph current | W0, W3 |
+| Bookkeeper | reconcile queue rows against PR state, token and budget accounting, lease and receipt tallies | W1 |
+| Auditor | classify audit results, internal compliance triage, check that logs and chains are consistent | W1, W3 |
+| Cleaner | find stale branches, caches and temporary files and **propose** what to clear | W1, then a seat or the owner acts |
+
+This extends direction already in the product `AGENTS.md` (section 0.1, "Local maintenance operator"): recurring, bounded
+work near the workspace; existing tools gather the facts; the model interprets declared evidence and proposes; outcomes of
+tools and findings of the model are recorded separately; and a model recommendation grants no deletion authority. The
+cleaner is therefore advisory by construction: it lists candidates with the retention rule that qualifies each one, and an
+authorised tool or a person performs any deletion.
+
+**The worker queue is a low-permission lane in the same card system.** It is part of the steward and Guild priority and
+delegation scheme, with its own priority classes and budgets, and it is the **lowest-risk door into the hall**: a user,
+another seat, a contributor or a script may post a card to it, because what a card can cause is bounded by the worker classes
+and permissions, not by who posted it. Posting still goes through intake and the permission engine, and every card records
+its poster.
+
+### 3.4 Inspection access ("admin") and in-line diagnosis
+
+Owner idea, 2026-10-10: higher models, and people, can step inside a worker operation to check that it is saying and asking
+the right things, with administrative privileges.
+
+- **Every worker job leaves a trace:** the brief and slots, the compiled prompt (with template, adapter and model
+  versions), the model's outputs and questions, validator results and token counts. Traces are retained evidence, subject
+  to the retention and consent settings.
+- **Inspector** is a role granted by rule to named seats and to the owner (for example the frontier seats). It carries
+  *specific* actions, not general power: `read_trace`, `annotate_trace`, `pause_job`, `resume_job`, `requeue_job`,
+  `propose_template_change`. It cannot widen worker classes, skip a validator, change the permission floor or act on the
+  repository; those stay with the owner's settings and the steward gate. Admin here means insight and control of the
+  *operation*, not of the system.
+- **Three inspection modes:**
+  1. **Rehearsal (pre-release):** before a new or changed template goes live, an inspector reads the compiled prompt and runs
+     it against the qualification set, checking it asks for the right things and nothing more. This is the shadow/inert
+     landing the graduation rule already requires.
+  2. **Sampled audit (running):** a configured fraction of live traces, higher for new templates and for any trace that failed
+     a validator, is reviewed by a higher model from a different family than the worker's model.
+  3. **Live attach (on demand):** an inspector or the owner opens a running job's trace, annotates it and may pause or requeue
+     it. The worker keeps going on its own unless paused.
+- **Cost control:** inspection spends cloud tokens, so rates are settings, scaled by risk and maturity, and tracked in the same
+  accounting as everything else.
+- **Findings feed back:** an annotation becomes a proposed template change, a validator rule or a trial case, and goes through the
+  normal review, so the system learns from inspections instead of repeating them.
+- **Privacy:** traces can hold user text. Read access is by rule, and a user's consent flags decide whether their text is retained.
 
 ## 4. The flow
 
@@ -249,8 +315,9 @@ machines; remote strangers stay deferred (G7).
 
 Corrected 2026-10-10 from the owner's statement: the OpenCode session on Windows is the `mimo` seat; the OpenCode
 session on Ubuntu is the `ubuntu-worker-01` seat ("Ubuntu-1"). Both run OpenCode, and each operates a local model on its
-own machine. I read "Mimo" as the model behind OpenCode on both machines (to confirm), so the underlying model is recorded
-as an attribute of a seat, not as its identity.
+own machine. Confirmed by the owner, 2026-10-10: **MiMo is the model behind OpenCode on both machines, and the seat name `mimo` names
+the model identity; OpenCode is the application used to reach it.** The Ubuntu seat is the same model on the second machine
+under a host-specific seat name. The application and the model are recorded separately on each instance.
 
 | Member | Kind | Machine | Notes |
 |---|---|---|---|
@@ -382,11 +449,13 @@ the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later with
 5. **Where the stranger's program lives:** a separate repository or workspace from devtools and Aaroneous
    (recommended), so the guild hall operates on it as a project and cannot touch ours.
 6. **Fine-tuning from outcomes:** not proposed; confirm it stays off.
-7. **Roster.** RESOLVED by the owner in chat, 2026-10-10: `mimo` is the Windows OpenCode seat and `ubuntu-worker-01` is the Ubuntu OpenCode seat; the local models are guild workers under them (3.2). Still to confirm: that "Mimo" names the model behind OpenCode on both machines.
+7. **Roster.** RESOLVED by the owner in chat, 2026-10-10: `mimo` is the Windows OpenCode seat and `ubuntu-worker-01` is the Ubuntu OpenCode seat; the local models are guild workers under them (3.2). Confirmed: "Mimo" is the model identity behind OpenCode on both machines; OpenCode is the application.
 8. **Which machine hosts the hall,** and how the machines are joined (existing overlay network, certificate-pinned TLS, or SSH tunnels).
 9. **Which of Codex, Claude and Gemini run as local sessions on these machines,** and which as cloud sessions.
 10. **Domains (7.5):** first arrangement hall A on Windows over devtools, hall B on Ubuntu over Aaroneous; and whether hall B's operators merge in the Aaroneous repository (default: pull requests only).
 11. **Outside benchmarks are priors only;** promotion rests on milestone suites built from our own repositories with deterministic verifiers (5.1). Confirm.
+12. **Inspectors (3.4):** which seats hold the inspector role by default (proposed: the owner and the frontier seats), and the default sampling rates for audits.
+13. **Prompts are reviewed files** in the repository (proposed), so a prompt change is a reviewed change; the alternative is settings-only prompts.
 
 ## 12. Not verified
 
@@ -398,6 +467,8 @@ the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later with
   formats but have not built the derivation.
 - That a rule engine extended with roles stays simple; to be checked when G1 is designed.
 - The strength of isolation needed for strangers; undetermined until the security review in G7.
+- Whether inspection traces can be kept at acceptable size and cost, and what retention the owner wants for traces that contain user text.
+- Whether a different-family inspector reliably catches a worker asking the wrong thing; to be measured with planted faults in rehearsal.
 - The roster in 7.1 is the owner's statement of 2026-10-10; whether the seat names in `identities.json` match the running OpenCode sessions was not checked against the machines.
 - That the four worker classes (W0 to W3) cover the tasks the owner has in mind, and that software validators can check each cheaply; unmeasured.
 - The names, scope and figures of outside evaluators in 5.1 come from search results and my own knowledge, not from their primary sites.

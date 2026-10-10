@@ -254,6 +254,32 @@ other runtimes). The visualizer is a map of those references: *concepts*, *docum
   criteria in `OPERATING_MODEL.md` before adoption. A spike must show: the packet editor and survey usable, a 2,000-node
   graph at an acceptable frame rate while the local model is running, and keyboard navigation.
 
+### 4.3c Model profiles and prompt adaptation (software-level, model-biased)
+
+Owner question, 2026-10-10: can prompts be enhanced and adapted per model at the software-system level? Yes, and a hand-made
+example already exists: the product `AGENTS.md` (section 0.1) tells operators, for the local Qwen model, to send a calibrated
+system prompt that suppresses long reasoning traces, use temperature 0 and leave generous token headroom. The proposal is to
+move that kind of knowledge out of prose and scripts into data and code that every route shares.
+
+- **Model profile (configuration, keyed by backend and model digest):** preferred prompt shape (delimiters, section order,
+  how examples are shown), context size and output ceiling, how structured output is obtained (a schema or grammar when the
+  backend supports it, otherwise a repair loop), sampling defaults, the dense-handle encoding that was measured for that
+  tokenizer (item 9 of section 5), and known quirks with their counter-measures.
+- **Adapter:** a pure function from a compiled brief (confirmed slots, context pack) and a profile to the prompt actually sent.
+  The brief is the same for every model; only its rendering changes. Parsing the answer back is adapted the same way
+  (for example, tolerant extraction of a JSON block).
+- **Prompts are versioned files** (proposed: in the project settings area of the repository), so changing one is a reviewed
+  change with a diff. Cache keys include template version, adapter version and model digest, so a change cannot return a stale
+  answer.
+- **Chosen by measurement, not folklore:** variants are compared on the qualification suite of `GUILD_HALL.md` 5.1, tuned on
+  one split and confirmed on a held-out split to avoid overfitting to the test. The comparison, the winner and the model digest
+  are retained, and are re-run when the model or its quantisation changes.
+- **Guardrails:** an adapter changes wording, format and parameters only. It cannot add capabilities, widen permissions, drop a
+  confirmed slot or alter the permission floor. A round-trip test checks that every confirmed slot reaches the prompt, and the
+  compiled prompt is logged in the trace (`GUILD_HALL.md` 3.4).
+- **Cost:** the profile is also where the cheapest correct representation is chosen per model (plain text where the model must
+  read, dense handles where it must only carry an identifier).
+
 ### 4.4 Blueprint and research packets with the user in the loop
 
 Today the packets are generated and shown. Proposed: each packet is a **document with revisions** in the HUD: the model
@@ -324,7 +350,7 @@ Savings figures are not claimed in this document except the measurement in Appen
 | P2 | Event stream (long-poll with sequence numbers); retire the fixed 120 s poll for seats | P1 | a seat wakes within a second of a change |
 | P3 | Inquiry intake in the HUD to typed jobs (C106) with the software classifier and answer-from-evidence class | C106 | an inquiry answered from retained evidence with zero model calls |
 | P3b | Brief compiler: brief templates as configuration, slot states, completeness gate, deterministic compile, dispatch as a background job; survey driven by the light model | P3, C106 | a brief filled by the survey compiles to the same prompt twice; a missing required slot blocks dispatch |
-| P4 | Local-model glue with context packs, result cache and token accounting; user-assisted packet editing with revisions | P3 | accounting shows tier and cache; a packet edited and revised in the HUD |
+| P4 | Local-model glue with context packs, result cache, token accounting, model profiles and prompt adapters (4.3c); user-assisted packet editing with revisions | P3 | accounting shows tier and cache; a packet edited and revised in the HUD |
 | P5 | Operations panel over Guild/schedule/queue; results retained | C113 | each operation runs from the HUD with retained output |
 | P7 | Native application shell with the 2D panels (survey, brief, packets, operations), then the 3D analogy view over the graph data model | P1, P3b, toolkit spike | spike criteria in 4.3b met, or the 2D view ships alone |
 | P6 | Optional: cloud-seat job dispatch with attached packs; remote access | owner decision | per decision |
