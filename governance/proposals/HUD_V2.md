@@ -242,7 +242,15 @@ Each phase is a separate lane/PR; this document claims no code.
 1. **Agent write access.** DECIDED in chat 2026-10-10: default is read-only, modelled on the permission modes of the
    agent tools in use, and everything is configuration (section 4.2a). Remaining detail for review: whether the
    availability PUT is allowed by default (proposed yes) or also starts as `ask`.
-2. **UI technology.** Recommended: keep vanilla JS in the webview and add SSE/long-poll; revisit a native UI after P5.
+2. **UI technology.** Owner preference, 2026-10-10: Rust for the interface, if it is not too limited. The server side is
+   already Rust; only the screen is JavaScript. Proposed: build the HUD **API-first** (sections 4.1-4.2a), so the
+   screen is a replaceable client of the same endpoints and the same permission rules. Then the language of the
+   screen is a spike, not a bet. Options to compare in that spike (properties are from general knowledge, NOT VERIFIED):
+   (a) a native client in an immediate-mode Rust GUI crate: pure Rust, simple, good for dashboards and status; weaker for
+   long-form text editing and accessibility, and adds a large dependency; (b) a UI written in Rust and compiled to
+   WebAssembly, served by the HUD: no hand-written JavaScript, still a browser engine underneath; (c) a Rust desktop
+   shell around the same web UI: not a language change. The packet editor (4.4) is the demanding screen, so the spike
+   should build that first. The existing vanilla-JS page stays until a Rust client matches it.
 3. **Glue model.** Recommended: keep the Ollama `qwen3.5:9b-q6` endpoint the HUD already uses as the initial value of a
    `models` setting, not a constant;
    the product `AGENTS.md` names vLLM Qwen2.5-Coder-14B at :8000, which was not reachable when checked.
@@ -304,3 +312,4 @@ devtools criteria. Aaroneous never depends on devtools or on external tooling.
 - That the settings layering and permission rules in 4.2a express every case the seats need; the permission shape is
   modelled on the agent tools' settings from memory of how they behave, not from their source.
 - Crate names and properties in section 10 are from general knowledge, not checked against current releases; no candidate has been scored.
+- That any Rust GUI option can do the packet editor (4.4) acceptably on the owner's machine; to be settled by the spike in decision 2.
