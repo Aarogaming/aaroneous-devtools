@@ -332,25 +332,29 @@ Each phase is a separate lane/PR; this document claims no code.
 - **C102 / PR #135** supported operations server: HUD v2 is the local face of that proposal; whether they become one
   service or two is for the reviewers of #135 and this proposal.
 
-## 9. Decisions needed from the owner (recommended defaults first)
+## 9. Owner decisions (recorded from chat, 2026-10-10)
 
-1. **Agent write access.** DECIDED in chat 2026-10-10: default is read-only, modelled on the permission modes of the
-   agent tools in use, and everything is configuration (section 4.2a). Remaining detail for review: whether the
-   availability PUT is allowed by default (proposed yes) or also starts as `ask`.
-2. **UI technology.** DECIDED direction in chat 2026-10-10: a standard application, not a webview. Proposed default: a
-   native Rust desktop application that embeds the HUD core in-process (section 4.1a), built after the core and MCP
-   adapter exist. The webview page stays only as a fallback adapter until the native app matches it. The first screen
-   to build, and the test of whether the chosen GUI crate is good enough, is the packet editor (4.4), because long
-   text editing and accessibility are the weak points of most Rust GUI toolkits (general knowledge, NOT VERIFIED).
-   Toolkit choice (an immediate-mode crate is the lowest-effort candidate) is made by a short spike behind the core's
-   interface, so the choice stays cheap to reverse.
-3. **Glue model.** Recommended: keep the Ollama `qwen3.5:9b-q6` endpoint the HUD already uses as the initial value of a
-   `models` setting, not a constant;
-   the product `AGENTS.md` names vLLM Qwen2.5-Coder-14B at :8000, which was not reachable when checked.
-4. **Remote reach** (seats on other machines): recommended: a tailnet/SSH tunnel to the loopback port, decided
-   separately; the loopback-only default stays until then.
-5. **Lane ownership.** Recommended: this proposal's lane (C119) owns the agent door and the HUD operating layer;
-   C106, C112, C113 keep the formats and tools it consumes.
+The owner confirmed the reading of "analogy reference" in 4.3b and said to go ahead with the recommended defaults.
+Recorded here so reviewers see what is decided and what stays open. This records a chat instruction; it is not an
+attestation, and a reviewer other than the author still has to accept this document.
+
+1. **Agent write access.** DECIDED: default `read-only`, modelled on the permission modes of the agent tools in use;
+   everything is configuration (4.2a). Default for the availability write: allowed, switchable off in settings.
+2. **UI technology.** DECIDED: a standard native Rust application embedding the HUD core in-process (4.1a), not a
+   webview. The webview page remains a fallback adapter until the native app matches it. The toolkit is chosen by a
+   spike whose first test is the packet editor (4.4).
+3. **Glue model.** DECIDED: the existing Ollama `qwen3.5:9b-q6` endpoint is the initial value of a `models` setting,
+   not a constant. The product `AGENTS.md` names vLLM Qwen2.5-Coder-14B at :8000, which was not reachable when checked.
+4. **Remote reach.** DECIDED: loopback only. Reaching the HUD from other machines is a separate later decision.
+5. **Lane ownership.** DECIDED: this lane (C119) is the design; code lands in separate lanes, starting with C120 (the
+   settings and permission engine). C106, C112 and C113 keep the formats and tools the HUD consumes.
+6. **3D scope.** DECIDED: 3D is the analogy-visualizer view inside a native app whose working screens are 2D; it starts
+   after the brief compiler (P3b).
+7. **Analogy reference.** CONFIRMED: the reading in 4.3b.
+8. **First brief templates.** DEFAULT, not separately answered: research, blueprint and build first (the existing packet
+   types), review and incident later. Mandatory slots are set per template in configuration.
+
+Still open: the exact slot lists per template, the toolkit spike result, and the MCP client compatibility test (P1b).
 
 ## 10. Reusing other Rust tools: how modular this is today, and where imports fit
 
@@ -391,13 +395,6 @@ not evaluated any crate below against those criteria; the list says where to loo
 
 If any of this ever crosses into the Aaroneous product repo, `AGENTS.md` section 4 admission scoring applies, not the
 devtools criteria. Aaroneous never depends on devtools or on external tooling.
-
-6. **3D scope.** Recommended: 3D as the analogy-visualizer view only, inside a native application whose working screens
-   (survey, brief, packets, operations) are 2D; start the 3D view after P3b so it is fed by real graph data.
-7. **What counts as an "analogy reference".** Recommended: the reading in 4.3b. Please confirm or correct it, because the
-   data model follows from it.
-8. **Brief templates.** Which classes of work get their own template first (research, blueprint, build, review, incident),
-   and which slots are mandatory for each.
 
 ## 11. Not verified
 
