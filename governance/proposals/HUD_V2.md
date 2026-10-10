@@ -51,6 +51,8 @@ lets them report in). The 120 s poll and the 1 KiB body cap make it unsuitable a
 - R6. Fewer human interactions, higher frequency of work: the default is that the system proceeds and asks the user only
   at decisions that are theirs.
 - R7. Token cost is measured and reduced, not assumed.
+- R8. Behaviour comes from configuration, not code: every default (permissions, models, routing, limits, polling,
+  caches) is a setting that can be changed later in user settings without a release. Owner direction, 2026-10-10.
 
 ## 3. Design principles
 
@@ -99,6 +101,53 @@ lets them report in). The 120 s poll and the 1 KiB body cap make it unsuitable a
 | `POST /agent/v1/result` | A seat reports a result against a card/job; stored as retained evidence; does **not** complete the card (completion stays a PR with a receipt) |
 
 Phase 1 ships the three GETs and the availability PUT only. Writes of results come after the owner decision in section 9.
+
+### 4.2a Configuration and permissions (R8)
+
+Nothing below is a constant in code except the **built-in defaults**, which live in one embedded `defaults.toml`
+(readable, testable, and the only place a default is written down). Everything else is read from settings.
+
+**Layers, lowest to highest precedence:** built-in `defaults.toml`, then user settings
+(`~/.steward/hud/settings.toml`), then project settings (`<repo>/.devtools/hud.toml`, committed, shared), then local
+overrides (`<repo>/.devtools/hud.local.toml`, uncommitted). A setting can be marked `locked = true` at a lower layer
+(for example by the owner in user settings) so a higher layer cannot loosen it. The HUD shows, for every effective
+value, which layer set it, and validates the files on load: a bad file keeps the previous good configuration and
+reports the error rather than falling back to something permissive. Changes are picked up without restart.
+
+**Permission model, patterned on the permission settings of the agent tools these seats already run under** (this is
+the same shape, not shared code): a *mode*, plus explicit *allow*, *ask* and *deny* rule lists, where deny beats ask
+beats allow.
+
+| Mode | Meaning |
+|---|---|
+| `read-only` (**the default**) | reads are allowed with no prompt; anything that changes state is refused unless a rule below allows or asks for it |
+| `ask` | reads allowed; each state-changing action waits for an explicit approval in the HUD |
+| `auto` | pre-approved operations run without asking; everything else still asks. Not available until the owner enables it in user settings |
+
+Rules name an actor (a seat from `governance/identities.json`, `human`, or `*`), an action and an optional scope, for
+example `allow seat:* GET card`, `allow seat:* PUT availability`, `ask seat:* POST result`, `deny * merge`. Reads of
+a seat's own card and the work list are allowed by default; availability is the one write a seat may do unasked, because
+it is status, not state of record, and the owner can turn it off. Results, intake, operations that run commands, and
+anything that touches git or GitHub start as `ask` or `deny`. Merge, push, review and attestation are `deny` and are
+not configurable from the HUD at all: they stay with the steward gate and signed attestations (principle 4).
+
+**What is configurable, with the proposed initial value:**
+
+| Group | Settings (examples) | Initial default |
+|---|---|---|
+| permissions | mode, allow/ask/deny rules, per-seat overrides, locked keys | `read-only`, rules as above |
+| agent door | enabled, token lifetime, per-seat rate limit, body cap | enabled, 1 day, 60/min, 64 KiB |
+| routing | tier order (software, local, cloud), per-class tier ceiling, confidence thresholds | software then local; cloud off |
+| models | named backends (endpoint, model, kind, context size, timeout); which backend serves which role | the Ollama endpoint the HUD already uses |
+| budgets | token budget per seat per day, per job, per tier; what happens on exhaustion (queue, ask, refuse) | accounting on, no hard cap |
+| cache | result-cache on/off, size, TTL, pack retention | on, bounded |
+| events | long-poll timeout, sequence retention, heartbeat | conservative |
+| operations | which operations appear, which need approval | list only; none run unasked |
+| ui | theme, panels shown, notification level | quiet |
+
+Because behaviour is data, the same HUD can be run stricter or looser per machine, and a seat that misbehaves can be
+narrowed by one line in settings. The settings schema is a versioned contract with tests (every default parses; deny
+overrides allow; a locked key cannot be overridden; an invalid file does not weaken the active configuration).
 
 ### 4.3 Inquiry to job to answer
 
@@ -168,7 +217,7 @@ Savings figures are not claimed in this document; they are to be measured by ite
 | Phase | Deliverable | Depends on | Exit evidence |
 |---|---|---|---|
 | P0 | This proposal reviewed and the section 9 decisions made | owner | recorded decisions |
-| P1 | Agent door (bearer tokens) with `GET card`, `GET work`, `GET/PUT availability`, `ETag/304`; token issue/revoke command; tests | C112 seat-status format, C106 for work shape | contract tests; a seat fetches its card over HTTP; 304 on unchanged |
+| P1 | Settings layers and permission engine (`defaults.toml`, schema, precedence, locks, effective-value view); then the agent door (bearer tokens) with `GET card`, `GET work`, `GET/PUT availability`, `ETag/304`; token issue/revoke command; tests | C112 seat-status format, C106 for work shape | schema and precedence tests; a seat fetches its card over HTTP under `read-only`; a write is refused until a rule allows it; 304 on unchanged |
 | P2 | Event stream (long-poll with sequence numbers); retire the fixed 120 s poll for seats | P1 | a seat wakes within a second of a change |
 | P3 | Inquiry intake in the HUD to typed jobs (C106) with the software classifier and answer-from-evidence class | C106 | an inquiry answered from retained evidence with zero model calls |
 | P4 | Local-model glue with context packs, result cache and token accounting; user-assisted packet editing with revisions | P3 | accounting shows tier and cache; a packet edited and revised in the HUD |
@@ -190,10 +239,12 @@ Each phase is a separate lane/PR; this document claims no code.
 
 ## 9. Decisions needed from the owner (recommended defaults first)
 
-1. **Agent write access.** Recommended: P1 read-only plus availability PUT; results by PR only until P4. Alternative:
-   allow `POST result` from the start.
+1. **Agent write access.** DECIDED in chat 2026-10-10: default is read-only, modelled on the permission modes of the
+   agent tools in use, and everything is configuration (section 4.2a). Remaining detail for review: whether the
+   availability PUT is allowed by default (proposed yes) or also starts as `ask`.
 2. **UI technology.** Recommended: keep vanilla JS in the webview and add SSE/long-poll; revisit a native UI after P5.
-3. **Glue model.** Recommended: keep the Ollama `qwen3.5:9b-q6` endpoint the HUD already uses, behind a config setting;
+3. **Glue model.** Recommended: keep the Ollama `qwen3.5:9b-q6` endpoint the HUD already uses as the initial value of a
+   `models` setting, not a constant;
    the product `AGENTS.md` names vLLM Qwen2.5-Coder-14B at :8000, which was not reachable when checked.
 4. **Remote reach** (seats on other machines): recommended: a tailnet/SSH tunnel to the loopback port, decided
    separately; the loopback-only default stays until then.
@@ -250,4 +301,6 @@ devtools criteria. Aaroneous never depends on devtools or on external tooling.
 - That an agent running in a sandbox or cloud session can reach 127.0.0.1:8787 at all; cloud seats likely cannot, which
   is why P6 and decision 4 exist.
 - The state of the C112 availability format at merge time; P1 must re-read it.
+- That the settings layering and permission rules in 4.2a express every case the seats need; the permission shape is
+  modelled on the agent tools' settings from memory of how they behave, not from their source.
 - Crate names and properties in section 10 are from general knowledge, not checked against current releases; no candidate has been scored.
