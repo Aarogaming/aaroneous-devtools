@@ -291,9 +291,9 @@ Savings figures are not claimed in this document; they are to be measured by ite
 
 ## 6. Security and safety
 
-- Binding stays on 127.0.0.1. Remote access (to reach the HUD from other machines or the seats on other hosts) is a
-  separate owner decision (section 9) and, if chosen, goes through an authenticated tunnel rather than binding
-  0.0.0.0.
+- Binding defaults to 127.0.0.1. LAN use (decided 2026-10-10, section 9 decision 4) is an explicit `network.bind`
+  setting naming an interface, never `0.0.0.0` by default, with an encrypted path required for tokens
+  (`GUILD_HALL.md` section 7.3) and a configured list of accepted `Host` names.
 - Larger request bodies (intake needs more than 1 KiB) are allowed only on the agent door and the intake route, with a
   new explicit cap (proposed 64 KiB) and a size/rate limit per seat.
 - Seat tokens are separate from GitHub App credentials and from signing keys; leaking one never gives merge or review
@@ -345,7 +345,9 @@ attestation, and a reviewer other than the author still has to accept this docum
    spike whose first test is the packet editor (4.4).
 3. **Glue model.** DECIDED: the existing Ollama `qwen3.5:9b-q6` endpoint is the initial value of a `models` setting,
    not a constant. The product `AGENTS.md` names vLLM Qwen2.5-Coder-14B at :8000, which was not reachable when checked.
-4. **Remote reach.** DECIDED: loopback only. Reaching the HUD from other machines is a separate later decision.
+4. **Remote reach.** SUPERSEDED by owner direction in chat, 2026-10-10: local area network first, so the Windows and
+   Ubuntu machines and their workers can use one hall (see `GUILD_HALL.md` section 7). Loopback stays the default
+   bind; the LAN is an explicit setting with an encrypted path; remote strangers remain deferred.
 5. **Lane ownership.** DECIDED: this lane (C119) is the design; code lands in separate lanes, starting with C120 (the
    settings and permission engine). C106, C112 and C113 keep the formats and tools the HUD consumes.
 6. **3D scope.** DECIDED: 3D is the analogy-visualizer view inside a native app whose working screens are 2D; it starts

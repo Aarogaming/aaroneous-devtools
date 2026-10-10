@@ -141,27 +141,102 @@ outcomes and taste decisions as training data would be a separate decision with 
 - **Stranger-facing use is a different threat model** from the current loopback tool. Their text is untrusted data
   (including prompt injection); they must not reach the owner's checkouts, credentials or other users' data; each
   needs an isolated workspace, quotas and a retention and deletion path; contributions need clear authorship and
-  licence terms. **This proposal therefore keeps the earlier decision (loopback only, one machine)** and treats the
-  first version as the owner's machine with guest profiles. Hosting for remote strangers is a later phase with its own
-  security review before any code.
+  licence terms. **First version: the owner's own machines on the local network (section 7) with guest profiles.**
+  Hosting for remote strangers is a later phase with its own security review before any code.
 
-## 7. Terminology
+## 7. Local network first: the roster, the hall and the wire
+
+Owner direction in chat, 2026-10-10: local area network first; the Ubuntu worker works alongside the Windows-hosted
+worker; each machine also runs an OpenCode session, giving four workers on the LAN; then Codex, Claude and Gemini;
+and the owner supplies inspiration and guidance. Treat it as a very advanced adventurers' or merchants' guild.
+This **replaces** the earlier "loopback only" decision (`HUD_V2.md` section 9, decision 4) for the guild's own
+machines; remote strangers stay deferred (G7).
+
+### 7.1 Roster: operators are not instances
+
+| Member | Kind | Runs where | Notes |
+|---|---|---|---|
+| Windows local-model worker | local model (Ollama today) | the Windows machine | GPU shared with the UI and the 3D view |
+| Windows OpenCode session | agent harness | the Windows machine | I believe the registered `mimo` seat is the OpenCode seat (from the earlier rename question); to confirm |
+| Ubuntu local-model worker | local model | `aaroneoushome` (RTX 4060 per its seat-status file) | registered as `ubuntu-worker-01` |
+| Ubuntu OpenCode session | agent harness | the Ubuntu machine | same question as above |
+| Codex, Claude, Gemini | cloud-backed agents | wherever each session runs | which are local sessions and which are cloud sessions decides whether they can reach the LAN directly |
+| Guildmaster | the owner | the Windows machine | gives inspiration and guidance; see 7.4 |
+
+**Operator (a registered identity with a trust ledger) and instance (one running worker: host, runtime, model,
+capacity, heartbeat) are different things.** Trust and levels attach to the operator and its skills; availability,
+capacity and leases attach to the instance. Two OpenCode sessions on two machines may be one operator with two
+instances, or two operators; that is a registry decision (section 11, decision 7). The Windows-hosted worker has no
+registered seat today; it needs one (for example `windows-worker-01`, matching `ubuntu-worker-01`) through the
+existing registration route.
+
+### 7.2 One hall, workers that pull
+
+- **One hall** (the HUD core with its MCP/HTTP adapter) runs on one machine; I recommend the Windows machine, where the
+  owner works. Every worker is a client that **registers, heartbeats and pulls** work. The hall never needs to reach
+  into a worker, so only the hall opens a port and workers behind other networks still work. This is the same
+  "models ping the hall" shape already in `HUD_V2.md`.
+- **Register and heartbeat:** an instance announces itself (operator, host, runtime, model, skills it claims, resource
+  slots) and refreshes on a short interval. Missed heartbeats mark it `offline`. This supersedes the hand-edited
+  `seat-status` files for live use; the files remain as the retained, reviewed record (lane C112).
+- **Leases, not trust in clocks:** a job is handed out under a lease measured by the hall's own clock; a dead worker's
+  lease expires and the job returns to the board. Two machines will not have perfectly synchronised clocks, so
+  nothing depends on comparing their timestamps.
+- **Artefacts move through git, not through the hall.** Workers push branches; the hall passes references (branch,
+  commit, digests). This is how the steward already works and keeps the hall small.
+- **Resource slots per host,** as settings: for example one GPU slot, one heavy-build slot, a VRAM budget. The
+  seat-status file already speaks of "the heavy Cargo slot" and an idle GPU; the hall schedules against those so two
+  workers do not fight over one graphics card, and the 3D view yields to the model (HUD v2 4.3b).
+
+### 7.3 The wire: what changes when it leaves loopback
+
+- The bind address is a setting (`network.bind`). Default stays `127.0.0.1`. A LAN address must be named explicitly;
+  `0.0.0.0` is never the default. The accepted `Host` names are a configured list, replacing the single exact
+  `127.0.0.1:8787` match.
+- Bearer tokens on a LAN cross the network, so they need an encrypted path. Options, in my order of preference:
+  (a) an encrypted overlay the machines already share (the Ubuntu worker's address `100.109.8.12` is in the range
+  commonly used by a Tailscale-style overlay; **I have not verified that one is in use**); (b) TLS with a pinned
+  certificate between the hall and each worker; (c) an SSH tunnel per worker. A setting (`network.require_encrypted`,
+  default true) makes the hall refuse tokens over plain HTTP unless the interface is declared trusted.
+- Per-instance tokens, hashed at the hall, revocable, scoped by the permission engine (default read-only, `HUD_V2.md`
+  4.2a). A worker that is only registered and pulling can read its card and work list; reporting results and running
+  operations remain `ask` or `deny` until the rules say otherwise.
+- All the earlier limits stay: body caps, per-instance rate limits, untrusted-data handling of everything a worker sends.
+- Cloud sessions that run off the LAN cannot reach it. For them the existing GitHub route (cards, receipts,
+  queue) remains the channel, and the hall reads it. That is the same arrangement as today, not a regression.
+
+### 7.4 The guild vocabulary mapped onto real parts
+
+| Guild idea | Real part |
+|---|---|
+| Quest board | the job queue: the C106 intake records plus the coordination queue |
+| Rank and skill badges | per-skill levels from section 5, derived from receipts and attestations |
+| Charter | the settings layers and the permission floor (merge, push, review and attest are never delegated) |
+| Party | a job staffed by several operators with roles (draft, implement, review); the author is never the reviewer |
+| Reputation ledger | the derived trust ledger (section 5); recomputable from retained evidence |
+| Guildmaster's guidance | owner directives and taste decisions: entered through the same intake with attribution, they raise priority or set direction, are logged as preferences, and are never a bypass of a gate |
+| Merchant side | a resource economy in compute terms, not money: GPU minutes on a host, local model time (cheap), cloud tokens (costly). Jobs carry a quote; workers advertise capacity; budgets (settings) cap spending; the hall prefers the cheapest cleared operator that meets the deadline |
+
+Everything in the table is configuration over parts that exist or are proposed; none of it is new authority.
+
+## 8. Terminology
 
 The guild-hall language is good for the interface (reception, supervisor, quest-board style status). Code, crates and
 settings use plain names: intake, triage, planner, dispatcher, operator, profile, level. This follows the product's
 naming rule and the existing "Guild" name for the steward service.
 
-## 8. Everything is configuration
+## 9. Everything is configuration
 
 Levels and thresholds, which skills exist, how many outcomes promote, decay, the minimum level per risk class,
 which events trigger a taste checkpoint, role permissions, quota sizes and the profile consent defaults all live in
 the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later without a release.
 
-## 9. Phases (each its own lane and review; nothing is claimed here)
+## 10. Phases (each its own lane and review; nothing is claimed here)
 
 | Phase | Deliverable | Depends on |
 |---|---|---|
 | G0 | This proposal reviewed; decisions in section 10 | owner |
+| G0b | Network and roster: operator versus instance, register/heartbeat/lease, resource slots, `network.*` settings, encrypted path chosen (section 7) | G0, C112 |
 | G1 | Roles and profiles in the permission engine (`role:` and `user:` actors); profile store with consent flags | C120 |
 | G2 | Job rating fields and the pure `can_take` gate with golden vectors; qualification-trial format | G1, C106 |
 | G3 | Reception and triage on the HUD intake (software classifier, answer-from-evidence) | HUD v2 P3 |
@@ -170,9 +245,9 @@ the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later with
 | G6 | Progression ledger derived from receipts and attestations; matching with `seat-status`; Guild CLI hooks | G2, C112, C113 |
 | G7 | Hosting for remote users (separate security review first) | owner decision |
 
-## 10. Decisions needed from the owner
+## 11. Decisions needed from the owner
 
-1. **First version is single-machine with guest profiles** (recommended), with remote strangers deferred to G7.
+1. **First version is the owner's machines on the LAN** (section 7), with guest profiles; remote strangers are deferred to G7.
 2. **The taste/correctness boundary** in 3.1: confirm or amend.
 3. **Levels:** four (L0 to L3) as the default; more are a setting.
 4. **Who may promote an operator:** an independent reviewer proposes, the owner may veto (recommended). Alternatives:
@@ -180,8 +255,11 @@ the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later with
 5. **Where the stranger's program lives:** a separate repository or workspace from devtools and Aaroneous
    (recommended), so the guild hall operates on it as a project and cannot touch ours.
 6. **Fine-tuning from outcomes:** not proposed; confirm it stays off.
+7. **Operators and instances.** Are the two OpenCode sessions one operator (`mimo`) or two? Does the Windows worker get its own seat (`windows-worker-01`)?
+8. **Which machine hosts the hall,** and how the machines are joined (existing overlay network, certificate-pinned TLS, or SSH tunnels).
+9. **Which of Codex, Claude and Gemini run as local sessions on these machines,** and which as cloud sessions.
 
-## 11. Not verified
+## 12. Not verified
 
 - Nothing here was built or run. The levels, thresholds and phases are proposals.
 - Whether a difficulty rating from software features predicts outcomes; the calibration record in section 5 is how it
@@ -191,3 +269,6 @@ the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later with
   formats but have not built the derivation.
 - That a rule engine extended with roles stays simple; to be checked when G1 is designed.
 - The strength of isolation needed for strangers; undetermined until the security review in G7.
+- That the machines share an encrypted overlay network; the `100.x` address is only suggestive.
+- That `mimo` is the OpenCode seat, and how the OpenCode sessions authenticate and report today.
+- That a pull-and-heartbeat design matches how each tool (OpenCode, Codex, Claude, Gemini) can actually call the hall; MCP support in each client must be tested (HUD v2 P1b).
