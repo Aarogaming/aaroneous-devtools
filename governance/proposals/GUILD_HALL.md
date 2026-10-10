@@ -55,10 +55,11 @@ are the seed of it, applied to one tier today.
 |---|---|---|---|
 | **User** | a person with a request ("I want this feature") | a local profile (see 6) | state needs, answer interview questions, judge previews, decide matters of taste, see status |
 | **Contributor** | a person who also changes code or content | a profile plus, for shared repositories, a signing key | everything a user may, plus propose changes and review others' work within their level |
-| **Operator** | a model or agent: a registered seat, or a local model | `identities.json` (existing) | take jobs it is cleared for, produce drafts into isolated workspaces, report results |
+| **Seat (operator)** | a model or agent with a registered identity | `identities.json` (existing) | take pull-request-stack jobs it is cleared for, produce changes in isolated workspaces, report results, review others |
+| **Guild worker** | a local model operated by a sponsor seat | registered with the hall under its sponsor | take advisory work classes (3.2); no repository writes |
 | **Owner / steward** | the repository owner | `identities.json` `owner` | set policy and levels, veto promotions, final say on repository-level decisions |
 
-In `hud_core` terms (lane C120), `human` and `seat:<name>` actors exist today. Roles extend this with `role:<user|contributor|operator>` and `user:<id>` actor patterns in rules, a backward-compatible addition
+In `hud_core` terms (lane C120), `human` and `seat:<name>` actors exist today. Roles extend this with `role:<user|contributor|operator|worker>`, `worker:<name>` and `user:<id>` actor patterns in rules, a backward-compatible addition
 planned as a follow-up to C120.
 
 ### 3.1 Authority: taste versus correctness
@@ -75,6 +76,50 @@ planned as a follow-up to C120.
 - A request that is *wrong* (it will not do what the user wants) is a correctness matter: the system tells the user
   with evidence, and the user decides what to do next.
 
+### 3.2 Guild workers: local models are clerks, not authors
+
+Owner direction in chat, 2026-10-10: the local models (Qwen and similar) do not feed the pull-request stack directly.
+They act indirectly, through cards, maintenance, user requests and operations, as **guild workers**: research,
+checking logs, making sure things add up, helping fill in forms. We are not relying on them for large changes at this time.
+
+**Two kinds of member, two kinds of work.**
+
+| | Seat (operator) | Guild worker |
+|---|---|---|
+| Examples | claude, codex, gemini, mimo (OpenCode on Windows), ubuntu-worker-01 (OpenCode on Ubuntu) | the local model on each machine, served by Ollama, vLLM or LM Studio |
+| Work | the pull-request stack: code and document changes, reviews | advisory work: reports, checks, drafts of forms and brief slots, research notes |
+| Output goes to | branches and PRs, under the steward gate | the hall: attached to a card, maintenance run, operation or user request. **No repository writes, no branches, no PRs** |
+| Accountable | itself (identity, keys, trust ledger) | its **sponsor seat**: the OpenCode seat on the same machine |
+
+**Work classes for workers** (a ladder; the classes, and who may take them, are settings):
+
+| Class | What it does | How the result is checked first |
+|---|---|---|
+| W0 triage | classify, deduplicate, summarise | schema valid; every item traceable to its source |
+| W1 reconcile | read logs and state; check that counts, totals and chains add up | arithmetic re-done by software; each quoted line exists at the cited place |
+| W2 forms | fill forms and brief slots (HUD v2 4.3a) from evidence | field-by-field validation; values must trace to sources or be marked `proposed` |
+| W3 research | gather and cite from retained evidence, repositories or approved sources | every citation resolves; claims without a source are labelled `unverified` |
+
+Not available to workers by default, as a setting that only the owner changes: code changes, review verdicts,
+anything touching git or GitHub, and any class not listed above. A worker that finds something needing a change opens a
+**proposal card** for a seat; it does not make the change.
+
+**Deterministic checks come first.** Because the classes are chosen to be checkable, software validators grade most worker
+output (schema, citations resolve, numbers reconcile, quotes match) before any person or model looks at it. A failed
+validation bounces the job; repeated failures in a class trip a per-worker circuit breaker, the same idea as
+the existing local-promotion breaker. The sponsor spot-checks a configured fraction.
+
+**Trust for workers** uses the same machinery as section 5 on this separate ladder: qualification trials with known
+answers (a log with planted anomalies, a form with known correct fields, a ledger whose totals must match), then the live
+record of validator and spot-check results. The sponsor is a guide, so it is **not** the independent party for the
+worker's promotion; another seat or the deterministic validators are.
+
+**Relation to the existing autonomy policy.** `LOCAL_MODEL_AUTONOMY_POLICY.md` lets the local model draft bounded changes
+(test files, fixtures) and lets `agentic_registrar::promote` push an isolated `local-agent/*` branch. This proposal's
+defaults are narrower, following the owner's direction above: the HUD gives workers advisory classes only and never
+calls `promote`. The existing tools are unchanged; the difference should be reconciled in review, and the owner can widen
+the classes later with one setting.
+
 ## 4. The flow
 
 1. **Reception.** Software plus the light model take the request as a typed intake record (C106): deduplicate against
@@ -88,7 +133,7 @@ planned as a follow-up to C120.
    open lanes), and the three-option mirror. The output is a brief with confirmed slots.
 4. **Rating.** The brief gets `difficulty` (L0 to L3 by default), `risk` class, required `skills`, and whether it needs
    independent review.
-5. **Matching and gating.** A pure function decides who may take it (section 5). Candidates are ordered by
+5. **Matching and gating.** Work is first split by class: pull-request-stack work goes to seats, advisory work (3.2) to guild workers. A pure function then decides who may take it (section 5). Candidates are ordered by
    cleared level, availability (`seat-status`), host capacity and token budget (HUD v2 settings).
 6. **Work.** Operators work in isolated workspaces or branches and never touch the user's tree directly. The Tier 0
    deterministic gate runs on whatever they produce.
@@ -200,23 +245,27 @@ and the owner supplies inspiration and guidance. Treat it as a very advanced adv
 This **replaces** the earlier "loopback only" decision (`HUD_V2.md` section 9, decision 4) for the guild's own
 machines; remote strangers stay deferred (G7).
 
-### 7.1 Roster: operators are not instances
+### 7.1 Roster: seats, workers and instances
 
-| Member | Kind | Runs where | Notes |
+Corrected 2026-10-10 from the owner's statement: the OpenCode session on Windows is the `mimo` seat; the OpenCode
+session on Ubuntu is the `ubuntu-worker-01` seat ("Ubuntu-1"). Both run OpenCode, and each operates a local model on its
+own machine. I read "Mimo" as the model behind OpenCode on both machines (to confirm), so the underlying model is recorded
+as an attribute of a seat, not as its identity.
+
+| Member | Kind | Machine | Notes |
 |---|---|---|---|
-| Windows local-model worker | local model served by Ollama, vLLM or LM Studio | the Windows machine | GPU shared with the UI and the 3D view |
-| Windows OpenCode session | agent harness | the Windows machine | I believe the registered `mimo` seat is the OpenCode seat (from the earlier rename question); to confirm |
-| Ubuntu local-model worker | local model | `aaroneoushome` (RTX 4060 per its seat-status file) | registered as `ubuntu-worker-01`; currently guided by the Ubuntu OpenCode session (a party, see 5.1) |
-| Ubuntu OpenCode session | agent harness running a cloud model in a loop | the Ubuntu machine | guides the Ubuntu local worker; same seat question as above |
-| Codex, Claude, Gemini | cloud-backed agents | wherever each session runs | which are local sessions and which are cloud sessions decides whether they can reach the LAN directly |
-| Guildmaster | the owner | the Windows machine | gives inspiration and guidance; see 7.4 |
+| `mimo` | seat (operator), OpenCode with a cloud model | Windows | sponsor of the Windows guild worker |
+| Windows guild worker | local model (Ollama, vLLM or LM Studio) | Windows | advisory classes only (3.2); GPU shared with the UI and the 3D view |
+| `ubuntu-worker-01` | seat (operator), OpenCode with a cloud model | `aaroneoushome` (RTX 4060 per its seat-status file) | sponsor of the Ubuntu guild worker |
+| Ubuntu guild worker | local model | Ubuntu | advisory classes only (3.2) |
+| `claude`, `codex`, `gemini` | seats (operators), frontier cloud-backed agents | wherever each session runs | which are local sessions and which are cloud sessions decides whether they can reach the LAN directly |
+| Guildmaster | the owner | Windows | gives inspiration and guidance; see 7.4 |
 
-**Operator (a registered identity with a trust ledger) and instance (one running worker: host, runtime, model,
-capacity, heartbeat) are different things.** Trust and levels attach to the operator and its skills; availability,
-capacity and leases attach to the instance. Two OpenCode sessions on two machines may be one operator with two
-instances, or two operators; that is a registry decision (section 11, decision 7). The Windows-hosted worker has no
-registered seat today; it needs one (for example `windows-worker-01`, matching `ubuntu-worker-01`) through the
-existing registration route.
+That is five seats, two guild workers and the owner. **Operator (a registered identity with a trust ledger) and instance
+(one running process: host, runtime, model, capacity, heartbeat) remain different things:** trust and levels attach to
+the seat and its skills; availability, capacity and leases attach to the instance. No new seat is needed for the
+Windows machine; its local model is a worker under `mimo`. The worker instances are registered with the hall under their
+sponsor, not in `identities.json`, because they do not sign attestations or reviews.
 
 ### 7.2 One hall, workers that pull
 
@@ -333,7 +382,7 @@ the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later with
 5. **Where the stranger's program lives:** a separate repository or workspace from devtools and Aaroneous
    (recommended), so the guild hall operates on it as a project and cannot touch ours.
 6. **Fine-tuning from outcomes:** not proposed; confirm it stays off.
-7. **Operators and instances.** Are the two OpenCode sessions one operator (`mimo`) or two? Does the Windows worker get its own seat (`windows-worker-01`)?
+7. **Roster.** RESOLVED by the owner in chat, 2026-10-10: `mimo` is the Windows OpenCode seat and `ubuntu-worker-01` is the Ubuntu OpenCode seat; the local models are guild workers under them (3.2). Still to confirm: that "Mimo" names the model behind OpenCode on both machines.
 8. **Which machine hosts the hall,** and how the machines are joined (existing overlay network, certificate-pinned TLS, or SSH tunnels).
 9. **Which of Codex, Claude and Gemini run as local sessions on these machines,** and which as cloud sessions.
 10. **Domains (7.5):** first arrangement hall A on Windows over devtools, hall B on Ubuntu over Aaroneous; and whether hall B's operators merge in the Aaroneous repository (default: pull requests only).
@@ -349,9 +398,10 @@ the settings layers of `HUD_V2.md` 4.2a, so the owner can retune them later with
   formats but have not built the derivation.
 - That a rule engine extended with roles stays simple; to be checked when G1 is designed.
 - The strength of isolation needed for strangers; undetermined until the security review in G7.
-- The owner's roster statement was "4 models, I believe 3 established seats between them"; which worker maps to which seat is not settled (decision 7).
+- The roster in 7.1 is the owner's statement of 2026-10-10; whether the seat names in `identities.json` match the running OpenCode sessions was not checked against the machines.
+- That the four worker classes (W0 to W3) cover the tasks the owner has in mind, and that software validators can check each cheaply; unmeasured.
 - The names, scope and figures of outside evaluators in 5.1 come from search results and my own knowledge, not from their primary sites.
 - Whether our milestone suites can be built from repository history with enough tasks per level; unmeasured.
 - That the machines share an encrypted overlay network; the `100.x` address is only suggestive.
-- That `mimo` is the OpenCode seat, and how the OpenCode sessions authenticate and report today.
+- How the OpenCode sessions authenticate to GitHub and report today.
 - That a pull-and-heartbeat design matches how each tool (OpenCode, Codex, Claude, Gemini) can actually call the hall; MCP support in each client must be tested (HUD v2 P1b).

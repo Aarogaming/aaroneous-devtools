@@ -354,7 +354,8 @@ attestation, and a reviewer other than the author still has to accept this docum
    webview. The webview page remains a fallback adapter until the native app matches it. The toolkit is chosen by a
    spike whose first test is the packet editor (4.4).
 3. **Glue model.** DECIDED: the existing Ollama `qwen3.5:9b-q6` endpoint is the initial value of a `models` setting,
-   not a constant. The product `AGENTS.md` names vLLM Qwen2.5-Coder-14B at :8000, which was not reachable when checked.
+   not a constant. Per the owner (2026-10-10) local models are guild workers for advisory work only, not authors for the
+   pull-request stack (`GUILD_HALL.md` 3.2); the glue and survey roles fit that. The product `AGENTS.md` names vLLM Qwen2.5-Coder-14B at :8000, which was not reachable when checked.
 4. **Remote reach.** SUPERSEDED by owner direction in chat, 2026-10-10: local area network first, so the Windows and
    Ubuntu machines and their workers can use one hall (see `GUILD_HALL.md` section 7). Loopback stays the default
    bind; the LAN is an explicit setting with an encrypted path; remote strangers remain deferred.
