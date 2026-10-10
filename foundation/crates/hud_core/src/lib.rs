@@ -2,7 +2,7 @@
 //!
 //! Library only. It reads no files, no environment variables and no clock, and spawns nothing; callers pass each
 //! settings layer in as text, so the same crate can sit behind an MCP adapter, a loopback HTTP adapter or a native
-//! application. The design is in `governance/proposals/HUD_V2.md` (section 4.2a) and the file format in
+//! application. The design is in `governance/proposals/hud/01-settings-and-permissions.md` and the file format in
 //! `contracts/hud-settings-v1.md`.
 //!
 //! Defaults live in one embedded file (`defaults.toml`). Layers, lowest to highest: defaults, user, project, local.

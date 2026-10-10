@@ -1,7 +1,7 @@
 # HUD settings contract, v1
 
 Lane C120 (HUD v2 phase P1a). Implemented by the `hud_core` crate (`foundation/crates/hud_core`); design in
-`governance/proposals/HUD_V2.md`, section 4.2a. This file is the format a person edits and a test can check.
+`governance/proposals/hud/01-settings-and-permissions.md`. This file is the format a person edits and a test can check.
 
 ## Layers
 
