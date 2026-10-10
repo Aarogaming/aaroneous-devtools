@@ -51,6 +51,10 @@ lets them report in). The 120 s poll and the 1 KiB body cap make it unsuitable a
 - R6. Fewer human interactions, higher frequency of work: the default is that the system proceeds and asks the user only
   at decisions that are theirs.
 - R7. Token cost is measured and reduced, not assumed.
+- R9. A human-to-machine translation layer: a survey and conversation with a light model fills a pre-built brief
+  (who, what, why, when, how, constraints, acceptance), and the finished brief becomes one prompt for a larger model
+  that works in the background pipeline. Owner direction, 2026-10-10.
+- R10. A visualizer for analogy-based references, in a 3D application, with the HUD as the main centre of operations.
 - R8. Behaviour comes from configuration, not code: every default (permissions, models, routing, limits, polling,
   caches) is a setting that can be changed later in user settings without a release. Owner direction, 2026-10-10.
 
@@ -195,6 +199,61 @@ overrides allow; a locked key cannot be overridden; an invalid file does not wea
    tools; results are retained. Anything beyond the local model's reach is queued as a job for a cloud seat with the
    pack attached.
 
+### 4.3a Brief compiler: from a conversation to one background prompt (R9)
+
+The pipeline is built so that **the light model never writes the final prompt**. It fills slots in a pre-built brief;
+software assembles the prompt.
+
+1. **Brief template** (configuration, R8): a typed schema chosen by the inquiry class, with named slots such as
+   `who` (requester, audience, executing seat/tier), `what` (task, scope, out of scope), `why` (goal, decision it
+   serves), `when` (deadline, urgency, schedule), `how` (method, constraints, tools allowed), `inputs` (evidence
+   references by digest), `acceptance` (what done looks like, how it is checked), `budget` (tokens, time, tier ceiling)
+   and `risk` (what must not happen). Each template marks which slots are required. This extends the existing packet
+   types and the C106 intake record; it does not create a third format.
+2. **Survey and conversation**: the light model asks one targeted question at a time, for the empty required slots
+   only, offers choices drawn from the retained evidence and the queue where it can, and writes its answer into a slot
+   as structured output validated against the schema.
+3. **Slot states**: `empty`, `derived` (filled by software from the queue or state), `proposed` (filled by the model),
+   `confirmed` (accepted or edited by the user), `unverified` (a claim with no evidence). Only `confirmed` and
+   `derived` slots reach the compiled prompt unmarked; `proposed` ones are shown for approval, never silently used.
+4. **Completeness gate**: a brief cannot be dispatched while a required slot is empty or merely proposed. The user is
+   asked only for those, which is where the interaction saving comes from.
+5. **Compile**: a deterministic renderer turns the confirmed slots plus a context pack into the final prompt. The same
+   brief always compiles to the same prompt, so it is testable, cacheable and cheap to diff.
+6. **Dispatch**: the compiled brief becomes a job for the background pipeline with its routing, budget and permission
+   level taken from the slots and the settings. The whole conversation is retained as evidence, but **only the
+   compiled prompt goes to the larger model**, not the transcript: that is the token saving, and it makes the large
+   model's input small, structured and reviewable. Results return as a job result and are presented for review.
+
+### 4.3b The 3D visualizer for analogy references (R10)
+
+**My reading of the request, to be confirmed:** the architecture and proposals already lean on analogies (the spiral
+staircase and stepped double helix, the PLC scan cycle, the biology-flavoured legacy names, patterns borrowed from
+other runtimes). The visualizer is a map of those references: *concepts*, *documents*, *lanes*, *components* and the
+*analogies* that link a source idea to a target one, with the mapping, how strong it is, and what evidence supports it.
+
+- **Data model (a view over data we already keep, not a new store):** nodes are typed (concept, document, lane,
+  component, analogy); edges are typed relations, reusing the relation vocabulary of the C101 notation proposal
+  (`informs`, `depends-on`, `overlaps`) plus `analogous-to` with a mapping list. Every edge carries provenance and a
+  status (`unverified` until a reviewer other than its author confirms it), so a picture can never present a
+  model-suggested analogy as established.
+- **Who makes the analogies:** software extracts the explicit relations already in front matter and the queue; the light
+  model may propose `analogous-to` edges; a person confirms. Layout is computed by software with a fixed seed, so the
+  same graph draws the same way and screenshots are comparable.
+- **What 3D is for, honestly:** 3D earns its place where the metaphor is spatial (layers, helix, scan cycle, depth for
+  abstraction level) and where seeing density and neighbourhoods helps. It does not help reading text, editing a brief or
+  approving an action, and dense 3D graphs have occlusion and navigation costs. So 3D is **one view in the application,
+  next to 2D panels** for the survey, brief, packets and operations, and the same graph must be readable as a flat list
+  and a 2D map (also for accessibility).
+- **Cost:** a GPU renderer competes with the local model for the same graphics card and memory. The renderer's frame
+  rate, resolution and effects are settings (R8), it drops to the 2D view when the model is running or the machine is
+  under load, and it can be off entirely. The core and MCP adapter never depend on it.
+- **Toolkit:** a native Rust 3D renderer inside the same application as the 2D panels. A game-engine crate with an
+  immediate-mode GUI layer is the likeliest fit, and a lighter 3D crate is the fallback; both are heavy dependencies with
+  long build times (general knowledge, NOT VERIFIED), so they are chosen by a spike and scored under the devtools
+  criteria in `OPERATING_MODEL.md` before adoption. A spike must show: the packet editor and survey usable, a 2,000-node
+  graph at an acceptable frame rate while the local model is running, and keyboard navigation.
+
 ### 4.4 Blueprint and research packets with the user in the loop
 
 Today the packets are generated and shown. Proposed: each packet is a **document with revisions** in the HUD: the model
@@ -254,8 +313,10 @@ Savings figures are not claimed in this document; they are to be measured by ite
 | P1b | MCP adapter over the same operations (stdio and loopback HTTP), tested with a real MCP client; the registrar's five tools registered as core operations | P1 | a seat calls `get_card` through MCP under `read-only` |
 | P2 | Event stream (long-poll with sequence numbers); retire the fixed 120 s poll for seats | P1 | a seat wakes within a second of a change |
 | P3 | Inquiry intake in the HUD to typed jobs (C106) with the software classifier and answer-from-evidence class | C106 | an inquiry answered from retained evidence with zero model calls |
+| P3b | Brief compiler: brief templates as configuration, slot states, completeness gate, deterministic compile, dispatch as a background job; survey driven by the light model | P3, C106 | a brief filled by the survey compiles to the same prompt twice; a missing required slot blocks dispatch |
 | P4 | Local-model glue with context packs, result cache and token accounting; user-assisted packet editing with revisions | P3 | accounting shows tier and cache; a packet edited and revised in the HUD |
 | P5 | Operations panel over Guild/schedule/queue; results retained | C113 | each operation runs from the HUD with retained output |
+| P7 | Native application shell with the 2D panels (survey, brief, packets, operations), then the 3D analogy view over the graph data model | P1, P3b, toolkit spike | spike criteria in 4.3b met, or the 2D view ships alone |
 | P6 | Optional: cloud-seat job dispatch with attached packs; remote access | owner decision | per decision |
 
 Each phase is a separate lane/PR; this document claims no code.
@@ -331,6 +392,13 @@ not evaluated any crate below against those criteria; the list says where to loo
 If any of this ever crosses into the Aaroneous product repo, `AGENTS.md` section 4 admission scoring applies, not the
 devtools criteria. Aaroneous never depends on devtools or on external tooling.
 
+6. **3D scope.** Recommended: 3D as the analogy-visualizer view only, inside a native application whose working screens
+   (survey, brief, packets, operations) are 2D; start the 3D view after P3b so it is fed by real graph data.
+7. **What counts as an "analogy reference".** Recommended: the reading in 4.3b. Please confirm or correct it, because the
+   data model follows from it.
+8. **Brief templates.** Which classes of work get their own template first (research, blueprint, build, review, incident),
+   and which slots are mandatory for each.
+
 ## 11. Not verified
 
 - No code was written or run for this proposal. All numbers in section 5 are targets, not measurements.
@@ -345,3 +413,5 @@ devtools criteria. Aaroneous never depends on devtools or on external tooling.
   modelled on the agent tools' settings from memory of how they behave, not from their source.
 - Crate names and properties in section 10 are from general knowledge, not checked against current releases; no candidate has been scored.
 - That any Rust GUI option can do the packet editor (4.4) acceptably on the owner's machine; to be settled by the spike in decision 2.
+- That a 3D renderer, the local model and the 2D panels can share the owner's GPU acceptably; to be measured in the toolkit spike.
+- That a light local model fills brief slots reliably enough as structured output; to be measured against the slot schema before the survey is trusted.
