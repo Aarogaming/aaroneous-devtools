@@ -1,0 +1,105 @@
+# Built-in defaults for the HUD (lane C120, HUD v2 section 4.2a).
+#
+# This is the only place a default is written down. Everything here can be changed in the user, project or local
+# settings layers, except the safety floor in `permissions::FLOOR_DENIED` (merge, push, review, attest), which is not a
+# setting. A layer may list dotted setting paths in a top-level `locked = [...]` array to stop higher layers
+# from changing them.
+
+[permissions]
+# read-only: reads are allowed; writes are refused unless a rule allows or asks. ask: unmatched writes wait for approval.
+# auto: unmatched low-risk writes run, other writes ask. `auto` only takes effect when `auto_enabled = true` is set in
+# the user layer; otherwise the effective mode stays read-only.
+mode = "read-only"
+auto_enabled = false
+# Rules are "<allow|ask|deny> <actor> <action> [scope]". Deny beats ask beats allow. Rules from every layer add up;
+# a higher layer cannot remove a lower layer's rule.
+# actor: `*`, `human`, `seat:*` or `seat:<name>`. action: `*`, a name, or a prefix ending in `*`.
+# scope: omitted (any), a literal, or `self` (the seat acting on itself).
+rules = [
+  "allow human *",
+  "allow seat:* set_availability self",
+  "ask seat:* submit_inquiry",
+  "ask seat:* report_result",
+  "ask seat:* run_operation",
+]
+
+# The action registry. An action not listed here is treated as a high-risk write and is refused.
+[actions.get_card]
+kind = "read"
+risk = "low"
+[actions.list_work]
+kind = "read"
+risk = "low"
+[actions.get_availability]
+kind = "read"
+risk = "low"
+[actions.read_events]
+kind = "read"
+risk = "low"
+[actions.set_availability]
+kind = "write"
+risk = "low"
+[actions.submit_inquiry]
+kind = "write"
+risk = "low"
+[actions.report_result]
+kind = "write"
+risk = "high"
+[actions.run_operation]
+kind = "write"
+risk = "high"
+[actions.edit_settings]
+kind = "write"
+risk = "high"
+
+[agent_door]
+enabled = true
+token_lifetime_secs = 86400
+rate_per_minute = 60
+max_body_bytes = 65536
+
+[routing]
+# Software first, then the local model. The cloud tier is off until cloud_enabled is set.
+tiers = ["software", "local"]
+cloud_enabled = false
+min_confidence = 0.7
+
+[models.backends.local]
+kind = "ollama"
+endpoint = "http://127.0.0.1:11434"
+model = "qwen3.5:9b-q6"
+context_tokens = 8192
+timeout_secs = 120
+
+[models.roles]
+glue = "local"
+
+[budgets]
+accounting = true
+# 0 means no cap.
+per_seat_daily_tokens = 0
+on_exhaustion = "ask"
+
+[cache]
+enabled = true
+max_entries = 1000
+ttl_secs = 86400
+
+[events]
+long_poll_timeout_secs = 25
+retention = 1000
+heartbeat_secs = 15
+
+[operations]
+# Operations shown in the panel, and the subset that may run without approval. None run unasked by default.
+visible = []
+run_without_approval = []
+
+[ui]
+theme = "system"
+notification_level = "quiet"
+
+[ui.visualizer]
+enabled = true
+max_fps = 30
+fallback_2d_when_model_busy = true
