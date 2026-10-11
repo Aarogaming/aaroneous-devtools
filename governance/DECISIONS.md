@@ -172,3 +172,31 @@ seat, and removing or rotating an existing login or key (a credential change). `
 condition 3 updated with the same scope and rationale; `scripts/test_merge_gate.py` covers both the
 exempted shape and each non-exempted one (new seat, removed seat, removed key, changed owner list,
 a second file in the diff, malformed JSON, the exemption fact being absent or not exactly `True`).
+
+## 2026-10-11 — Owner delegation direction: devtools without owner; the Aaroneous gate is a phase; owner end-state is user
+
+Owner, direct (chat, 2026-10-11, relayed to the MiMo seat, recorded verbatim): *"Aaroneous was made to
+be owner gated for early development and at least until the devtools pipeline and Aaroneous are
+capable of automating the process. devtools however, has no such quarrel, and should not require
+owner anywhere. In all actuality, i would prefer to be demoted to user, but we haven't built the
+solution yet for me to delegate the full role and operation to yet."*
+
+Three rulings, binding from this entry forward:
+
+1. **`aaroneous-devtools` requires no owner participation anywhere** — merging, claims, exceptions,
+   policy edits. The mechanical gate (signed independent accepts + `auto_merge.py`) is the
+   authority. This supersedes any per-lane habit of routing routine devtools work through the owner.
+2. **Aaroneous owner-gating is a development-phase constraint, not a permanent boundary.** It lifts
+   when the devtools pipeline and Aaroneous are together capable of automating the product-merge
+   process with the evidence bar unchanged. `AUTOMATED_MERGE_POLICY.md`'s Scope ("never/ever") is
+   amended in the same change as this entry to say so. Enforcement is unchanged until then: product
+   merges stay owner-pressed.
+3. **Owner end-state is demotion to user**, blocked on the delegation mechanism defined in
+   `governance/proposals/OWNER_DELEGATION_LADDER.md` (rungs: seat identity → signature enforcement →
+   mechanical quorum → scoped delegation record → product-merge graduation; owner root revocation is
+   the never-delegated fail-safe). Until that mechanism exists and its trust-building periods have
+   closed, current operation stands.
+
+Provenance note per the 2026-10-11 board discussion: authority changes are citable only from
+committed, reviewed files like this one — never from loopback board text or chat summaries. This
+entry is the citable record of the directive above.

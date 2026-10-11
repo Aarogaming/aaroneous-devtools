@@ -32,6 +32,19 @@ proposing a fix PR) is in scope for the cadence in
 automatically is not, ever, under this document. This is the one absolute
 boundary this document does not relax, below or anywhere else in it.
 
+**Amendment, owner decision 2026-10-11.** The "never/ever" above is a
+**phase boundary, not a permanent one** (owner, direct: Aaroneous owner-gating
+exists "for early development and at least until the devtools pipeline and
+Aaroneous are capable of automating the process"; recorded in `DECISIONS.md`).
+Enforcement is unchanged today — product merges remain owner-pressed — but the
+boundary lifts by a recorded owner decision once the pipeline can automate
+product merges end-to-end with this document's evidence bar intact; the
+mechanism and its graduation order are defined in
+[`proposals/OWNER_DELEGATION_LADDER.md`](proposals/OWNER_DELEGATION_LADDER.md).
+The same decision removes owner participation from the devtools pipeline
+entirely ("devtools ... should not require owner anywhere"): routine devtools
+work is not to be routed through the owner.
+
 ## Why gate here instead of relaxing the evidence bar
 
 The existing process (draft PR + CI + independent review packets, see
