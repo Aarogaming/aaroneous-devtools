@@ -60,6 +60,13 @@ by design and is scarce: one seat has no registered signing key, and the steward
 tick 536. **Proposal:** treat review as a first-class queue with its own capacity, aging and escalation (finding 6), and let
 deterministic validators and the cheap worker lane absorb the mechanical parts of a review.
 
+**A measured example of the review bottleneck (PR #156, Codex key registration, 2026-10-11).** Three independent seats posted signed accepts for the same
+head, and a report-only run of `merge_gate.py` (exit 0) still said *blocked on checklist box 5*. The gate counts a verdict as evidenced only if the
+signed attestation record itself has a `commands` field (`review_coverage.py` line 488), nothing reads commands from the comment prose, and
+`make_attestation.py` has no option to add them, so a reviewer who follows the documented tool cannot satisfy the box. A second, undiagnosed
+discrepancy: the checklist counts seats `claude, mimo` while a third seat's signed accept is present. Suggested follow-ups: a `--command` option on
+`make_attestation.py` (and a test), and a clearer message when a verdict is missing evidence. This is evidence for the proposal below, not a fix.
+
 ### 4. The queue file is one hot spot
 Every claim and proposal inserts a row into the same file, usually after the same line. In this work I hit lane-ID collisions twice and the
 C119 and C120 rows both insert after C118, so the second to merge conflicts. **Proposal:** one small file per lane (generated index for
