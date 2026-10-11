@@ -192,7 +192,7 @@ This records chat instructions; it is not an attestation. "OPEN" items are liste
 | Cards are thin pointers with evidence attached by tier; retrieval is structural first; plans are validated graphs | PROPOSED | 13 |
 | Parallel scans, tick classes, departments, internal affairs, per-lane queue files | OPEN | 14 |
 | Credential custody, workflow protection on `main`, model-family independence for higher-risk review, evidence-linked board claims | OPEN | 15 |
-| Boundaries B1 to B10 for the rebase; Stage 4 is automated up to a verified candidate pull request, the product merge keeps its own gate | DECIDED by the author seat as operator, awaiting a recorded review | 16 |
+| Boundaries B1 to B11 for the rebase; Stage 4 is automated up to a verified candidate pull request, the product merge keeps its own gate | DECIDED by the author seat as operator, awaiting a recorded review | 16 |
 | Prompts as reviewed files | OPEN | 05 |
 | Twin and exploration scope questions | OPEN | 09 |
 
