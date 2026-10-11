@@ -16,6 +16,12 @@ commit `d516e495c1a7d3dcc905e1c415f5ac48c00de1f9` and its descendants; it must
 remain revoked. No value is reproduced in this document. Revocation is an
 owner-confirmed fact, not a successful credential probe by this agent.
 
+The owner also explicitly accepted publishing the workstation paths,
+operational history and historical records on 2026-10-11. The initial
+inventory identified 17 personal-path locations; the implementation candidate
+identified 19 review locations, including coordination evidence. This decision
+accepts those disclosures and does not permit publishing new credentials.
+
 Full-history scans will continue to report that historical exposure. Do not
 disable the LM Studio rule or allowlist the old value globally: a new commit
 containing it, or another credential, must still fail. The security workflow
@@ -90,6 +96,13 @@ warning. Logs: `fmt.log`, `rust-tests.log`, `clippy.log`,
 commit and final scan results. Remote Linux/Windows CI and independent
 acceptance must be assessed at the final PR head.
 
+Implementation commit: `d84d4138b05488f2793793aaa4f4ae8709dc5e0d`.
+Its inventory covered 356 files and two archives, with zero blockers and 19
+owner-accepted privacy review locations. Its current-source Gitleaks scan
+returned exit 0. The available-ref scan returned exit 1 with exactly one
+finding: the documented revoked historical credential. Six focused publication
+tests passed after the full Python run, including the added nested-archive test.
+
 ## Before changing visibility
 
 1. Review and integrate the candidate through the existing PR process. Keep
@@ -97,7 +110,7 @@ acceptance must be assessed at the final PR head.
 2. Re-scan the exact integrated head and all hosted branches/tags/PR heads.
    Classify every finding. Preserve the documented revoked-credential exception
    as a historical fact, not a source-wide scanner exception.
-3. Review the inventory's personal-path locations and the broader history.
+3. Carry forward the owner's acceptance of personal paths and historical records.
    Current documents and archives retain workstation paths, operational host
    names and internal work records. Some documents belong to active lanes;
    this candidate does not overwrite them. Keeping full history also keeps
