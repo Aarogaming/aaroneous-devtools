@@ -25,8 +25,8 @@ Nothing below is a constant in code except the **built-in defaults**, which live
 
 **Layers, lowest to highest precedence:** built-in `defaults.toml`, then user settings
 (`~/.steward/hud/settings.toml`), then project settings (`<repo>/.devtools/hud.toml`, committed, shared), then local
-overrides (`<repo>/.devtools/hud.local.toml`, uncommitted). A setting can be marked `locked = true` at a lower layer
-(for example by the owner in user settings) so a higher layer cannot loosen it. The HUD shows, for every effective
+overrides (`<repo>/.devtools/hud.local.toml`, uncommitted). A layer can list `locked = ["dotted.path"]` at its top
+(for example the owner in user settings) so a higher layer cannot change those paths. The HUD shows, for every effective
 value, which layer set it, and validates the files on load: a bad file keeps the previous good configuration and
 reports the error rather than falling back to something permissive. Changes are picked up without restart.
 
@@ -70,11 +70,33 @@ Levels and thresholds, which skills exist, how many outcomes promote, decay, the
 
 ## Shared layers cannot loosen the owner's machine
 
-Found in self-review while building the first step (lane C120). Project and local settings travel with a repository, so a
-cloned repository must not be able to grant itself permissions. Unless `permissions.accept_project_allows = true` is set in the
-**user** layer (it is ignored elsewhere), `allow` rules and a looser mode from the project and local layers are ignored with a
-warning, and those layers may not reclassify a built-in action. They can still add `deny` and `ask` rules, a stricter mode and
-new actions. Other settings that a shared file must not change are protected by a `locked` entry in the user layer.
+Found in self-review of lane C120, then widened after the Codex seat's review of this document and of the code (it reproduced two
+defects and showed that a cloned project could enable the cloud tier). Project and local settings travel with a repository, so a
+cloned repository must not be able to change what the owner's machine does with permissions, destinations or spending.
+
+**Two classes of setting, filtered while the layers are merged** (the file still loads; each ignored setting produces a warning that
+names the layer and the path):
+
+1. **Owner-only, always:** `permissions.auto_enabled` and the opt-in `permissions.trust_shared_layers`. Only the user layer can set them.
+2. **Trust-gated:** ignored from the project and local layers unless the user layer sets `permissions.trust_shared_layers = true`:
+   - authority-sensitive settings: `routing` (tiers, the cloud switch), `models` (endpoints and roles, where context can go), `budgets`
+     (spending), `agent_door` (exposure and limits) and `operations.run_without_approval`;
+   - the `kind` and `risk` of any **existing** action, whether built in or added by the user layer, compared against the trusted baseline
+     of defaults plus user layer (not against the defaults alone, which let a project undo the owner's tightening);
+   - `allow` rules (`deny` and `ask` still apply) and a looser `permissions.mode` (a stricter mode is honoured).
+
+Everything else (display, cache sizes, event limits, tightening) can be set freely by shared files. Locks (`locked = ["dotted.path"]`,
+a list at the top of a layer) are an extra restriction on top of this, not the only protection.
+
+**Effective versus requested.** The effective-value view and the decision engine use the filtered values. A user interface shows the
+ignored list next to them and never presents an ignored project setting as active policy.
+
+**Unregistered actions are refused before any rule is read,** so a wildcard or prefix `allow` cannot grant one (floor first, then the
+registry, then rules).
+
+**Falsifying experiment (credit: Codex seat, NOT RUN end to end):** a fresh user with no locks clones a project that configures an external
+model endpoint and enables the cloud tier; instrument every outbound request with a credential-free fake backend and confirm that nothing leaves
+the machine without the user's opt-in. The in-memory behaviour is covered by tests in lane C120; the adapter-level proof needs the adapters.
 
 ## Phases for this feature
 
