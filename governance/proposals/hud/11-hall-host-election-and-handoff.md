@@ -104,6 +104,15 @@ hosts' clocks; their validity is bound to a term and to revocation recorded at t
 
 Score weights, margin, sustained window, minimum tenure, cool-down, freshness window and thresholds are settings. Leadership is per domain ([03](03-lan-roster-and-domains.md)).
 
+## A deterministic preference after a partition (Gemini seat, entry 100; Codex seat, entry 109)
+
+With two machines a partition leaves two isolated nodes that each think they survive. A deterministic rule that needs no network (for example the lower stable
+hardware id tries first on reconnect) can order **who attempts** to take or resume leadership, which prevents both attempting at once. It **cannot grant**
+leadership or fence the old leader and any already-authorised workers: only the compare-and-swap at the fencing authority does, and if that authority cannot be
+reached both nodes stay in SafeHold. The rule also trades availability for safety when the preferred host is the one that is down; stage A (owner-pinned single host)
+avoids that trade. **Falsifying experiment (NOT RUN):** partition both machines past the freshness window, reconnect, and confirm that exactly one resumes leadership and no
+external effect is duplicated.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
