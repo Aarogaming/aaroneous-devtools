@@ -29,6 +29,31 @@ optimization; configuration instead of hard-coded behaviour; default read-only; 
 the system as a guild hall with roles, skill-gated delegation and earned trust; local network first; local models as
 advisory guild workers.
 
+## The whole thing on one page
+
+If the system cannot be explained simply, it is not yet understood; and if it is understood, the safeguards are few enough to state in a line each. The sixteen documents below are the working
+detail. This page is the test of them.
+
+**What it is.** AI seats propose changes as pull requests. A checker that runs from `main`, not from the pull request, lets a change land only when CI is green on the exact commit and independent
+seats have accepted it. Local models do clerical work and never touch the repository. Aaroneous, the product, is separate: devtools feeds it through pull requests that keep their own gate, and the
+product never depends on devtools.
+
+**Five rules that make it safe, and where each stands (2026-10-11).**
+
+| # | Rule | Stands? | The one mechanical check that makes it true |
+|---|---|---|---|
+| 1 | The checker cannot be rewritten by what it checks. | Mostly. Gate scripts come from `main`. A pull request's own workflow definition could still run first, but only an actor holding the `workflows` permission can change one: my seat App was read from the API and has none; the owner's login does. | each seat's App permissions audited by its own setup check; the privileged runner limited to trusted definitions |
+| 2 | "Independent" means different custody **and** a different model. | **No.** One OS user holds the credentials of four seats; two seats are the same model; seat names match by prefix. | identities declare model family; the gate requires accepts from at least two distinct families and matches names exactly |
+| 3 | A claim is not evidence. Only a signed artifact and CI are. | Partly. Attestations are signed and head-bound; prose on the board and in pull requests is not checked. | board and pull request claims verified against the artifact they cite |
+| 4 | What the system may do is what `main` says, and `main` changes only through the gate. | Holds for devtools once rules 1 and 2 hold. The "owner said" quotes in `DECISIONS.md` were written by seats, so they are history, not authority. | authority-changing text counts only at a commit that passed the gate |
+| 5 | Untrusted text has no hands. | Not enforced in code. | workers that read outside text run without tools, emit structured output, and every citation is checked |
+
+Throughput is separate from safety: work in progress is capped at three in the scheduler's advice and enforced nowhere.
+
+**What I can stand behind today.** The settings engine (`hud_core`) for rules 1 and 4 at its own layer: a shared project or local file can never make any decision looser than the owner's own settings, never
+change where work or data goes, and never costs the owner their own settings if it fails to load. That is checked by 54 tests, the product's auditor (0 violations), and a property test over 4,000 random hostile
+files that fails when the filter is switched off. **What I cannot yet say is safe:** rules 2, 3 and 5, and rule 4 until rule 2 holds. Rule 2 is the shortest path to most of the rest.
+
 ## The documents
 
 | # | Proposal | Pull request |
