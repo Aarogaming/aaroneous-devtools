@@ -1,0 +1,35 @@
+name: Coordination Evidence Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "governance/COORDINATION_QUEUE.md"
+
+concurrency:
+  group: coordination-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence-check:
+    name: Evidence Retention Check
+    runs-on: [self-hosted, devtools-ci]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check COORDINATION_QUEUE.md for unevidenced Done/PASS claims
+        run: |
+          set -euo pipefail
+          # Judge the pull request with the base branch's copy of the checker, not the copy the pull request brings: otherwise a
+          # change could rewrite the rule it is checked by. Falls back to the head's copy only while the checker is not on main yet.
+          checker="$RUNNER_TEMP/check_coordination_evidence.py"
+          if git show "origin/${{ github.base_ref }}:scripts/check_coordination_evidence.py" > "$checker" 2>/dev/null; then
+            echo "using the checker from origin/${{ github.base_ref }}"
+          else
+            cp scripts/check_coordination_evidence.py "$checker"
+            echo "base has no checker yet; using the head's copy"
+          fi
+          python3 "$checker" "origin/${{ github.base_ref }}" "HEAD"
