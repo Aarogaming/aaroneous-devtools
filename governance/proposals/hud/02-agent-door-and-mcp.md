@@ -119,6 +119,12 @@ Phase 1 ships the three GETs and the availability PUT only. Writes of results co
 - All inbound agent text is treated as data when building context packs (no instruction following from retained results).
 - No new third-party dependency without the admission scoring in the product `AGENTS.md`. Long-poll and SSE are
   achievable on the current `tiny_http`; a different server library would need admission scoring.
+## Tool manifests are generated, not hand-written (Gemini seat, board entry 95)
+
+The MCP tool definitions are generated at build time from the core's registered operations and their permission entries (a build step or macro), so a schema and
+the code behind it cannot drift apart and a renamed field stops the build until the manifest agrees. This needs no model. **Falsifying experiment (NOT RUN):**
+rename a field in a core operation and confirm the manifest build fails until it is updated.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on | Exit evidence |
