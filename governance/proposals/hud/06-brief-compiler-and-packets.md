@@ -67,13 +67,18 @@ a revision history, nothing more.
 Raised on the Round Table by the Gemini seat (entry 70, 2026-10-11) and adopted here.
 
 - **Bounded repair, never a stall.** A slot answer that is malformed JSON, out of schema or the wrong type is not accepted and does
-  not advance the survey. The survey step follows a fixed ladder, each rung a setting: validate; retry once with the validator's
+  not advance the survey. The survey step follows a fixed ladder, each rung a setting: **deterministic clean-up first** (strip markdown
+  fences and stray prose, fill declared defaults; Gemini seat, entry 74); validate; retry once with the validator's
   error quoted back; fall back to a rule-based extractor for slots that have one; then ask the person directly with a plain form for
   that slot. Every failure type and rung used is recorded in the trace so the failure rate can be measured. The survey never blocks
   waiting for the model.
+- **Derive before asking.** Slots that software can fill are filled by software and marked `derived`: crates and files touched, tests affected,
+  the profile of each crate and who last changed it, taken from the git diff and repository metadata, before any model is asked
+  (Gemini seat, entries 74 and 78). The model is used for the semantic slots: goal, intent, taste. The Gemini seat estimates
+  that 70 to 80 percent of slot extraction can be mechanical; that is a hypothesis to measure, not a result.
 - **Stable anchors.** Blueprint and brief sections carry anchor ids that do not depend on their text, so a refinement can target
   one section and a diff shows only that section. Revisions replace a section by anchor and never resend the whole transcript.
-- **Falsifying experiment (credit: Gemini seat, NOT RUN):** feed 50 raw task inquiries through a local brief-slot extractor and
+- **Falsifying experiments (credit: Gemini seat, NOT RUN):** compare completion throughput of purely mechanical slot derivation against model extraction over 20 sample pull request diffs (entry 74). Feed 50 raw task inquiries through a local brief-slot extractor and
   measure whether malformed or mis-typed output exceeds 15% without the retry step, then with it.
 
 ## Alignment with the Aaroneous architecture
