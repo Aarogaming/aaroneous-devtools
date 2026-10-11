@@ -103,6 +103,13 @@ returned exit 0. The available-ref scan returned exit 1 with exactly one
 finding: the documented revoked historical credential. Six focused publication
 tests passed after the full Python run, including the added nested-archive test.
 
+Draft review PR: https://github.com/Aarogaming/aaroneous-devtools/pull/200.
+GitHub Actions at head `2d8014a8c7dab20bf444c3d11da6ef424a3c1c8d` did not
+start jobs: GitHub reported failed recent account payments or an insufficient
+spending limit. This is an account-owner billing blocker, not a successful
+remote verification. Resolve it and rerun checks on the final PR head before
+acceptance or publication. Local passing checks do not replace this gate.
+
 ## Before changing visibility
 
 1. Review and integrate the candidate through the existing PR process. Keep
