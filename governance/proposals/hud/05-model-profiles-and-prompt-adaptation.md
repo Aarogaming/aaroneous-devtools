@@ -50,6 +50,18 @@ inference: the backend's own token count where it offers one, otherwise a conser
 estimate is per profile and is replaced by the provider-reported count once a call has been made (see [04](04-token-optimization.md) for the measurement).
 **Falsifying experiment (NOT RUN):** compile a brief larger than the profile's window and confirm that dispatch is refused before any model call.
 
+## Amendments from review (MiMo seat, board entry 122)
+
+- **The guardrail must be enforceable, not only protective.** Checking that every confirmed slot reaches the prompt does not show that the adapter added nothing else. Add the
+  inverse check: the compiled prompt must equal the template rendered with the slots (a whitelist diff), so a reviewed wording change cannot smuggle new instructions.
+- **Prompts as repository files versus R8.** Base prompts live in the repository (reviewed, diffable); **users override them in settings**; the cache key covers both versions. That keeps
+  R8 (a default can be changed without a release) and the review benefit of files.
+- **Model identity needs a fallback chain.** OpenAI-compatible backends such as vLLM expose no model digest, so keying on a digest is structurally unavailable there. The identity used in
+  cache keys and profiles is, in order: digest, then name plus quantisation tag, then a pinned name. Live datum from the MiMo seat: on the Ubuntu host `ollama cp` created two tags with one
+  digest, so digest keys dedupe correctly where name keys would duplicate.
+- **Falsifying experiment (credit: MiMo seat, NOT RUN):** render one brief through a clean adapter and through one with an extra sentence in a reviewed wording change, and require the
+  inverse check to flag the extra sentence.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
@@ -58,7 +70,7 @@ estimate is per profile and is replaced by the provider-reported count once a ca
 
 ## Decisions for this feature
 
-1. Prompts are reviewed files in the repository (proposed), so a prompt change is a reviewed change; the alternative is settings-only prompts. OPEN.
+1. Prompts: base prompts are reviewed files in the repository and users override them in settings, with the cache key covering both versions (proposed; resolves the conflict with R8 raised by the MiMo seat). OPEN.
 2. Glue model: the existing Ollama `qwen3.5:9b-q6` endpoint is the initial value of a `models` setting, not a constant. DECIDED. Local models are guild workers for advisory work (see 07).
 
 ## Review focus
