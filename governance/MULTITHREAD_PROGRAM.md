@@ -28,8 +28,8 @@ implementation lanes at once.
 | Capacity | Use |
 | --- | --- |
 | 3 primary lanes | Default: one focused product change per primary thread. |
-| 1 support lane | Qwen performs a bounded, owner-reviewed analysis or fixture task in scratch space. |
-| 1 review lane | A primary owner reviews a completed change before another broad lane opens. |
+| 1 support lane | Qwen performs a bounded, independently reviewed analysis or fixture task in scratch space. |
+| 1 review lane | An independent reviewer accepts a completed change before another broad lane opens. |
 | Expansion | Add a primary lane only when file scopes, dependencies, and reviewer capacity are all independent. |
 
 A large roadmap is useful; a large number of simultaneous edits is not. A claim moves through
@@ -84,7 +84,7 @@ queue before claiming; portfolio entries are not Ready source reservations.
 
 | Priority | ID | Bounded work / source | Dependency | Acceptance |
 | --- | --- | --- | --- | --- |
-| P1 | M34 | Independent per-lane acceptance: old C10-C13/C15/C16/C19 evidence | Independent reviewer / reserved owner verdict | Revision/gate-based decisions; no self-certification; queue closure only for accepted slices |
+| P1 | M34 | Independent per-lane acceptance: old C10-C13/C15/C16/C19 evidence | Independent reviewer / reserved-decision verdict | Revision/gate-based decisions; no self-certification; queue closure only for accepted slices |
 | P1 | M35 | Current docs/cadence/adoption correction: C23 | Old source scopes released by handoff | Accurate current claims, dated history, valid links and UTF-8/LF |
 | P1 | M39 | Packet server lifecycle hardening: C24, main.rs body/respond | Old C13 scope released; isolated reproduction | Bounded stalled/disconnected socket behavior, responsive status/shutdown, native gates |
 | P2 | M36 | Authenticated dashboard integration: REGISTRAR.md gap | C15/C19 acceptance | Explicit same-origin credential setup and negative lifecycle tests; no product writes |

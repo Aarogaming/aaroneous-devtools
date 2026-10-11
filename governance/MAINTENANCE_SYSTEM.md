@@ -26,5 +26,5 @@ contracts, verification commands, and product documentation.
   another thread's uncommitted work.
 - Product changes must pass Aaroneous's native verification gates. Foundation tooling must not
   become an Aaroneous build, CI, release, or runtime dependency.
-- Qwen is used only for a narrow, owner-reviewed subtask in a scratch location; its output is
+- Qwen is used only for a narrow, independently reviewed subtask in a scratch location; its output is
   never applied directly to a shared branch.

@@ -39,16 +39,16 @@ Choose an independent task. Do not open overlapping inventory, terminology, inte
 
 Qwen is a support worker, not a primary owner. It may analyze a declared evidence bundle, draft a test fixture, classify a report, or propose a narrow scratch patch. It cannot claim queue work, edit a shared branch, execute commands, or declare verification successful.
 
-Follow `governance/LOCAL_AGENT_CONTROL_PLANE.md`: use `qwen3.5:9b-q6`, temperature `0.0`, at least 4096 predicted tokens, a strict concise-output preamble, explicit inputs, and a versioned proposal artifact. An owner reviews every output before adoption.
+Follow `governance/LOCAL_AGENT_CONTROL_PLANE.md`: use `qwen3.5:9b-q6`, temperature `0.0`, at least 4096 predicted tokens, a strict concise-output preamble, explicit inputs, and a versioned proposal artifact. A seat independent of the submitter accepts every output before adoption.
 
 ## Completion and handoff
 
-Run the applicable verification gate, record the command/result and commit in the queue, then move the claim to `Review`. A reviewer checks scope, evidence, and the required gate before marking it `Done`. If blocked, state the exact blocker, preserve the evidence, release the paths, and leave a succinct handoff for the next owner.
+Run the applicable verification gate, record the command/result and commit in the queue, then move the claim to `Review`. A reviewer checks scope, evidence, and the required gate before marking it `Done`. If blocked, state the exact blocker, preserve the evidence, release the paths, and leave a succinct handoff for the next claimant.
 
 ## Starter prompt
 
 ```text
-You are joining the Aaroneous multithread program. Begin by reading aaroneous-devtools/AGENTS.md, the coordination queue, and the multithread program. Do not edit any repository until you have selected an unowned Ready item, recorded an exact-path claim, and read Aaroneous AGENTS.md. Work only within the claim scope. Use Qwen only as a bounded, owner-reviewed proposal worker under LOCAL_AGENT_CONTROL_PLANE.md. Record evidence, verification, commit, and a handoff in the queue before declaring completion.
+You are joining the Aaroneous multithread program. Begin by reading aaroneous-devtools/AGENTS.md, the coordination queue, and the multithread program. Do not edit any repository until you have selected an unowned Ready item, recorded an exact-path claim, and read Aaroneous AGENTS.md. Work only within the claim scope. Use Qwen only as a bounded, independently reviewed proposal worker under LOCAL_AGENT_CONTROL_PLANE.md. Record evidence, verification, commit, and a handoff in the queue before declaring completion.
 ```
 
 ## Feeding the local support inbox

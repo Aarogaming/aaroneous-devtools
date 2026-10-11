@@ -17,7 +17,7 @@ inspection below. Re-verify before relying on it; the runtime facts are host-spe
 | Support worker (default) | reviewed TOML in `worker-jobs/` -> `foundation local-worker-tick` / `local-worker-serve` | 1-8 declared evidence files, 32 KiB each, 64 KiB total | versioned JSON record in `results/`, status `pending-owner-review` | fixture drafts, boundary reviews, report classification | anything needing a compile, a claim, or a product write |
 | Multithreader review | `foundation multithreader-review` / `multithreader-serve` | evidence files named in its config | candidate-inbox record | proposing new work from declared evidence | implementing work |
 | Registrar dispatch | `foundation` `dispatch` / `promote` (agentic registrar) | registered task + target file | virtual patch set; promotion is gated | a bounded draft for one target file; promotion has a high-risk allowlist and circuit breaker | safety-critical crates (`ipc_bus`, `wire`, `hypervisor`, `governance`, ...) |
-| Ad hoc script | product `scripts/local_agent_delegate.ps1` | none enforced | free-form text to a file | throwaway drafting on the owner's machine | anything recorded as evidence; it has no bounds, schema, or inbox |
+| Ad hoc script | product `scripts/local_agent_delegate.ps1` | none enforced | free-form text to a file | throwaway drafting on the local machine | anything recorded as evidence; it has no bounds, schema, or inbox |
 
 Rule of thumb: start with the support worker. Use registrar dispatch only when a
 reviewer will materialize the result through a virtual patch set. Treat the ad hoc

@@ -7,8 +7,8 @@ It does not start models, modify a queue, claim a task, inspect an undisclosed c
 ## Operating cycle
 
 1. Run the review against absolute paths and save its JSON report outside the framework checkout.
-2. An integration owner evaluates the report and selects at most its reported capacity of independent claims.
-3. Owners add claims to `COORDINATION_QUEUE.md`; the next review reports those active lanes.
+2. An integration seat evaluates the report and selects at most its reported capacity of independent claims.
+3. Seats add claims to `COORDINATION_QUEUE.md`; the next review reports those active lanes.
 4. Completed work becomes `Review`, then `Done` only after the applicable verification gate.
 5. The weekly maintenance review records new evidence in the worklist before adding any queue row.
 

@@ -66,7 +66,7 @@ implementation claims open unless an additional scope has independent files and 
 
 ## Native candidate review (installed 2026-09-16; task removed 2026-09-17, see [PERSISTENT_OPERATIONS.md](PERSISTENT_OPERATIONS.md))
 
-Windows task `Aaroneous-Devtools-Multithreader` reviews the declared evidence hourly at :00 through the Rust foundation executable. Suggestions and failures go to an external devtools inbox for owner review. See [MULTITHREADER_SERVICE.md](MULTITHREADER_SERVICE.md) for inputs, limits, verification and operating commands. This service does not check CI or automatically promote/implement suggestions. The retired rolling-worklist heartbeat remains paused. The Codex audit and Rust reuse heartbeat was deleted at the user's request. No active Codex maintenance schedule remains.
+Windows task `Aaroneous-Devtools-Multithreader` reviews the declared evidence hourly at :00 through the Rust foundation executable. Suggestions and failures go to an external devtools inbox for review. See [MULTITHREADER_SERVICE.md](MULTITHREADER_SERVICE.md) for inputs, limits, verification and operating commands. This service does not check CI or automatically promote/implement suggestions. The retired rolling-worklist heartbeat remains paused. The Codex audit and Rust reuse heartbeat was deleted at the user's request. No active Codex maintenance schedule remains.
 
 ## Local support processing
 
@@ -96,7 +96,7 @@ session", so it could not read `COORDINATION_QUEUE.md`, CI runs, pull requests o
 claim, push or change. It applied its lens (7 mod 5 = 2, adversarial reviewer) to a read-only copy of
 `Aarogaming/aaroneous` only and sent a push notification. The trigger stores no MCP connections
 (`mcp_connections: []`). Attaching both repositories to the routine's environment with push access is the
-owner's configuration step and has not been recorded as done; until a later run's history shows it could
+account holder's configuration step and has not been recorded as done; until a later run's history shows it could
 read CI, inspect pull requests and push a branch, treat this routine as installed but not functioning as
 primary-lane capacity. Source: `get` and `get_run_log` on the trigger id above, read 2026-10-08.
 
@@ -107,7 +107,7 @@ What it does not retain: the environment id and its repository grants, and the p
 beyond "create a Routine with that prompt, that cron and `create_new_session_on_fire`". The record is a copy,
 not the source of truth; the trigger owns the live text. Following the pattern
 `routines/STEWARD_HEARTBEAT.md` already uses (the trigger is a thin pointer, the procedure lives in a reviewed
-file) would make the repository the source of truth; that change edits the trigger, so it is the owner's.
+file) would make the repository the source of truth; that change edits the trigger, so it is the account holder's.
 The stored prompt also points at `SCHEDULER_MAINTAINER.md` for a "Cloud primary-lane routine" section that
 file does not have (the section is here); fixing that pointer is likewise an edit to the trigger.
 
