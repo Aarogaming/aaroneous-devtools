@@ -11,6 +11,11 @@ use toml::Value;
 /// The embedded built-in defaults, the only place a default is written down.
 pub const DEFAULTS_TOML: &str = include_str!("defaults.toml");
 
+/// Safety limits, in code on purpose: a settings file is input, and a shared one can come from anyone. A layer larger than
+/// this, or more rules than this in total, is refused (a measured flood of 400,000 rules cost about 4 ms per decision).
+pub const MAX_LAYER_BYTES: usize = 256 * 1024;
+pub const MAX_RULES: usize = 2_000;
+
 /// One setting's final value and the layer that set it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveValue {
@@ -85,6 +90,15 @@ impl Loaded {
             }
             previous = layer.kind;
             if let Some(text) = &layer.text {
+                if text.len() > MAX_LAYER_BYTES {
+                    return Err(LoadError::Invalid {
+                        message: format!(
+                            "{} settings are {} bytes; the limit is {MAX_LAYER_BYTES}",
+                            layer.kind.name(),
+                            text.len()
+                        ),
+                    });
+                }
                 sources.push((layer.kind, text));
             }
         }
@@ -96,6 +110,14 @@ impl Loaded {
             })?;
         config.validate()?;
 
+        if merged.rules.len() > MAX_RULES {
+            return Err(LoadError::Invalid {
+                message: format!(
+                    "{} permission rules in total; the limit is {MAX_RULES}",
+                    merged.rules.len()
+                ),
+            });
+        }
         let mut rules = Vec::with_capacity(merged.rules.len());
         for (layer, text) in &merged.rules {
             let rule = Rule::parse(text, *layer).map_err(|message| LoadError::BadRule {

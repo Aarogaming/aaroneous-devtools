@@ -95,3 +95,36 @@ fn a_dotted_key_in_a_nested_shared_table_is_ignored_too() {
     let loaded = Loaded::load(&[project]).expect("loads");
     assert!(!loaded.config.routing.cloud_enabled);
 }
+
+#[test]
+fn an_oversized_shared_file_is_refused_and_the_owner_keeps_their_settings_at_start() {
+    let huge = format!("# {}\n", "x".repeat(hud_core::MAX_LAYER_BYTES + 1));
+    let refused = Loaded::load(&[layer(LayerKind::Project, &huge)]);
+    assert!(matches!(refused, Err(hud_core::LoadError::Invalid { .. })));
+    let manager = Manager::start(&[
+        layer(LayerKind::User, OWNER),
+        layer(LayerKind::Project, &huge),
+    ])
+    .expect("start");
+    assert_eq!(
+        manager
+            .current()
+            .decide(&seat("gemini"), "get_card", None)
+            .verdict,
+        Verdict::Deny
+    );
+}
+
+#[test]
+fn a_flood_of_rules_is_refused() {
+    let mut text = String::from("[permissions]\nrules = [\n");
+    for _ in 0..=hud_core::MAX_RULES {
+        text.push_str("  \"deny seat:x get_card\",\n");
+    }
+    text.push_str("]\n");
+    let refused = Loaded::load(&[layer(LayerKind::User, &text)]);
+    assert!(
+        matches!(refused, Err(hud_core::LoadError::Invalid { ref message }) if message.contains("limit")),
+        "{refused:?}"
+    );
+}

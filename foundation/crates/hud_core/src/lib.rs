@@ -19,5 +19,7 @@ pub mod permissions;
 pub use config::{Config, Mode};
 pub use error::LoadError;
 pub use layers::{Layer, LayerKind};
-pub use loaded::{DEFAULTS_TOML, EffectiveValue, Loaded, Manager, Reload};
+pub use loaded::{
+    DEFAULTS_TOML, EffectiveValue, Loaded, MAX_LAYER_BYTES, MAX_RULES, Manager, Reload,
+};
 pub use permissions::{Actor, Decision, FLOOR_DENIED, Reason, Rule, Verdict};
