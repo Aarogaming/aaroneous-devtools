@@ -91,6 +91,32 @@ the per-node token on the channel; only results are signed.
   state and not a silent wait;
 - the HUD and `foundation status` show the same table.
 
+## Phase 2: what a node runs and how it judges it
+
+**Suite manifest** (`ci/suites/<name>.toml`, read from git at `base_sha`, digest pinned by the request). A list of steps, each a
+program and its arguments, a working directory inside the repository and a timeout. `suite::parse_suite` refuses, rather than warns
+about: a shell string, an empty or oversized argument list, an argument with a newline or NUL, a program path that is absolute,
+contains `..` or a drive, an interpreter run with an inline-script flag (`bash -c`, `cmd /c`, `pwsh -Command`), a working directory
+that leaves the repository, a zero or enormous timeout, a duplicate step, and any unknown key. The digest is the SHA-256 of the exact
+text in git, so any byte change is a new digest.
+
+**Platform policy** (`ci/platform-policy.toml`): the default platforms plus rules mapping a path prefix to an extra platform. Today:
+Linux always; Windows too for `foundation/crates/maintenance_ui/`, `foundation/Cargo.*` and `ci/`. The prefixes are a first guess
+for review, not a finding.
+
+**`suite::plan(request, suite, node_platform)`** refuses a malformed request, one for another platform (misrouted), one naming
+another suite, one whose `suite_digest` differs from the manifest the node itself read, and a suite that does not list the node's
+platform. It never adapts a request to fit.
+
+**`suite::summarize(plan, results)`** returns `Pass` only if every planned step started, finished inside its timeout and exited 0.
+A non-zero exit or a timeout is `Fail` (a hung test is a finding about the code). A step that could not start, a process ended by a
+signal (an out-of-memory kill is not a verdict), steps missing or out of order, extra steps, or an empty plan are `Error`, never a pass.
+
+**Wire (`wire.rs`).** `request`, `result` and `heartbeat` packets are parsed strictly: version 1 only, every key known and present,
+exact types (a float, a negative number or a string where a number belongs is refused), labels and digests revalidated. A result has
+**no** `signature_verified` field; the adapter that checked the signature against the registry sets it, so a node cannot vouch for
+itself. A heartbeat becomes a roster entry that goes offline by the hall's own ticks.
+
 ## Trust and failure
 
 | Situation | Result |
@@ -120,8 +146,11 @@ to the node: it validates every field (the id's canonical form depends on it) an
 
 ## Phases
 
-1. **This PR:** the pure core above with tests; this document.
-2. Contracts as JSON with vectors (Rust-owned, the first test of C127's "flip the oracle"), the suite manifest format, the policy file.
+1. **Phase 1 (#197):** the pure core above with tests; this document.
+2. **Phase 2 (this change):** the suite manifest format and platform policy (`suite.rs`, `ci/suites/foundation-ci.toml`,
+   `ci/platform-policy.toml`), strict packet codecs (`wire.rs`: request, result, heartbeat), the node's plan and verdict logic, and a
+   test that keeps the committed manifests valid, consistent with each other, and identical to the commands the live workflow runs.
+   Details below.
 3. Node agent (`foundation node`): register, heartbeat, hold the connection, verify the digest, run the suite in a sandbox, sign, post.
    Linux first on the Ubuntu machine; Windows node next. **Open:** a Windows sandbox (a restricted user with a job object) is weaker
    than the systemd sandbox on Linux; say so in the node's own status until fixed.
