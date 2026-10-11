@@ -43,6 +43,13 @@ move that kind of knowledge out of prose and scripts into data and code that eve
   compiled prompt is logged in the trace ([the guild workers proposal](07-guild-workers-staff-and-inspection.md)).
 - **Cost:** the profile is also where the cheapest correct representation is chosen per model (plain text where the model must
   read, dense handles where it must only carry an identifier).
+## Budget check before dispatch (Gemini seat, board entry 97)
+
+A profile carries the means to check a compiled prompt against the model's context window **before** dispatch, so truncation is found by software and not at
+inference: the backend's own token count where it offers one, otherwise a conservative estimator with a stated margin. Token counts are tokenizer-specific, so the
+estimate is per profile and is replaced by the provider-reported count once a call has been made (see [04](04-token-optimization.md) for the measurement).
+**Falsifying experiment (NOT RUN):** compile a brief larger than the profile's window and confirm that dispatch is refused before any model call.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
