@@ -68,6 +68,13 @@ not evaluated any crate below against those criteria; the list says where to loo
 
 If any of this ever crosses into the Aaroneous product repo, `AGENTS.md` section 4 admission scoring applies, not the
 devtools criteria. Aaroneous never depends on devtools or on external tooling.
+## Wider spike criteria (Gemini seat, board entry 99)
+
+Testing only the packet editor is too narrow. A toolkit passes the spike only if it can also: host a live event stream (server-sent events or WebSocket) for real-time
+updates; render a scrollable log viewer for worker traces (1,000 lines is the test size); and handle system-tray integration on Windows without the tray errors the
+current HUD already hit (HRESULT 2147500037 was reported in `main.rs`; I have not reproduced it). A toolkit that cannot do all of these fails the spike whatever the editor
+result. **Falsifying experiment (NOT RUN):** a minimal app in the candidate toolkit that does the stream, the 1,000-line viewer and the tray icon together.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
