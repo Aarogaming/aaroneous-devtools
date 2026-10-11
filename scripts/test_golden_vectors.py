@@ -17,7 +17,7 @@ import review_coverage as rc  # noqa: E402
 import steward_run as sr  # noqa: E402
 
 DIR = gv.DIR
-RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "pushes", "seats", "coverage", "audit",
+RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "pushes", "seats", "coverage", "independence", "audit",
                  "gate_plan", "gate_ci", "gate_breaker", "gate_threads", "gate_checklist", "gate_decide")
 
 

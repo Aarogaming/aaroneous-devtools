@@ -463,6 +463,64 @@ GATE_THREADS = [
     {"name": "a malformed response is unknown", "data": {"data": {}}},
 ]
 
+IDENTITIES = {
+    "seats": {
+        "opencode": {"profile": {"family": "mimo", "model": "mimo-v2.6"}},
+        "ubuntu-worker-01": {"profile": {"family": "qwen", "model": "qwen3.8"}},
+        "claude": {"profile": {"family": "anthropic"}},
+        "codex": {},
+        "gemini": {"profile": {"family": "Not A Label"}},
+    },
+    "model_families": {"qwen": "qwen", "mimo": "mimo", "claude": "anthropic", "gpt": "openai", "gemini": "google",
+                       "Bad": "x", "bad stem": "x", "okstem": "Bad Family"},
+}
+INDEPENDENCE = [
+    {"name": "no declared model: the registered profiles decide", "identities": IDENTITIES,
+     "counted": [{"reviewer": "opencode"}, {"reviewer": "ubuntu-worker-01"}]},
+    {"name": "the same hardware on one model is one judge", "identities": IDENTITIES,
+     "counted": [{"reviewer": "opencode", "model": "mimo-v2.6"}, {"reviewer": "ubuntu-worker-01", "model": "MiMo-V2.6-Flash"}]},
+    {"name": "a declared model beats the registered profile and says so", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": "mimo-v2.6"}]},
+    {"name": "an org path and a version suffix still classify", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": "Qwen/Qwen3.8-Coder-14B"}]},
+    {"name": "a stem followed by a letter is not that model", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": "qwenish"}]},
+    {"name": "an unclassified model is reported and buys no new family", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": "brandnew-9"}]},
+    {"name": "a seat with neither model nor profile stands alone", "identities": IDENTITIES,
+     "counted": [{"reviewer": "codex"}]},
+    {"name": "a malformed profile family is not used", "identities": IDENTITIES, "counted": [{"reviewer": "gemini"}]},
+    {"name": "malformed models are ignored not refused", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": 7}, {"reviewer": "ubuntu-worker-01", "model": ["qwen"]},
+                 {"reviewer": "ubuntu-worker-01", "model": "x" * 81}, {"reviewer": "ubuntu-worker-01", "model": "a\nb"},
+                 {"reviewer": "ubuntu-worker-01", "model": "   "}, {"reviewer": "ubuntu-worker-01", "model": "caf\u00e9"}]},
+    {"name": "one seat on two models counts both families", "identities": IDENTITIES,
+     "counted": [{"reviewer": "opencode", "model": "mimo-v2.6"}, {"reviewer": "opencode", "model": "qwen3.8"}]},
+    {"name": "the same seat and model twice is one entry", "identities": IDENTITIES,
+     "counted": [{"reviewer": "opencode", "model": "mimo-v2.6"}, {"reviewer": "OpenCode", "model": " mimo-v2.6 "}]},
+    {"name": "a registered multi-word seat resolves by its whole name", "identities": IDENTITIES,
+     "counted": [{"reviewer": "Ubuntu Worker 01"}, {"reviewer": "ubuntu_worker_01 (qwen)"}]},
+    {"name": "near misses of a registered seat name resolve to nothing registered", "identities": IDENTITIES,
+     "counted": [{"reviewer": "xubuntu-worker-01"}, {"reviewer": "ubuntu-worker-011"}]},
+    {"name": "a label naming two registered seats is ambiguous", "identities": {"seats": {"a-b": {}, "c-d": {}}},
+     "counted": [{"reviewer": "a-b and c-d"}]},
+    {"name": "a malformed registry yields seats standing alone", "identities": [], "counted": [{"reviewer": "claude"}]},
+    {"name": "a model-name table entry with an unusable stem or family is ignored", "identities": IDENTITIES,
+     "counted": [{"reviewer": "codex", "model": "Bad-1"}, {"reviewer": "codex", "model": "okstem-1"}]},
+    {"name": "an unnamed or empty reviewer contributes nothing", "identities": IDENTITIES,
+     "counted": [{"reviewer": ""}, {"reviewer": "Opus/gpt-5.5"}]},
+]
+
+
+def independence_case(case):
+    keys = case["identities"]
+    registered = set(keys["seats"]) if isinstance(keys, dict) and isinstance(keys.get("seats"), dict) else None
+    profiles = rc.seat_profiles(keys) if isinstance(keys, dict) else {}
+    table = rc.model_table(keys) if isinstance(keys, dict) else []
+    families, entries, notes = rc.independence(json.loads(json.dumps(case["counted"])), registered, profiles, table)
+    return {"families": families, "entries": entries, "notes": notes}
+
+
 GATE_GREEN = {
     "head": "h" * 40, "ci": {"state": "success", "detail": "3 checks: SUCCESS"}, "trial_merge_ok": True, "base_ref": "main",
     "default_branch": "main", "base_tip": "t" * 40, "accept_seats": ["codex", "gemini"], "accept_families": ["google", "openai"],
@@ -569,6 +627,8 @@ def build_rule_vectors():
     out["pushes.out.json"] = [dict(zip(("heads", "credited"), sr.pushes(c["prs"], c["previous"]))) for c in PUSHES]
     out["seats.in.json"] = SEATS
     out["seats.out.json"] = [sorted(rc.seat_names(s)) for s in SEATS]
+    out["independence.in.json"] = INDEPENDENCE
+    out["independence.out.json"] = [independence_case(c) for c in INDEPENDENCE]
     out["coverage.in.json"] = COVERAGE
     out["coverage.out.json"] = [evaluate_case(c) for c in COVERAGE]
     out["audit.in.json"] = {"ticks": AUDIT_TICKS, "state": audit_scenario(0)[0]}

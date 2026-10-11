@@ -23,6 +23,7 @@ pub mod coverage;
 pub mod engagement;
 pub mod gate;
 pub mod heads;
+pub mod independence;
 pub mod receipts;
 pub mod rejected;
 pub mod seats;

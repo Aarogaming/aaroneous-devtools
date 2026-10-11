@@ -267,16 +267,18 @@ def resolve_seat(label, registered=None):
 
 
 FAMILY_LABEL = re.compile(r"[a-z][a-z0-9-]{0,31}")
+STEM = re.compile(r"[a-z][a-z0-9.-]{0,31}")
 MODEL_MAX = 80
 
 
 def clean_model(value):
     """The model id a record declares, or None. Declaring is optional and never refused: a missing, non-string, over-long or
-    control-character value is simply not used (the family falls back to the seat's registered profile)."""
+    non-printable value is simply not used (the family falls back to the seat's registered profile). Printable means ASCII space to
+    '~': model ids are ASCII, and the Rust port then agrees without a Unicode table."""
     if not isinstance(value, str):
         return None
     value = value.strip()
-    if not value or len(value) > MODEL_MAX or any(not c.isprintable() for c in value):
+    if not value or len(value) > MODEL_MAX or any(not " " <= c <= "~" for c in value):
         return None
     return value
 
@@ -303,8 +305,8 @@ def model_table(identities_data):
     pairs = []
     if isinstance(table, dict):
         for key, family in table.items():
-            if isinstance(key, str) and isinstance(family, str) and key and FAMILY_LABEL.fullmatch(family):
-                pairs.append((key.lower(), family))
+            if isinstance(key, str) and STEM.fullmatch(key) and isinstance(family, str) and FAMILY_LABEL.fullmatch(family):
+                pairs.append((key, family))
     return sorted(pairs, key=lambda kv: (-len(kv[0]), kv[0]))
 
 

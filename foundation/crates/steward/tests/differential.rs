@@ -135,6 +135,7 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
         }
     }
     coverage_cases(all, bad);
+    independence_cases(all, bad);
     gate_cases(all, bad);
     checklist_cases(all, bad);
     chain_cases(all, bad);
@@ -227,6 +228,19 @@ fn coverage_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             bad.entry("coverage")
                 .or_default()
                 .push(format!("{case} rust={d:?}"));
+        }
+    }
+}
+
+fn independence_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
+    for case in all["independence"].as_array().unwrap() {
+        let counted = case["counted"].as_array().unwrap();
+        let got = steward::independence::independence(counted, &case["keys"]).to_value();
+        if got != case["out"] {
+            bad.entry("independence").or_default().push(format!(
+                "keys={} counted={} rust={got} py={}",
+                case["keys"], case["counted"], case["out"]
+            ));
         }
     }
 }
