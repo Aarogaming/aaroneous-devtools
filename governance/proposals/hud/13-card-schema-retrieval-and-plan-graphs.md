@@ -169,6 +169,10 @@ For work that decomposes, a brief compiles into a **plan graph**, a directed acy
 - **Relation to Aaroneous:** the product architecture already specifies an Intent DAG registered as an immutable plan with the
   orchestrator before execution. Plan graphs here are that idea for devtools; the shape should be kept compatible so the code can
   graduate ([12](12-compliance-and-graduation.md)).
+- **Loops on loops (Gemini seat, entry 74):** a supervising plan may run child plans, each its own loop, in parallel. A child loop has its own
+  isolated context and budget, carries a breadcrumb (parent plan and node ids) in every card and trace, and has a bounded blast radius:
+  a failure in a child can stop that child and report to its parent but cannot change the parent's nominal state or another child. The
+  deterministic scan-and-reduce parts stay sequential and pure; only supervision and scheduling nest.
 - **When not to use one:** single-step work stays a single card.
 
 ## Phases for this feature
