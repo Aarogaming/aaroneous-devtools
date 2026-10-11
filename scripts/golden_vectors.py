@@ -488,6 +488,11 @@ GATE_CHECKLIST = [
     {"name": "an unclassified revertibility is blocked", "override": {"revertible": None}},
     {"name": "a tripped breaker blocks", "override": {"breaker_tripped": True}},
     {"name": "an unreadable breaker is blocked", "override": {"breaker_tripped": None}},
+    {"name": "additive identity registration is exempt from the accept bar (owner decision 2026-10-11)",
+     "override": {"identity_registration_exempt": True, "accept_seats": [], "covered": False,
+                  "counted_verdicts": 0, "verdicts_missing_evidence": []}},
+    {"name": "the identity-registration exemption does not bypass other boxes",
+     "override": {"identity_registration_exempt": True, "accept_seats": [], "covered": False, "threads_open": 1}},
 ]
 
 GATE_DECIDE = [
