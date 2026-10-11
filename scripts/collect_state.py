@@ -25,7 +25,9 @@ import review_coverage as rc  # noqa: E402
 # is only a reference to the task and never completes it. A receipt quoted further down a comment, one for another
 # PR or head, one whose first line says the work was not done, or one in a comment that also names a different
 # full head with the same first eight characters (contradictory provenance) completes nothing.
-RECEIPT_START = re.compile(r"\A\s*\[done:([a-z_]+):(\d+):([0-9a-f]{40})\]", re.I)
+# The PR number is ASCII digits: `\d` also matched Arabic-Indic and other Unicode digits, and `int()` read them, so a receipt
+# for PR "\u0667" completed PR 7 (scout probe while porting this rule to Rust).
+RECEIPT_START = re.compile(r"\A\s*\[done:([a-z_]+):([0-9]+):([0-9a-f]{40})\]", re.I)
 NEGATIVE = re.compile(r"\b(not done|not complete[d]?|blocked|could not|cannot|unable|failed)\b", re.I)
 HEX40 = re.compile(r"\b[0-9a-f]{40}\b")
 RECEIPT_PREFIX = re.compile(r"\A\s*\[done:[a-z_]+:\d+:[0-9a-f]{40}\]\s*[:\u2013\u2014-]?\s*", re.I)

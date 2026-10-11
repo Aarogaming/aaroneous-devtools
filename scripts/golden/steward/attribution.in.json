@@ -74,5 +74,109 @@
   {
     "body": "Seat / agent:                                        Claude",
     "strict": true
+  },
+  {
+    "body": "\r\n\r\nCodex whole-diff packet\r\nmore",
+    "strict": true
+  },
+  {
+    "body": "   \n \n  \t Gemini packet\n",
+    "strict": true
+  },
+  {
+    "body": "\u001f\u001f\nMimo packet",
+    "strict": true
+  },
+  {
+    "body": "first line names nobody Claude seat: done",
+    "strict": true
+  },
+  {
+    "body": "Reviewer: CODEX (gpt)",
+    "strict": false
+  },
+  {
+    "body": "Reviewer seat - Gemini",
+    "strict": false
+  },
+  {
+    "body": "Reviewer / Seat — Antigravity",
+    "strict": false
+  },
+  {
+    "body": "see the note\nSeat/agent:Claude",
+    "strict": true
+  },
+  {
+    "body": "SEAT / AGENT: mimo",
+    "strict": false
+  },
+  {
+    "body": "Claude Seat finished",
+    "strict": true
+  },
+  {
+    "body": "####### Claude over-long heading",
+    "strict": true
+  },
+  {
+    "body": "## Independent  Mimo review",
+    "strict": false
+  },
+  {
+    "body": "xGemini packet",
+    "strict": true
+  },
+  {
+    "body": "Geminis packet",
+    "strict": true
+  },
+  {
+    "body": "\r\u001fClaude)",
+    "strict": false
+  },
+  {
+    "body": "\u001f\u001fSeat\u001f/\u001fagent: Codex",
+    "strict": false
+  },
+  {
+    "body": "Claudé‍CODEX",
+    "strict": false
+  },
+  {
+    "body": "ͅGemini packet",
+    "strict": true
+  },
+  {
+    "body": "²Gemini packet",
+    "strict": true
+  },
+  {
+    "body": "ⒶMimo packet",
+    "strict": true
+  },
+  {
+    "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Gemini whole-diff packet",
+    "strict": true
+  },
+  {
+    "body": "  [done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc] - Codex",
+    "strict": true
+  },
+  {
+    "body": "[done:fix_threads:7:cccccccccccccccccccccccccccccccccccccccc]: Mimo reviewed this",
+    "strict": true
+  },
+  {
+    "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] Gemini whole-diff packet",
+    "strict": false
+  },
+  {
+    "body": "[done:needs_review:7:cccccccccccccccccccccccccccccccccccccccc] all threads answered\nGemini whole-diff packet",
+    "strict": true
+  },
+  {
+    "body": "[done:needs_review:7:ccccccccccccccccccccccccccccccccccccccc] Gemini whole-diff packet",
+    "strict": true
   }
 ]

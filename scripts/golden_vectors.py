@@ -140,6 +140,37 @@ ATTRIBUTION = [
     {"body": "```text\nReviewer / Seat:          Gemini\n```\n", "strict": True},
     {"body": "Reviewer seat:\t\t\tCodex\n", "strict": True},
     {"body": "Seat / agent:" + " " * 40 + "Claude", "strict": True},
+    {"body": "\r\n\r\nCodex whole-diff packet\r\nmore", "strict": True},
+    {"body": "   \n\u2028\n  \t Gemini packet\n", "strict": True},
+    {"body": "\x1f\x1f\nMimo packet", "strict": True},
+    {"body": "first line names nobody\u2028Claude seat: done", "strict": True},
+    {"body": "Reviewer: CODEX (gpt)", "strict": False},
+    {"body": "Reviewer seat - Gemini", "strict": False},
+    {"body": "Reviewer / Seat \u2014 Antigravity", "strict": False},
+    {"body": "see the note\nSeat/agent:Claude", "strict": True},
+    {"body": "SEAT / AGENT: mimo", "strict": False},
+    {"body": "Claude Seat finished", "strict": True},
+    {"body": "####### Claude over-long heading", "strict": True},
+    {"body": "## Independent  Mimo review", "strict": False},
+    {"body": "xGemini packet", "strict": True},
+    {"body": "Geminis packet", "strict": True},
+    # Found by a differential run of the Rust port against this oracle (110,000 generated bodies): Python's \\s counts
+    # U+001C..U+001F, and its \\w does not count combining marks, joiners or connector punctuation but does count
+    # superscript digits.
+    {"body": "\r\x1fClaude)", "strict": False},
+    {"body": "\x1f\x1fSeat\x1f/\x1fagent: Codex", "strict": False},
+    {"body": "Claude\u0301\u200dCODEX", "strict": False},
+    {"body": "\u0345Gemini packet", "strict": True},
+    {"body": "\u00b2Gemini packet", "strict": True},
+    {"body": "\u24b6Mimo packet", "strict": True},
+    # Found by a differential run on the merged tree (20,000 bodies, 581 disagreements): a completion receipt that opens
+    # a comment is not prose, so in strict mode the seat name right after it opens the comment.
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] Gemini whole-diff packet", "strict": True},
+    {"body": "  [done:fix_threads:7:" + "c" * 40 + "] - Codex", "strict": True},
+    {"body": "[done:fix_threads:7:" + "c" * 40 + "]: Mimo reviewed this", "strict": True},
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] Gemini whole-diff packet", "strict": False},
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] all threads answered\nGemini whole-diff packet", "strict": True},
+    {"body": "[done:needs_review:7:" + "c" * 39 + "] Gemini whole-diff packet", "strict": True},
 ]
 
 HEADS = [
@@ -150,6 +181,11 @@ HEADS = [
     {"body": "head " + "C" * 40, "head": H},
     {"body": "no hash here", "head": H},
     {"body": f"head {H}", "head": ""},
+    {"body": "head cccccccc\u0301", "head": H},
+    {"body": "head cccccccc\u0e31", "head": H},
+    {"body": "head cccccccc\u203f", "head": H},
+    {"body": "head cccccccc\u00b2", "head": H},
+    {"body": "head \u00b2cccccccc", "head": H},
 ]
 
 
@@ -178,6 +214,9 @@ RECEIPTS = [
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "a receipt naming another PR does not count",
      "snapshot": snapshot_for(7, [receipt("fix_threads", 8, H, "Claude seat: ok")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a receipt whose PR number is written in non-ASCII digits does not count",
+     "snapshot": snapshot_for(7, [receipt("fix_threads", "\u0667", H, "Claude seat: ok")]),
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "only the author completes thread fixes",
      "snapshot": snapshot_for(7, [receipt("fix_threads", 7, H, "Codex seat: ok")]),
@@ -209,6 +248,15 @@ RECEIPTS = [
     {"name": "a receipt for a not_mergeable card is not read: the conflict is observable on GitHub",
      "snapshot": snapshot_for(7, [receipt("not_mergeable", 7, H, "Gemini seat: fixed"),
                                   receipt("not_mergeable", 7, H, "Claude seat: fixed")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a combining mark inside the attribution does not hide the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "x\u0301Gemini seat: ok")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a seat name that opens the text after the receipt prefix names the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini whole-diff packet")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a dash after the receipt prefix does not hide the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "- Codex whole-diff packet")]),
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "the first eligible receipt names the seat",
      "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini seat: first"),
@@ -348,7 +396,8 @@ COVERAGE = [
 
 SEATS = ["Gemini", "gemini", "Gemini/Antigravity", "Antigravity", "Claude Sonnet 5.5", "Claude (steward)",
          "Mimo (OpenCode)", "Local Qwen", "gemini-3.8-flash", "claude-sonnet-5-5", "Claude, Mimo", "claude+mimo",
-         "codex:session-01a1", "CLAUDE.", "someone else", "!!!", ""]
+         "codex:session-01a1", "CLAUDE.", "someone else", "!!!", "",
+         "Opus 5.5", "Fable", "sonnet-5.5", "Anthropic", "gpt-5.5", "OpenAI Codex"]
 
 
 def evaluate_case(case):
