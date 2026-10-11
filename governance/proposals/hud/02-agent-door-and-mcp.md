@@ -85,6 +85,25 @@ today, so it needs the async-justified case from `OPERATING_MODEL.md` and is not
 | `GET /agent/v1/events?since=N` | Long-poll (and later SSE) of an ordered event stream with sequence numbers; replaces fixed-interval polling |
 | `POST /agent/v1/result` | A seat reports a result against a card/job; stored as retained evidence; does **not** complete the card (completion stays a PR with a receipt) |
 
+### Requirements added after review (Codex seat, 2026-10-11)
+
+- **One typed, authenticated principal across every adapter.** The adapter authenticates the caller and attaches the principal (seat or
+  human, token id, policy revision); a client-supplied seat or actor field **never** chooses identity.
+- **Capability parity for the existing registrar tools.** The five registrar tools (`verify_gate_suite`, `get_repository_status`,
+  `register_vibe_task`, `dispatch_queue_tick`, `audit_ast_invariants`) become registered actions in the core. The old handlers are removed or
+  wrapped so a legacy tool cannot reach its effect except through the permission engine and the floor. A test lists every registrar tool name and
+  proves each has an action entry and is unreachable without going through the core.
+- **Concurrency.** The current HUD server takes one request at a time and routes it synchronously (`recv_timeout`, then `route`, in
+  `foundation/crates/maintenance_ui/src/main.rs`), so a blocking long poll would stall availability writes, shutdown and other seats' card
+  fetches. Required before any event transport: a bounded number of concurrent waiters, a per-seat connection cap, cancellation on client
+  disconnect and on token revocation, and short requests handled independently of waiters.
+- **Event cursors expire.** A cursor older than the retention window returns a resync instruction, not silence or a gap.
+- **Authorization-aware cache validators.** An `ETag` or `304` is bound to the authenticated seat, the resource and the policy (authorization)
+  revision; a cached `304` cannot survive a permission change or token revocation, and one seat's validator never returns another seat's card.
+- **Falsifying experiment (credit: Codex seat, NOT RUN):** fill the configured waiter limit with silent clients, revoke one token, then fetch a
+  different seat's card and submit its allowed availability update; require bounded latency, released waiter capacity, and no revoked or
+  cross-seat cache hit, over both HTTP and MCP.
+
 Phase 1 ships the three GETs and the availability PUT only. Writes of results come after the owner decision recorded in the [README](README.md).
 ## Security and safety
 
@@ -123,7 +142,7 @@ Phase 1 ships the three GETs and the availability PUT only. Writes of results co
 
 ## Not verified
 
-- That `tiny_http` can serve long-poll and SSE without blocking other requests (it handles requests on its own threads; untested).
+- Whether the server library can serve long-poll and SSE without blocking other requests. My earlier statement that it handles requests on its own threads was wrong for this application, whose loop is single-threaded (corrected after the Codex seat's review); a concurrency design and a load test are required.
 - That the Ollama model, the HUD and the worker can sustain the added load of seat pings on the owner's machine.
 - That an agent in a sandbox or cloud session can reach the hall at all; cloud seats probably cannot (see 03).
 - The state of the C112 availability format at merge time; P1 must re-read it.
