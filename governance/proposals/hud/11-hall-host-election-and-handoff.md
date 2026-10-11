@@ -1,8 +1,8 @@
 ---
 notation: v1
-purpose: Let the most capable qualified machine host the hall, and hand leadership over between running sessions without shutting any of them down
+purpose: Let the most capable qualified machine host the hall, first by owner-pinned single-host leadership and manual fenced handoff, and only later by unattended failover once a durable fencing authority exists
 authority: propose
-status: proposal, advisory, grants nothing
+status: proposal, advisory, grants nothing; revised after an independent rejection of the first draft
 relations:
   - depends-on: doc:03-lan-roster-and-domains
   - depends-on: doc:02-agent-door-and-mcp
@@ -12,7 +12,7 @@ relations:
 checked-by: none yet (see "Not verified")
 ---
 
-# Hall host election and handoff (proposal 11)
+# Hall host election and handoff (proposal 11, revision 2)
 
 Contribution-ID: C119/claude-hud-v2-proposal-v1 (part 11 of the set indexed in [README](README.md)).
 Author seat: Claude Sonnet 5.5 (identity is a round-table roster claim, not cryptographic).
@@ -20,145 +20,121 @@ Status: **proposal for review**. It changes no source, workflow or policy, and n
 other than the author records it. Read the [README](README.md) first for the requirements (R1 to R10), the layers and
 the decision log; this document is one feature of that set and is reviewable on its own.
 
+**Revision history.** The first draft treated a signed transfer and an acceptance as the commit point, and argued that a wrong leader could
+only cause duplicate scheduling that git would expose. The Codex seat rejected it as an implementation-ready design (review on PR #173,
+2026-10-11) with specific protocol counterexamples. This revision accepts that review: leadership is now **owner-pinned and single-host first**,
+unattended failover is **gated on a durable fencing authority**, and the bounded-harm argument is withdrawn.
+
 ## The request
 
-Owner direction in chat, 2026-10-10: the most capable machine hosts operations, after gaining permission through
-qualifications from the current host, if one precedes it. Devtools sessions work together and promote the most qualified
-to leader naturally, through a handoff protocol, rather than forcing another session to shut down.
+Owner direction in chat, 2026-10-10: the most capable machine hosts operations, after gaining permission through qualifications from the
+current host, if one precedes it. Devtools sessions work together and the most qualified becomes leader naturally, through a handoff protocol,
+rather than forcing another session to shut down.
 
 ## Principles
 
-1. **Leadership governs scheduling, not authority.** The leader hosts the hall for one domain: the card store, availability,
-   leases, intake and the agent API ([02](02-agent-door-and-mcp.md), [03](03-lan-roster-and-domains.md)). It does **not**
-   own repository authority. Claims, reviews and merges stay with git, GitHub and the steward gate. A mistaken or duplicate
-   leader can therefore cause duplicate scheduling at worst, which the git-level claim rules then expose as conflicts. This
-   bound is what makes a two-machine design acceptable.
-2. **Earned, not assumed.** A host leads only with a valid qualification certificate. Qualification is measured, expires,
-   and is renewed.
-3. **No forced shutdowns.** A handoff turns the old leader into a standby that keeps running, replicating and serving
-   read-only. It is never told to stop.
-4. **One leader per domain at a time.** Each leader term has an epoch number; every write and every lease carries it, and
-   anything with an older epoch is refused.
-5. **Handoff is all or nothing.** Until the transfer record is written by both sides, the incumbent keeps leading; any
-   failure before that point aborts the handoff and changes nothing.
-6. **Deterministic by construction.** Election and handoff are a pure reducer, `next_state = step(state, input)`, with
-   time passed in as an input. That matches the Aaroneous style of deterministic state reducers and makes the protocol
-   testable by simulation.
+1. **Exclusive leadership needs a proof, not a score.** Capability and qualification only *select a candidate*. They cannot replace a durable
+   fencing authority that makes at most one host a valid writer at any time. Without that proof the hall does not take new effects.
+2. **Duplicate scheduling is not harmless.** A second leader can start local inference or builds, run previously authorised operations, or
+   apply stale result and lease updates before any git conflict appears, and git does not undo an external effect. So the default when exclusivity
+   cannot be proven is **SafeHold**: no new exclusive leases and no new external effects.
+3. **No forced shutdowns.** A fenced former leader keeps running as a read-only standby.
+4. **Fence at the consumers.** The current term is checked at every exclusive-lease consumer and every effect adapter; losing freshness means no new effects.
+5. **Deterministic by construction.** Election and handoff are a pure reducer with time and messages as inputs, evaluated by a deterministic simulator.
 
-## Vocabulary
+## Phased approach
 
-| Term | Meaning |
-|---|---|
-| Host | a machine running a hall session for a domain |
-| Domain | one hall, one repository, one machine's worth of state (see 03) |
-| Leader / standby | the host currently serving the domain / the others, which replicate and wait |
-| Epoch | a counter that increases by one at every change of leader |
-| Capability | measured facts about a host: GPU and memory, free disk, network reach to the workers, models available, observed uptime |
-| Qualification certificate | a signed statement by the current leader (or the owner) that a named host passed the qualification for a domain, with its score, the epoch and an expiry |
-| Snapshot | the leader's state at a point, identified by the tip of its hash-chained event log |
+| Stage | Behaviour | What it needs |
+|---|---|---|
+| **A. Owner-pinned single host** | the owner names the leader in settings; every other host is a read-only standby that replicates the log; no automatic failover | nothing new; this is the recommended first version |
+| **B. Manual fenced handoff** | the owner (or an owner-authorised qualified leader) moves leadership deliberately, using the fencing procedure below | the fencing authority and enforcement at consumers |
+| **C. Unattended failover** | a certified standby takes over after proven leader loss | stage B proven in simulation and in use; a durable fencing authority with compare-and-swap that works offline or fails safe |
 
-## Capability and qualification
+Stages B and C are not to be built until stage A is in use and the fencing authority is chosen and reviewed.
 
-- **Score:** a weighted sum of capability facts, with the weights and a minimum margin as settings. "Most capable" is
-  therefore a measured, tunable ranking, not a hard-coded rule.
-- **Eligibility** needs more than a score. A candidate must pass a **qualification** administered by the current leader:
-  1. replay a recent snapshot and verify its hash chain;
-  2. serve the agent API for a test interval at a set request rate within a latency budget;
-  3. process worker heartbeats and leases for a synthetic fleet;
-  4. restore from a backup and arrive at the same state digest;
-  5. show that the registered workers can reach it (a reachability probe from the workers' side).
-- **Trust prerequisite:** the host's own seat must hold the trust level that hosting requires (see 08).
-- **Certificate:** signed with the leader's key using the same detached-signature scheme the attestations use, in its own
-  namespace; fields: host, domain, score, epoch at issue, issued-at (leader's clock), expiry, and the leader's own
-  certificate hash (a chain back to genesis). Verifiers check it against the host and seat key registry.
-- **Bootstrap:** the first leader holds a **genesis certificate signed by the owner**. The owner can at any time pin a
-  leader, force a handoff, or revoke a certificate; these actions are owner-only in the permission engine ([01](01-settings-and-permissions.md))
-  and are not available to any seat.
+## Fencing authority (the linearization point)
 
-## States and the handoff
+The **only** thing that makes a host the leader is a successful **compare-and-swap** on a single durable record `(term, host)` held by a fencing
+authority. A signed transfer, a certificate or an acceptance record is not enough, and neither is a per-host epoch counter.
 
-Leader states: `Leading`, `Draining`, `Standby`. Candidate states: `Standby`, `Qualifying`, `Certified`, `Syncing`, `Ready`,
-`Leading`.
+- **Candidate mechanisms** (to be chosen and reviewed, not assumed): (a) a ref in the git remote updated atomically with an expected old value, when
+  online; (b) an owner-confirmed record. Whichever is chosen must define: the exact atomic-update semantics, how a *stale term* is rejected, an expiry
+  (the freshness window) that is measured by the authority, what happens offline (SafeHold, no new effects), and what happens to jobs already running
+  when the term moves (they are fenced: their next effect or lease update is refused).
+- **Terms are unique.** Only one writer can move `term` to `term+1`; two standbys that both try to publish the same next term cannot both succeed,
+  because the swap is conditional on the old value. The loser learns the winner and stands down.
+- **Consumers check the term.** Workers, the lease store and every effect adapter carry the term they were granted under and refuse anything from a
+  lower term or from a leader whose freshness has lapsed.
 
-1. **Request.** A standby whose score exceeds the leader's by the margin, sustained for the window, asks for qualification.
-2. **Qualify.** The leader runs the qualification above. Failure returns the candidate to `Standby` with the reason; the leader
-   is unaffected.
-3. **Certify.** The leader signs the certificate.
-4. **Drain.** The leader stops issuing *new* leases, lets short jobs finish or expire, and records `drain-complete` in its log.
-5. **Snapshot and sync.** The leader sends its state and event log up to a tip hash; the candidate verifies the chain and
-   replays it, then confirms the digest.
-6. **Ready.** The candidate announces `Ready` with the tip it holds.
-7. **Transfer.** The leader writes `transfer(epoch+1, candidate, tip)` to its log and signs it; the candidate writes
-   `accept(epoch+1)` after checking the signature and that its tip matches. **This pair of records is the commit point.**
-8. **Announce.** The new leader publishes the new epoch. Workers read the candidate endpoints from settings and follow the
-   highest valid epoch. The old leader becomes `Standby`: read-only, replicating, still running.
+## Handoff (stage B) and recovery rules
 
-Before step 7 any timeout, signature failure, tip mismatch or loss of the candidate aborts the handoff; the incumbent resumes
-issuing leases. After step 7 the candidate leads. If the incumbent vanishes between its `transfer` record and the candidate's
-`accept`, the candidate may accept on the strength of the signed `transfer` and the certificate.
+1. **Select and qualify.** The score ranks candidates; a candidate passes the qualification trials (replay a snapshot and verify the hash chain; serve the
+   agent API at a set rate within a latency budget; process synthetic worker heartbeats; restore from backup to the same state digest; be reachable from the
+   workers' side). Passing qualification makes a host *eligible*, nothing more.
+2. **Fence the incumbent first (write-ahead).** The incumbent durably records `fenced-at(term+1)` **before** it sends any transfer. From that moment it
+   may not lead again unless re-elected through the fencing authority at a higher term. This is what prevents it resuming independently after a crash,
+   even if the candidate's acknowledgement never arrives.
+3. **Drain.** The incumbent stops new leases and lets short jobs finish or expire.
+4. **Snapshot and sync.** The incumbent sends state and the event log to a tip hash; the candidate verifies and replays it.
+5. **Swap.** The candidate performs the compare-and-swap `(term, incumbent) -> (term+1, candidate)`. Success is the commit point and the only one.
+6. **Announce.** Workers learn the new term from the authority and from the new leader; the old leader becomes a read-only standby.
 
-## Unplanned failure and the limits of two machines
+Recovery for every partial state: a crash before step 2 leaves the incumbent leader; between 2 and 5 the incumbent is fenced and the hall is in SafeHold
+until the swap succeeds or the owner repins; after 5 the candidate leads and the incumbent, on restart, reads the authority and stands down. There is no
+state in which two hosts both hold a valid term.
 
-- A standby treats the leader as down only after a **trip** threshold of missed heartbeats and returns to normal only after a
-  separate, stricter **recovery** threshold (a deadband), the same fault-tolerance idea the Aaroneous documents prescribe.
-- Only a **certified** standby with the highest score may take over, by publishing `epoch+1` with its certificate.
-- **Two machines cannot form a majority,** so a network partition can leave both believing they should lead (split brain).
-  The design does not hide this. It limits the harm (principle 1), adds an optional **external tie-breaker** (a lease ref in the
-  git remote, updated atomically when online), and in the absence of any proof of the lease puts the hall in **SafeHold**: no
-  new exclusive leases, existing jobs continue, and operators are told. Modes follow the product's `Nominal`, `Degraded`,
-  `SafeHold` pattern with separate trip and recovery thresholds.
-- **Detection and repair:** two leaders show up as conflicting epochs and a forked event log. The higher epoch wins unless the
-  owner overrules; the losing side's divergent entries are quarantined and listed for inspector review (see 07), not silently
-  merged or dropped.
+## Unplanned failure (stage C only)
 
-## Stability
+A standby may take over only after the trip threshold of missed heartbeats (separate from a stricter recovery threshold, a deadband), only if it holds a
+valid certificate, and only by winning the compare-and-swap. If the authority cannot be reached the standby does **not** lead: the hall stays in SafeHold.
+Two machines cannot form a majority, which is why the authority, not a vote, decides. Certificates carry no wall-clock expiry that depends on comparing two
+hosts' clocks; their validity is bound to a term and to revocation recorded at the authority.
 
-Hysteresis prevents flapping: a score margin, a sustained window, a minimum tenure for each leader, and a cool-down after a
-handoff. All are settings. Certificates expire, so a host that degrades loses eligibility at the next renewal.
+## Invariants and tests
 
-## Shape of the implementation
+- **At most one valid writer at any time, across all terms** (not merely one per term). A writer is valid only if its term is the authority's current term and
+  its freshness has not lapsed.
+- **No duplicate externally observable operation**, even when acknowledgements are lost and hosts restart.
+- **SafeHold on uncertainty.**
+- **Falsifying experiment (credit: Codex seat, NOT RUN):** a deterministic two-host simulation drops the acceptance acknowledgement after the transfer and the
+  swap are both durable, crashes and restarts the incumbent, and partitions workers so each reaches only one host; assert the three invariants above.
+- The reducer is a pure function with time as an input; a simulator drives it through loss, duplication, reordering, delay, partition and crash at every step.
 
-- A small crate for the election and handoff reducer, `control` profile in Aaroneous terms: no clock, no network, no
-  threads inside; time and messages arrive as inputs and outputs. The adapters (the MCP and HTTP endpoints, the log
-  store, the signer) sit outside it. See [12](12-compliance-and-graduation.md).
-- **Tests:** a deterministic simulator that drives several hosts through message loss, duplication, reordering, delay,
-  partitions and crashes at every step; golden message sequences; an invariant check that no two hosts ever lead in the same
-  epoch. Model checking the reducer is an option worth evaluating (not assessed here).
-- Reuse the existing hash-chained event log and its tip sidecar for snapshots rather than inventing a state format.
+## Cost of leadership is still configuration
+
+Score weights, margin, sustained window, minimum tenure, cool-down, freshness window and thresholds are settings. Leadership is per domain ([03](03-lan-roster-and-domains.md)).
 
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
 |---|---|---|
-| H1 | the pure reducer with the simulator and the invariant tests; no network | 01 |
-| H2 | capability probe and the qualification trials | H1, 03 |
-| H3 | signed certificates and snapshot, sync and verify using the event log | H2 |
-| H4 | the handoff messages over the agent API and MCP adapter | H3, 02 |
-| H5 | unplanned failure handling, SafeHold and the optional git lease ref | H4 |
-| H6 | owner controls (pin, force, revoke) and a view in the application | H4, 10 |
+| H0 | owner-pinned single-host leadership with read-only standbys (stage A); host identity and the term record | 01, 03 |
+| H1 | the pure reducer and the deterministic simulator with the three invariants; no network | H0 |
+| H2 | choose and review the fencing authority; define its semantics; enforcement points at lease consumers and effect adapters | H1 |
+| H3 | capability probe and qualification trials | H0 |
+| H4 | manual fenced handoff (stage B) | H2, H3 |
+| H5 | unattended failover (stage C) only after H4 is proven | H4 |
+| H6 | owner controls and a view in the application | H4, 10 |
 
 ## Decisions for this feature
 
-1. OPEN: the score weights, the margin, the window and the minimum tenure (proposed as settings with conservative defaults).
-2. OPEN: who signs certificates: the current leader (proposed), with the owner able to countersign or revoke.
-3. OPEN: leadership per domain (proposed) or one leader for all domains.
-4. OPEN: whether the optional git lease ref is allowed as a tie-breaker when online.
-5. OPEN: whether the old leader stays as a hot standby (proposed yes).
-6. DECIDED in principle by the owner: the most capable qualified machine leads, by handoff, without shutting others down.
+1. DECIDED in principle by the owner: the most capable qualified machine leads, by handoff, without shutting others down.
+2. PROPOSED: start with stage A, owner-pinned single host and read-only standbys.
+3. OPEN: which fencing authority (git ref with compare-and-swap, an owner-confirmed record, or both), and its offline behaviour.
+4. OPEN: score weights, margin, window, tenure, freshness window.
+5. OPEN: who may authorise a stage B handoff (the owner, or a qualified leader).
 
 ## Review focus
 
-- Is "leadership governs scheduling only, repository authority stays in git" a sound way to bound the harm of a split brain?
-- Is the commit point (the signed `transfer` and the candidate's `accept`) correct, and is every abort path safe?
-- Is the qualification meaningful (does it prove the host can really serve), and are the certificate contents enough to verify?
-- Does SafeHold plus the epoch and fork rules handle a partition acceptably for two machines?
-- Is the pure-reducer-with-simulator approach the right way to gain confidence?
+- Is "qualification selects, the fencing authority decides" the right split, and is the compare-and-swap on `(term, host)` a sound linearization point?
+- Does write-ahead fencing of the incumbent close the recovery hole, and is every partial state covered?
+- Are the invariants (at most one valid writer across all terms; no duplicate observable operation; SafeHold on uncertainty) the right ones?
+- Is stage A a reasonable first version, with B and C gated on evidence?
 
 ## Not verified
 
-- Nothing here was implemented or run. The protocol has not been model-checked or simulated.
-- That the existing hash-chained event log and its tip sidecar support snapshot, replay and verification as described; I have not read it closely enough to confirm.
-- That the owner's two machines have clocks and network quality good enough for the heartbeat thresholds; only the leader's own clock is used for expiry, but this is unmeasured.
-- That the detached-signature scheme used for attestations can be reused for host certificates in a separate namespace without change.
-- Whether a git lease ref is fast and reliable enough to serve as a tie-breaker, and whether the owner wants a dependency on the remote for it.
-- That measured capability (GPU and memory) predicts the ability to host well; it may not.
+- Nothing here was implemented, simulated or model-checked. This revision responds to review but has not itself been reviewed.
+- Which fencing authority will actually work: git compare-and-swap semantics over the owner's remote, its latency and its offline behaviour are unverified.
+- That the existing hash-chained event log and its tip sidecar support snapshot, replay and verification as described.
+- That measured capability predicts the ability to host well.
+- Certificate revocation and freshness under clock skew are designed to avoid cross-host timestamps but are untested.
