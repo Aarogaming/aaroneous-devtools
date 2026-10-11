@@ -72,6 +72,13 @@ Every claim and proposal inserts a row into the same file, usually after the sam
 C119 and C120 rows both insert after C118, so the second to merge conflicts. **Proposal:** one small file per lane (generated index for
 the table), so claims never touch the same lines. This is a design change to an existing process and needs the queue's owners.
 
+**Lane IDs collide, measured.** The seat-app lane was renumbered three times (C112, C114, C117) and still ended on IDs that other lanes had taken on `main`
+(C114 maintenance durability, C117 connected contribution lifecycle); it finally became C123 on 2026-10-11 after its claim PR stopped merging cleanly.
+Separately, the canonical local ledger (an uncommitted checkout) already holds C120 to C122, and C120 is also the ID of the HUD settings-engine lane here. IDs are
+being taken from three places at once: `main`, open PR titles, and a local ledger that is not on `main`. **Proposal:** an allocator that reserves an ID in one
+shared place before any row is written (or IDs that cannot collide, such as a short hash of the lane's contribution id), and a check that fails when a row's ID
+exists on `main` or in another open PR.
+
 ### 5. Many clocks, none declared in one place
 | Clock | Where | Period |
 |---|---|---|
