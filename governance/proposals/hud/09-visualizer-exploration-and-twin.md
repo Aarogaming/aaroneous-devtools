@@ -39,8 +39,10 @@ other runtimes). The visualizer is a map of those references: *concepts*, *docum
   next to 2D panels** for the survey, brief, packets and operations, and the same graph must be readable as a flat list
   and a 2D map (also for accessibility).
 - **Cost:** a GPU renderer competes with the local model for the same graphics card and memory. The renderer's frame
-  rate, resolution and effects are settings (R8), it drops to the 2D view when the model is running or the machine is
+  rate, resolution and effects are settings (R8), it drops to the 2D view whenever a local inference process holds the GPU (the default, not only under load; Gemini seat, entry 72) or the machine is
   under load, and it can be off entirely. The core and MCP adapter never depend on it.
+- **GPU arbitration:** the renderer asks the hall's resource arbiter for the GPU slot and a VRAM budget; while an inference process holds the slot it holds no GPU memory and the application runs headless or in 2D, switching back only when the slot is free. This prevents out-of-memory failures and context eviction on a single consumer GPU (Gemini seat, entry 72).
+  Falsifying experiment (NOT RUN, from the Gemini seat): measure token latency and free VRAM for the local model under heavy scan load while a 2,000-node 3D graph is driven in the toolkit spike.
 - **Toolkit:** a native Rust 3D renderer inside the same application as the 2D panels. A game-engine crate with an
   immediate-mode GUI layer is the likeliest fit, and a lighter 3D crate is the fallback; both are heavy dependencies with
   long build times (general knowledge, NOT VERIFIED), so they are chosen by a spike and scored under the devtools
@@ -93,7 +95,8 @@ compiler needs. Who the "people" are matters: the owner and the registered seats
 rules already in place. Collecting from anyone else would need their knowledge and agreement, a stated purpose,
 minimal retention and local-only storage, decided before building, not after.
 
-**Psychology portion.** Proposed scope: elicitation and mapping of **what a person says they want and decide**.
+**Psychology portion.** Proposed scope: elicitation and mapping of **what a person says they want and decide**. The twin is bounded to stated
+engineering conventions: preferences, verification strictness and coding style (Gemini seat, entry 72).
 Out of scope: inferring traits, moods or mental state, scoring people, or anything presented as diagnosis. Those
 claims are not supportable from this kind of data and would put unverified conclusions about real people into the
 system.
