@@ -61,6 +61,7 @@ All fields are data; unknown fields are rejected; the schema is versioned (`card
 | Field | Meaning | Req |
 |---|---|---|
 | `id` | stable, never reused | R |
+| `digest` | content digest of the card, for addressing and duplicate detection | R |
 | `class` | work class: `W0` to `W3` for guild workers, `S` for seat (pull-request-stack) work | R |
 | `level` | difficulty `L0` to `L3` and `risk` (low, medium, high) | R |
 | `task` | one sentence | R |
@@ -174,6 +175,13 @@ For work that decomposes, a brief compiles into a **plan graph**, a directed acy
   a failure in a child can stop that child and report to its parent but cannot change the parent's nominal state or another child. The
   deterministic scan-and-reduce parts stay sequential and pure; only supervision and scheduling nest.
 - **When not to use one:** single-step work stays a single card.
+
+## Plan limits and card digests (Gemini seat, board entry 102)
+
+- A maximum plan **depth** and a maximum **node count** are checked by software before a model is asked to decompose anything and again on the proposed graph, so a model
+  cannot propose an unbounded or deeply recursive plan. **Falsifying experiment (NOT RUN):** submit a plan of depth 20 with 500 nodes and confirm that the validator rejects it
+  before execution.
+- Every card has a content `digest`, so cards are content-addressable and duplicates are found by software.
 
 ## Phases for this feature
 
