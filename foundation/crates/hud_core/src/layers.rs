@@ -146,6 +146,28 @@ fn remove_path(table: &mut Table, path: &str) -> bool {
 }
 
 /// A shared layer may add new actions but not change an action that already exists (built in or added by the user).
+/// A key that contains a dot looks like a nested path in every path comparison here, so a shared file could use it to
+/// slip past a filter that walks real tables. Such keys are never settings; drop them from shared layers.
+fn strip_dotted_keys(table: &mut Table, prefix: &str, kind: LayerKind, warnings: &mut Vec<String>) {
+    let dotted: Vec<String> = table
+        .keys()
+        .filter(|key| key.contains('.'))
+        .cloned()
+        .collect();
+    for key in dotted {
+        table.remove(&key);
+        warnings.push(format!(
+            "{} settings: key {prefix}{key:?} ignored; a key containing a dot is not a setting",
+            kind.name()
+        ));
+    }
+    for (key, value) in table.iter_mut() {
+        if let Value::Table(inner) = value {
+            strip_dotted_keys(inner, &format!("{prefix}{key}."), kind, warnings);
+        }
+    }
+}
+
 fn strip_reclassification(
     table: &mut Table,
     merged: &Table,
@@ -234,6 +256,7 @@ pub(crate) fn merge(layers: &[(LayerKind, &str)]) -> Result<Merged, LoadError> {
         let own_rules = take_rules(&mut table, kind.name())?;
 
         if *kind >= LayerKind::Project {
+            strip_dotted_keys(&mut table, "", *kind, &mut warnings);
             for path in ALWAYS_OWNER_ONLY {
                 if remove_path(&mut table, path) {
                     warnings.push(format!(

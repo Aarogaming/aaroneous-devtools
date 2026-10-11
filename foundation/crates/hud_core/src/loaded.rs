@@ -218,7 +218,9 @@ pub struct Manager {
 }
 
 impl Manager {
-    /// Start from the caller's layers. If they do not load, start from the defaults and keep the error to show.
+    /// Start from the caller's layers. If they do not load, the project and local layers are dropped first, because a broken
+    /// shared file must never cost the owner their own settings (a deny rule, a lock, a tighter limit). Only if the owner's
+    /// own layers also fail does it start from the built-in defaults. The error is kept to show either way.
     pub fn start(layers: &[Layer]) -> Result<Self, LoadError> {
         match Loaded::load(layers) {
             Ok(loaded) => Ok(Self {
@@ -226,11 +228,27 @@ impl Manager {
                 generation: 1,
                 last_error: None,
             }),
-            Err(error) => Ok(Self {
-                current: Arc::new(Loaded::defaults()?),
-                generation: 1,
-                last_error: Some(error),
-            }),
+            Err(error) => {
+                let owner_only: Vec<Layer> = layers
+                    .iter()
+                    .filter(|layer| layer.kind <= LayerKind::User)
+                    .cloned()
+                    .collect();
+                let current = match Loaded::load(&owner_only) {
+                    Ok(mut loaded) => {
+                        loaded.warnings.push(format!(
+                            "project and local settings were not applied because they did not load: {error}"
+                        ));
+                        loaded
+                    }
+                    Err(_) => Loaded::defaults()?,
+                };
+                Ok(Self {
+                    current: Arc::new(current),
+                    generation: 1,
+                    last_error: Some(error),
+                })
+            }
         }
     }
 
