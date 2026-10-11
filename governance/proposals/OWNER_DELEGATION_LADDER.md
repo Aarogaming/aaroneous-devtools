@@ -29,7 +29,7 @@ owner keeps one fail-safe.
 | Rung | Mechanism | State |
 | --- | --- | --- |
 | R1. Seat identity | Per-seat GitHub Apps posting as `aaroneous-*-seat[bot]`; ed25519 attestation keys; signed head-bound verdicts | **Done** (2026-10-10/11) |
-| R2. Signature enforcement | `--require-signatures` in the merge gate and steward: unsigned verdicts stop counting | Built, **not flipped** |
+| R2. Signature enforcement | Signed independent accepts are the only accepts the merge gate counts; the steward/report `--require-signatures` flag exists for its own outputs | **On at the merge gate** (correction 2026-10-11: the gate already refuses unsigned accepts; only the steward-side report flag was ever "unflipped") |
 | R3. Mechanical quorum | N-of-M signed independent accepts + `auto_merge.py` as the only button-presser (devtools) | **Live** for devtools |
 | R4. Scoped delegation record | A signed, owner-held instrument enumerating which owner powers move to which quorum and for how long | **Missing — this is "the solution"** |
 | R5. Product-merge graduation | Aaroneous merges graduate to the gate **by category** (test-only first, the trust-building pattern of `AUTOMATED_MERGE_POLICY.md`), owner checkpoint shrinking to the category-graduation PR | Not started |
@@ -54,9 +54,22 @@ Rules the record must encode, from the recorded decision and the C14/C66 history
    precedent).
 2. A quorum is seats with **verified** signatures (R1+R2), never names on an unauthenticated channel.
 3. Powers are granted one at a time, each behind its own trust-building observation period.
-4. Revocation is instant and owner-held (R6); it is the one thing never delegated.
+4. Revocation is owner-held (R6) and **epoch-bounded**, not prose-instant (correction 2026-10-11, Codex review): grants carry an `epoch` and `issued_at`; revocation bumps the epoch, verifiers reject stale-epoch grants and replayed artifacts, and an offline node cannot act past its epoch window — so revocation is bounded by the window, never claimed as instantaneous.
 5. Owner-demotion ("user") is declared only when every power in the bundle has a live grant and the
    trust-building periods have closed — recorded as a final owner decision, not assumed.
+6. **Activation, not just recording** (correction 2026-10-11, Codex review of #189): a grant is
+   `pending` until an explicit activation record with a fresh epoch activates it. Every reserved
+   power stays pending — owner-side — until a valid **activated** grant exists. Recording a grant
+   activates nothing by itself.
+7. **Self-amendment boundary**: the delegation validator, the grant schema, the identity registry and
+   R6 itself are trust anchors. No grant may amend, replace or bypass them; a grant whose scope
+   touches the validator, the schema or R6 fails closed. The grant system cannot widen itself.
+8. **Freshness and replay**: grants carry `epoch` and `issued_at`; verifiers reject stale epochs and
+   replayed grant artifacts; a node that was offline re-syncs the epoch before acting on any grant.
+   These three rules answer Codex's review points on #189 (activation, self-amendment protection,
+   offline-node revocation bounds); the per-power activation matrix from that review is adopted in
+   shape: each power's row will name its quorum, its activation precondition and its epoch window
+   when R4 is implemented.
 
 ## What this proposal is not
 
