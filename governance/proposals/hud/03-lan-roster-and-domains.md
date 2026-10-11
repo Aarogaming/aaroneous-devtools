@@ -131,6 +131,13 @@ Skills are domain-specific: kernel-style Rust in Aaroneous is not the same skill
 The guild-hall language is good for the interface (reception, supervisor, quest-board style status). Code, crates and
 settings use plain names: intake, triage, planner, dispatcher, operator, profile, level. This follows the product's
 naming rule and the existing "Guild" name for the steward service.
+## Missed heartbeats are not failures (Gemini seat, board entry 96)
+
+A single missed heartbeat from a Wi-Fi dropout or a cable swap must not revoke a lease or start an election. A configurable grace window (proposed: three
+missed beats) with exponential-backoff probes comes first; only after it does a node become `unreachable`, and even then leadership changes only through the
+fencing procedure in [11](11-hall-host-election-and-handoff.md). **Falsifying experiment (NOT RUN):** simulate a five-second partition between the two nodes and
+confirm that no election or handoff starts.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
