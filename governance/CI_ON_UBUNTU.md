@@ -2,6 +2,31 @@
 
 Why: the repository is private, so every GitHub-hosted Actions minute is billed, and the two heaviest workflows run on events we produce constantly (`auto-merge.yml` on every PR event, comment and review plus a 20-minute cron; Foundation CI on Ubuntu and Windows for every push to every PR). Throughput is going to grow, and on 2026-10-11 the account's Actions jobs stopped starting at all ("recent account payments have failed or your spending limit needs to be increased"). This moves the work to the Ubuntu machine, in two steps, without weakening the gate.
 
+## The bridge: unblock merging today, before any runner exists
+
+Actions jobs stop starting when a private repository's hosted minutes run out (the account's free allowance resets monthly) or a payment fails. Nothing can merge until a green check exists on the exact head, so this blocks everything, and I cannot change billing or push workflow files. Two owner actions unblock it, in this order:
+
+1. **Raise the Actions spending limit** (GitHub, Settings, Billing and plans, Spending limits; or fix the failed payment). A small cap such as $10 to $20 is enough for the rest of the month if step 2 is applied, and hosted jobs start again immediately.
+2. **Apply the bridge workflows** so the minutes last: `ci/bridge/*.yml` are the current workflows with the waste removed.
+   - Foundation CI on Linux only for pull requests, superseded pushes cancelled, and a fast path: a pull request that touches nothing under `foundation/`, `stacks/`, `ci/` or the Foundation workflow exits in seconds with a green check (so the gate still sees one) instead of rebuilding the workspace. Pushes to main always build.
+   - Windows moves to its own workflow on main pushes only. A skipped or missing check fails the gate, so it must not appear on pull requests.
+   - Auto-merge loses its `issue_comment` trigger (every PR comment started a run) and its 20-minute cron becomes hourly; it keeps `pull_request_target` and `check_suite`, so a merge is evaluated when CI finishes. Attestation comments are picked up by the next hourly run.
+   - Dashboard CI on Linux only.
+
+   From a checkout, with the owner's login (the seat Apps cannot push workflow files):
+
+   ```bash
+   git fetch origin proposal/c128-ubuntu-ci
+   git checkout -b ci-bridge origin/main
+   git checkout origin/proposal/c128-ubuntu-ci -- ci/bridge
+   cp ci/bridge/*.yml .github/workflows/
+   git add .github/workflows && git commit -m "ci: bridge workflows, fewer hosted minutes" && git push origin ci-bridge
+   ```
+
+   Then merge that branch. Open PRs keep their old workflow definitions until they are rebased, except `auto-merge`, which always runs from main.
+
+The bridge is a stopgap with the same gate rules. The real fix is the self-hosted runners below, which cost no hosted minutes at all.
+
 ## The design in one page
 
 | | Step 1 (this lane) | Step 2 (later lane) |
