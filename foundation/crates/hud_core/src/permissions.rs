@@ -173,6 +173,8 @@ pub enum Reason {
     AutoLowRisk,
     /// The action is not in the registry; unknown actions are refused.
     UnknownAction,
+    /// The trusted settings did not load at start-up, so everything is refused until a valid policy is applied.
+    SafeHold,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,6 +186,11 @@ pub struct Decision {
 impl Decision {
     fn new(verdict: Verdict, reason: Reason) -> Self {
         Self { verdict, reason }
+    }
+
+    /// A refusal that no rule or mode default decided.
+    pub(crate) fn refused(reason: Reason) -> Self {
+        Self::new(Verdict::Deny, reason)
     }
 }
 

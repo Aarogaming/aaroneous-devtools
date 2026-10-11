@@ -31,8 +31,18 @@ removed by a higher layer, and `permissions.rules` can be locked to stop higher 
 
 A file that does not parse, uses an unknown key, has a wrong type, is out of range, or contradicts another setting is
 refused with an error naming the setting. When a **reload** is refused the previous good configuration stays active
-(`Manager::reload`, `Reload { applied: false, error }`). When the **start-up** layers are refused the defaults are
-used and the error is kept for display (`Manager::last_error`). A bad file therefore never loosens anything.
+(`Manager::reload`, `Reload { applied: false, error }`). Start-up has three cases:
+
+1. The shared layers (project, local) are refused: they are dropped and the trusted user settings stay active, with a
+   warning and the error kept for display (`Manager::last_error`). A broken shared file therefore never costs the owner
+   their own deny rule, lock or limit, and never loosens anything.
+2. The trusted layers (defaults, user) are refused: the manager starts in **safe-hold**. Every request is refused with
+   `Reason::SafeHold`, reads included, until a valid policy is applied by `reload`. The built-in defaults are still
+   loaded so that a settings screen has values to show, but they decide nothing, because they could be looser than the
+   policy the owner wrote. `Loaded::is_safe_hold` tells an adapter which state it is in.
+3. Everything loads: normal operation.
+
+An unreadable policy is therefore never a looser one.
 
 ## Permissions
 

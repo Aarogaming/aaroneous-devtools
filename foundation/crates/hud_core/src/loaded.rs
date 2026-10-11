@@ -3,7 +3,7 @@
 use crate::config::{Config, Mode};
 use crate::error::LoadError;
 use crate::layers::{Layer, LayerKind, merge};
-use crate::permissions::{Actor, Decision, FLOOR_DENIED, Rule, Verdict, decide};
+use crate::permissions::{Actor, Decision, FLOOR_DENIED, Reason, Rule, Verdict, decide};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use toml::Value;
@@ -34,6 +34,7 @@ pub struct Loaded {
     rules: Vec<Rule>,
     provenance: BTreeMap<String, LayerKind>,
     table: toml::Table,
+    safe_hold: bool,
 }
 
 fn mode_of(table: &toml::Table) -> Option<Mode> {
@@ -187,7 +188,25 @@ impl Loaded {
             rules,
             provenance: merged.provenance,
             table: merged.table,
+            safe_hold: false,
         })
+    }
+
+    /// The state used when the trusted (defaults and user) settings did not load at start-up. The built-in defaults supply
+    /// the values to display, but every request is refused: falling back to the defaults would silently drop a restriction
+    /// the owner had written (a deny rule, a tighter limit), so an unreadable policy must never be a looser one.
+    pub fn safe_hold(error: &LoadError) -> Result<Self, LoadError> {
+        let mut held = Self::defaults()?;
+        held.safe_hold = true;
+        held.warnings.push(format!(
+            "safe-hold: your settings did not load, so every request is refused until they do: {error}"
+        ));
+        Ok(held)
+    }
+
+    /// True while the trusted settings are unusable and every request is refused.
+    pub fn is_safe_hold(&self) -> bool {
+        self.safe_hold
     }
 
     pub fn rules(&self) -> &[Rule] {
@@ -195,6 +214,9 @@ impl Loaded {
     }
 
     pub fn decide(&self, actor: &Actor, action: &str, scope: Option<&str>) -> Decision {
+        if self.safe_hold {
+            return Decision::refused(Reason::SafeHold);
+        }
         decide(
             &self.config,
             self.effective_mode,
@@ -242,7 +264,8 @@ pub struct Manager {
 impl Manager {
     /// Start from the caller's layers. If they do not load, the project and local layers are dropped first, because a broken
     /// shared file must never cost the owner their own settings (a deny rule, a lock, a tighter limit). Only if the owner's
-    /// own layers also fail does it start from the built-in defaults. The error is kept to show either way.
+    /// own layers also fail does it start in safe-hold: every request is refused until a valid policy is applied, because
+    /// the defaults could be looser than the policy the owner wrote. The error is kept to show either way.
     pub fn start(layers: &[Layer]) -> Result<Self, LoadError> {
         match Loaded::load(layers) {
             Ok(loaded) => Ok(Self {
@@ -263,7 +286,7 @@ impl Manager {
                         ));
                         loaded
                     }
-                    Err(_) => Loaded::defaults()?,
+                    Err(owner_error) => Loaded::safe_hold(&owner_error)?,
                 };
                 Ok(Self {
                     current: Arc::new(current),

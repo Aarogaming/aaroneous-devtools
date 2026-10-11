@@ -52,15 +52,58 @@ fn an_unknown_key_in_a_project_file_at_start_also_keeps_the_owners_settings() {
 }
 
 #[test]
-fn a_broken_owner_file_still_falls_back_to_the_defaults() {
-    let manager = Manager::start(&[layer(LayerKind::User, "not = = toml")]).expect("start");
+fn a_broken_owner_file_starts_in_safe_hold_and_refuses_everything() {
+    // Codex review of #175: falling back to the defaults let a broken user file turn the owner's deny into an allow.
+    // Now an unreadable trusted policy refuses every request, reads included, until a valid one is applied.
+    let good = "[permissions]
+rules = [\"deny seat:gemini get_card\"]
+";
+    let before = Manager::start(&[layer(LayerKind::User, good)]).expect("start");
+    assert_eq!(
+        before
+            .current()
+            .decide(&seat("gemini"), "get_card", None)
+            .verdict,
+        Verdict::Deny
+    );
+    let manager =
+        Manager::start(&[layer(LayerKind::User, &format!("{good}not = = toml"))]).expect("start");
     assert!(manager.last_error().is_some());
+    assert!(manager.current().is_safe_hold());
+    for actor in ["claude", "gemini", "codex"] {
+        for action in [
+            "get_card",
+            "list_work",
+            "edit_settings",
+            "run_operation",
+            "merge",
+            "unregistered",
+        ] {
+            let decision = manager.current().decide(&seat(actor), action, None);
+            assert_eq!(decision.verdict, Verdict::Deny, "{actor} {action}");
+            assert_eq!(
+                decision.reason,
+                hud_core::Reason::SafeHold,
+                "{actor} {action}"
+            );
+        }
+    }
+    assert!(!manager.current().warnings.is_empty());
+}
+
+#[test]
+fn safe_hold_ends_when_a_valid_policy_is_applied() {
+    let mut manager = Manager::start(&[layer(LayerKind::User, "not = = toml")]).expect("start");
+    assert!(manager.current().is_safe_hold());
+    let reload = manager.reload(&[layer(LayerKind::User, "")]);
+    assert!(reload.applied);
+    assert!(!manager.current().is_safe_hold());
     assert_eq!(
         manager
             .current()
-            .decide(&seat("claude"), "edit_settings", None)
+            .decide(&seat("claude"), "get_card", None)
             .verdict,
-        Verdict::Deny
+        Verdict::Allow
     );
 }
 
