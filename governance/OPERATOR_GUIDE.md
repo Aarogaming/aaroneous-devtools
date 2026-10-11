@@ -249,7 +249,7 @@ Choose a path with the table in [LOCAL_WORKER_OPERATIONS.md](LOCAL_WORKER_OPERAT
 - **Guild** is the steward promoted to a native Rust service. Its CLI is `foundation guild tick | verify-log |
   status | daemon` (lane C113, merged 2026-10-09 in #148): `tick` builds the per-seat task cards and appends to the
   hash-chained event log, `verify-log` checks the chain against its `.tip` sidecar, `status` shows tick counts and
-  active cards, `daemon` loops with adaptive pacing. It builds on the Rust `steward` crate (merged in #118) whose
+  active cards, `daemon` loops on a fixed `--interval-seconds` (default 600; the pull request description mentioned adaptive pacing, but the code I read in `guild.rs` sleeps a fixed interval). It builds on the Rust `steward` crate (merged in #118) whose
   contract is the golden vectors. The Python steward in section 4 is the reference implementation and what the
   heartbeat runs today; whether any seat's heartbeat now uses the Guild CLI is NOT VERIFIED here. Source:
   `foundation/crates/foundation_cli/src/guild.rs` and the description of #148. Background and naming:
