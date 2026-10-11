@@ -1,0 +1,25 @@
+# The Foundation CI suite as an argument-vector manifest (lane C129). A verification node reads this file from git at the
+# request's base_sha, checks its digest against the request, and runs each step in order, stopping at the first that does not
+# pass. These are the same commands foundation-ci.yml runs; a step is a program and its arguments, never a shell string.
+name = "foundation-ci"
+platforms = ["linux-x86_64", "windows-x86_64"]
+
+[[step]]
+name = "fmt"
+argv = ["cargo", "fmt", "--manifest-path", "foundation/Cargo.toml", "--all", "--", "--check"]
+timeout_s = 600
+
+[[step]]
+name = "test"
+argv = ["cargo", "test", "--manifest-path", "foundation/Cargo.toml"]
+timeout_s = 3600
+
+[[step]]
+name = "clippy"
+argv = ["cargo", "clippy", "--manifest-path", "foundation/Cargo.toml", "--", "-D", "warnings"]
+timeout_s = 1800
+
+[[step]]
+name = "validate-stack"
+argv = ["cargo", "run", "--manifest-path", "foundation/Cargo.toml", "-p", "foundation_cli", "--", "validate-stack", "--manifest", "stacks/local-rust.toml"]
+timeout_s = 900

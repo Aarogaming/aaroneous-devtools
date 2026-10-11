@@ -1,0 +1,18 @@
+# Which platforms a change must be verified on (lane C129). Linux always; Windows too when the change can behave differently
+# there. Reviewed like any other file; a node and the hall read it from the base branch, never from the pull request.
+default = ["linux-x86_64"]
+
+# The Windows tray, passive engine and scheduled-task code only means something on Windows.
+[[rule]]
+prefix = "foundation/crates/maintenance_ui/"
+platform = "windows-x86_64"
+
+# A dependency or workspace change can break one platform's build and not the other.
+[[rule]]
+prefix = "foundation/Cargo."
+platform = "windows-x86_64"
+
+# Changing the verification itself is checked on every platform it runs on.
+[[rule]]
+prefix = "ci/"
+platform = "windows-x86_64"
