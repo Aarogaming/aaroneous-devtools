@@ -92,6 +92,16 @@ the ignored list (`Loaded::warnings`) next to it and must not present an ignored
 An action that is not registered is refused before any rule is consulted, so a wildcard or prefix `allow` cannot grant it.
 The floor is checked before that.
 
+## Input limits and failure behaviour
+
+- A layer larger than 256 KiB, or more than 2,000 permission rules in total, is refused (`MAX_LAYER_BYTES`, `MAX_RULES`). A measured flood of 400,000
+  rules cost about 4 ms per decision and 227 ms to load; the limits are in code on purpose.
+- `Manager::start`: if the layers do not load, the **project and local layers are dropped first** and the owner's own layers are kept (with a warning and the
+  error). Only if the owner's layers also fail does it start from the built-in defaults. A broken or hostile shared file therefore cannot cost the owner a deny
+  rule, a lock or a tighter limit. `Manager::reload` keeps the previous good configuration.
+- In project and local layers, any key whose name contains a dot is ignored (with a warning): it is not a setting and would otherwise look like a nested path to
+  the filters.
+
 ## Settings groups
 
 | Table | Purpose |
