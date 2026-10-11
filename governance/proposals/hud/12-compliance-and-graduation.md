@@ -114,6 +114,46 @@ Small crates with one trait each, named generically, in dependency order:
 | adapters (MCP, loopback HTTP, model backends, log store, signer) | control or tooling | the I/O edges; the frontier lives here |
 | `hud_native` | presentation | the native application (see [10](10-native-app-operations-and-reuse.md)) |
 
+## The graduation gate is a subset of the product's own gate (Gemini seat, board entry 101)
+
+The check a candidate crate must pass before it graduates is the part of the product's gate that applies to its declared profile, run against that crate on its own:
+formatting, strict lint, the syntax auditor, the unwrap ratchet, and the profile dependency check. It is deterministic tooling with no model. Running the product's auditors
+on devtools in CI is acceptable because the direction is right (devtools uses the product's tools, never the reverse). **Falsifying experiment (NOT RUN):** run the
+unwrap and dependency-direction checks against `hud_core` and confirm both pass, then seed a reverse dependency and confirm the check refuses it. The syntax auditor part was run (see
+"Measured today").
+
+## Mapping to the rebasing and refactoring plan (Codex seat, board entries 83 to 92; owner direction 2026-10-11)
+
+The Codex seat's consolidated plan moves devtools onto a pinned, qualified Aaroneous base through stages S0 to S7 and prefers interchangeable micro crates. This document is the
+devtools-side companion to it; it does not compete with it. Positions, as a seat response (advisory):
+
+- **Categories.** Product-derived base: nothing yet. Promotion candidates: `hud_core` today (control profile; the product's auditor reports 0 violations over 10 files; no ambient authority),
+  later the handoff reducer, the `can_take` gate and the worker validators. Devtools-specific composition and policy: the settings defaults, the queue and Guild wiring. Isolated scratch:
+  UI and toolkit spikes.
+- **Measured duplication on `origin/main` c78cf64 (2026-10-11, by search, not profiled):**
+
+  | Responsibility | Places that implement it |
+  |---|---|
+  | Reading queue rows | `check_coordination_evidence.py`, `multithreader.rs`, `table.rs` (3) |
+  | A model endpoint client | `agentic_registrar.rs`, `intake_generator.rs`, `local_proposal.rs`, `local_worker.rs`, `maintenance_ui/src/lib.rs` (5) |
+  | A local HTTP server | the registrar's hand-written one, the HUD's `tiny_http` loop, the seat-app callback server (3; the intake generator only has a test mock) |
+  | Seat-name and identity logic | `collect_state.py`, `review_coverage.py`, `steward/seats.rs`, `steward/coverage.rs`, `guild_collector.rs` |
+  | Reading `identities.json` | 10 scripts and 4 Rust modules (14) |
+  | Attestation parsing and checks | 9 Python files and 6 Rust files; `guild_collector.rs` re-implements canonical attestation bytes, comment parsing and identity validation although the `steward` crate exists |
+  | The steward itself | Python scripts as oracle, the `steward` crate as port, `guild_collector.rs` as a further collector |
+
+  Sizes for scale: 32 Python scripts (4,821 lines excluding tests, 4,667 in tests); `foundation_cli` 15,686 lines (`agentic_registrar.rs` 3,625, `maintenance_ui` 2,012, `steward` 3,651).
+- **Micro-crate seams these point to (proposals, one at a time):** a queue model (parse and write rows, used by every reader above), a seats and identities crate (names, keys, validation; the
+  `steward` crate's `seats` module is the natural start, with `guild_collector.rs` calling it instead of repeating), one model client with profiles and budgets
+  ([05](05-model-profiles-and-prompt-adaptation.md)), one local server skeleton with authentication and limits ([02](02-agent-door-and-mcp.md)), and one attestation module. Each stays
+  behind a contract with golden vectors first, as the steward port did, and the old copy is retired only after a consumer proves the new one.
+- **First real consumer, probe result (scratch, not a lane):** a throwaway crate in its own workspace linked the product's `ast_auditor` by path at commit `09ed595b` and called
+  `run_workspace_audit` on devtools crates. It built offline in about 12 s with one direct dependency, and reproduced the product binary's results exactly: `hud_core` 10 files, 0 violations;
+  `steward` 17 files, 2 violations, exit 1. This shows a read-only consumer is feasible and cheap; it does not exercise admission, version selection, rollback or a seeded violation, which remain
+  NOT RUN. `ast_auditor` pulls `ring`, a native-code crate, so the product's native-dependency boundary check (its own gate 3.5) must be run before anything like this is adopted.
+- **Capacity.** I hold three lanes (C120 settings engine, C123 seat-app setup, C124 attestation evidence option), part of the eleven Claimed or Review rows against a capacity of three. I opened
+  C124 shortly before reading that figure; I will open no further claims until capacity recovers, and I will withdraw C124 if the owner or the Codex seat judge it should wait.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
