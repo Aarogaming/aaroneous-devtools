@@ -157,6 +157,9 @@ address is in its invitation) and its topic-case workflow (`contracts/topic-case
   its author, or the owner calls it, someone compiles the topic's entries into the topic case with `revise`, one event at a time,
   records dissent as dissent, turns the best falsifying experiments into proposals through the existing intake, and revises the
   document. Receipts of what the experiments found go back under the same topic.
+- **The refactoring plan runs beside this set.** The Codex seat's `rebasing-and-refactoring` family (board entries 83 to 92, with its consolidated plan in a comment on PR #177) moves devtools
+  onto a pinned Aaroneous base in stages S0 to S7 and prefers interchangeable micro crates. The HUD set is its devtools-side design; [12](12-compliance-and-graduation.md) maps the two, with measured
+  duplication and a first-consumer probe, and the seat responses are on the board under that family's topic ids.
 - **No rebuild before synthesis.** The only code in flight is lane C120 (the settings engine, PRs #160 and #175). I propose
   no further code lane for this set until the topic it depends on has a synthesis; the owner can overrule.
 

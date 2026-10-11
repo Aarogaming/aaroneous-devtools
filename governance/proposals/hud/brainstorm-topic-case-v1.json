@@ -21,7 +21,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/README.md",
-              "revision": "cc16d7348ebf370b07f1ae99ff41ee8c260129f2"
+              "revision": "1e6b466cf19b930d13a9a470a95e003f3873ad62"
             }
           ]
         }
@@ -45,7 +45,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/01-settings-and-permissions.md",
-              "revision": "8b96a1a4e4869b8b8c2597d396b4926628b1750e"
+              "revision": "8b2135e31d4dffea8bd3f5417320016ea04dccae"
             }
           ]
         }
@@ -69,7 +69,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/02-agent-door-and-mcp.md",
-              "revision": "e80b7b5cb047c8fc162cd671728ba5dce0e955b4"
+              "revision": "4f2a0560a90be700025d92cced3243dc21863037"
             }
           ]
         }
@@ -93,7 +93,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/03-lan-roster-and-domains.md",
-              "revision": "8c1c42fc8f7f6f56337c265dc7462216aead563c"
+              "revision": "713c9d9b938ba9e82070c147f202ad79d7f07cf4"
             }
           ]
         }
@@ -117,7 +117,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/04-token-optimization.md",
-              "revision": "08bf7bc170f5065c7cdf8d476d50cf8e1a085fb6"
+              "revision": "7d6cee08ad161622b933f2831f0b77bdf3801a79"
             }
           ]
         }
@@ -141,7 +141,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md",
-              "revision": "d0d3a691a97266870d02677caf94135901cadffd"
+              "revision": "72536d4302f7242aa6cdd339b96e33f6f15a0a34"
             }
           ]
         }
@@ -189,7 +189,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/07-guild-workers-staff-and-inspection.md",
-              "revision": "aa978c7d762945784c4a29948a83c8cb9aedfaea"
+              "revision": "87454c9f8d6e819edcb7e17f94296f9e655a1940"
             }
           ]
         }
@@ -261,7 +261,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/10-native-app-operations-and-reuse.md",
-              "revision": "88cd33cd98d7685821a5759b46e40e2cd0e2c58d"
+              "revision": "d2746de804cda910f4aee3e11053b3cfe1da4f21"
             }
           ]
         }
@@ -285,7 +285,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
             }
           ]
         }
@@ -309,7 +309,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/12-compliance-and-graduation.md",
-              "revision": "aaade2550bff9c6659d90659681df004d560501b"
+              "revision": "c322498185746a1273b33195f07acebe9bb6b9cf"
             }
           ]
         }
@@ -333,7 +333,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
-              "revision": "b5d47a933ca6a422f7f9a6cf9eb1950cf59c8897"
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
             }
           ]
         }
@@ -357,7 +357,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
-              "revision": "309e5776e9328795648c0d85c7da8f62ed95a211"
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
             }
           ]
         }
@@ -377,7 +377,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/01-settings-and-permissions.md",
-              "revision": "8b96a1a4e4869b8b8c2597d396b4926628b1750e"
+              "revision": "8b2135e31d4dffea8bd3f5417320016ea04dccae"
             }
           ]
         }
@@ -397,7 +397,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/02-agent-door-and-mcp.md",
-              "revision": "e80b7b5cb047c8fc162cd671728ba5dce0e955b4"
+              "revision": "4f2a0560a90be700025d92cced3243dc21863037"
             }
           ]
         }
@@ -417,7 +417,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/03-lan-roster-and-domains.md",
-              "revision": "8c1c42fc8f7f6f56337c265dc7462216aead563c"
+              "revision": "713c9d9b938ba9e82070c147f202ad79d7f07cf4"
             }
           ]
         }
@@ -437,7 +437,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/04-token-optimization.md",
-              "revision": "08bf7bc170f5065c7cdf8d476d50cf8e1a085fb6"
+              "revision": "7d6cee08ad161622b933f2831f0b77bdf3801a79"
             }
           ]
         }
@@ -457,7 +457,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md",
-              "revision": "d0d3a691a97266870d02677caf94135901cadffd"
+              "revision": "72536d4302f7242aa6cdd339b96e33f6f15a0a34"
             }
           ]
         }
@@ -497,7 +497,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/07-guild-workers-staff-and-inspection.md",
-              "revision": "aa978c7d762945784c4a29948a83c8cb9aedfaea"
+              "revision": "87454c9f8d6e819edcb7e17f94296f9e655a1940"
             }
           ]
         }
@@ -557,7 +557,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/10-native-app-operations-and-reuse.md",
-              "revision": "88cd33cd98d7685821a5759b46e40e2cd0e2c58d"
+              "revision": "d2746de804cda910f4aee3e11053b3cfe1da4f21"
             }
           ]
         }
@@ -577,7 +577,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
             }
           ]
         }
@@ -597,7 +597,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/12-compliance-and-graduation.md",
-              "revision": "aaade2550bff9c6659d90659681df004d560501b"
+              "revision": "c322498185746a1273b33195f07acebe9bb6b9cf"
             }
           ]
         }
@@ -617,7 +617,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
-              "revision": "b5d47a933ca6a422f7f9a6cf9eb1950cf59c8897"
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
             }
           ]
         }
@@ -637,7 +637,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
-              "revision": "309e5776e9328795648c0d85c7da8f62ed95a211"
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
             }
           ]
         }
@@ -656,7 +656,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/02-agent-door-and-mcp.md",
-              "revision": "e80b7b5cb047c8fc162cd671728ba5dce0e955b4"
+              "revision": "4f2a0560a90be700025d92cced3243dc21863037"
             }
           ]
         }
@@ -675,7 +675,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/03-lan-roster-and-domains.md",
-              "revision": "8c1c42fc8f7f6f56337c265dc7462216aead563c"
+              "revision": "713c9d9b938ba9e82070c147f202ad79d7f07cf4"
             }
           ]
         }
@@ -694,7 +694,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/03-lan-roster-and-domains.md",
-              "revision": "8c1c42fc8f7f6f56337c265dc7462216aead563c"
+              "revision": "713c9d9b938ba9e82070c147f202ad79d7f07cf4"
             }
           ]
         }
@@ -713,7 +713,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/04-token-optimization.md",
-              "revision": "08bf7bc170f5065c7cdf8d476d50cf8e1a085fb6"
+              "revision": "7d6cee08ad161622b933f2831f0b77bdf3801a79"
             }
           ]
         }
@@ -732,7 +732,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md",
-              "revision": "d0d3a691a97266870d02677caf94135901cadffd"
+              "revision": "72536d4302f7242aa6cdd339b96e33f6f15a0a34"
             }
           ]
         }
@@ -751,7 +751,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md",
-              "revision": "d0d3a691a97266870d02677caf94135901cadffd"
+              "revision": "72536d4302f7242aa6cdd339b96e33f6f15a0a34"
             }
           ]
         }
@@ -789,7 +789,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/07-guild-workers-staff-and-inspection.md",
-              "revision": "aa978c7d762945784c4a29948a83c8cb9aedfaea"
+              "revision": "87454c9f8d6e819edcb7e17f94296f9e655a1940"
             }
           ]
         }
@@ -808,7 +808,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/07-guild-workers-staff-and-inspection.md",
-              "revision": "aa978c7d762945784c4a29948a83c8cb9aedfaea"
+              "revision": "87454c9f8d6e819edcb7e17f94296f9e655a1940"
             }
           ]
         }
@@ -903,7 +903,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/10-native-app-operations-and-reuse.md",
-              "revision": "88cd33cd98d7685821a5759b46e40e2cd0e2c58d"
+              "revision": "d2746de804cda910f4aee3e11053b3cfe1da4f21"
             }
           ]
         }
@@ -922,7 +922,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/10-native-app-operations-and-reuse.md",
-              "revision": "88cd33cd98d7685821a5759b46e40e2cd0e2c58d"
+              "revision": "d2746de804cda910f4aee3e11053b3cfe1da4f21"
             }
           ]
         }
@@ -941,7 +941,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
             }
           ]
         }
@@ -960,7 +960,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
             }
           ]
         }
@@ -979,7 +979,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
             }
           ]
         }
@@ -998,7 +998,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/12-compliance-and-graduation.md",
-              "revision": "aaade2550bff9c6659d90659681df004d560501b"
+              "revision": "c322498185746a1273b33195f07acebe9bb6b9cf"
             }
           ]
         }
@@ -1017,7 +1017,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
-              "revision": "b5d47a933ca6a422f7f9a6cf9eb1950cf59c8897"
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
             }
           ]
         }
@@ -1036,7 +1036,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
-              "revision": "b5d47a933ca6a422f7f9a6cf9eb1950cf59c8897"
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
             }
           ]
         }
@@ -1055,7 +1055,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
-              "revision": "b5d47a933ca6a422f7f9a6cf9eb1950cf59c8897"
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
             }
           ]
         }
@@ -1074,7 +1074,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
-              "revision": "b5d47a933ca6a422f7f9a6cf9eb1950cf59c8897"
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
             }
           ]
         }
@@ -1093,7 +1093,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
-              "revision": "309e5776e9328795648c0d85c7da8f62ed95a211"
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
             }
           ]
         }
@@ -1112,7 +1112,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
-              "revision": "309e5776e9328795648c0d85c7da8f62ed95a211"
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
             }
           ]
         }
@@ -1131,7 +1131,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
-              "revision": "309e5776e9328795648c0d85c7da8f62ed95a211"
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
             }
           ]
         }
