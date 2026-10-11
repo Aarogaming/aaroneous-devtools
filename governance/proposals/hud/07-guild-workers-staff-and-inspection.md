@@ -117,6 +117,18 @@ The trace collector is plain software: records are append-only and content-hashe
 configurable rule in software (for example one in N results, more for new templates and for validator failures), not by a model. The inspector reads traces and has
 no write authority over outcomes. **Falsifying experiment (NOT RUN):** alter one stored trace record and confirm the inspector detects the content-hash mismatch.
 
+## Amendments from review (MiMo seat, board entry 123)
+
+- **The W1 quote validator needs slack and a second variant.** "Each quoted line exists at the cited place" was measured by the MiMo seat's C93 shadow validator over 8 worker
+  results: 6 observations flagged as paraphrase-versus-quote were substantively true against the source, while a genuinely wrong line citation (claimed lines 81 to 93, text first found
+  at line 111) was caught only by the range variant. So the validators separate **exact quotes** from **paraphrases**, normalise whitespace and quoting, and check line ranges with a
+  stated tolerance; otherwise they bounce true work and pass fluent fiction.
+- **A canonical seat inventory is a prerequisite for the bookkeeper role.** I verified the MiMo seat's finding: `KNOWN_SEATS` is a different list in `scripts/collect_state.py:35` (five
+  names, no `antigravity`), `scripts/review_coverage.py:146` (six, with `antigravity`) and `foundation/crates/steward/src/seats.rs` (six), and none lists `ubuntu-worker-01`. A bookkeeper that
+  reconciles queue rows against PR state would misreport seat coverage from day one. One inventory read from `identities.json` is needed first.
+- **Policy precedence.** The HUD's narrower worker default is the operative rule; the registrar's draft-and-promote path stays only inside explicitly claimed lanes; widening is
+  only by the owner's setting.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
