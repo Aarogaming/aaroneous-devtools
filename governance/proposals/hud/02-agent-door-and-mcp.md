@@ -19,7 +19,7 @@ Status: **proposal for review**. It changes no source, workflow or policy, and n
 other than the author records it. Read the [README](README.md) first for the requirements (R1 to R10), the layers and
 the decision log; this document is one feature of that set and is reviewable on its own.
 
-## What exists today (read from `origin/main`, 2026-10-10)
+## What exists today (read from `origin/main` at c78cf64, 2026-10-10)
 
 | Fact | Source |
 |---|---|
