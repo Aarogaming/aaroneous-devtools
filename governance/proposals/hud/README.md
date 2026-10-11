@@ -97,6 +97,11 @@ taking work as job cards at its own level (see [07](07-guild-workers-staff-and-i
 4. **Same authority rules for models and people.** A model pinging the HUD gets cards and may report results; it does not
    gain merge or review authority. Reviews and merges stay with the steward gate and signed attestations.
 5. **Silence on unchanged state.** Responses say "nothing new" in a few bytes (see [04](04-token-optimization.md)). Quiet is the cheapest answer.
+6. **Model reliance only ratchets down.** This is the Aaroneous ratchet applied to model use. Every step that calls a model names the programmatic
+   step that comes first (a rule, a parser, a lookup, a compiler or type check, an audit), and the share of calls that reach the model is measured per task
+   type ([04](04-token-optimization.md)). A model step may be added only with its programmatic predecessor and a metric, and its share may fall but not rise
+   without a recorded reason. A conversational survey is for what no repository, diff or metadata can answer, the person's goal, intent and taste, and never
+   asks for what software can read. When something can be proven by a compiler or enforced by a type or an auditor rule, no model is asked.
 
 ## Overlap with existing lanes (reused, not duplicated)
 
