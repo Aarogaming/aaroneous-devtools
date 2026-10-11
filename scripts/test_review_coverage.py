@@ -524,5 +524,47 @@ class GitSaysWhoImplemented(unittest.TestCase):
         self.assertEqual(rc.unattributed_commits(log, "codex/x"), 0)
 
 
+REGISTERED = {"claude", "codex", "gemini", "mimo", "ubuntu-worker-01"}
+
+
+class RegisteredSeatsResolveExactly(unittest.TestCase):
+    """Rule 2: 'ubuntu-worker-01' used to resolve by its first word to the unregistered seat 'ubuntu', so its signed accepts never
+    verified; and two seats running one model counted as two independent judges."""
+
+    def test_a_registered_multi_word_seat_resolves_to_itself(self):
+        for label in ("ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu_worker_01", "ubuntu-worker-01 (MiMo)", "UBUNTU-WORKER-01"):
+            self.assertEqual(rc.resolve_seat(label, REGISTERED), "ubuntu-worker-01", label)
+
+    def test_near_misses_name_nothing_registered(self):
+        for label in ("xubuntu-worker-01", "ubuntu-worker-011", "ubuntu-worker", "worker-01", "ubuntu"):
+            self.assertIsNone(rc.registered_seat(label, REGISTERED), label)
+
+    def test_two_registered_seats_in_one_label_are_ambiguous_and_fail_closed(self):
+        registered = REGISTERED | {"ubuntu-worker-02"}
+        self.assertIsNone(rc.registered_seat("ubuntu-worker-01 and ubuntu-worker-02", registered))
+
+    def test_without_a_registry_the_legacy_resolution_is_unchanged(self):
+        self.assertEqual(rc.resolve_seat("Claude Sonnet 5.5"), "claude")
+        self.assertEqual(rc.resolve_seat("ubuntu-worker-01"), rc.canonical_reviewer_seat("ubuntu-worker-01"))
+
+    def test_evaluate_counts_a_registered_seat_under_its_registered_name(self):
+        decision = rc.evaluate(H1, MB, [rec(H1, reviewer="ubuntu-worker-01"), rec(H1, reviewer="codex")], always, REGISTERED)
+        self.assertEqual(decision["accept_seats"], ["codex", "ubuntu-worker-01"])
+
+    def test_families_collapse_seats_running_one_model(self):
+        families = rc.seat_families({"seats": {"mimo": {"family": "mimo"}, "ubuntu-worker-01": {"family": "mimo"},
+                                               "claude": {"family": "anthropic"}, "bad": {"family": "Not Ok"}, "none": {}}})
+        self.assertEqual(families, {"mimo": "mimo", "ubuntu-worker-01": "mimo", "claude": "anthropic"})
+        self.assertEqual(rc.families_of(["mimo", "ubuntu-worker-01"], families), ["mimo"])
+        self.assertEqual(rc.families_of(["mimo", "claude"], families), ["anthropic", "mimo"])
+
+    def test_an_undeclared_family_stands_alone(self):
+        self.assertEqual(rc.families_of(["codex", "gemini"], {}), ["seat:codex", "seat:gemini"])
+
+    def test_a_malformed_registry_yields_no_families(self):
+        for data in (None, [], {"seats": []}, {"seats": {"x": "y"}}):
+            self.assertEqual(rc.seat_families(data), {}, data)
+
+
 if __name__ == "__main__":
     unittest.main()

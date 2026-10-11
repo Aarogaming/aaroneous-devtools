@@ -244,6 +244,49 @@ def canonical_reviewer_seat(name):
     return next(iter(seats)) if len(seats) == 1 else None
 
 
+def _hyphenated(text):
+    """Lower-case alphanumeric runs joined by hyphens: 'Ubuntu Worker 01', 'ubuntu_worker_01' and 'ubuntu-worker-01' agree."""
+    return "-".join(t for t in re.split(r"[^a-z0-9]+", str(text).strip().lower()) if t)
+
+
+def registered_seat(label, registered):
+    """The registered multi-word seat `label` names as a whole hyphen-delimited run, or None. `seat_names` recognises a
+    seat by its first word, which turns 'ubuntu-worker-01' into the unknown seat 'ubuntu' (so its signed accepts never
+    verified); this matches the registry's own spelling. A label naming two different registered seats is ambiguous and
+    returns None, failing closed. 'xubuntu-worker-01' and 'ubuntu-worker-011' name nothing."""
+    if not registered:
+        return None
+    flat = "-" + _hyphenated(label) + "-"
+    hits = {seat for seat in registered if "-" in _hyphenated(seat) and "-" + _hyphenated(seat) + "-" in flat}
+    return next(iter(hits)) if len(hits) == 1 else None
+
+
+def resolve_seat(label, registered=None):
+    """The seat a reviewer label names: the registered multi-word seat if it names one exactly, else the legacy canonical seat."""
+    return registered_seat(label, registered) or canonical_reviewer_seat(label)
+
+
+FAMILY_LABEL = re.compile(r"[a-z][a-z0-9-]{0,31}")
+
+
+def seat_families(identities_data):
+    """{seat: model family} for the seats that declare a well-formed `family` in the identities file."""
+    seats = identities_data.get("seats") if isinstance(identities_data, dict) else None
+    out = {}
+    if isinstance(seats, dict):
+        for seat, entry in seats.items():
+            family = entry.get("family") if isinstance(entry, dict) else None
+            if isinstance(family, str) and FAMILY_LABEL.fullmatch(family):
+                out[seat] = family
+    return out
+
+
+def families_of(accept_seats, families):
+    """The distinct model families behind the accepting seats. A seat with no declared family stands alone (its own name), so
+    the rule bites only where families are declared and equal: mimo and ubuntu-worker-01 are the same model."""
+    return sorted({(families or {}).get(seat) or f"seat:{seat}" for seat in accept_seats})
+
+
 def independent(record):
     """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
     ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
@@ -252,7 +295,7 @@ def independent(record):
     return not (seat_names(record["reviewer"]) & implementers)
 
 
-def evaluate(head, merge_base, records, is_ancestor):
+def evaluate(head, merge_base, records, is_ancestor, registered=None):
     """Pure coverage decision for one PR head.
 
     ``is_ancestor(a, b)`` says whether commit a is an ancestor of commit b. A delta accept extends
@@ -324,7 +367,7 @@ def evaluate(head, merge_base, records, is_ancestor):
         "reasons": reasons,
         "accepts_at_head": len(at_head),
         "counted": counted,
-        "accept_seats": sorted({canonical_reviewer_seat(r["reviewer"]) for r in counted if canonical_reviewer_seat(r["reviewer"])}),
+        "accept_seats": sorted({resolve_seat(r["reviewer"], registered) for r in counted if resolve_seat(r["reviewer"], registered)}),
     }
 
 
@@ -423,11 +466,13 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
     if not repo:
         raise ValueError("snapshot needs a top-level 'repo' (OWNER/NAME) naming the subject repository")
     rows = []
+    registered = set(keys["seats"]) if isinstance(keys, dict) and isinstance(keys.get("seats"), dict) else None
+    families = seat_families(keys) if isinstance(keys, dict) else {}
     for pr in snapshot["prs"]:
         parsed, problems, legacy = parse_attestations(pr.get("comments", []))
         allowed = attest_sig.allowed_signers(keys) if keys else ""
         for record in parsed:
-            canon = canonical_reviewer_seat(record["reviewer"])
+            canon = resolve_seat(record["reviewer"], registered)
             principal = canon or record["reviewer"]
             record["verified"] = bool(record.get("_sig") and canon) and attest_sig.verify(
                 record["_canon"], record["_sig"], principal, allowed
@@ -464,7 +509,7 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                     f"{sorted(seat_names(record['reviewer']) & implied)} as an implementer (branch prefix or "
                     "commit trailer) and the attestation's implementers list does not")
             records.append(dict(record, implementers=list(record["implementers"]) + extra) if extra else record)
-        decision = evaluate(pr["head"], pr["merge_base"], records, ancestry)
+        decision = evaluate(pr["head"], pr["merge_base"], records, ancestry, registered)
         decision["reasons"] = decision["reasons"] + conflicts
         loose = unattributed_commits(pr.get("commit_log"), pr.get("branch"))
         if loose:
@@ -484,6 +529,7 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                 "covered": decision["covered"],
                 "reasons": decision["reasons"],
                 "accept_seats": decision["accept_seats"],
+                "accept_families": families_of(decision["accept_seats"], families),
                 "counted_verdicts": len(decision["counted"]),
                 "verdicts_missing_evidence": [r.get("comment") for r in decision["counted"] if not r.get("commands")],
                 "structured_attestations": len(structured),

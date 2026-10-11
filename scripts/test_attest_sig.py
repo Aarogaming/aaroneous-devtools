@@ -171,6 +171,12 @@ class IdentitiesFileIsValidated(unittest.TestCase):
         found = self.problems({"owner": ["Aarogaming"], "seats": {"claude": {"logins": ["aarogaming"]}}})
         self.assertTrue(any("shared owner login" in p for p in found), found)
 
+    def test_a_declared_family_must_be_a_plain_lower_case_label(self):
+        self.assertEqual(self.problems({"seats": {"claude": {"family": "anthropic"}}}), [])
+        for bad in ("Anthropic", "", "a b", "1x", 7, ["x"], "x" * 33, "a\nb"):
+            found = self.problems({"seats": {"claude": {"family": bad}}})
+            self.assertTrue(any("family" in p for p in found), (bad, found))
+
     def test_seat_names_and_keys_must_be_plain(self):
         self.assertTrue(self.problems({"seats": {"claude\nmimo": {"keys": []}}}))
         self.assertTrue(self.problems({"seats": {"Claude": {"keys": []}}}))
@@ -225,6 +231,47 @@ class IdentitiesFileIsValidated(unittest.TestCase):
                 with self.assertRaises(SystemExit) as raised:
                     loader(path)
                 self.assertIn("shared owner login", str(raised.exception))
+
+
+@unittest.skipUnless(HAVE_KEYGEN, "ssh-keygen not available")
+class FamilyIndependenceEndToEnd(unittest.TestCase):
+    """Rule 2 end to end, with real signatures: a multi-word seat's accept verifies, and two seats of one model are one family."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.keys = {name: make_key(cls.tmp, name) for name in ("mimo", "ubuntu-worker-01", "codex")}
+        cls.identities = {"seats": {
+            "mimo": {"logins": [], "keys": [cls.keys["mimo"][1]], "family": "mimo"},
+            "ubuntu-worker-01": {"logins": [], "keys": [cls.keys["ubuntu-worker-01"][1]], "family": "mimo"},
+            "codex": {"logins": [], "keys": [cls.keys["codex"][1]], "family": "openai"},
+        }}
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def row(self, *reviewers):
+        comments = []
+        for reviewer in reviewers:
+            rec = record(reviewer=reviewer)
+            seat = rc.resolve_seat(reviewer, set(self.identities["seats"]))
+            comments.append(comment(rec, at.sign(at.canonical(rec), self.keys[seat][0])))
+        snapshot = {"repo": "o/r", "prs": [{"number": 7, "head": H1, "merge_base": MB, "comments": comments}]}
+        return rc.report_snapshot(snapshot, None, None, self.identities, True)[0]
+
+    def test_a_signed_accept_from_a_multi_word_seat_verifies_and_counts_under_its_registered_name(self):
+        row = self.row("ubuntu-worker-01")
+        self.assertEqual((row["signed_attestations"], row["accept_seats"]), (1, ["ubuntu-worker-01"]))
+
+    def test_two_seats_of_one_model_are_two_seats_but_one_family(self):
+        row = self.row("mimo", "ubuntu-worker-01")
+        self.assertEqual(row["accept_seats"], ["mimo", "ubuntu-worker-01"])
+        self.assertEqual(row["accept_families"], ["mimo"])
+
+    def test_seats_of_different_models_are_two_families(self):
+        row = self.row("mimo", "codex")
+        self.assertEqual(row["accept_families"], ["mimo", "openai"])
 
 
 if __name__ == "__main__":

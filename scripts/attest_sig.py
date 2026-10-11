@@ -58,6 +58,9 @@ def plain_login(value):
     return isinstance(value, str) and bool(value) and value == value.strip() and not any(c.isspace() for c in value)
 
 
+FAMILY_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
+
+
 def validate_identities(data):
     """Problems with an identities file, as sentences; an empty list means it is usable. The file decides who counts as
     an independent reviewer, so a malformed entry must stop the tool rather than be read charitably. Probes on the old
@@ -98,6 +101,9 @@ def validate_identities(data):
         for key in keys:
             if not valid_key(key):
                 problems.append(f"{seat}: key {str(key)[:40]!r} is not '<known key type> <base64>'")
+        family = entry.get("family") if isinstance(entry, dict) else None
+        if family is not None and (not isinstance(family, str) or FAMILY_NAME.fullmatch(family) is None):
+            problems.append(f"{seat}: family {family!r} must be lower-case letters, digits or '-', starting with a letter (at most 32)")
     return problems
 
 

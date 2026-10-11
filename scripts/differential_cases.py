@@ -140,6 +140,7 @@ ODD = {
     "base_tip": ["t" * 40, "", None, 12, "short"],
     "head": ["h" * 40, "abc", ""],
     "accept_seats": [["a", "b"], ["a", "a"], ["", ""], [], "ab", None, ["a", None], ["claude", "codex", "x"], [" a ", "a"]],
+    "accept_families": [["a", "b"], ["a", "a"], ["", ""], [], "ab", None, ["a", None], [" a ", "a"], ["google", "openai"]],
     "covered": [True, False, None, 1, "yes"],
     "threads_open": [0, 1, 3, None, False, True, 0.0, "0", -1],
     "standing_changes_requested": [True, False, None, 0, "no"],
