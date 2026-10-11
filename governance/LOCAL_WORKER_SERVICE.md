@@ -16,7 +16,7 @@ This service makes the PC an unattended Rust support-work processor. It polls a 
 
 Local model dispatch is allowed only during minutes 06–20 and 41–50. Requests have a 120-second timeout, leaving a margin before the hourly reviews. All local worker ticks acquire the same exclusive `review.lock` used by native multithreader review. The Codex audit is instructed to acquire that reservation for its complete deeper review and defer if it cannot. Quiet windows prevent starts around the scheduled slots; the shared reservation also covers longer reviews. Other Ollama clients do not participate in this lock; route cooperating agents through this worker.
 
-The worker skips evidence referenced by Claimed or Review queue rows, including quoted directory/** scopes. This is a conservative textual scope check, not a full Markdown/glob parser. Product source is read-only. All proposed code stays inside JSON artifacts, is explicitly unverified, and needs owner review and Aaroneous's native gates before adoption.
+The worker skips evidence referenced by Claimed or Review queue rows, including quoted directory/** scopes. This is a conservative textual scope check, not a full Markdown/glob parser. Product source is read-only. All proposed code stays inside JSON artifacts, is explicitly unverified, and needs independent review and Aaroneous's native gates before adoption.
 
 ## Installed runtime
 

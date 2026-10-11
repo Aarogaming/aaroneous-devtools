@@ -111,7 +111,7 @@ For a given PR head commit, before anything merges it automatically:
 2a. **Base is the repository's default branch.** A PR stacked on a
     non-default base (a sequencing branch like `codex/foundry-transition`)
     is never auto-merge-eligible, regardless of path or trust status —
-    stacked-landing sequencing stays an explicit owner or author-seat
+    stacked-landing sequencing stays an explicit author-seat
     decision, matching the steward-grant precedent in `#44`.
 3. **≥2 independent accept verdicts** at that exact head, from reviewer
    seats that are not the implementer and not each other (the honour-system
@@ -288,9 +288,10 @@ existed:
 
 - Self-certification is still banned. An implementer's own "looks good to
   me" never counts toward condition 3, automated or not.
-- `Aarogaming/aaroneous` stays entirely owner-gated, with no path or
-  category that becomes automatic under this document — that's a
-  permanent floor, revisit only by explicit owner decision recorded here.
+- `Aarogaming/aaroneous` stays owner-gated under this document — a phase
+  boundary, not a permanent floor (Scope amendment, owner decision
+  2026-10-11): it lifts per `proposals/OWNER_DELEGATION_LADDER.md` R5, by a
+  recorded graduation decision.
 - A human can still merge anything by hand at any time; this policy only
   adds a path that doesn't require them to.
 - The circuit breaker, once tripped by any party for any reason, blocks

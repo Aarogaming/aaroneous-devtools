@@ -18,7 +18,7 @@ truth. An empty field is a defect in the review.
 
 ```text
 REVIEW PACKET
-Seat / agent:        <Claude | Codex | Gemini/Antigravity | owner | other>
+Seat / agent:        <Claude | Codex | Gemini/Antigravity | MiMo | ubuntu-worker-01 | other>
 Implementer seat:    <who wrote the change>       Independent?  yes | no (why)
 Subject:             <repo>#<PR> or <lane ID>, head commit <full or 8+ char hash>
 Base / stacked on:   <base ref; list unmerged parents>

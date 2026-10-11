@@ -2,7 +2,7 @@
 
 Why: every seat posts under one shared GitHub login, so a pasted attestation block is indistinguishable
 from a real one. Unsigned coverage is therefore "attested-only". A signed attestation proves the seat
-holding the private key made the verdict. This is the owner-run setup; no network service is involved.
+holding the private key made the verdict. This is a self-service setup (see SEAT_APPS.md); no network service is involved.
 
 ## One-time, per seat (run on the machine where that seat works)
 
@@ -15,7 +15,7 @@ cat ~/.ssh/aaroneous_attest_SEAT.pub
 
 Replace `SEAT` with `claude`, `mimo`, `codex` or `gemini`. Keep the private key on that seat's machine only.
 
-## Register the public key (a reviewed PR, owner-approved)
+## Register the public key (a reviewed PR)
 
 Add the **public** key line (`ssh-ed25519 AAAA... comment`) to that seat's `keys` list in
 `governance/identities.json`:
@@ -51,6 +51,6 @@ mapped login), `attested-only` (unsigned block; spoofable while seats share a lo
 ## Switching enforcement on
 
 1. All four seats have registered keys and have posted at least one signed verdict.
-2. The owner turns on `--require-signatures` in the steward and merge gate.
+2. The `--require-signatures` switch is flipped in the steward and merge gate via the settings layer (OWNER_DELEGATION_LADDER.md R2/R4; automation-debt: toggle mechanism).
 
 Until then unsigned verdicts still count, and a pasted block can be mistaken for a seat's verdict.

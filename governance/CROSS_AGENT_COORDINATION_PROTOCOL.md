@@ -18,7 +18,8 @@ awareness as a direct result: not concealment, just that nothing prompted
 opening this repo. The owner has named two real fixes — make this repo
 public so a direct pointer from Product always resolves, or build an actual
 sync/notification mechanism between the two repos — and has not chosen
-between them yet; this is still an owner decision, not something to resolve
+between them yet; this is a reserved decision (`OWNER_DELEGATION_LADDER.md`
+R4; automation-debt: cross-repo sync selection), not something to resolve
 unilaterally. Until it's made, the proposed mitigation is a lighter one: a
 nudge in Product's own PR template toward checking/logging a lane here for
 substantial work, which doesn't require Product to assume this repo is
@@ -63,9 +64,9 @@ produced this repo's history:
    discards dirty work someone else should look at.
 3. When you finish (or hand off), update the row with what you actually did,
    the verification evidence (see the standing rule above), and the next
-   owner if the work isn't fully closed.
+   claimant if the work isn't fully closed.
 4. No self-certification: your own "Done" on your own claim is not
-   acceptance. A different agent or the owner re-verifies before a row is
+   acceptance. A different agent re-verifies before a row is
    treated as closed. This has always been the queue's stated intent
    ("No self-certification or automatic merge authority," in the table's own
    header); it is now also mechanically true for anything that touches
@@ -114,8 +115,10 @@ any other governance change.
 
 For a *cloud* agent session that's misbehaving (not the local autonomous
 pipeline), the mechanism is blunter and currently manual: stop dispatching
-new work to it, say so in the coordination queue with the reason, and let
-the owner decide whether/when to resume. If this keeps being needed, that's
+new work to it, say so in the coordination queue with the reason, and record
+a resume-decision request for independent seat adjudication
+(`OWNER_DELEGATION_LADDER.md` R4; automation-debt: session-resume
+adjudication until R4 lands). If this keeps being needed, that's
 a sign this document needs a real mechanical equivalent for cloud sessions
 too — flag it rather than working around the gap.
 

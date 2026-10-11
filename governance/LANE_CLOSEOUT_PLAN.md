@@ -41,7 +41,7 @@ Subtasks:
 4. Label historical prototype audit sections and distinguish delivery from
    owner acceptance. Verify links, strict UTF-8/no BOM/LF and diff checks.
 
-Reviewer: repository owner. Retirement: remove stale current-tense assertions,
+Reviewer: an independent seat. Retirement: remove stale current-tense assertions,
 retain historical evidence. No new scheduling behavior is authorized.
 
 ### C24 / M39: packet utility server lifecycle
@@ -50,7 +50,7 @@ Exact initial files: foundation/crates/maintenance_ui/src/main.rs;
 new foundation/crates/maintenance_ui/src/http.rs;
 foundation/crates/maintenance_ui/tests/http_lifecycle.rs;
 contracts/maintenance-utility-v1.md; governance/UTILITY.md.
-An owner may narrow this scope when claiming, but must record any expansion.
+A claimant may narrow this scope when claiming, but must record any expansion.
 
 Subtasks:
 
@@ -65,15 +65,15 @@ Subtasks:
    and shutdown remain responsive. Run utility/workspace tests, strict Clippy,
    formatting and lifecycle smoke; update the contract. Do not deploy until gates pass.
 
-Reviewer: repository owner; independent technical review required before closure.
+Reviewer: an independent seat; independent technical review required before closure.
 Retirement: replace unbounded lifecycle paths without changing product authority.
 
 ## Follow-on portfolio briefs (not Ready claims)
 
-- M34: one independent reviewer/owner records a verdict per old lane, cited
+- M34: one independent reviewer records a verdict per old lane, cited
   revision and gate evidence. Accept a delivered bounded slice only where its
   acceptance criteria pass; explicitly identify blocking corrections. Mark
-  that old row Done only after this decision. Do not equate owner's request to
+  that old row Done only after this decision. Do not equate the request to
   organize work with seven acceptance verdicts. Queue metadata only; no source edits.
 - M36: same-origin authenticated registrar/dashboard integration. Depends on
   C19/C15 acceptance. Claim GUI and registrar integration files separately;

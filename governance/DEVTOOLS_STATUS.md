@@ -69,7 +69,7 @@ C24 server lifecycle hardening and M34's per-lane acceptance decisions.
 The following historical evidence remains applicable; queue statuses are current.
 
 1. Owner sign-off remains for C10-C13, C15, C16 and C19. Technical pre-review of
-   C16/C19 is useful evidence, not a substitute for the reserved owner decision.
+   C16/C19 is useful evidence, not a substitute for the reserved decision.
 2. Preserve unrelated `foundation_cli/src/dogfood.rs` changes and untracked
    `scripts/` until a named owner hands them over and verifies them.
 3. Older README, operating-model and application-design passages describe the
@@ -93,4 +93,4 @@ follow those foundations. See the maturity plan for bounded acceptance gates.
 
 Maintain this report when evidence materially changes, not after every poll.
 Each update identifies the source revision, verification, deployment limits and
-pending owner decisions. Do not turn this document into a second ownership queue.
+pending reserved decisions. Do not turn this document into a second ownership queue.
