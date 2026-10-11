@@ -69,22 +69,34 @@ cannot be registered. This is a safety invariant in code, not a setting.
 
 ## Shared layers cannot loosen the owner's machine
 
-The project and local layers are shared or copied with a repository, so a cloned repository must not be able to loosen the
-permissions on the owner's machine. Unless `permissions.accept_project_allows = true` is set **in the user layer** (it is
-ignored anywhere else):
+The project and local layers are shared or copied with a repository, so a cloned repository must not be able to change
+what the owner's machine does with permissions, destinations or spending. Settings are filtered **while the layers are merged**,
+and each ignored setting produces a warning that names the layer and the path. The file itself still loads.
 
-- `allow` rules from the project or local layer are ignored, with a warning that counts them. `deny` and `ask` rules still apply.
-- A looser `permissions.mode` from those layers is ignored (the mode from the defaults and user layers stays), with a warning. A stricter mode is honoured.
-- Those layers may not change a built-in action's `kind` or `risk`; such a file is refused as a whole. They may add new actions.
+Always ignored from the project and local layers (only the user layer may set them): `permissions.auto_enabled` and
+`permissions.trust_shared_layers`.
 
-Only the permission settings are protected this way. Any other setting that should not be changed by a shared file (limits,
-bind address, model endpoints) is protected by a `locked` entry in the user layer.
+Ignored from those layers unless `permissions.trust_shared_layers = true` is set in the **user** layer:
+
+- `routing` (tiers, the cloud switch, confidence), `models` (backend endpoints and roles), `budgets`, `agent_door`, and
+  `operations.run_without_approval`: where work and data go, what may be spent, what is exposed, what runs unasked;
+- the `kind` and `risk` of an **existing action**, whether built in or added by the user layer (a shared layer may add new
+  actions);
+- `allow` rules (`deny` and `ask` rules still apply) and a looser `permissions.mode` (a stricter mode is honoured).
+
+Everything else (display options, cache sizes, event limits, tightening) can be set freely by shared layers. A setting that
+should never change from a shared file but is not listed here is protected by a `locked` entry in the user layer. The
+effective value that `Loaded::effective()` and the decision engine use is the filtered value; a user interface must show
+the ignored list (`Loaded::warnings`) next to it and must not present an ignored shared setting as active policy.
+
+An action that is not registered is refused before any rule is consulted, so a wildcard or prefix `allow` cannot grant it.
+The floor is checked before that.
 
 ## Settings groups
 
 | Table | Purpose |
 |---|---|
-| `permissions` | `mode`, `auto_enabled`, `accept_project_allows`, `rules` |
+| `permissions` | `mode`, `auto_enabled`, `trust_shared_layers`, `rules` |
 | `actions.<name>` | registry: `kind` (`read`/`write`), `risk` (`low`/`high`, default `high`) |
 | `agent_door` | `enabled`, `token_lifetime_secs`, `rate_per_minute`, `max_body_bytes` |
 | `routing` | `tiers` (software, local, cloud), `cloud_enabled`, `min_confidence` |

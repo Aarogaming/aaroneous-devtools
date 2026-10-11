@@ -44,9 +44,10 @@ impl Mode {
 pub struct PermissionsSection {
     pub mode: Mode,
     pub auto_enabled: bool,
-    /// Honour `allow` rules, a looser mode and changes to built-in actions that come from the shared project or local
-    /// layers. Takes effect only when set in the user layer, so a cloned repository cannot loosen the owner's machine.
-    pub accept_project_allows: bool,
+    /// Honour `allow` rules, a looser mode, routing, model destinations, budgets, exposure and reclassified actions
+    /// that come from the shared project or local layers. Takes effect only when set in the user layer, so a cloned
+    /// repository cannot loosen the owner's machine.
+    pub trust_shared_layers: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

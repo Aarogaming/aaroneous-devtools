@@ -174,7 +174,7 @@ fn deny_beats_ask_beats_allow_whichever_layer_wrote_them() {
 fn a_higher_layer_can_add_rules_but_not_remove_a_lower_layers_deny() {
     let loaded = load(&[
         user(
-            "[permissions]\naccept_project_allows = true\nrules = [\"deny seat:* run_operation\"]\n",
+            "[permissions]\ntrust_shared_layers = true\nrules = [\"deny seat:* run_operation\"]\n",
         ),
         local("[permissions]\nrules = [\"allow seat:* run_operation\"]\n"),
     ]);
@@ -333,7 +333,7 @@ fn auto_mode_is_ignored_unless_the_user_layer_enabled_it() {
 fn a_higher_layer_overrides_a_lower_one_and_the_effective_view_names_the_layer() {
     let loaded = load(&[
         user("[models.backends.local]\nmodel = \"other:7b\"\n"),
-        local("[agent_door]\nrate_per_minute = 10\n"),
+        local("[ui]\ntheme = \"dark\"\n"),
     ]);
     let view = loaded.effective();
     let find = |path: &str| {
@@ -343,8 +343,8 @@ fn a_higher_layer_overrides_a_lower_one_and_the_effective_view_names_the_layer()
     };
     assert_eq!(find("models.backends.local.model").layer, LayerKind::User);
     assert_eq!(find("models.backends.local.model").value, "\"other:7b\"");
-    assert_eq!(find("agent_door.rate_per_minute").layer, LayerKind::Local);
-    assert_eq!(find("agent_door.max_body_bytes").layer, LayerKind::Defaults);
+    assert_eq!(find("ui.theme").layer, LayerKind::Local);
+    assert_eq!(find("ui.notification_level").layer, LayerKind::Defaults);
     // Untouched sibling keys survive the merge.
     assert_eq!(
         loaded.config.models.backends["local"].endpoint,
@@ -376,22 +376,20 @@ fn a_locked_key_cannot_be_changed_by_a_higher_layer() {
 #[test]
 fn locking_a_table_locks_everything_under_it_and_a_layer_can_set_its_own_locked_keys() {
     // The locking layer itself may set the key it locks.
-    load(&[user(
-        "locked = [\"agent_door\"]\n[agent_door]\nrate_per_minute = 5\n",
-    )]);
+    load(&[user("locked = [\"cache\"]\n[cache]\nttl_secs = 5\n")]);
     let refused = error(&[
-        user("locked = [\"agent_door\"]\n"),
-        local("[agent_door]\nrate_per_minute = 5\n"),
+        user("locked = [\"cache\"]\n"),
+        local("[cache]\nttl_secs = 5\n"),
     ]);
     assert!(
-        matches!(refused, LoadError::Locked { ref path, .. } if path == "agent_door"),
+        matches!(refused, LoadError::Locked { ref path, .. } if path == "cache"),
         "{refused}"
     );
     // Replacing a locked leaf by a whole table is also caught.
     let refused = error(&[
-        user("locked = [\"agent_door.enabled\"]\n"),
+        user("locked = [\"ui.visualizer.enabled\"]\n"),
         local(
-            "agent_door = { enabled = false, token_lifetime_secs = 100, rate_per_minute = 1, max_body_bytes = 2048 }\n",
+            "ui = { theme = \"dark\", notification_level = \"quiet\", visualizer = { enabled = false, max_fps = 30, fallback_2d_when_model_busy = true } }\n",
         ),
     ]);
     assert!(matches!(refused, LoadError::Locked { .. }), "{refused}");

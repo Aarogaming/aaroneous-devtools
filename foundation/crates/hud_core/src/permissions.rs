@@ -199,6 +199,10 @@ pub fn decide(
     if FLOOR_DENIED.contains(&action) {
         return Decision::new(Verdict::Deny, Reason::Floor);
     }
+    // An action that is not registered is refused before any rule, including a wildcard, can grant it.
+    let Some(definition) = config.actions.get(action) else {
+        return Decision::new(Verdict::Deny, Reason::UnknownAction);
+    };
     let strongest = rules
         .iter()
         .filter(|rule| rule.matches(actor, action, scope))
@@ -215,9 +219,6 @@ pub fn decide(
             },
         );
     }
-    let Some(definition) = config.actions.get(action) else {
-        return Decision::new(Verdict::Deny, Reason::UnknownAction);
-    };
     match definition.kind {
         ActionKind::Read => Decision::new(Verdict::Allow, Reason::ReadDefault),
         ActionKind::Write => match mode {

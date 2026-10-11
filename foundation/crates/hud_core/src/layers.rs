@@ -42,8 +42,28 @@ impl Layer {
 
 pub(crate) const RULES_PATH: &str = "permissions.rules";
 
+/// Settings that only the user layer may ever set: they decide who can loosen what.
+const ALWAYS_OWNER_ONLY: &[&str] = &[
+    "permissions.auto_enabled",
+    "permissions.trust_shared_layers",
+];
+
+/// Settings that decide where work and data go, what may be spent, and what is exposed. A project or local layer
+/// (which travels with a cloned repository) may set them only if the user layer set `permissions.trust_shared_layers`.
+const TRUST_GATED: &[&str] = &[
+    "routing",
+    "models",
+    "budgets",
+    "agent_door",
+    "operations.run_without_approval",
+];
+
 pub(crate) struct Merged {
     pub table: Table,
+    /// Settings ignored because a shared layer may not set them, with the layer and path.
+    pub warnings: Vec<String>,
+    /// True when the user layer set `permissions.trust_shared_layers = true`.
+    pub trust_shared: bool,
     /// Dotted path of every non-table value to the layer that last set it.
     pub provenance: BTreeMap<String, LayerKind>,
     /// Rule texts in layer order (lowest first), each with the layer that wrote it.
@@ -106,6 +126,55 @@ fn merge_into(
     }
 }
 
+fn trusted(merged: &Table, provenance: &BTreeMap<String, LayerKind>) -> bool {
+    merged
+        .get("permissions")
+        .and_then(|permissions| permissions.get("trust_shared_layers"))
+        .and_then(Value::as_bool)
+        == Some(true)
+        && provenance.get("permissions.trust_shared_layers") == Some(&LayerKind::User)
+}
+
+fn remove_path(table: &mut Table, path: &str) -> bool {
+    match path.split_once('.') {
+        None => table.remove(path).is_some(),
+        Some((head, rest)) => match table.get_mut(head) {
+            Some(Value::Table(inner)) => remove_path(inner, rest),
+            _ => false,
+        },
+    }
+}
+
+/// A shared layer may add new actions but not change an action that already exists (built in or added by the user).
+fn strip_reclassification(
+    table: &mut Table,
+    merged: &Table,
+    kind: LayerKind,
+    warnings: &mut Vec<String>,
+) {
+    let Some(Value::Table(layer_actions)) = table.get_mut("actions") else {
+        return;
+    };
+    let Some(Value::Table(known)) = merged.get("actions") else {
+        return;
+    };
+    for (name, definition) in layer_actions.iter_mut() {
+        if !known.contains_key(name) {
+            continue;
+        }
+        if let Value::Table(fields) = definition {
+            for field in ["kind", "risk"] {
+                if fields.remove(field).is_some() {
+                    warnings.push(format!(
+                        "{} settings: `actions.{name}.{field}` ignored; an existing action can only be reclassified in the user settings",
+                        kind.name()
+                    ));
+                }
+            }
+        }
+    }
+}
+
 fn take_lock_list(table: &mut Table, layer: &str) -> Result<Vec<String>, LoadError> {
     let Some(value) = table.remove("locked") else {
         return Ok(Vec::new());
@@ -153,6 +222,7 @@ pub(crate) fn merge(layers: &[(LayerKind, &str)]) -> Result<Merged, LoadError> {
     let mut provenance = BTreeMap::new();
     let mut rules = Vec::new();
     let mut locks: Vec<(String, LayerKind)> = Vec::new();
+    let mut warnings = Vec::new();
     for (kind, text) in layers {
         let mut table: Table = text
             .parse()
@@ -162,6 +232,28 @@ pub(crate) fn merge(layers: &[(LayerKind, &str)]) -> Result<Merged, LoadError> {
             })?;
         let own_locks = take_lock_list(&mut table, kind.name())?;
         let own_rules = take_rules(&mut table, kind.name())?;
+
+        if *kind >= LayerKind::Project {
+            for path in ALWAYS_OWNER_ONLY {
+                if remove_path(&mut table, path) {
+                    warnings.push(format!(
+                        "{} settings: `{path}` ignored; it can only be set in the user settings",
+                        kind.name()
+                    ));
+                }
+            }
+            if !trusted(&merged, &provenance) {
+                for path in TRUST_GATED {
+                    if remove_path(&mut table, path) {
+                        warnings.push(format!(
+                            "{} settings: `{path}` ignored; set `permissions.trust_shared_layers = true` in the user settings to let shared files change it",
+                            kind.name()
+                        ));
+                    }
+                }
+                strip_reclassification(&mut table, &merged, *kind, &mut warnings);
+            }
+        }
 
         let mut touched = Vec::new();
         leaves(&table, "", &mut touched);
@@ -184,8 +276,11 @@ pub(crate) fn merge(layers: &[(LayerKind, &str)]) -> Result<Merged, LoadError> {
         rules.extend(own_rules.into_iter().map(|rule| (*kind, rule)));
         locks.extend(own_locks.into_iter().map(|path| (path, *kind)));
     }
+    let trust_shared = trusted(&merged, &provenance);
     Ok(Merged {
         table: merged,
+        warnings,
+        trust_shared,
         provenance,
         rules,
     })
