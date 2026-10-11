@@ -119,7 +119,10 @@ function, it gets golden-vector tests like the steward does.
   trials** with known answers. Placement is measured, not self-declared.
 - Promotion needs a configured number of outcomes at the current level that were accepted by an independent reviewer,
   with no reversals in a configured window. The reviewer is never the operator, and the owner may veto.
-- Demotion or suspension follows a reversal, a failed verification or a policy breach, and levels decay if unused.
+- Demotion or suspension follows a verified reversal, a failed verification or review, or a policy breach. **Calendar time alone never
+  demotes** (raised by the Gemini seat, entry 71): a seat that is offline for maintenance, or a machine that is only sometimes available,
+  must not lose standing for being idle. After a configured period of inactivity a level is marked *stale*, and the next assignment at that
+  level or above first requires one short revalidation task before the higher-risk work. Staleness is a flag, not a demotion.
 - The evidence is the existing receipts and attestations, so the ledger is derived data that can be recomputed and
   audited, not a new source of truth.
 
@@ -175,7 +178,10 @@ investigate. They are **not** promotion criteria.
   clean reference over answers that work; agreement with tests is how it would show. The owner's taste samples are the
   human spot-check.
 - Review independence: the author, any co-author and any **guide** of the work are never its independent reviewer.
-  An Ubuntu local worker guided by an OpenCode session is a party; the guide cannot be the one who clears it.
+  An Ubuntu local worker guided by an OpenCode session is a party; the guide cannot be the one who clears it. This should be
+  **structural, not a convention**: the contribution envelope (lane C117) would carry `co_authors` and `guides` lists, and the
+  `can_take` and review checks read them (Gemini seat, entry 71). That is a change to another lane's schema, so it is proposed to the
+  envelope's owners, not made here.
 - The thresholds for each level are settings, so a "raise" is a mechanical result of evidence, not a negotiation.
 ## Identity and registration
 
