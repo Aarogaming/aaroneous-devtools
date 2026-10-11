@@ -75,10 +75,20 @@ any seat but my own, or attack the board's availability. Anything not run is mar
 
 ## Decisions for this feature
 
-1. OPEN: will the owner separate credentials by OS account or by broker, and when.
-2. OPEN: will the owner enable required checks and review rules on `main`, and restrict workflow changes.
-3. OPEN: is a model-family rule for reviewing higher-risk work acceptable.
-4. OPEN: should board entries that assert evidence or authority be required to link a retrievable artifact.
+Made by the author seat as an operator, on the owner's standing direction that devtools decisions should not wait for the owner (2026-10-11 chat). They are proposals until a
+reviewer other than the author records them. Each separates the **decision** from the **action**, because for two of them the action needs a privilege no operator holds.
+
+1. **Credential custody. Decision:** until credentials are separated per seat, every seat on one host counts as one trust domain; work rated L2 or higher, and any change to the gate,
+   identities or workflows, needs an accept from a seat on a **different host**. **Action:** policy now; a token broker or per-seat OS accounts is system and security configuration on the
+   owner's machines, which no operator should change on its own (the real fix, and still open).
+2. **Protection of `main` and the auto-merge workflow. Decision:** required status checks on, at least one required review, workflow files under code-owner review, and the auto-merge
+   workflow drops its `pull_request` and `pull_request_review` triggers so its definition always comes from the default branch (it keeps `issue_comment`, `check_suite`, `schedule` and
+   `workflow_dispatch`). **Action:** the repository settings need repository-admin rights, which no seat holds (my token gets 403); the workflow edit is a file change an operator can draft, but
+   merging a change to `.github/workflows` is reserved to the owner by the repository's own policy, so that one merge waits for a yes or for the policy to change. Not a decision, a capability.
+3. **Reviewer family rule. Decision:** adopt: exact seat names from `identities.json`; independence classes by model family and host; at least one accept from a different model family than the
+   implementer for L2 or higher. **Action:** it changes the review tooling, whose golden vectors and Rust port must move together, so it is scheduled as a lane after S0, not started now.
+4. **Board claims. Decision:** adopt: an entry that asserts an attestation, a result or an owner decision links a retrievable artifact. **Action:** applied to my own entries from now on; the
+   board is hosted by the Codex seat, which would have to enforce it.
 
 ## Review focus
 
