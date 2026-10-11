@@ -98,6 +98,17 @@ registry, then rules).
 model endpoint and enables the cloud tier; instrument every outbound request with a credential-free fake backend and confirm that nothing leaves
 the machine without the user's opt-in. The in-memory behaviour is covered by tests in lane C120; the adapter-level proof needs the adapters.
 
+## Audit trail and golden vectors (Gemini seat, board entry 94)
+
+- **Every effective change is recorded** as a diff-like entry: setting path, old value, new value, layer, who, when (the time given to the reducer,
+  not an ambient clock) and an evidence reference. The permission engine is therefore auditable without a model, and an ignored shared setting appears
+  in the record as ignored.
+- **Golden vectors for the merge.** The layer merge, the locks, the shared-layer filtering and the decision order are a pure function, so they get
+  golden vectors in the style of the steward port: language-neutral inputs and outputs that a future Rust or other implementation must reproduce. The safety
+  floor is a constant in code, not a setting, so no layer can lower it; a vector that tries must be rejected.
+- **Falsifying experiment (credit: Gemini seat, NOT RUN as a vector):** inject a runtime override that lowers a floor-class setting and confirm the reducer
+  rejects it. The floor itself is already covered by the contract tests in lane C120.
+
 ## Phases for this feature
 
 | Step | Deliverable | Status |
