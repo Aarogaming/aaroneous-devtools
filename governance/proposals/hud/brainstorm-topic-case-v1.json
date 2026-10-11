@@ -21,7 +21,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/README.md",
-              "revision": "09b57d8f1c1f887e3d7fc1e4298e74d5450ffd36"
+              "revision": "ede489171eaacea8a833289872cd19d20ae53fd8"
             }
           ]
         }
@@ -381,7 +381,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/15-red-team-review.md",
-              "revision": "d0d648b7bea06a1679404e24cb1fae7758ceed9c"
+              "revision": "353a82d253e8be4aa4786bba14040338cad27960"
             }
           ]
         }
@@ -389,6 +389,30 @@
     },
     {
       "id": "event-17",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-16-rolling-window-critique-and-boundaries",
+          "parent": "hud-v2",
+          "title": "Rolling-window pipeline: critique, coverage and boundaries",
+          "question": "A critic's review of the rolling-window pipeline proposal, a map of what the existing pipeline already covers and where it does not, and the boundaries to hold while devtools is rebased onto Aaroneous",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-16",
+            "pr-182"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/16-rolling-window-critique-and-boundaries.md",
+              "revision": "3e006eba5c56bea7498ead20461a74e22ebcbf60"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-18",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -408,7 +432,7 @@
       }
     },
     {
-      "id": "event-18",
+      "id": "event-19",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -428,7 +452,7 @@
       }
     },
     {
-      "id": "event-19",
+      "id": "event-20",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -448,7 +472,7 @@
       }
     },
     {
-      "id": "event-20",
+      "id": "event-21",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -468,7 +492,7 @@
       }
     },
     {
-      "id": "event-21",
+      "id": "event-22",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -488,7 +512,7 @@
       }
     },
     {
-      "id": "event-22",
+      "id": "event-23",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -508,7 +532,7 @@
       }
     },
     {
-      "id": "event-23",
+      "id": "event-24",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -528,7 +552,7 @@
       }
     },
     {
-      "id": "event-24",
+      "id": "event-25",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -548,7 +572,7 @@
       }
     },
     {
-      "id": "event-25",
+      "id": "event-26",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -568,7 +592,7 @@
       }
     },
     {
-      "id": "event-26",
+      "id": "event-27",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -588,7 +612,7 @@
       }
     },
     {
-      "id": "event-27",
+      "id": "event-28",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -608,7 +632,7 @@
       }
     },
     {
-      "id": "event-28",
+      "id": "event-29",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -628,7 +652,7 @@
       }
     },
     {
-      "id": "event-29",
+      "id": "event-30",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -648,7 +672,7 @@
       }
     },
     {
-      "id": "event-30",
+      "id": "event-31",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -668,7 +692,7 @@
       }
     },
     {
-      "id": "event-31",
+      "id": "event-32",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -681,14 +705,34 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/15-red-team-review.md",
-              "revision": "d0d648b7bea06a1679404e24cb1fae7758ceed9c"
+              "revision": "353a82d253e8be4aa4786bba14040338cad27960"
             }
           ]
         }
       }
     },
     {
-      "id": "event-32",
+      "id": "event-33",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-16",
+          "topic": "hud-16-rolling-window-critique-and-boundaries",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 16 (PR #182). A critic's review of the rolling-window pipeline proposal, a map of what the existing pipeline already covers and where it does not, and the boundaries to hold while devtools is rebased onto Aaroneous. Review questions: Is C1/C2 right that attestations cannot be the product-side evidence, and what should the product check instead? | Is B4 (freeze the gate) the right constraint, and does it block anything that cannot wait? | Is a bounded, enforced window the right interpretation of \"rolling\", or is the intent something else?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/16-rolling-window-critique-and-boundaries.md",
+              "revision": "3e006eba5c56bea7498ead20461a74e22ebcbf60"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-34",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -707,7 +751,7 @@
       }
     },
     {
-      "id": "event-33",
+      "id": "event-35",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -726,7 +770,7 @@
       }
     },
     {
-      "id": "event-34",
+      "id": "event-36",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -745,7 +789,7 @@
       }
     },
     {
-      "id": "event-35",
+      "id": "event-37",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -764,7 +808,7 @@
       }
     },
     {
-      "id": "event-36",
+      "id": "event-38",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -783,7 +827,7 @@
       }
     },
     {
-      "id": "event-37",
+      "id": "event-39",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -802,7 +846,7 @@
       }
     },
     {
-      "id": "event-38",
+      "id": "event-40",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -821,7 +865,7 @@
       }
     },
     {
-      "id": "event-39",
+      "id": "event-41",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -840,7 +884,7 @@
       }
     },
     {
-      "id": "event-40",
+      "id": "event-42",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -859,7 +903,7 @@
       }
     },
     {
-      "id": "event-41",
+      "id": "event-43",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -878,7 +922,7 @@
       }
     },
     {
-      "id": "event-42",
+      "id": "event-44",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -897,7 +941,7 @@
       }
     },
     {
-      "id": "event-43",
+      "id": "event-45",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -916,7 +960,7 @@
       }
     },
     {
-      "id": "event-44",
+      "id": "event-46",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -935,7 +979,7 @@
       }
     },
     {
-      "id": "event-45",
+      "id": "event-47",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -954,7 +998,7 @@
       }
     },
     {
-      "id": "event-46",
+      "id": "event-48",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -973,7 +1017,7 @@
       }
     },
     {
-      "id": "event-47",
+      "id": "event-49",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -992,7 +1036,7 @@
       }
     },
     {
-      "id": "event-48",
+      "id": "event-50",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -1011,7 +1055,7 @@
       }
     },
     {
-      "id": "event-49",
+      "id": "event-51",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -1030,7 +1074,7 @@
       }
     },
     {
-      "id": "event-50",
+      "id": "event-52",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -1049,7 +1093,7 @@
       }
     },
     {
-      "id": "event-51",
+      "id": "event-53",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -1068,7 +1112,7 @@
       }
     },
     {
-      "id": "event-52",
+      "id": "event-54",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -1087,7 +1131,7 @@
       }
     },
     {
-      "id": "event-53",
+      "id": "event-55",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -1106,7 +1150,7 @@
       }
     },
     {
-      "id": "event-54",
+      "id": "event-56",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -1125,7 +1169,7 @@
       }
     },
     {
-      "id": "event-55",
+      "id": "event-57",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -1144,7 +1188,7 @@
       }
     },
     {
-      "id": "event-56",
+      "id": "event-58",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -1163,7 +1207,7 @@
       }
     },
     {
-      "id": "event-57",
+      "id": "event-59",
       "event": {
         "type": "relationship",
         "relationship": {

@@ -48,6 +48,7 @@ advisory guild workers.
 | 13 | [Job-card schema, retrieval and plan graphs](13-card-schema-retrieval-and-plan-graphs.md) | [#176](https://github.com/Aarogaming/aaroneous-devtools/pull/176) |
 | 14 | [Operating review: gaps and bottlenecks](14-operating-review-gaps-and-bottlenecks.md) | [#177](https://github.com/Aarogaming/aaroneous-devtools/pull/177) |
 | 15 | [Red-team review](15-red-team-review.md) | [#181](https://github.com/Aarogaming/aaroneous-devtools/pull/181) |
+| 16 | [Rolling-window pipeline: critique, coverage and boundaries](16-rolling-window-critique-and-boundaries.md) | [#182](https://github.com/Aarogaming/aaroneous-devtools/pull/182) |
 
 **Suggested review order:** 14 (where the system hurts today), 15 (what an attacker or a careless operator would do), 01, 02, 03 (foundations), 12 (how everything is built), then
 11 (hosting), 13 (cards, retrieval, plans), 06, 07, 08 (behaviour), 04, 05 (economy), and last 10, 09 (interface). Each document ends with a "Review focus" list, its own decisions and its own "Not verified" list.
@@ -130,6 +131,7 @@ taking work as job cards at its own level (see [07](07-guild-workers-staff-and-i
 | P7 (part), twin | 09 | 3D analogy view, exploration layer, preference log and twin |
 | K1 to K5 | 13 | card schema, structural then lexical then optional vector retrieval, plan graphs with node-level caching |
 | O1 to O8 | 14 | profile the tick, bounded-parallel scans, tick classes, deadlines and escalation, flow metrics, departments, internal affairs |
+| W1 to W6 | 16 | fix the rolling-window text, window manager, finding store, intake quarantine, graduation manifest, product pin and return path |
 | R1 to R5 | 15 | the settings-engine fixes (done), custody and workflow protection, independence classes, digest-bound plans, the untested attacks |
 | H1 to H6 | 11 | election and handoff reducer, qualification, signed certificates, handoff over the wire, failure handling, owner controls |
 | C1 to C4 | 12 | profile metadata, component inventory rings, advisory auditor in CI, first graduation candidate |
@@ -137,7 +139,7 @@ taking work as job cards at its own level (see [07](07-guild-workers-staff-and-i
 
 Each phase is its own lane and review; this set claims no code.
 
-## Where the discussion happens: fifteen parallel topics on the Round Table
+## Where the discussion happens: sixteen parallel topics on the Round Table
 
 Owner direction in chat, 2026-10-10: put this discussion into the existing brainstorm as a series of parallel topics, so all
 the agents can work on it together before any full rebuild. The brainstorm is the local Round Table board (the loopback
@@ -190,6 +192,7 @@ This records chat instructions; it is not an attestation. "OPEN" items are liste
 | Cards are thin pointers with evidence attached by tier; retrieval is structural first; plans are validated graphs | PROPOSED | 13 |
 | Parallel scans, tick classes, departments, internal affairs, per-lane queue files | OPEN | 14 |
 | Credential custody, workflow protection on `main`, model-family independence for higher-risk review, evidence-linked board claims | OPEN | 15 |
+| Boundaries B1 to B10 for the rebase; Stage 4 is automated up to a verified candidate pull request, the product merge keeps its own gate | DECIDED by the author seat as operator, awaiting a recorded review | 16 |
 | Prompts as reviewed files | OPEN | 05 |
 | Twin and exploration scope questions | OPEN | 09 |
 
