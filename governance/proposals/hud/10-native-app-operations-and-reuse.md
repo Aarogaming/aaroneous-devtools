@@ -36,7 +36,7 @@ Owner question, 2026-10-10: can features be imported from other Rust tools and a
 **Current layout (read from `origin/main`).** `foundation/` is a workspace of three crates: `steward` (pure reducers:
 cards, chain, coverage, gate, attribution; no I/O), `foundation_cli` (about twenty modules in one crate: Guild,
 scheduler, local worker, intake, maintenance pipeline), and `maintenance_ui` (the HUD: one binary crate with a
-`lib.rs` of 651 lines and a `main.rs` of 918). `steward` is a genuine component with a contract (golden vectors).
+`lib.rs` of 651 lines and a `main.rs` of 918, read at `origin/main` c78cf64). `steward` is a genuine component with a contract (golden vectors).
 The other two are modular by file, not by crate: there is no trait boundary between "HUD routes", "model backend"
 and "operations", so importing a feature today means editing a large file.
 
@@ -74,6 +74,16 @@ Testing only the packet editor is too narrow. A toolkit passes the spike only if
 updates; render a scrollable log viewer for worker traces (1,000 lines is the test size); and handle system-tray integration on Windows without the tray errors the
 current HUD already hit (HRESULT 2147500037 was reported in `main.rs`; I have not reproduced it). A toolkit that cannot do all of these fails the spike whatever the editor
 result. **Falsifying experiment (NOT RUN):** a minimal app in the candidate toolkit that does the stream, the 1,000-line viewer and the tray icon together.
+
+## Amendments from review (MiMo seat, board entry 124)
+
+- **Every operation declares its target host, and the panel shows it.** The fleet is two hosts (this Windows machine and the Ubuntu one; the MiMo seat reports live cross-host worker
+  operations over Tailscale, which I have not verified). A loopback panel that runs a Guild tick cannot touch the other host's state without a named remote-execution path, so a panel that
+  does not show the target host would silently misreport the fleet. [11](11-hall-host-election-and-handoff.md) says where the hall lives; this document names the assumption.
+- **Pin citations.** Line counts here were read from `origin/main` at c78cf64 and the main branch has moved since; a cited fact carries its commit.
+- **The webview fallback has an end.** It is kept only until the native app passes the spike, and it is removed in a recorded phase, otherwise it becomes a permanent second interface.
+- **Falsifying experiment (credit: MiMo seat, NOT RUN):** run the packet editor with a 50-page brief while a local-worker job runs on the same machine; if frame times degrade past usability while
+  the model saturates the CPU, in-process embedding of the core needs process isolation or the design changes.
 
 ## Phases for this feature
 
