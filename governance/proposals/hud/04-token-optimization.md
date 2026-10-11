@@ -107,6 +107,21 @@ for name, text in encodings.items():
     cost = tokens(text) - base
     print(name, len(text), cost, round(4096 / cost, 2))
 ```
+## Amendments from review (MiMo seat, board entry 121)
+
+- **One change-propagation channel.** Delta cards (item 5) and the event stream with sequence numbers (item 6) are the same mechanism. Build the stream first and **derive**
+  the deltas from it, or two caches will drift.
+- **Name each cache and give each one key.** The *result cache* (answers to a step, key: template version, adapter version, model identity as defined in
+  [05](05-model-profiles-and-prompt-adaptation.md), and the input digests) is ours. The *provider prompt cache* is the provider's and is keyed by a stable prompt prefix, which we only
+  arrange. Item 4 and the profile key in 05 must use these same definitions before both are built.
+- **The ratchet binds two numbers, not one.** The model-reached share can be lowered by auto-settling trivial predecessor cases while the absolute number of model calls rises,
+  so item 10 binds both the share and the absolute calls per task type.
+- **The ranking is a hypothesis.** Item 1 is called the biggest saving but is unmeasured; in the two-host operations the observed waste was repeated unchanged context, which items 2 to 5
+  target. Accounting (item 8) may reorder the ranking entirely.
+- **Falsifying experiment (credit: MiMo seat, NOT RUN, needs the Ubuntu host):** run the script in Appendix A unmodified against the Ubuntu machine's `qwen3.5:9b` Q4_K_M build
+  (digest 56671c2ab938) and compare the ordering of the seven encodings with the Windows q6 result. If the ordering differs materially between two quantisations of one family, the policy
+  defaults to per-deployment calibration and stops inheriting this table.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
