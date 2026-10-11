@@ -68,6 +68,14 @@ overrides allow; a locked key cannot be overridden; an invalid file does not wea
 
 Levels and thresholds, which skills exist, how many outcomes promote, decay, the minimum level per risk class, which events trigger a taste checkpoint, role permissions, quota sizes and profile consent defaults all live in these settings layers, so the owner can retune them later without a release. Requirement R8 in the README is the rule: a default is data, not code.
 
+## Shared layers cannot loosen the owner's machine
+
+Found in self-review while building the first step (lane C120). Project and local settings travel with a repository, so a
+cloned repository must not be able to grant itself permissions. Unless `permissions.accept_project_allows = true` is set in the
+**user** layer (it is ignored elsewhere), `allow` rules and a looser mode from the project and local layers are ignored with a
+warning, and those layers may not reclassify a built-in action. They can still add `deny` and `ask` rules, a stricter mode and
+new actions. Other settings that a shared file must not change are protected by a `locked` entry in the user layer.
+
 ## Phases for this feature
 
 | Step | Deliverable | Status |
