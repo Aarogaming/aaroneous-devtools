@@ -220,17 +220,23 @@
     "notes": []
   },
   {
-    "entries": [
-      {
-        "family": "seat:a",
-        "model": null,
-        "seat": "a",
-        "source": "seat"
-      }
-    ],
-    "families": [
-      "seat:a"
-    ],
+    "entries": [],
+    "families": [],
+    "notes": []
+  },
+  {
+    "entries": [],
+    "families": [],
+    "notes": []
+  },
+  {
+    "entries": [],
+    "families": [],
+    "notes": []
+  },
+  {
+    "entries": [],
+    "families": [],
     "notes": []
   },
   {

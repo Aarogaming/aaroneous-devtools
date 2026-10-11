@@ -532,16 +532,22 @@ class RegisteredSeatsResolveExactly(unittest.TestCase):
     verified; and two seats running one model counted as two independent judges."""
 
     def test_a_registered_multi_word_seat_resolves_to_itself(self):
-        for label in ("ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu_worker_01", "ubuntu-worker-01 (MiMo)", "UBUNTU-WORKER-01"):
+        for label in ("ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu_worker_01", "UBUNTU-WORKER-01"):
             self.assertEqual(rc.resolve_seat(label, REGISTERED), "ubuntu-worker-01", label)
 
-    def test_near_misses_name_nothing_registered(self):
+    def test_a_registered_seat_named_together_with_any_other_seat_is_ambiguous(self):
+        # Codex review of #186: 'ubuntu-worker-01 and codex' resolved to ubuntu-worker-01 and dropped codex.
+        for label in ("ubuntu-worker-01 and codex", "codex, ubuntu-worker-01", "Ubuntu Worker 01 + Gemini",
+                      "ubuntu-worker-01 / Opus 5.5", "ubuntu-worker-01 (MiMo)", "ubuntu-worker-01-codex"):
+            self.assertIsNone(rc.resolve_seat(label, REGISTERED), label)
+
+    def test_near_misses_are_not_the_registered_seat(self):
         for label in ("xubuntu-worker-01", "ubuntu-worker-011", "ubuntu-worker", "worker-01", "ubuntu"):
-            self.assertIsNone(rc.registered_seat(label, REGISTERED), label)
+            self.assertNotEqual(rc.resolve_seat(label, REGISTERED), "ubuntu-worker-01", label)
 
     def test_two_registered_seats_in_one_label_are_ambiguous_and_fail_closed(self):
         registered = REGISTERED | {"ubuntu-worker-02"}
-        self.assertIsNone(rc.registered_seat("ubuntu-worker-01 and ubuntu-worker-02", registered))
+        self.assertIsNone(rc.resolve_seat("ubuntu-worker-01 and ubuntu-worker-02", registered))
 
     def test_without_a_registry_the_legacy_resolution_is_unchanged(self):
         self.assertEqual(rc.resolve_seat("Claude Sonnet 5.5"), "claude")

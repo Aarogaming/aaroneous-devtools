@@ -62,7 +62,8 @@ class Golden(unittest.TestCase):
         results = []
         for c in coverage:
             pairs = {(a, b) for a, b in c["ancestry"]}
-            results.append(rc.evaluate(c["head"], c["merge_base"], c["records"], lambda a, b: a == b or (a, b) in pairs))
+            registered = set(c["registered"]) if "registered" in c else None
+            results.append(rc.evaluate(c["head"], c["merge_base"], c["records"], lambda a, b: a == b or (a, b) in pairs, registered))
         self.assertEqual(results, load("coverage.out.json"))
         audit = load("audit.in.json")
         self.assertEqual(

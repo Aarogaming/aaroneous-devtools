@@ -384,6 +384,20 @@ COVERAGE = [
      "records": [rec(A, reviewer="Codex", implementers=("Claude, Mimo",))], "ancestry": []},
     {"name": "one seat spelled three ways is one accepting seat", "head": A, "merge_base": MB,
      "records": [rec(A, reviewer="Gemini"), rec(A, reviewer="gemini"), rec(A, reviewer="Antigravity")], "ancestry": []},
+    {"name": "a registered multi-word seat is counted under its registered name", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="ubuntu-worker-01"), rec(A, reviewer="Codex")], "ancestry": [],
+     "registered": ["claude", "codex", "ubuntu-worker-01"]},
+    {"name": "a label naming a registered seat and another seat is not a valid accept", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="ubuntu-worker-01 and codex")], "ancestry": [],
+     "registered": ["claude", "codex", "ubuntu-worker-01"]},
+    {"name": "a registered seat beside an unregistered model family is not a valid accept", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="ubuntu-worker-01 / Opus 5.5", implementers=("gemini",))], "ancestry": [],
+     "registered": ["ubuntu-worker-01"]},
+    {"name": "an ambiguous label does not count beside a valid one", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="Gemini / ubuntu-worker-01"), rec(A, reviewer="Codex")], "ancestry": [],
+     "registered": ["claude", "codex", "gemini", "ubuntu-worker-01"]},
+    {"name": "an empty registry changes nothing", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="Codex")], "ancestry": [], "registered": []},
 ]
 
 SEATS = ["Gemini", "gemini", "Gemini/Antigravity", "Antigravity", "Claude Sonnet 5.5", "Claude (steward)",
@@ -394,8 +408,9 @@ SEATS = ["Gemini", "gemini", "Gemini/Antigravity", "Antigravity", "Claude Sonnet
 
 def evaluate_case(case):
     pairs = {(a, b) for a, b in case["ancestry"]}
+    registered = set(case["registered"]) if "registered" in case else None
     return rc.evaluate(case["head"], case["merge_base"], json.loads(json.dumps(case["records"])),
-                       lambda a, b: a == b or (a, b) in pairs)
+                       lambda a, b: a == b or (a, b) in pairs, registered)
 
 
 AUDIT_TICKS = list(range(0, 14))
@@ -499,9 +514,15 @@ INDEPENDENCE = [
     {"name": "the same seat and model twice is one entry", "identities": IDENTITIES,
      "counted": [{"reviewer": "opencode", "model": "mimo-v2.6"}, {"reviewer": "OpenCode", "model": " mimo-v2.6 "}]},
     {"name": "a registered multi-word seat resolves by its whole name", "identities": IDENTITIES,
-     "counted": [{"reviewer": "Ubuntu Worker 01"}, {"reviewer": "ubuntu_worker_01 (qwen)"}]},
+     "counted": [{"reviewer": "Ubuntu Worker 01"}, {"reviewer": "ubuntu_worker_01"}]},
     {"name": "near misses of a registered seat name resolve to nothing registered", "identities": IDENTITIES,
      "counted": [{"reviewer": "xubuntu-worker-01"}, {"reviewer": "ubuntu-worker-011"}]},
+    {"name": "a label naming a registered seat and another registered seat contributes nothing", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01 and codex"}, {"reviewer": "Gemini / ubuntu-worker-01"}]},
+    {"name": "a label naming a registered seat and an unregistered model family contributes nothing", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01 / Opus 5.5"}]},
+    {"name": "a model name beside a registered seat is a second seat, not metadata", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01 (qwen3.8)"}]},
     {"name": "a label naming two registered seats is ambiguous", "identities": {"seats": {"a-b": {}, "c-d": {}}},
      "counted": [{"reviewer": "a-b and c-d"}]},
     {"name": "a malformed registry yields seats standing alone", "identities": [], "counted": [{"reviewer": "claude"}]},

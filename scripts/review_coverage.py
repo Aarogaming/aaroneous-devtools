@@ -249,21 +249,32 @@ def _hyphenated(text):
     return "-".join(t for t in re.split(r"[^a-z0-9]+", str(text).strip().lower()) if t)
 
 
-def registered_seat(label, registered):
-    """The registered multi-word seat `label` names as a whole hyphen-delimited run, or None. `seat_names` recognises a
-    seat by its first word, which turns 'ubuntu-worker-01' into the unknown seat 'ubuntu' (so its signed accepts never
-    verified); this matches the registry's own spelling. A label naming two different registered seats is ambiguous and
-    returns None, failing closed. 'xubuntu-worker-01' and 'ubuntu-worker-011' name nothing."""
-    if not registered:
-        return None
-    flat = "-" + _hyphenated(label) + "-"
-    hits = {seat for seat in registered if "-" in _hyphenated(seat) and "-" + _hyphenated(seat) + "-" in flat}
-    return next(iter(hits)) if len(hits) == 1 else None
+def named_seats(name):
+    """The known seats a string names (seat word, alias or model family), with no fallback: `seat_names` plus nothing."""
+    found = set()
+    for token in (t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t):
+        for seat in KNOWN_SEATS:
+            if token.startswith(seat):
+                found.add(SEAT_NAME_ALIASES.get(seat, seat))
+        for family, seat in MODEL_FAMILY_SEATS.items():
+            if token.startswith(family):
+                found.add(seat)
+    return found
 
 
 def resolve_seat(label, registered=None):
-    """The seat a reviewer label names: the registered multi-word seat if it names one exactly, else the legacy canonical seat."""
-    return registered_seat(label, registered) or canonical_reviewer_seat(label)
+    """The seat a reviewer label names, or None when it names none or more than one. A registered seat is matched by its
+    whole hyphen-delimited name; every other seat the label names (a second registered seat, or a known seat or model family
+    such as `codex` or `Opus`) makes it ambiguous, so `ubuntu-worker-01 and codex` is not read as `ubuntu-worker-01`."""
+    flat = "-" + _hyphenated(label) + "-"
+    hits = sorted(seat for seat in (registered or ()) if _hyphenated(seat) and "-" + _hyphenated(seat) + "-" in flat)
+    if not hits:
+        return canonical_reviewer_seat(label)
+    if len(hits) > 1:
+        return None
+    rest = flat.replace("-" + _hyphenated(hits[0]) + "-", "-", 1)
+    others = named_seats(rest) - {SEAT_NAME_ALIASES.get(hits[0], hits[0])}
+    return None if others else hits[0]
 
 
 FAMILY_LABEL = re.compile(r"[a-z][a-z0-9-]{0,31}")
@@ -397,8 +408,12 @@ def evaluate(head, merge_base, records, is_ancestor, registered=None):
         r
         for r in records
         if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base
-        and canonical_reviewer_seat(r["reviewer"]) is not None
+        and resolve_seat(r["reviewer"], registered) is not None
     ]
+    for r in records:
+        if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base and resolve_seat(r["reviewer"], registered) is None:
+            reasons.append(f"reviewer {r['reviewer']!r} does not name exactly one seat, so its accept counts for no one; "
+                           "name your seat alone and put the model in the record's `model` field")
     # Only a `whole` accept seeds coverage (governance/PLATFORM_SPEC.md section 3: "Delta accepts compose only when
     # chained from a whole-diff accept"). A delta that starts at the merge base reviewed the whole PR diff, but its
     # author must say so by labelling it `whole`; the tool tells them (see the reason below) and does not guess.

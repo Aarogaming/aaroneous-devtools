@@ -64,7 +64,7 @@ for _ in range(int(sys.argv[1]) // 5):
     heads, credited = sr.pushes(prs, previous)
     push_cases.append({"prs": prs, "previous": previous, "out": {"heads": heads, "credited": credited}})
 HEADS = ["a" * 40, "b" * 40, "c" * 40, "d" * 40]
-NAMES = ["claude", "Claude", "claude-sonnet-5-5", "codex", "Gemini", "Antigravity", "mimo", "Qwen", "Claude, Mimo", "someone else", "gemini/antigravity", "Opus 5.5", "sonnet", "gpt-5.5", "Opus/gpt-5.5", "OpenAI Codex"]
+NAMES = ["claude", "Claude", "claude-sonnet-5-5", "codex", "Gemini", "Antigravity", "mimo", "Qwen", "Claude, Mimo", "ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu-worker-01 and codex", "codex, ubuntu-worker-01", "someone else", "gemini/antigravity", "Opus 5.5", "sonnet", "gpt-5.5", "Opus/gpt-5.5", "OpenAI Codex"]
 coverage = []
 for _ in range(int(sys.argv[1]) // 5):
     records = []
@@ -81,8 +81,9 @@ for _ in range(int(sys.argv[1]) // 5):
     merge_base = random.choice(["m" * 40, "m" * 40, "n" * 40, "", "unknown", None])
     head = random.choice(HEADS)
     known = {(a, b) for a, b in pairs}
-    out = rc.evaluate(head, merge_base, records, lambda a, b: a == b or (a, b) in known)
-    coverage.append({"head": head, "merge_base": merge_base, "records": records, "ancestry": pairs, "out": out})
+    registered = random.choice([None, [], ["claude", "codex", "gemini", "ubuntu-worker-01"], ["claude", "mimo", "codex", "ubuntu-worker-01", "ubuntu-worker-02"]])
+    out = rc.evaluate(head, merge_base, records, lambda a, b: a == b or (a, b) in known, set(registered) if registered is not None else None)
+    coverage.append({"head": head, "merge_base": merge_base, "records": records, "ancestry": pairs, "registered": registered, "out": out})
 SEAT_LABELS = ["claude", "Claude", "opencode", "mimo", "ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu_worker_01", "xubuntu-worker-01", "ubuntu-worker-011", "ubuntu-worker-01 and ubuntu-worker-02", "codex", "gpt-5.5", "Opus/gpt-5.5", "Gemini", "", " ", "Qwen", "café", "İ-worker-01", "ubuntu​-worker-01"]
 MODELS = [None, "qwen3.8", "Qwen/Qwen3.8-Coder", "qwenish", "MiMo-V2.6", "mimo", "claude-sonnet-5-5", "gpt-5.5", "gemini-3.8-flash", "brandnew-9", "", "  ", " qwen3.8 ", 7, ["qwen"], "x" * 81, "x" * 80, "a\nb", "café", "org/sub/qwen2", "QWEN-7", "qwen.", "qwen-", "qwen\x00", "Kimi", "mimo ", "mimo\x1f", "\x1cmimo", " qwen3 "]
 REGISTRIES = [

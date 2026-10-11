@@ -11,6 +11,7 @@
 
 use crate::coverage::canonical_reviewer_seat;
 use crate::gate::py_repr_str;
+use crate::seats::{canonical, named_seats};
 use crate::text::strip;
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
@@ -148,26 +149,30 @@ fn hyphenated(text: &str) -> String {
         .join("-")
 }
 
-/// The registered multi-word seat `label` names as a whole hyphen-delimited run, or `None`. `seat_names` recognises a
-/// seat by its first word, which turns `ubuntu-worker-01` into the unknown seat `ubuntu`; this matches the registry's
-/// own spelling. A label naming two registered seats is ambiguous and returns `None`, failing closed.
-#[must_use]
-pub fn registered_seat(label: &str, registered: &BTreeSet<String>) -> Option<String> {
-    let flat = format!("-{}-", hyphenated(label));
-    let mut hits = registered.iter().filter(|seat| {
-        let name = hyphenated(seat);
-        name.contains('-') && flat.contains(&format!("-{name}-"))
-    });
-    match (hits.next(), hits.next()) {
-        (Some(seat), None) => Some(seat.clone()),
-        _ => None,
-    }
-}
-
-/// The seat a reviewer label names: the registered multi-word seat if it names one exactly, else the canonical seat.
+/// The seat a reviewer label names, or `None` when it names none or more than one. A registered seat is matched by its
+/// whole hyphen-delimited name (`ubuntu-worker-01`, never the unknown seat `ubuntu`); every other seat the label names
+/// (a second registered seat, or a known seat or model family such as `codex` or `Opus`) makes it ambiguous, so
+/// `ubuntu-worker-01 and codex` is not silently read as `ubuntu-worker-01`. Fails closed.
 #[must_use]
 pub fn resolve_seat(label: &str, registered: &BTreeSet<String>) -> Option<String> {
-    registered_seat(label, registered).or_else(|| canonical_reviewer_seat(label))
+    let flat = format!("-{}-", hyphenated(label));
+    let hits: Vec<&String> = registered
+        .iter()
+        .filter(|seat| {
+            let name = hyphenated(seat);
+            !name.is_empty() && flat.contains(&format!("-{name}-"))
+        })
+        .collect();
+    match hits.as_slice() {
+        [] => canonical_reviewer_seat(label),
+        [seat] => {
+            let rest = flat.replacen(&format!("-{}-", hyphenated(seat)), "-", 1);
+            let mut others = named_seats(&rest);
+            others.remove(canonical(seat));
+            others.is_empty().then(|| (*seat).clone())
+        }
+        _ => None,
+    }
 }
 
 /// The registered `profile.family` of a seat, if it declares a well-formed one.
@@ -270,7 +275,7 @@ pub fn independence(counted: &[Value], identities: &Value) -> Report {
 
 #[cfg(test)]
 mod tests {
-    use super::{independence, model_family, model_table, registered_seat};
+    use super::{independence, model_family, model_table, resolve_seat};
     use serde_json::json;
     use std::collections::BTreeSet;
 
@@ -313,18 +318,62 @@ mod tests {
             .collect();
         for label in ["ubuntu-worker-01", "Ubuntu Worker 01", "UBUNTU_WORKER_01"] {
             assert_eq!(
-                registered_seat(label, &registered).as_deref(),
+                resolve_seat(label, &registered).as_deref(),
                 Some("ubuntu-worker-01"),
                 "{label}"
             );
         }
+        for label in ["xubuntu-worker-01", "ubuntu-worker-011", "ubuntu-worker"] {
+            assert_ne!(
+                resolve_seat(label, &registered).as_deref(),
+                Some("ubuntu-worker-01"),
+                "{label}: a near miss is not the registered seat"
+            );
+        }
+        assert_eq!(
+            resolve_seat("ubuntu-worker-01 and ubuntu-worker-02", &registered),
+            None
+        );
+    }
+
+    #[test]
+    fn a_label_naming_a_registered_seat_and_another_seat_is_ambiguous() {
+        // Codex review of #186: "ubuntu-worker-01 and codex" resolved to ubuntu-worker-01 and dropped codex.
+        let registered: BTreeSet<String> = [
+            "claude",
+            "codex",
+            "gemini",
+            "ubuntu-worker-01",
+            "ubuntu-worker-02",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
         for label in [
-            "xubuntu-worker-01",
-            "ubuntu-worker-011",
-            "ubuntu-worker",
+            "ubuntu-worker-01 and codex",
+            "codex, ubuntu-worker-01",
+            "Ubuntu Worker 01 + Gemini",
+            "ubuntu-worker-01 / Opus 5.5",
             "ubuntu-worker-01 and ubuntu-worker-02",
+            "ubuntu-worker-01-codex",
+            // the model belongs in the record's `model` field, not the label: a model name that is also a seat alias is a second seat
+            "Ubuntu Worker 01 (qwen3.8)",
         ] {
-            assert_eq!(registered_seat(label, &registered), None, "{label}");
+            assert_eq!(resolve_seat(label, &registered), None, "{label}");
+        }
+        for (label, seat) in [
+            ("ubuntu-worker-01", "ubuntu-worker-01"),
+            ("Ubuntu Worker 01", "ubuntu-worker-01"),
+            ("UBUNTU_WORKER_01", "ubuntu-worker-01"),
+            ("claude-sonnet-5-5", "claude"),
+            ("Claude Sonnet 5.5", "claude"),
+            ("gpt-5.5", "codex"),
+        ] {
+            assert_eq!(
+                resolve_seat(label, &registered).as_deref(),
+                Some(seat),
+                "{label}"
+            );
         }
     }
 

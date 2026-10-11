@@ -174,7 +174,7 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
 
 fn coverage_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
     use std::collections::BTreeSet;
-    use steward::coverage::{Record, evaluate};
+    use steward::coverage::Record;
     let strings = |v: &Value| -> Vec<String> {
         v.as_array()
             .map(|l| {
@@ -211,11 +211,20 @@ fn coverage_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             .collect();
         let is_ancestor =
             |a: &str, b: &str| a == b || pairs.contains(&(a.to_owned(), b.to_owned()));
-        let d = evaluate(
+        let registered: std::collections::BTreeSet<String> = case["registered"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|s| s.as_str().unwrap().to_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let d = steward::coverage::evaluate_in(
             case["head"].as_str().unwrap(),
             case["merge_base"].as_str(),
             &records,
             &is_ancestor,
+            &registered,
         );
         let want = &case["out"];
         let counted: Vec<Value> = d.counted.iter().map(|&i| originals[i].clone()).collect();

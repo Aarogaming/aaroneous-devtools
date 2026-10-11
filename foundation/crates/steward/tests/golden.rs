@@ -321,7 +321,7 @@ fn check_independence() -> Result<(), String> {
 
 fn check_coverage() -> Result<(), String> {
     use std::collections::BTreeSet;
-    use steward::coverage::{Record, evaluate};
+    use steward::coverage::Record;
     let mut actual = Vec::new();
     for case in load("coverage.in.json")
         .as_array()
@@ -358,11 +358,13 @@ fn check_coverage() -> Result<(), String> {
             .unwrap_or_default();
         let is_ancestor =
             |a: &str, b: &str| a == b || pairs.contains(&(a.to_owned(), b.to_owned()));
-        let decision = evaluate(
+        let registered: BTreeSet<String> = string_list(&case["registered"]).into_iter().collect();
+        let decision = steward::coverage::evaluate_in(
             case["head"].as_str().unwrap_or_default(),
             case["merge_base"].as_str(),
             &records,
             &is_ancestor,
+            &registered,
         );
         actual.push(json!({
             "covered": decision.covered,
@@ -573,8 +575,8 @@ const MIN_CASES: [(&str, usize); 17] = [
     ("receipts", 19),
     ("stalls", 9),
     ("pushes", 7),
-    ("coverage", 16),
-    ("independence", 17),
+    ("coverage", 21),
+    ("independence", 20),
     ("gate_plan", 13),
     ("gate_ci", 7),
     ("gate_breaker", 7),
