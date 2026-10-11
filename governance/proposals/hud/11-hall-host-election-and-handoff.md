@@ -12,7 +12,7 @@ relations:
 checked-by: none yet (see "Not verified")
 ---
 
-# Hall host election and handoff (proposal 11, revision 2)
+# Hall host election and handoff (proposal 11)
 
 Contribution-ID: C119/claude-hud-v2-proposal-v1 (part 11 of the set indexed in [README](README.md)).
 Author seat: Claude Sonnet 5.5 (identity is a round-table roster claim, not cryptographic).
