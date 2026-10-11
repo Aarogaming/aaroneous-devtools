@@ -173,7 +173,9 @@ fn deny_beats_ask_beats_allow_whichever_layer_wrote_them() {
 #[test]
 fn a_higher_layer_can_add_rules_but_not_remove_a_lower_layers_deny() {
     let loaded = load(&[
-        user("[permissions]\nrules = [\"deny seat:* run_operation\"]\n"),
+        user(
+            "[permissions]\naccept_project_allows = true\nrules = [\"deny seat:* run_operation\"]\n",
+        ),
         local("[permissions]\nrules = [\"allow seat:* run_operation\"]\n"),
     ]);
     assert_eq!(

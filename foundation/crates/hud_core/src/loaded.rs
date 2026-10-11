@@ -1,9 +1,9 @@
 //! A fully merged, validated configuration, and the manager that keeps the last good one.
 
-use crate::config::{Config, Mode};
+use crate::config::{ActionDef, Config, Mode};
 use crate::error::LoadError;
 use crate::layers::{Layer, LayerKind, merge};
-use crate::permissions::{Actor, Decision, FLOOR_DENIED, Rule, decide};
+use crate::permissions::{Actor, Decision, FLOOR_DENIED, Rule, Verdict, decide};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use toml::Value;
@@ -29,6 +29,22 @@ pub struct Loaded {
     rules: Vec<Rule>,
     provenance: BTreeMap<String, LayerKind>,
     table: toml::Table,
+}
+
+fn mode_of(table: &toml::Table) -> Option<Mode> {
+    table
+        .get("permissions")?
+        .get("mode")?
+        .clone()
+        .try_into()
+        .ok()
+}
+
+fn from_shared_layer(provenance: &BTreeMap<String, LayerKind>, path: &str) -> bool {
+    matches!(
+        provenance.get(path),
+        Some(LayerKind::Project | LayerKind::Local)
+    )
 }
 
 fn flatten(value: &Value, prefix: &str, out: &mut Vec<(String, String)>) {
@@ -103,7 +119,60 @@ impl Loaded {
         }
 
         let mut warnings = Vec::new();
+        let trust_shared = config.permissions.accept_project_allows
+            && merged.provenance.get("permissions.accept_project_allows") == Some(&LayerKind::User);
+        if config.permissions.accept_project_allows && !trust_shared {
+            warnings.push(
+                "`permissions.accept_project_allows` is ignored: it must be set in the user settings".to_owned(),
+            );
+        }
         let mut effective_mode = config.permissions.mode;
+        if !trust_shared {
+            // A cloned repository's shared settings must not loosen the owner's machine.
+            let defaults_only = merge(&sources[..1])?;
+            let defaults_config: Config = Value::Table(defaults_only.table).try_into().map_err(
+                |error: toml::de::Error| LoadError::Invalid {
+                    message: error.message().to_owned(),
+                },
+            )?;
+            for (name, built_in) in &defaults_config.actions {
+                let changed: Option<&ActionDef> =
+                    config.actions.get(name).filter(|now| *now != built_in);
+                if changed.is_some()
+                    && (from_shared_layer(&merged.provenance, &format!("actions.{name}.kind"))
+                        || from_shared_layer(&merged.provenance, &format!("actions.{name}.risk")))
+                {
+                    return Err(LoadError::Invalid {
+                        message: format!(
+                            "project or local settings may not reclassify the built-in action `{name}`; set it in the user settings or turn on `permissions.accept_project_allows` there"
+                        ),
+                    });
+                }
+            }
+            if from_shared_layer(&merged.provenance, "permissions.mode") {
+                let trusted: Vec<(LayerKind, &str)> = sources
+                    .iter()
+                    .copied()
+                    .filter(|(kind, _)| *kind <= LayerKind::User)
+                    .collect();
+                if let Some(base_mode) = mode_of(&merge(&trusted)?.table)
+                    && base_mode.looseness() < effective_mode.looseness()
+                {
+                    effective_mode = base_mode;
+                    warnings.push(
+                        "project or local settings tried to loosen `permissions.mode`; ignored (set it in the user settings, or turn on `permissions.accept_project_allows` there)".to_owned(),
+                    );
+                }
+            }
+            let before = rules.len();
+            rules.retain(|rule| !(rule.verdict == Verdict::Allow && rule.layer > LayerKind::User));
+            if rules.len() != before {
+                warnings.push(format!(
+                    "{} allow rule(s) from project or local settings ignored; turn on `permissions.accept_project_allows` in the user settings to honour them",
+                    before - rules.len()
+                ));
+            }
+        }
         if effective_mode == Mode::Auto {
             let from_user =
                 merged.provenance.get("permissions.auto_enabled") == Some(&LayerKind::User);

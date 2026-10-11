@@ -28,11 +28,25 @@ pub enum Mode {
     Auto,
 }
 
+impl Mode {
+    /// How much a mode lets through without a person: read-only is the strictest.
+    pub fn looseness(self) -> u8 {
+        match self {
+            Self::ReadOnly => 0,
+            Self::Ask => 1,
+            Self::Auto => 2,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PermissionsSection {
     pub mode: Mode,
     pub auto_enabled: bool,
+    /// Honour `allow` rules, a looser mode and changes to built-in actions that come from the shared project or local
+    /// layers. Takes effect only when set in the user layer, so a cloned repository cannot loosen the owner's machine.
+    pub accept_project_allows: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

@@ -67,11 +67,24 @@ floor. Ownership checks other than `self` belong to the adapter.
 (`hud_core::FLOOR_DENIED`). They stay with the steward gate and signed attestations. An action with one of these names
 cannot be registered. This is a safety invariant in code, not a setting.
 
+## Shared layers cannot loosen the owner's machine
+
+The project and local layers are shared or copied with a repository, so a cloned repository must not be able to loosen the
+permissions on the owner's machine. Unless `permissions.accept_project_allows = true` is set **in the user layer** (it is
+ignored anywhere else):
+
+- `allow` rules from the project or local layer are ignored, with a warning that counts them. `deny` and `ask` rules still apply.
+- A looser `permissions.mode` from those layers is ignored (the mode from the defaults and user layers stays), with a warning. A stricter mode is honoured.
+- Those layers may not change a built-in action's `kind` or `risk`; such a file is refused as a whole. They may add new actions.
+
+Only the permission settings are protected this way. Any other setting that should not be changed by a shared file (limits,
+bind address, model endpoints) is protected by a `locked` entry in the user layer.
+
 ## Settings groups
 
 | Table | Purpose |
 |---|---|
-| `permissions` | `mode`, `auto_enabled`, `rules` |
+| `permissions` | `mode`, `auto_enabled`, `accept_project_allows`, `rules` |
 | `actions.<name>` | registry: `kind` (`read`/`write`), `risk` (`low`/`high`, default `high`) |
 | `agent_door` | `enabled`, `token_lifetime_secs`, `rate_per_minute`, `max_body_bytes` |
 | `routing` | `tiers` (software, local, cloud), `cloud_enabled`, `min_confidence` |

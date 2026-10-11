@@ -11,6 +11,9 @@
 # the user layer; otherwise the effective mode stays read-only.
 mode = "read-only"
 auto_enabled = false
+# Project and local settings may tighten permissions (deny and ask rules, a stricter mode) but not loosen them unless
+# this is true in the user settings. It is ignored in any other layer.
+accept_project_allows = false
 # Rules are "<allow|ask|deny> <actor> <action> [scope]". Deny beats ask beats allow. Rules from every layer add up;
 # a higher layer cannot remove a lower layer's rule.
 # actor: `*`, `human`, `seat:*` or `seat:<name>`. action: `*`, a name, or a prefix ending in `*`.
