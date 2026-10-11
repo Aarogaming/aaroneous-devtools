@@ -78,7 +78,7 @@ the table), so claims never touch the same lines. This is a design change to an 
 | Round Table polling | my routine | about hourly |
 
 **Per-frequency ticks:** these are separate clocks, not a designed set. **Proposal:** declare **tick classes** in settings, each with a period,
-a budget and jitter: *fast* (seconds: heartbeats, event stream, lease renewal), *medium* (minutes: scans, availability, validators), *slow*
+a budget and jitter: *fast* (sub-second to seconds: the interactive event bus and lease renewal; the Gemini seat suggests 10 to 100 Hz for the interactive bus and 1 to 5 Hz for worker heartbeats and queue rings, to be measured, entry 75), *medium* (minutes: scans, availability, validators), *slow*
 (hours: board polling, qualification renewal, retention, calibration) and *daily* (audits, internal-affairs sweeps, reports). Each domain
 (one per repository and machine, see [03](03-lan-roster-and-domains.md)) can run its own clock. Components subscribe to a class instead of
 owning a timer.
@@ -106,13 +106,17 @@ mapped to existing parts:
 | Maintenance | housekeeping, cache and branch proposals | the cleaner role |
 | Research | gathering with citations | worker class W3 |
 | Hosting and operations | the hall, leadership, resources | [11](11-hall-host-election-and-handoff.md) |
+
+**A second axis, by domain (Gemini seat, entry 75):** besides these functional departments, review and claims can be routed by *domain expertise*: kernel and memory geometry; cross-platform (Linux, ARM); tooling and syntax-tree invariants; governance and merge gates. Routing a pull request to the domain that knows it, instead of broadcasting it to every seat, should cut reviewer fatigue; the domain is a skill tag on the card ([13](13-card-schema-retrieval-and-plan-graphs.md), [08](08-roles-skills-and-trust.md)). The seat proposes simulating four domain partitions against a flat broadcast over a 30-lane synthetic backlog, measuring time-to-merge and reviewer fatigue (NOT RUN).
 | Internal affairs | audits the operators and the process | finding 9 |
 
-### 8. How much model-driven work can software replace?
+### 8. How much model-driven work can software replace? (adopting entries 74 and 78 of the Gemini seat)
 Model calls in the code I searched are confined to four places: the registrar's dispatch (code drafts), the intake generator (a proposal
 from free text), local proposals, and the HUD's worker jobs and packets. The scheduler, steward, merge gate, collectors, topic-case, conformance
 and the validators proposed here are already programmatic. So by call sites, little work depends on a model; by **volume** I cannot say,
 because there is no per-call accounting yet ([04](04-token-optimization.md)).
+**Candidates the Gemini seat named (entry 78), all programmatic in Rust:** (1) dependency and blast-radius calculation from `cargo metadata` and a syntax-tree parser; (2) a diff conformance check using the existing auditor and a parser for the Cratify profiles, the unwrap ratchet and forbidden functions; (3) the queue and lease state machine as a pure reducer; (4) mechanical attestation and envelope building and verification; (5) deriving most brief slots from the git diff and repository metadata. Several of these already exist in part (the auditor, the steward reducer, attestation scripts). The same seat estimates 70 to 80 percent of model tasks are replaceable and proposes an end-to-end comparison of a syntax-tree-driven intake against the model-driven survey; both are NOT RUN here.
+
 **Method rather than a number:** (1) count calls by task type once accounting exists; (2) for each type, ask what a rule, a template or a
 lookup does before the model; (3) keep the model only for language work that software cannot do (summarise, draft, classify ambiguous text,
 interview), always behind a validator; (4) re-measure. Candidates to move to software first: classification of known record types, field
