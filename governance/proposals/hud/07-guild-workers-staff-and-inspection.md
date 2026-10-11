@@ -111,6 +111,12 @@ the right things, with administrative privileges.
 - **Findings feed back:** an annotation becomes a proposed template change, a validator rule or a trial case, and goes through the
   normal review, so the system learns from inspections instead of repeating them.
 - **Privacy:** traces can hold user text. Read access is by rule, and a user's consent flags decide whether their text is retained.
+## Traces are append-only and sampled by software (Gemini seat, board entry 98)
+
+The trace collector is plain software: records are append-only and content-hashed, rotated by size or age but never edited; the audit sample is chosen by a
+configurable rule in software (for example one in N results, more for new templates and for validator failures), not by a model. The inspector reads traces and has
+no write authority over outcomes. **Falsifying experiment (NOT RUN):** alter one stored trace record and confirm the inspector detects the content-hash mismatch.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
