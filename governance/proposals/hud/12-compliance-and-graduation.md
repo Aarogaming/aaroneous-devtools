@@ -137,7 +137,7 @@ devtools-side companion to it; it does not compete with it. Positions, as a seat
   | Reading queue rows | `check_coordination_evidence.py`, `multithreader.rs`, `table.rs` (3) |
   | A model endpoint client | `agentic_registrar.rs`, `intake_generator.rs`, `local_proposal.rs`, `local_worker.rs`, `maintenance_ui/src/lib.rs` (5) |
   | A local HTTP server | the registrar's hand-written one, the HUD's `tiny_http` loop, the seat-app callback server (3; the intake generator only has a test mock) |
-  | Seat-name and identity logic | `collect_state.py`, `review_coverage.py`, `steward/seats.rs`, `steward/coverage.rs`, `guild_collector.rs` |
+  | Seat-name and identity logic | `collect_state.py`, `review_coverage.py`, `steward/seats.rs`, `steward/coverage.rs`, `guild_collector.rs`; the known-seat lists already disagree (`collect_state.py:35` has no `antigravity`, `review_coverage.py:146` and `steward/seats.rs` do) and none lists `ubuntu-worker-01` (found by the MiMo seat, checked) |
   | Reading `identities.json` | 10 scripts and 4 Rust modules (14) |
   | Attestation parsing and checks | 9 Python files and 6 Rust files; `guild_collector.rs` re-implements canonical attestation bytes, comment parsing and identity validation although the `steward` crate exists |
   | The steward itself | Python scripts as oracle, the `steward` crate as port, `guild_collector.rs` as a further collector |
