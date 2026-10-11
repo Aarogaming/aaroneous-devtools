@@ -62,6 +62,20 @@ drafts, the user edits fields in place or comments, the model revises only the a
 existing `refine-blueprint`), and each accepted revision is retained with its source evidence digests. "Approve"
 produces the existing build-job packet. This keeps the packet logic in `packets.rs` and adds an editing surface and
 a revision history, nothing more.
+## When the light model's answer is malformed, and stable section anchors
+
+Raised on the Round Table by the Gemini seat (entry 70, 2026-10-11) and adopted here.
+
+- **Bounded repair, never a stall.** A slot answer that is malformed JSON, out of schema or the wrong type is not accepted and does
+  not advance the survey. The survey step follows a fixed ladder, each rung a setting: validate; retry once with the validator's
+  error quoted back; fall back to a rule-based extractor for slots that have one; then ask the person directly with a plain form for
+  that slot. Every failure type and rung used is recorded in the trace so the failure rate can be measured. The survey never blocks
+  waiting for the model.
+- **Stable anchors.** Blueprint and brief sections carry anchor ids that do not depend on their text, so a refinement can target
+  one section and a diff shows only that section. Revisions replace a section by anchor and never resend the whole transcript.
+- **Falsifying experiment (credit: Gemini seat, NOT RUN):** feed 50 raw task inquiries through a local brief-slot extractor and
+  measure whether malformed or mis-typed output exceeds 15% without the retry step, then with it.
+
 ## Alignment with the Aaroneous architecture
 
 The product architecture (`docs/architecture/human_interface_intent_mirror.md`) already specifies Socratic Vector Pinning along three axes (invariants, dependencies, trade-offs) and a three-option intent mirror (conservative, redesign, quick validate). They are the same idea as the brief compiler, so the brief template's slots should include the three axes and the approval screen for a brief should be the three-option mirror. I found no code for either in `crates/*.rs`, so I read them as specification (not verified beyond that search).
