@@ -45,9 +45,11 @@ advisory guild workers.
 | 10 | [Native application, operations panel and reuse](10-native-app-operations-and-reuse.md) | [#172](https://github.com/Aarogaming/aaroneous-devtools/pull/172) |
 | 11 | [Hall host election and handoff](11-hall-host-election-and-handoff.md) | [#173](https://github.com/Aarogaming/aaroneous-devtools/pull/173) |
 | 12 | [Compliance with Aaroneous, thin base and thick frontier](12-compliance-and-graduation.md) | [#174](https://github.com/Aarogaming/aaroneous-devtools/pull/174) |
+| 13 | [Job-card schema, retrieval and plan graphs](13-card-schema-retrieval-and-plan-graphs.md) | [#176](https://github.com/Aarogaming/aaroneous-devtools/pull/176) |
+| 14 | [Operating review: gaps and bottlenecks](14-operating-review-gaps-and-bottlenecks.md) | [#177](https://github.com/Aarogaming/aaroneous-devtools/pull/177) |
 
-**Suggested review order:** 01, 02, 03 (foundations), 12 (how everything is built), then 11 (hosting), 06, 07, 08
-(behaviour), 04, 05 (economy), and last 10, 09 (interface). Each document ends with a "Review focus" list, its own decisions and its own "Not verified" list.
+**Suggested review order:** 14 (where the system hurts today), 01, 02, 03 (foundations), 12 (how everything is built), then
+11 (hosting), 13 (cards, retrieval, plans), 06, 07, 08 (behaviour), 04, 05 (economy), and last 10, 09 (interface). Each document ends with a "Review focus" list, its own decisions and its own "Not verified" list.
 
 ## Requirements
 
@@ -120,13 +122,15 @@ taking work as job cards at its own level (see [07](07-guild-workers-staff-and-i
 | P4 | 04, 05 | token accounting and caches, model profiles and prompt adapters |
 | P5, P7 | 10 | operations panel, native application shell |
 | P7 (part), twin | 09 | 3D analogy view, exploration layer, preference log and twin |
+| K1 to K5 | 13 | card schema, structural then lexical then optional vector retrieval, plan graphs with node-level caching |
+| O1 to O8 | 14 | profile the tick, bounded-parallel scans, tick classes, deadlines and escalation, flow metrics, departments, internal affairs |
 | H1 to H6 | 11 | election and handoff reducer, qualification, signed certificates, handoff over the wire, failure handling, owner controls |
 | C1 to C4 | 12 | profile metadata, component inventory rings, advisory auditor in CI, first graduation candidate |
 | G7, P6 | 03, 08 | hosting for remote users, cloud dispatch; both deferred, each needing its own review |
 
 Each phase is its own lane and review; this set claims no code.
 
-## Where the discussion happens: twelve parallel topics on the Round Table
+## Where the discussion happens: fourteen parallel topics on the Round Table
 
 Owner direction in chat, 2026-10-10: put this discussion into the existing brainstorm as a series of parallel topics, so all
 the agents can work on it together before any full rebuild. The brainstorm is the local Round Table board (the loopback
@@ -134,8 +138,8 @@ address is in its invitation) and its topic-case workflow (`contracts/topic-case
 
 - **Topic ids.** One root topic, `hud-v2`, and one child topic per document: `hud-01-settings-and-permissions`,
   `hud-02-agent-door-and-mcp`, and so on, matching the file names in the table above. The machine-readable map is
-  [brainstorm-topic-case-v1.json](brainstorm-topic-case-v1.json): 13 topics, one seed contribution per topic that cites the
-  document at its pull request head, and 19 `depends_on` relationships taken from the documents' front matter. Check it with
+  [brainstorm-topic-case-v1.json](brainstorm-topic-case-v1.json): one root topic and one topic per document, one seed contribution per
+  topic that cites the document at its pull request head, and the `depends_on` relationships taken from the documents' front matter. Check it with
   `foundation topic-case review --case <absolute path>`; it is a proposal artifact, not a queue or an authority.
 - **How to contribute.** Post to the board as your own seat (kinds `idea`, `question`, `concern`, `evidence`). Start the text
   with the topic id in square brackets, for example `[hud-07-guild-workers-staff-and-inspection]`, so contributions can be sorted by
@@ -173,6 +177,8 @@ This records chat instructions; it is not an attestation. "OPEN" items are liste
 | Score weights, certificate signer, leadership per domain, git tie-breaker, hot standby | OPEN | 11 |
 | Build modularly and Aaroneous-compliant by construction; thin base, thick frontier; library grows from what survives the frontier | DECIDED in principle | 12 |
 | Rings, auditors in devtools CI, first graduation candidate, attestation-namespace exception | OPEN | 12 |
+| Cards are thin pointers with evidence attached by tier; retrieval is structural first; plans are validated graphs | PROPOSED | 13 |
+| Parallel scans, tick classes, departments, internal affairs, per-lane queue files | OPEN | 14 |
 | Prompts as reviewed files | OPEN | 05 |
 | Twin and exploration scope questions | OPEN | 09 |
 

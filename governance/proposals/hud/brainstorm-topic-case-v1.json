@@ -21,7 +21,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/README.md",
-              "revision": "719bc8226bd53f42371dbbf72291f3a87f4a349a"
+              "revision": "68528bf5bcd35d083e0e8ca1274503ebf5c25444"
             }
           ]
         }
@@ -318,6 +318,54 @@
     {
       "id": "event-14",
       "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "parent": "hud-v2",
+          "title": "Job-card schema, retrieval and plan graphs",
+          "question": "One job-card schema (card, record, evidence tiers), a retrieval order for context packs, and a validated plan graph for work that decomposes",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-13",
+            "pr-176"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "817d5dd77d1f0d18052e639e50583130f89125b5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-15",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-14-operating-review-gaps-and-bottlenecks",
+          "parent": "hud-v2",
+          "title": "Operating review: gaps and bottlenecks",
+          "question": "An operating review of the tasking, scheduling and delegation system: measured bottlenecks, missing components, time and tick design, departments, internal affairs, and how much model-driven work software can take over",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-14",
+            "pr-177"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "e418cb652580ca7c17e3617670c447a162fa2a7e"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-16",
+      "event": {
         "type": "contribution",
         "contribution": {
           "id": "seed-01",
@@ -336,7 +384,7 @@
       }
     },
     {
-      "id": "event-15",
+      "id": "event-17",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -356,7 +404,7 @@
       }
     },
     {
-      "id": "event-16",
+      "id": "event-18",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -376,7 +424,7 @@
       }
     },
     {
-      "id": "event-17",
+      "id": "event-19",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -396,7 +444,7 @@
       }
     },
     {
-      "id": "event-18",
+      "id": "event-20",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -416,7 +464,7 @@
       }
     },
     {
-      "id": "event-19",
+      "id": "event-21",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -436,7 +484,7 @@
       }
     },
     {
-      "id": "event-20",
+      "id": "event-22",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -456,7 +504,7 @@
       }
     },
     {
-      "id": "event-21",
+      "id": "event-23",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -476,7 +524,7 @@
       }
     },
     {
-      "id": "event-22",
+      "id": "event-24",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -496,7 +544,7 @@
       }
     },
     {
-      "id": "event-23",
+      "id": "event-25",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -516,7 +564,7 @@
       }
     },
     {
-      "id": "event-24",
+      "id": "event-26",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -536,7 +584,7 @@
       }
     },
     {
-      "id": "event-25",
+      "id": "event-27",
       "event": {
         "type": "contribution",
         "contribution": {
@@ -556,7 +604,47 @@
       }
     },
     {
-      "id": "event-26",
+      "id": "event-28",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-13",
+          "topic": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 13 (PR #176). One job-card schema (card, record, evidence tiers), a retrieval order for context packs, and a validated plan graph for work that decomposes. Review questions: Is \"thin card, thick evidence, attached by tier\" the right balance, and are the required fields the right minimum? | Is it right to extend the existing formats (steward card, intake, topic-case receipt) rather than define a new one? | Is the retrieval order (structural, lexical, then vector only if measured) right for this corpus, and is the citation rule enforceable? | Are the plan-validity rules enough to stop a model-proposed graph from bypassing the gates?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "817d5dd77d1f0d18052e639e50583130f89125b5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-29",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-14",
+          "topic": "hud-14-operating-review-gaps-and-bottlenecks",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 14 (PR #177). An operating review of the tasking, scheduling and delegation system: measured bottlenecks, missing components, time and tick design, departments, internal affairs, and how much model-driven work software can take over. Review questions: Do the findings follow from the evidence cited, and are there bottlenecks I missed? | Is incremental, bounded-parallel scanning the right first fix, and is the rate-limit risk handled? | Are tick classes and departments useful structure or needless ceremony at the current scale? | Is the internal-affairs design independent enough, and are consequences kept inside the trust ledger?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "e418cb652580ca7c17e3617670c447a162fa2a7e"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-30",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -575,7 +663,7 @@
       }
     },
     {
-      "id": "event-27",
+      "id": "event-31",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -594,7 +682,7 @@
       }
     },
     {
-      "id": "event-28",
+      "id": "event-32",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -613,7 +701,7 @@
       }
     },
     {
-      "id": "event-29",
+      "id": "event-33",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -632,7 +720,7 @@
       }
     },
     {
-      "id": "event-30",
+      "id": "event-34",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -651,7 +739,7 @@
       }
     },
     {
-      "id": "event-31",
+      "id": "event-35",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -670,7 +758,7 @@
       }
     },
     {
-      "id": "event-32",
+      "id": "event-36",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -689,7 +777,7 @@
       }
     },
     {
-      "id": "event-33",
+      "id": "event-37",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -708,7 +796,7 @@
       }
     },
     {
-      "id": "event-34",
+      "id": "event-38",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -727,7 +815,7 @@
       }
     },
     {
-      "id": "event-35",
+      "id": "event-39",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -746,7 +834,7 @@
       }
     },
     {
-      "id": "event-36",
+      "id": "event-40",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -765,7 +853,7 @@
       }
     },
     {
-      "id": "event-37",
+      "id": "event-41",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -784,7 +872,7 @@
       }
     },
     {
-      "id": "event-38",
+      "id": "event-42",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -803,7 +891,7 @@
       }
     },
     {
-      "id": "event-39",
+      "id": "event-43",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -822,7 +910,7 @@
       }
     },
     {
-      "id": "event-40",
+      "id": "event-44",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -841,7 +929,7 @@
       }
     },
     {
-      "id": "event-41",
+      "id": "event-45",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -860,7 +948,7 @@
       }
     },
     {
-      "id": "event-42",
+      "id": "event-46",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -879,7 +967,7 @@
       }
     },
     {
-      "id": "event-43",
+      "id": "event-47",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -898,7 +986,7 @@
       }
     },
     {
-      "id": "event-44",
+      "id": "event-48",
       "event": {
         "type": "relationship",
         "relationship": {
@@ -911,6 +999,139 @@
             {
               "reference": "governance/proposals/hud/12-compliance-and-graduation.md",
               "revision": "aaade2550bff9c6659d90659681df004d560501b"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-49",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-13-01",
+          "from": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "to": "hud-01-settings-and-permissions",
+          "kind": "depends_on",
+          "reason": "Proposal 13 lists proposal 01 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "817d5dd77d1f0d18052e639e50583130f89125b5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-50",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-13-06",
+          "from": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "to": "hud-06-brief-compiler-and-packets",
+          "kind": "depends_on",
+          "reason": "Proposal 13 lists proposal 06 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "817d5dd77d1f0d18052e639e50583130f89125b5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-51",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-13-07",
+          "from": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "to": "hud-07-guild-workers-staff-and-inspection",
+          "kind": "depends_on",
+          "reason": "Proposal 13 lists proposal 07 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "817d5dd77d1f0d18052e639e50583130f89125b5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-52",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-13-08",
+          "from": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "to": "hud-08-roles-skills-and-trust",
+          "kind": "depends_on",
+          "reason": "Proposal 13 lists proposal 08 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "817d5dd77d1f0d18052e639e50583130f89125b5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-53",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-14-03",
+          "from": "hud-14-operating-review-gaps-and-bottlenecks",
+          "to": "hud-03-lan-roster-and-domains",
+          "kind": "depends_on",
+          "reason": "Proposal 14 lists proposal 03 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "e418cb652580ca7c17e3617670c447a162fa2a7e"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-54",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-14-07",
+          "from": "hud-14-operating-review-gaps-and-bottlenecks",
+          "to": "hud-07-guild-workers-staff-and-inspection",
+          "kind": "depends_on",
+          "reason": "Proposal 14 lists proposal 07 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "e418cb652580ca7c17e3617670c447a162fa2a7e"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-55",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-14-13",
+          "from": "hud-14-operating-review-gaps-and-bottlenecks",
+          "to": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "kind": "depends_on",
+          "reason": "Proposal 14 lists proposal 13 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "e418cb652580ca7c17e3617670c447a162fa2a7e"
             }
           ]
         }
