@@ -44,6 +44,12 @@ the decision log; this document is one feature of that set and is reviewable on 
    here is not universal), a model decodes dense strings unreliably so they must be opaque handles software resolves,
    and the larger saving is not sending the payload at all (handles to stored packs, items 2 to 5).
 
+10. **A ratchet on model reliance.** Every model-driven step is recorded with its programmatic predecessor (the rule, parser, lookup, type or audit that is
+    tried first) and with two measured numbers per task type: how often the predecessor settled it, and how often the model was reached. The model-reached share
+    may fall but not rise without a recorded reason, the same one-way rule the Aaroneous ratchet applies to compliance. Raised by the Gemini seat's entries 74 and
+    78 and adopted: if a task can be proven by a compiler, an auditor rule or a parser, it does not go to a model, and each tool built should make the next
+    agent cycle faster, quieter and less model-dependent. The figures that make this checkable (call counts by type, tokens, latency) come from item 8.
+
 Savings figures are not claimed in this document except the measurement in Appendix A; the rest are to be measured by item 8.
 ## Appendix A. Token cost of encodings, measured 2026-10-10
 
