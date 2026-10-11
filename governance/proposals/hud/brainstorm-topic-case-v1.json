@@ -21,7 +21,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/README.md",
-              "revision": "7598926161b0480f22a322d0bfd2afdd0f66e59a"
+              "revision": "2e5beebc115e1add59e7c25acd06b6098597f4a6"
             }
           ]
         }
@@ -45,7 +45,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/01-settings-and-permissions.md",
-              "revision": "10a5340e004198e14dc9b3dd448c72c07d256f84"
+              "revision": "8b96a1a4e4869b8b8c2597d396b4926628b1750e"
             }
           ]
         }
@@ -69,7 +69,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/02-agent-door-and-mcp.md",
-              "revision": "b8e696b393b426d80b1f94d492ab4e4462c7c6b9"
+              "revision": "e80b7b5cb047c8fc162cd671728ba5dce0e955b4"
             }
           ]
         }
@@ -117,7 +117,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/04-token-optimization.md",
-              "revision": "71b5104b06cdd72cff8cef2dfe4ea85fcc6e943e"
+              "revision": "08bf7bc170f5065c7cdf8d476d50cf8e1a085fb6"
             }
           ]
         }
@@ -165,7 +165,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/06-brief-compiler-and-packets.md",
-              "revision": "d170ceb8981d1d878973c1164ec7eb193bc1e9ee"
+              "revision": "13de7ae02c5f2128bf2b97845ad56395c5310150"
             }
           ]
         }
@@ -275,7 +275,7 @@
           "id": "hud-11-hall-host-election-and-handoff",
           "parent": "hud-v2",
           "title": "Hall host election and handoff",
-          "question": "Let the most capable qualified machine host the hall, and hand leadership over between running sessions without shutting any of them down",
+          "question": "Let the most capable qualified machine host the hall, first by owner-pinned single-host leadership and manual fenced handoff, and only later by unattended failover once a durable fencing authority exists",
           "owner": "claude-seat-proposal",
           "tags": [
             "hud",
@@ -285,7 +285,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "2c04d7d8a2cfa1576ef98c2a961385b08d512a10"
+              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
             }
           ]
         }
@@ -377,7 +377,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/01-settings-and-permissions.md",
-              "revision": "10a5340e004198e14dc9b3dd448c72c07d256f84"
+              "revision": "8b96a1a4e4869b8b8c2597d396b4926628b1750e"
             }
           ]
         }
@@ -397,7 +397,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/02-agent-door-and-mcp.md",
-              "revision": "b8e696b393b426d80b1f94d492ab4e4462c7c6b9"
+              "revision": "e80b7b5cb047c8fc162cd671728ba5dce0e955b4"
             }
           ]
         }
@@ -437,7 +437,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/04-token-optimization.md",
-              "revision": "71b5104b06cdd72cff8cef2dfe4ea85fcc6e943e"
+              "revision": "08bf7bc170f5065c7cdf8d476d50cf8e1a085fb6"
             }
           ]
         }
@@ -477,7 +477,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/06-brief-compiler-and-packets.md",
-              "revision": "d170ceb8981d1d878973c1164ec7eb193bc1e9ee"
+              "revision": "13de7ae02c5f2128bf2b97845ad56395c5310150"
             }
           ]
         }
@@ -572,12 +572,12 @@
           "topic": "hud-11-hall-host-election-and-handoff",
           "actor": "Claude",
           "kind": "idea",
-          "text": "Seed proposal 11 (PR #173). Let the most capable qualified machine host the hall, and hand leadership over between running sessions without shutting any of them down. Review questions: Is \"leadership governs scheduling only, repository authority stays in git\" a sound way to bound the harm of a split brain? | Is the commit point (the signed `transfer` and the candidate's `accept`) correct, and is every abort path safe? | Is the qualification meaningful (does it prove the host can really serve), and are the certificate contents enough to verify? | Does SafeHold plus the epoch and fork rules handle a partition acceptably for two machines? | Is the pure-reducer-with-simulator approach the right way to gain confidence?",
+          "text": "Seed proposal 11 (PR #173). Let the most capable qualified machine host the hall, first by owner-pinned single-host leadership and manual fenced handoff, and only later by unattended failover once a durable fencing authority exists. Review questions: Is \"qualification selects, the fencing authority decides\" the right split, and is the compare-and-swap on `(term, host)` a sound linearization point? | Does write-ahead fencing of the incumbent close the recovery hole, and is every partial state covered? | Are the invariants (at most one valid writer across all terms; no duplicate observable operation; SafeHold on uncertainty) the right ones? | Is stage A a reasonable first version, with B and C gated on evidence?",
           "lineage": "c119-hud-v2-proposal-v1",
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "2c04d7d8a2cfa1576ef98c2a961385b08d512a10"
+              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
             }
           ]
         }
@@ -656,7 +656,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/02-agent-door-and-mcp.md",
-              "revision": "b8e696b393b426d80b1f94d492ab4e4462c7c6b9"
+              "revision": "e80b7b5cb047c8fc162cd671728ba5dce0e955b4"
             }
           ]
         }
@@ -713,7 +713,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/04-token-optimization.md",
-              "revision": "71b5104b06cdd72cff8cef2dfe4ea85fcc6e943e"
+              "revision": "08bf7bc170f5065c7cdf8d476d50cf8e1a085fb6"
             }
           ]
         }
@@ -770,7 +770,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/06-brief-compiler-and-packets.md",
-              "revision": "d170ceb8981d1d878973c1164ec7eb193bc1e9ee"
+              "revision": "13de7ae02c5f2128bf2b97845ad56395c5310150"
             }
           ]
         }
@@ -941,7 +941,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "2c04d7d8a2cfa1576ef98c2a961385b08d512a10"
+              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
             }
           ]
         }
@@ -960,7 +960,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "2c04d7d8a2cfa1576ef98c2a961385b08d512a10"
+              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
             }
           ]
         }
@@ -979,7 +979,7 @@
           "evidence": [
             {
               "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
-              "revision": "2c04d7d8a2cfa1576ef98c2a961385b08d512a10"
+              "revision": "8cb88e613bd78c8e4d35586f049944b6a1f8f990"
             }
           ]
         }
