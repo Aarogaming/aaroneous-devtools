@@ -387,6 +387,17 @@ class Build(unittest.TestCase):
                                ["claude", "mimo", "gemini"], [], "2026-10-04T12:00:00Z")
         self.assertEqual(state["prs"][0]["implementers"], ["claude", "mimo"])
 
+    def test_the_opencode_name_is_the_same_roster_seat_as_the_stable_id(self):
+        # a rename of the label must not create a second seat or orphan the leases and history keyed by "mimo"
+        snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main"}]}
+        meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}
+        for roster in (["claude", "mimo"], ["claude", "opencode"], ["claude", "mimo", "opencode"]):
+            state = cs.build_state(snapshot, [{"pr": 7, "covered": False}], meta, {7: 0}, {7: "claude"},
+                                   roster, [], "2026-10-04T12:00:00Z")
+            self.assertEqual([a["name"] for a in state["agents"]], ["claude", "mimo"], roster)
+        self.assertEqual(cs.comment_seat("Seat / agent: OpenCode (qwen3.8)"), "mimo")
+        self.assertEqual(cs.seats_from_trailers("Co-Authored-By: OpenCode <o@a.com>\nContribution-ID: C1/mimo-x", ""), ["mimo"])
+
     def test_state_feeds_the_dispatcher_end_to_end(self):
         snapshot = {"prs": [{"number": 7, "head": "a" * 40, "base": "main"}]}
         meta = {7: {"title": "t", "isDraft": False, "mergeStateStatus": "CLEAN", "updatedAt": "2026-10-04T11:00:00Z"}}

@@ -13,7 +13,7 @@ pub struct Attribution {
 }
 
 // Python's `\s` also counts the ASCII separators U+001C to U+001F, which Rust's does not.
-const DECLARED: &str = r"(?:Seat[\s\x1c-\x1f]*/[\s\x1c-\x1f]*agent|Reviewer(?:[\s\x1c-\x1f]*/[\s\x1c-\x1f]*Seat|[\s\x1c-\x1f]+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)";
+const DECLARED: &str = r"(?:Seat[\s\x1c-\x1f]*/[\s\x1c-\x1f]*agent|Reviewer(?:[\s\x1c-\x1f]*/[\s\x1c-\x1f]*Seat|[\s\x1c-\x1f]+seat)?)\W{0,6}(Claude|Mimo|OpenCode|Codex|Gemini|Antigravity)";
 
 impl Attribution {
     /// # Errors
@@ -22,13 +22,13 @@ impl Attribution {
         // A seat name that opens a line, optionally after a markdown heading mark and the word "Independent",
         // is how the seats title their reviews.
         let in_text = format!(
-            r"(?im){DECLARED}|^[\s\x1c-\x1f]*(?:#{{1,6}}[\s\x1c-\x1f]*)?(?:Independent[\s\x1c-\x1f]+)?(Claude|Codex|Gemini|Mimo|Antigravity)\b"
+            r"(?im){DECLARED}|^[\s\x1c-\x1f]*(?:#{{1,6}}[\s\x1c-\x1f]*)?(?:Independent[\s\x1c-\x1f]+)?(Claude|Codex|Gemini|Mimo|OpenCode|Antigravity)\b"
         );
         Ok(Self {
             lexicon: Lexicon::new()?,
             in_text: Regex::new(&in_text)?,
             seat_word: Regex::new(
-                r"(?i)\b(Claude|Mimo|Codex|Gemini|Antigravity)[\s\x1c-\x1f]+seat\b",
+                r"(?i)\b(Claude|Mimo|OpenCode|Codex|Gemini|Antigravity)[\s\x1c-\x1f]+seat\b",
             )?,
             declared: Regex::new(&format!("(?i){DECLARED}"))?,
             receipt_prefix: Regex::new(
@@ -75,10 +75,10 @@ impl Attribution {
         let Some(name) = found else {
             return String::new();
         };
-        if name == "antigravity" {
-            "gemini".to_owned()
-        } else {
-            name
+        match name.as_str() {
+            "antigravity" => "gemini".to_owned(),
+            "opencode" => "mimo".to_owned(),
+            _ => name,
         }
     }
 }
@@ -97,6 +97,7 @@ mod tests {
     #[test]
     fn a_declaration_anywhere_attributes_a_loose_read() {
         assert_eq!(seat("Seat / agent: Mimo (x)", false), "mimo");
+        assert_eq!(seat("Seat / agent: OpenCode (qwen3.8)", false), "mimo");
         assert_eq!(
             seat(
                 "### Review\n**Seat / Agent**: Antigravity (Gemini)\n",

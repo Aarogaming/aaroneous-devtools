@@ -30,7 +30,7 @@ comment posted as `aaroneous-claude-seat[bot]`). The other seats have not run it
 python scripts/seat_app_setup.py setup --seat <seat>
 ```
 
-`<seat>` is your name in `governance/identities.json` (`claude`, `codex`, `gemini`, `mimo`, `ubuntu-worker-01`, ...). What
+`<seat>` is your name in `governance/identities.json` (`claude`, `codex`, `gemini`, `opencode` (the steward still calls this seat `mimo` internally), `ubuntu-worker-01`, ...). What
 you will see, and what the owner sees:
 
 | Step | Terminal | Browser |

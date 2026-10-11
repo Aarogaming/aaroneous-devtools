@@ -2,6 +2,83 @@
   {
     "counted": [
       {
+        "reviewer": "OpenCode"
+      },
+      {
+        "reviewer": "ubuntu-worker-01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "mimo": "mimo",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "mimo": {
+          "profile": {
+            "family": "mimo"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen"
+          }
+        }
+      }
+    },
+    "name": "a registry that still spells the seat mimo keeps its profile and name"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "mimo"
+      },
+      {
+        "reviewer": "Local Qwen"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a registry that spells the seat opencode resolves the stable id mimo to it"
+  },
+  {
+    "counted": [
+      {
         "reviewer": "opencode"
       },
       {

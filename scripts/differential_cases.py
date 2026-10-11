@@ -13,7 +13,7 @@ sys.path.insert(0, 'scripts')
 import collect_state as cs, review_coverage as rc, steward_run as sr, merge_gate as mg, next_task as nt
 random.seed(int(sys.argv[2]))
 H = "c" * 40
-pieces = ["Seat / agent:", "Seat/agent", "Reviewer", "Reviewer / Seat", "Reviewer seat", "Claude", "claude", "CODEX", "Gemini", "Mimo", "Antigravity", "Qwen",
+pieces = ["Seat / agent:", "Seat/agent", "Reviewer", "Reviewer / Seat", "Reviewer seat", "Claude", "claude", "CODEX", "Gemini", "Mimo", "OpenCode", "Antigravity", "Qwen",
   "xGemini", "Geminis", "Independent", "#", "###", "#######", " ", "  ", "\t", "\n", "\r\n", "\r", " ", " ", "\x0b", "\x0c", "\x1c", "\x1f", "\x85", " ", "　", "​",
   "-", "_", "(", ")", ":", ".", "seat", "SEAT", "é", "́", "ͅ", "Ⓐ", "‿", "‍", "ั", "K", "ſ", "İ", "٧", "7", "[done:", "fix_threads", "needs_review", "repair_verdict", ":7:", ":8:", ":٧:",
   H, H.upper(), "c" * 8, "c" * 7, "c" * 41, "c" * 8 + "d" * 32, "deadbeef", "verdict", "not done", "blocked", "NOT DONE", "failed", "]", ">", "Claude seat", "Codex seat: ok", "Gemini seat: ok"]
@@ -64,7 +64,7 @@ for _ in range(int(sys.argv[1]) // 5):
     heads, credited = sr.pushes(prs, previous)
     push_cases.append({"prs": prs, "previous": previous, "out": {"heads": heads, "credited": credited}})
 HEADS = ["a" * 40, "b" * 40, "c" * 40, "d" * 40]
-NAMES = ["claude", "Claude", "claude-sonnet-5-5", "codex", "Gemini", "Antigravity", "mimo", "Qwen", "Claude, Mimo", "ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu-worker-01 and codex", "codex, ubuntu-worker-01", "someone else", "gemini/antigravity", "Opus 5.5", "sonnet", "gpt-5.5", "Opus/gpt-5.5", "OpenAI Codex"]
+NAMES = ["claude", "Claude", "claude-sonnet-5-5", "codex", "Gemini", "Antigravity", "mimo", "Qwen", "Claude, Mimo", "ubuntu-worker-01", "Ubuntu Worker 01", "OpenCode", "ubuntu-worker-01 and codex", "codex, ubuntu-worker-01", "someone else", "gemini/antigravity", "Opus 5.5", "sonnet", "gpt-5.5", "Opus/gpt-5.5", "OpenAI Codex"]
 coverage = []
 for _ in range(int(sys.argv[1]) // 5):
     records = []
@@ -81,7 +81,7 @@ for _ in range(int(sys.argv[1]) // 5):
     merge_base = random.choice(["m" * 40, "m" * 40, "n" * 40, "", "unknown", None])
     head = random.choice(HEADS)
     known = {(a, b) for a, b in pairs}
-    registered = random.choice([None, [], ["claude", "codex", "gemini", "ubuntu-worker-01"], ["claude", "mimo", "codex", "ubuntu-worker-01", "ubuntu-worker-02"]])
+    registered = random.choice([None, [], ["claude", "codex", "gemini", "ubuntu-worker-01"], ["claude", "mimo", "codex", "ubuntu-worker-01", "ubuntu-worker-02"], ["claude", "opencode", "codex"], ["mimo", "opencode"]])
     out = rc.evaluate(head, merge_base, records, lambda a, b: a == b or (a, b) in known, set(registered) if registered is not None else None)
     coverage.append({"head": head, "merge_base": merge_base, "records": records, "ancestry": pairs, "registered": registered, "out": out})
 SEAT_LABELS = ["claude", "Claude", "opencode", "mimo", "ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu_worker_01", "xubuntu-worker-01", "ubuntu-worker-011", "ubuntu-worker-01 and ubuntu-worker-02", "codex", "gpt-5.5", "Opus/gpt-5.5", "Gemini", "", " ", "Qwen", "café", "İ-worker-01", "ubuntu​-worker-01"]
@@ -89,6 +89,8 @@ MODELS = [None, "qwen3.8", "Qwen/Qwen3.8-Coder", "qwenish", "MiMo-V2.6", "mimo",
 REGISTRIES = [
     {"seats": {"opencode": {"profile": {"family": "mimo"}}, "ubuntu-worker-01": {"profile": {"family": "qwen"}}, "claude": {"profile": {"family": "anthropic"}}, "codex": {}, "ubuntu-worker-02": {}}, "model_families": {"qwen": "qwen", "mimo": "mimo", "claude": "anthropic", "gpt": "openai", "gemini": "google"}},
     {"seats": {"claude": {}, "ubuntu-worker-01": {"profile": {"family": "Bad"}}, "a-b": {}}, "model_families": {"q": "qwen", "qwen": "", "Qwen": "x", "mi mo": "m"}},
+    {"seats": {"mimo": {"profile": {"family": "mimo"}}, "ubuntu-worker-01": {}, "claude": {}}, "model_families": {"qwen": "qwen", "mimo": "mimo"}},
+    {"seats": {"opencode": {"profile": {"family": "mimo"}}, "ubuntu-worker-01": {}, "claude": {}}, "model_families": {"qwen": "qwen", "mimo": "mimo"}},
     {"seats": {}}, {"seats": []}, {"model_families": {"qwen": "qwen"}}, [], None,
     {"seats": {"opencode": {"profile": {"family": " mimo "}}, "mimo": {"profile": "x"}}, "model_families": {"qwen": "qwen", "qwen3": "qwen3"}},
 ]

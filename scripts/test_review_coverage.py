@@ -627,5 +627,32 @@ class FamilyComesFromTheModelThatRan(unittest.TestCase):
         self.assertEqual(rc.seat_profiles({"seats": {"a": {"profile": {"family": "Bad Family", "model": "m"}}}}), {"a": {"model": "m"}})
 
 
+class OpenCodeIsTheSeatAndMimoItsStableId(unittest.TestCase):
+    """The Windows seat is the OpenCode application; MiMo is a model it has run. The steward keeps `mimo` as the seat's stable
+    id (leases, history and the event log are keyed by it), and `opencode` is accepted as the same seat, so a rename of the
+    label is never a new authority. A label resolves to whichever spelling the registry uses."""
+
+    def test_the_application_and_the_stable_id_are_one_seat(self):
+        for label in ("opencode", "OpenCode", "OpenCode (MiMo)", "mimo", "MiMo-V2.6-Flash", "Local Qwen"):
+            self.assertEqual(rc.canonical_reviewer_seat(label), "mimo", label)
+        self.assertEqual(rc.seat_names("claude+opencode"), {"claude", "mimo"})
+
+    def test_the_label_resolves_to_whichever_spelling_the_registry_uses(self):
+        old, new = {"claude", "mimo", "codex"}, {"claude", "opencode", "codex"}
+        for label in ("mimo", "opencode", "OpenCode (MiMo)", "Local Qwen"):
+            self.assertEqual(rc.resolve_seat(label, old), "mimo", label)
+            self.assertEqual(rc.resolve_seat(label, new), "opencode", label)
+            self.assertEqual(rc.resolve_seat(label), "mimo", label)
+
+    def test_a_registry_with_both_spellings_resolves_a_single_name_to_itself(self):
+        self.assertEqual(rc.resolve_seat("mimo", {"mimo", "opencode"}), "mimo")
+        self.assertEqual(rc.resolve_seat("opencode", {"mimo", "opencode"}), "opencode")
+
+    def test_an_implementer_named_either_way_excludes_the_seat(self):
+        for implementer in ("mimo", "opencode"):
+            self.assertFalse(rc.independent(rec(H1, reviewer="OpenCode", impl=(implementer,))), implementer)
+            self.assertFalse(rc.independent(rec(H1, reviewer="mimo", impl=(implementer,))), implementer)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -386,6 +386,84 @@
   },
   {
     "accept_seats": [
+      "mimo"
+    ],
+    "accepts_at_head": 2,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "OpenCode",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Local Qwen",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
+  },
+  {
+    "accept_seats": [
+      "opencode"
+    ],
+    "accepts_at_head": 2,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "mimo",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Local Qwen",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 1,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "accept at head exists but is not chained to a whole accept at this base",
+      "the accept by mimo is not independent of its implementers ['opencode']"
+    ]
+  },
+  {
+    "accept_seats": [
       "codex"
     ],
     "accepts_at_head": 1,

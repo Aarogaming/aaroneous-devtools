@@ -137,13 +137,15 @@ def parse_attestations(comments):
 # One seat is one seat however its name is spelled: "Gemini", "gemini" and "Antigravity" are the same reviewer. The merge gate's
 # "at least two independent seats" box counts len(accept_seats), so two comments from one seat spelled differently (live on
 # #96: ['Gemini', 'gemini']) looked like two seats.
-SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
+# `mimo` is the steward's stable principal id for the OpenCode seat (its leases, history and event log are keyed by it);
+# `opencode`, the application the seat runs, is the same seat under its display name.
+SEAT_NAME_ALIASES = {"antigravity": "gemini", "opencode": "mimo", "qwen": "mimo"}
 
 
 # A seat is recognised by a word that STARTS with its name: "claude-sonnet-5-5", "gemini-3.8-flash", "mimo-v2.6-flash-free",
 # "Claude\u200b" and "CLAUDE." all name a seat. Taking only the first space-separated word missed every model-id and
 # punctuation form (skeptic probe on #99: reviewer "Claude" with implementers ["claude-sonnet-5-5"] was independent).
-KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen")
+KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "opencode", "mimo", "qwen")
 
 # A model family named without its seat word still names the seat that runs it: "Opus 5.5" is Claude, "gpt-5.5" is Codex.
 # Without this the string kept its own first token as an "unknown seat", so a Claude session labelling itself "Opus"
@@ -249,6 +251,15 @@ def _hyphenated(text):
     return "-".join(t for t in re.split(r"[^a-z0-9]+", str(text).strip().lower()) if t)
 
 
+def registry_spelling(seat, registered):
+    """`seat` as the registry spells it (`mimo` or `opencode` for the OpenCode seat), so the order in which code and registry
+    change never strands a signature. A seat registered under neither spelling, or under two, is returned unchanged."""
+    if not seat or not registered or seat in registered:
+        return seat
+    spelled = [name for name in registered if SEAT_NAME_ALIASES.get(name) == seat]
+    return spelled[0] if len(spelled) == 1 else seat
+
+
 def named_seats(name):
     """The known seats a string names (seat word, alias or model family), with no fallback: `seat_names` plus nothing."""
     found = set()
@@ -269,7 +280,7 @@ def resolve_seat(label, registered=None):
     flat = "-" + _hyphenated(label) + "-"
     hits = sorted(seat for seat in (registered or ()) if _hyphenated(seat) and "-" + _hyphenated(seat) + "-" in flat)
     if not hits:
-        return canonical_reviewer_seat(label)
+        return registry_spelling(canonical_reviewer_seat(label), registered)
     if len(hits) > 1:
         return None
     rest = flat.replace("-" + _hyphenated(hits[0]) + "-", "-", 1)
