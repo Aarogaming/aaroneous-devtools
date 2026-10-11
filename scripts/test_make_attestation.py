@@ -45,6 +45,24 @@ class Build(unittest.TestCase):
             self.assertIsNone(record, override)
             self.assertIn(expected, error, override)
 
+    def test_the_model_that_ran_is_signed_into_the_record_and_read_back(self):
+        record, error = ma.build_record("o/r", 7, HEAD, BASE, "ubuntu-worker-01", ["claude"], "accept", model="  qwen3.8 ")
+        self.assertIsNone(error)
+        self.assertEqual(record["model"], "qwen3.8")
+        structured, problems, _ = rc.parse_attestations([{"body": ma.render_block(record)}])
+        self.assertEqual((len(structured), problems, structured[0]["model"]), (1, [], "qwen3.8"))
+
+    def test_no_model_is_fine_and_leaves_the_record_without_one(self):
+        record, error = ma.build_record("o/r", 7, HEAD, BASE, "gemini", ["claude"], "accept")
+        self.assertIsNone(error)
+        self.assertNotIn("model", record)
+
+    def test_a_malformed_model_flag_is_refused_before_it_is_signed(self):
+        for bad in ("", "   ", "x" * 81, "a" + chr(10) + "b"):
+            record, error = ma.build_record("o/r", 7, HEAD, BASE, "gemini", ["claude"], "accept", model=bad)
+            self.assertIsNone(record, bad)
+            self.assertIn("--model", error)
+
     def test_a_delta_attestation_carries_from(self):
         record, error = ma.build_record("o/r", 7, HEAD, BASE, "codex", ["claude"], "accept", "delta", "c" * 40)
         self.assertIsNone(error)

@@ -267,24 +267,95 @@ def resolve_seat(label, registered=None):
 
 
 FAMILY_LABEL = re.compile(r"[a-z][a-z0-9-]{0,31}")
+MODEL_MAX = 80
 
 
-def seat_families(identities_data):
-    """{seat: model family} for the seats that declare a well-formed `family` in the identities file."""
+def clean_model(value):
+    """The model id a record declares, or None. Declaring is optional and never refused: a missing, non-string, over-long or
+    control-character value is simply not used (the family falls back to the seat's registered profile)."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value or len(value) > MODEL_MAX or any(not c.isprintable() for c in value):
+        return None
+    return value
+
+
+def seat_profiles(identities_data):
+    """{seat: {model, family, runtime, ...}} from the optional `profile` each registered seat may carry: what the seat last
+    reported about itself at registration. Gathered, never required, never a reason to refuse anyone."""
     seats = identities_data.get("seats") if isinstance(identities_data, dict) else None
     out = {}
     if isinstance(seats, dict):
         for seat, entry in seats.items():
-            family = entry.get("family") if isinstance(entry, dict) else None
-            if isinstance(family, str) and FAMILY_LABEL.fullmatch(family):
-                out[seat] = family
+            profile = entry.get("profile") if isinstance(entry, dict) else None
+            if isinstance(profile, dict):
+                clean = {k: v.strip() for k, v in profile.items() if isinstance(v, str) and v.strip()}
+                if "family" in clean and not FAMILY_LABEL.fullmatch(clean["family"]):
+                    del clean["family"]
+                out[seat] = clean
     return out
 
 
-def families_of(accept_seats, families):
-    """The distinct model families behind the accepting seats. A seat with no declared family stands alone (its own name), so
-    the rule bites only where families are declared and equal: mimo and ubuntu-worker-01 are the same model."""
-    return sorted({(families or {}).get(seat) or f"seat:{seat}" for seat in accept_seats})
+def model_table(identities_data):
+    """[(stem, family)] longest stem first, from the registry's `model_families` table."""
+    table = identities_data.get("model_families") if isinstance(identities_data, dict) else None
+    pairs = []
+    if isinstance(table, dict):
+        for key, family in table.items():
+            if isinstance(key, str) and isinstance(family, str) and key and FAMILY_LABEL.fullmatch(family):
+                pairs.append((key.lower(), family))
+    return sorted(pairs, key=lambda kv: (-len(kv[0]), kv[0]))
+
+
+def model_family(model, table):
+    """The family a model id belongs to per `table`, or None for a model the table does not know. The id's last path segment
+    is matched against each stem: equal, or followed by a non-letter ('qwen3.8', 'claude-sonnet-5-5', 'Qwen/Qwen3.8-Coder',
+    'gpt-5.5'), never by a letter ('qwenish' is not qwen)."""
+    model = clean_model(model)
+    if model is None:
+        return None
+    name = model.lower().rsplit("/", 1)[-1]
+    for key, family in table:
+        if name.startswith(key) and (len(name) == len(key) or not name[len(key)].isalpha()):
+            return family
+    return None
+
+
+def independence(counted, registered, profiles, table):
+    """What the accepting verdicts say about who judged: (families, entries, notes). One entry per accepting seat and declared
+    model: the family comes from the model the signed record declares, else the seat's registered profile, else the seat
+    stands alone. The notes are the self-report: an unclassified model, a model that differs from the registered profile,
+    and accepts that share a family. Nothing here refuses anyone; the gate only counts distinct families."""
+    entries, notes, seen = [], [], set()
+    for record in counted:
+        seat = resolve_seat(record["reviewer"], registered)
+        if not seat:
+            continue
+        model = clean_model(record.get("model"))
+        registered_family = (profiles.get(seat) or {}).get("family")
+        declared = model_family(model, table) if model else None
+        if declared:
+            family, source = declared, "declared"
+        elif registered_family:
+            family, source = registered_family, "registered"
+        else:
+            family, source = f"seat:{seat}", "seat"
+        key = (seat, model, family)
+        if key in seen:
+            continue
+        seen.add(key)
+        if model and not declared:
+            notes.append(f"{seat} declared model {model!r}, which model_families does not classify; counted as {family} ({source})")
+        elif declared and registered_family and declared != registered_family:
+            notes.append(f"{seat} is registered as {registered_family} but ran {model!r} ({declared}): the declared model is used")
+        entries.append({"seat": seat, "model": model, "family": family, "source": source})
+    families = sorted({e["family"] for e in entries})
+    for family in families:
+        sharing = sorted({e["seat"] for e in entries if e["family"] == family})
+        if len(sharing) > 1:
+            notes.append(f"{', '.join(sharing)} are the same model family ({family}): counted as one judge")
+    return families, entries, notes
 
 
 def independent(record):
@@ -467,7 +538,8 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
         raise ValueError("snapshot needs a top-level 'repo' (OWNER/NAME) naming the subject repository")
     rows = []
     registered = set(keys["seats"]) if isinstance(keys, dict) and isinstance(keys.get("seats"), dict) else None
-    families = seat_families(keys) if isinstance(keys, dict) else {}
+    profiles = seat_profiles(keys) if isinstance(keys, dict) else {}
+    table = model_table(keys) if isinstance(keys, dict) else []
     for pr in snapshot["prs"]:
         parsed, problems, legacy = parse_attestations(pr.get("comments", []))
         allowed = attest_sig.allowed_signers(keys) if keys else ""
@@ -510,6 +582,7 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                     "commit trailer) and the attestation's implementers list does not")
             records.append(dict(record, implementers=list(record["implementers"]) + extra) if extra else record)
         decision = evaluate(pr["head"], pr["merge_base"], records, ancestry, registered)
+        families, family_entries, family_notes = independence(decision["counted"], registered, profiles, table)
         decision["reasons"] = decision["reasons"] + conflicts
         loose = unattributed_commits(pr.get("commit_log"), pr.get("branch"))
         if loose:
@@ -529,7 +602,8 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                 "covered": decision["covered"],
                 "reasons": decision["reasons"],
                 "accept_seats": decision["accept_seats"],
-                "accept_families": families_of(decision["accept_seats"], families),
+                "accept_families": families,
+                "independence": {"entries": family_entries, "notes": family_notes},
                 "counted_verdicts": len(decision["counted"]),
                 "verdicts_missing_evidence": [r.get("comment") for r in decision["counted"] if not r.get("commands")],
                 "structured_attestations": len(structured),

@@ -551,19 +551,74 @@ class RegisteredSeatsResolveExactly(unittest.TestCase):
         decision = rc.evaluate(H1, MB, [rec(H1, reviewer="ubuntu-worker-01"), rec(H1, reviewer="codex")], always, REGISTERED)
         self.assertEqual(decision["accept_seats"], ["codex", "ubuntu-worker-01"])
 
-    def test_families_collapse_seats_running_one_model(self):
-        families = rc.seat_families({"seats": {"mimo": {"family": "mimo"}, "ubuntu-worker-01": {"family": "mimo"},
-                                               "claude": {"family": "anthropic"}, "bad": {"family": "Not Ok"}, "none": {}}})
-        self.assertEqual(families, {"mimo": "mimo", "ubuntu-worker-01": "mimo", "claude": "anthropic"})
-        self.assertEqual(rc.families_of(["mimo", "ubuntu-worker-01"], families), ["mimo"])
-        self.assertEqual(rc.families_of(["mimo", "claude"], families), ["anthropic", "mimo"])
+TABLE = rc.model_table({"model_families": {"qwen": "qwen", "mimo": "mimo", "claude": "anthropic", "gpt": "openai", "gemini": "google"}})
+PROFILES = {"opencode": {"family": "mimo", "model": "mimo-v2.6"}, "ubuntu-worker-01": {"family": "qwen"},
+            "claude": {"family": "anthropic"}}
+REG = {"claude", "codex", "gemini", "opencode", "ubuntu-worker-01"}
 
-    def test_an_undeclared_family_stands_alone(self):
-        self.assertEqual(rc.families_of(["codex", "gemini"], {}), ["seat:codex", "seat:gemini"])
 
-    def test_a_malformed_registry_yields_no_families(self):
-        for data in (None, [], {"seats": []}, {"seats": {"x": "y"}}):
-            self.assertEqual(rc.seat_families(data), {}, data)
+def accepted(reviewer, model=None):
+    record = rec(H1, reviewer=reviewer)
+    if model is not None:
+        record["model"] = model
+    return record
+
+
+class FamilyComesFromTheModelThatRan(unittest.TestCase):
+    """A seat is a place and a key; the model behind it changes. The signed record says which model ran, the registry only
+    remembers the last answer, and nobody is turned away for either."""
+
+    def test_the_model_table_matches_a_stem_not_a_prefix_of_a_word(self):
+        for model, family in (("qwen3.8", "qwen"), ("Qwen/Qwen3.8-Coder-14B", "qwen"), ("claude-sonnet-5-5", "anthropic"),
+                              ("gpt-5.5", "openai"), ("MiMo-V2.6-Flash", "mimo"), ("gemini-3.8-flash", "google"), ("qwen", "qwen")):
+            self.assertEqual(rc.model_family(model, TABLE), family, model)
+        for model in ("qwenish", "claudette", "llama-4", "", None, 7, "x" * 81, "qwen\x00"):
+            self.assertIsNone(rc.model_family(model, TABLE), model)
+
+    def test_a_declared_model_beats_the_registered_profile(self):
+        families, entries, notes = rc.independence([accepted("ubuntu-worker-01", "mimo-v2.6")], REG, PROFILES, TABLE)
+        self.assertEqual(families, ["mimo"])
+        self.assertEqual(entries[0]["source"], "declared")
+        self.assertTrue(any("registered as qwen but ran" in n for n in notes), notes)
+
+    def test_without_a_declared_model_the_registered_profile_is_used(self):
+        families, entries, notes = rc.independence([accepted("ubuntu-worker-01")], REG, PROFILES, TABLE)
+        self.assertEqual((families, entries[0]["source"], notes), (["qwen"], "registered", []))
+
+    def test_with_neither_the_seat_stands_alone(self):
+        families, entries, _ = rc.independence([accepted("codex")], REG, PROFILES, TABLE)
+        self.assertEqual((families, entries[0]["source"]), (["seat:codex"], "seat"))
+
+    def test_an_unclassified_model_is_reported_and_does_not_buy_a_new_family(self):
+        families, _, notes = rc.independence([accepted("ubuntu-worker-01", "brandnew-9")], REG, PROFILES, TABLE)
+        self.assertEqual(families, ["qwen"])
+        self.assertTrue(any("does not classify" in n for n in notes), notes)
+
+    def test_a_malformed_model_is_ignored_not_refused(self):
+        for bad in (7, ["qwen"], "x" * 200, "a\nb"):
+            families, _, _ = rc.independence([accepted("ubuntu-worker-01", bad)], REG, PROFILES, TABLE)
+            self.assertEqual(families, ["qwen"], bad)
+
+    def test_two_seats_running_one_model_are_one_judge_and_say_so(self):
+        families, _, notes = rc.independence(
+            [accepted("opencode", "mimo-v2.6"), accepted("ubuntu-worker-01", "mimo-v2.6-flash")], REG, PROFILES, TABLE)
+        self.assertEqual(families, ["mimo"])
+        self.assertTrue(any("same model family (mimo)" in n for n in notes), notes)
+
+    def test_the_same_hardware_on_a_different_model_is_two_judges(self):
+        # the Windows and Ubuntu OpenCode seats, today: MiMo and Qwen
+        families, _, notes = rc.independence([accepted("opencode"), accepted("ubuntu-worker-01")], REG, PROFILES, TABLE)
+        self.assertEqual((families, notes), (["mimo", "qwen"], []))
+
+    def test_one_seat_on_two_models_counts_both_families_but_is_still_one_seat(self):
+        families, entries, _ = rc.independence([accepted("opencode", "mimo-v2.6"), accepted("opencode", "qwen3.8")], REG, PROFILES, TABLE)
+        self.assertEqual((families, len(entries)), (["mimo", "qwen"], 2))
+
+    def test_profiles_and_the_table_tolerate_a_malformed_registry(self):
+        for data in (None, [], {"seats": []}, {"seats": {"x": "y"}}, {"seats": {"x": {"profile": "p"}}}, {"model_families": []}):
+            self.assertEqual(rc.seat_profiles(data), {}, data)
+            self.assertEqual(rc.model_table(data), [], data)
+        self.assertEqual(rc.seat_profiles({"seats": {"a": {"profile": {"family": "Bad Family", "model": "m"}}}}), {"a": {"model": "m"}})
 
 
 if __name__ == "__main__":
