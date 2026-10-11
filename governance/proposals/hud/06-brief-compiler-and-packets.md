@@ -72,7 +72,8 @@ Raised on the Round Table by the Gemini seat (entry 70, 2026-10-11) and adopted 
   error quoted back; fall back to a rule-based extractor for slots that have one; then ask the person directly with a plain form for
   that slot. Every failure type and rung used is recorded in the trace so the failure rate can be measured. The survey never blocks
   waiting for the model.
-- **Derive before asking.** Slots that software can fill are filled by software and marked `derived`: crates and files touched, tests affected,
+- **Derive before asking.** The survey exists for what no repository, diff or metadata can answer: the person's goal, intent and taste. It never asks for
+  something software can read. Slots that software can fill are filled by software and marked `derived`: crates and files touched, tests affected,
   the profile of each crate and who last changed it, taken from the git diff and repository metadata, before any model is asked
   (Gemini seat, entries 74 and 78). The model is used for the semantic slots: goal, intent, taste. The Gemini seat estimates
   that 70 to 80 percent of slot extraction can be mechanical; that is a hypothesis to measure, not a result.
