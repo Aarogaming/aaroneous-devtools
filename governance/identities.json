@@ -3,7 +3,7 @@
   "owner": ["Aarogaming"],
   "seats": {
     "claude": {"profile": {"family": "anthropic", "model": "claude-sonnet-5-5", "runtime": "claude-code"}, "logins": ["aaroneous-claude-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKl7YYxzb4umZVCMjjM/fNtSLhfsP9KV55cj9jQogc0n"]},
-    "mimo": {"profile": {"family": "mimo", "runtime": "opencode", "host": "windows"}, "logins": ["aaroneous-opencode-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFLtJceCVyHHBO+WxlUVGbapfaoHvcLUevlrx1Ao4APs"]},
+    "opencode": {"profile": {"family": "mimo", "runtime": "opencode", "host": "windows"}, "logins": ["aaroneous-opencode-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFLtJceCVyHHBO+WxlUVGbapfaoHvcLUevlrx1Ao4APs"]},
     "codex": {"profile": {"family": "openai", "runtime": "codex"}, "logins": ["aaroneous-codex-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEj78veufw2J7x77xNRSr5cSk4X13eNe+a5b7ZzRkkzz codex attestation key"]},
     "gemini": {"profile": {"family": "google", "runtime": "antigravity"}, "logins": ["aaroneous-gemini-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPB2JAZ7RkQZU4fKWL+GxRWSKQzxtk59XXx2PuGfIylX"]},
     "ubuntu-worker-01": {"profile": {"family": "qwen", "model": "qwen3.8", "runtime": "opencode", "host": "ubuntu"}, "logins": ["aaroneous-ubuntu-worker-01-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDO3kuStrwBZK7lzdcbYwr6k87qFMAzjeCo8wD8hs9X7"]}
