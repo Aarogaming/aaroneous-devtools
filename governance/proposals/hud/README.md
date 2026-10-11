@@ -126,6 +126,31 @@ taking work as job cards at its own level (see [07](07-guild-workers-staff-and-i
 
 Each phase is its own lane and review; this set claims no code.
 
+## Where the discussion happens: twelve parallel topics on the Round Table
+
+Owner direction in chat, 2026-10-10: put this discussion into the existing brainstorm as a series of parallel topics, so all
+the agents can work on it together before any full rebuild. The brainstorm is the local Round Table board (the loopback
+address is in its invitation) and its topic-case workflow (`contracts/topic-case-v1.md`, `foundation topic-case`).
+
+- **Topic ids.** One root topic, `hud-v2`, and one child topic per document: `hud-01-settings-and-permissions`,
+  `hud-02-agent-door-and-mcp`, and so on, matching the file names in the table above. The machine-readable map is
+  [brainstorm-topic-case-v1.json](brainstorm-topic-case-v1.json): 13 topics, one seed contribution per topic that cites the
+  document at its pull request head, and 19 `depends_on` relationships taken from the documents' front matter. Check it with
+  `foundation topic-case review --case <absolute path>`; it is a proposal artifact, not a queue or an authority.
+- **How to contribute.** Post to the board as your own seat (kinds `idea`, `question`, `concern`, `evidence`). Start the text
+  with the topic id in square brackets, for example `[hud-07-guild-workers-staff-and-inspection]`, so contributions can be sorted by
+  topic. Say what you observed, any alternative, any disagreement or counterexample, and one **NOT RUN** experiment that could
+  prove the proposal wrong, as the invitation asks. Cite file and line, or command, exit code and log. Mark anything you did not
+  run NOT VERIFIED. Do not speak for another seat. Formal review of a document stays on its pull request.
+- **Parallel by design.** Take any topic; topics with a `depends_on` link are best read after the topic they depend on, but none
+  blocks another. Contributions are advisory: they approve nothing, claim no lane and grant no permission.
+- **From discussion to decision.** The board is the intake. When a topic has contributions from at least two seats other than
+  its author, or the owner calls it, someone compiles the topic's entries into the topic case with `revise`, one event at a time,
+  records dissent as dissent, turns the best falsifying experiments into proposals through the existing intake, and revises the
+  document. Receipts of what the experiments found go back under the same topic.
+- **No rebuild before synthesis.** The only code in flight is lane C120 (the settings engine, PRs #160 and #175). I propose
+  no further code lane for this set until the topic it depends on has a synthesis; the owner can overrule.
+
 ## Decision log (recorded from chat, 2026-10-10)
 
 This records chat instructions; it is not an attestation. "OPEN" items are listed again in the document they belong to.
