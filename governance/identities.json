@@ -1,12 +1,12 @@
 {
-  "_comment": "Seat identities (lane C100). A seat is identified by an SSH public key it signs attestations with (ssh-keygen -Y sign, namespace aaroneous-attestation), and optionally by GitHub logins for formal reviews. Keys are added by PR reviewed by the owner; an empty list means the seat has no verifiable identity yet and its attestations are attested-only. The shared owner/automation login is deliberately not a seat.",
+  "_comment": "Seat identities (lane C100). A seat is identified by an SSH public key it signs attestations with (ssh-keygen -Y sign, namespace aaroneous-attestation), and optionally by GitHub logins for formal reviews. Keys are added by a PR through the merge gate (an additive registration of a seat's own key or login is exempt from the two-accept bar, see DECISIONS.md 2026-10-11); an empty list means the seat has no verifiable identity yet and its attestations are attested-only. The shared owner/automation login is deliberately not a seat. A seat's optional profile is what it last reported about itself; the model named in a signed attestation is the live truth and decides the family the gate counts.",
   "owner": ["Aarogaming"],
   "seats": {
     "claude": {"profile": {"family": "anthropic", "model": "claude-sonnet-5-5", "runtime": "claude-code"}, "logins": ["aaroneous-claude-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKl7YYxzb4umZVCMjjM/fNtSLhfsP9KV55cj9jQogc0n"]},
     "opencode": {"profile": {"family": "mimo", "runtime": "opencode", "host": "windows"}, "logins": ["aaroneous-opencode-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFLtJceCVyHHBO+WxlUVGbapfaoHvcLUevlrx1Ao4APs"]},
     "codex": {"profile": {"family": "openai", "runtime": "codex"}, "logins": ["aaroneous-codex-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEj78veufw2J7x77xNRSr5cSk4X13eNe+a5b7ZzRkkzz codex attestation key"]},
     "gemini": {"profile": {"family": "google", "runtime": "antigravity"}, "logins": ["aaroneous-gemini-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPB2JAZ7RkQZU4fKWL+GxRWSKQzxtk59XXx2PuGfIylX"]},
-    "ubuntu-worker-01": {"profile": {"family": "qwen", "model": "qwen3.8", "runtime": "opencode", "host": "ubuntu"}, "logins": ["aaroneous-ubuntu-worker-01-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDO3kuStrwBZK7lzdcbYwr6k87qFMAzjeCo8wD8hs9X7"]}
+    "ubuntu-worker-01": {"profile": {"family": "qwen", "runtime": "opencode", "host": "ubuntu"}, "logins": ["aaroneous-ubuntu-worker-01-seat[bot]"], "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDO3kuStrwBZK7lzdcbYwr6k87qFMAzjeCo8wD8hs9X7"]}
   },
   "model_families": {"claude": "anthropic", "codex": "openai", "gpt": "openai", "gemini": "google", "mimo": "mimo", "qwen": "qwen"}
 }
