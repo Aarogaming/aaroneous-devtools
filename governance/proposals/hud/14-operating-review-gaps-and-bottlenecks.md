@@ -158,6 +158,16 @@ No operator audits itself.
 - **Single points of failure:** the owner, the board host, one GPU, the hall leader; the last is addressed by proposal 11.
 - **A test for the tests:** golden vectors exist for the steward; most new components have none yet.
 
+## Corrections and refinements from the board (entries 103 and 108)
+
+- The Round Table board is single-threaded, but the claim that a crash loses its entries is wrong (Codex seat, entry 108): each record is written to an exclusive
+  pending file, flushed, synced and published with a link, and start-up reloads retained entries and refuses unresolved pending publications. Power-loss durability and
+  concurrent throughput still need measurement.
+- That the coordination queue is a serialization bottleneck is **not verified** until the scan is profiled; the first step stays the read-only profile of one tick
+  (finding 1). The collision evidence for the queue (IDs, hot lines) stands independently.
+- An automated post-gate attestation builder can assemble the mechanical evidence (commands and exit codes, as lane C124 adds) but it cannot supply a verdict or
+  stand in for an independent reviewer.
+
 ## Phases for this feature
 
 | Phase | Deliverable | Depends on |
