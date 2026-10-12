@@ -30,6 +30,9 @@ jobs:
       - name: Format
         run: cargo fmt --manifest-path foundation/Cargo.toml --all -- --check
       - name: Test
+        env:
+          DEVTOOLS_TEST_GIT: C:/Program Files/Git/cmd/git.exe
+          DEVTOOLS_TEST_SSH_KEYGEN: C:/Windows/System32/OpenSSH/ssh-keygen.exe
         run: cargo test --manifest-path foundation/Cargo.toml --workspace --all-targets --locked
       - name: Lint
         run: cargo clippy --manifest-path foundation/Cargo.toml --workspace --all-targets --locked -- -D warnings
