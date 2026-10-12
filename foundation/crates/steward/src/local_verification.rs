@@ -85,10 +85,17 @@ fn strict(value: &Value, keys: &[&str]) -> Result<(), String> {
 }
 
 fn git(git: &Path, repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
-    let output = Command::new(absolute(git)?)
+    let mut command = Command::new(absolute(git)?);
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(key);
+        }
+    }
+    let output = command
         .arg("-C")
         .arg(absolute(repo)?)
         .args(args)
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env(
             "GIT_CONFIG_GLOBAL",
