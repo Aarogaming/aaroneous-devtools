@@ -34,7 +34,9 @@ def alert_user(title, message):
     subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True)
 
 def run_cmd(cmd):
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if not isinstance(cmd, list):
+        raise TypeError("Commands must be argument lists; shell execution is disabled")
+    result = subprocess.run(cmd, shell=False, capture_output=True, text=True, encoding="utf-8", errors="replace")
     return result.returncode, result.stdout, result.stderr
 
 def get_next_task():
@@ -68,7 +70,7 @@ def execute_cycle(task_description):
 
     # 1. Consult Cloud Architect (Gemini)
     print("[AUTOPILOT] 1. Requesting plan from Cloud Architect (Gemini)...")
-    cloud_cmd = f"python tools/cloud_agent.py \"Provide the exact code changes and instructions to execute: {task_description}\""
+    cloud_cmd = [sys.executable, "tools/cloud_agent.py", f"Provide the exact code changes and instructions to execute: {task_description}"]
     code, out, err = run_cmd(cloud_cmd)
     if code != 0:
         print(f"[AUTOPILOT] Cloud agent error:\n{err}")
@@ -76,21 +78,21 @@ def execute_cycle(task_description):
 
     # 2. Local Qwen AST Invariant Check
     print("[AUTOPILOT] 2. Consulting Local Qwen for AST Invariant constraints...")
-    local_cmd = f"python tools/local_agent.py \"Check AST invariants for: {task_description}\""
+    local_cmd = [sys.executable, "tools/local_agent.py", f"Check AST invariants for: {task_description}"]
     run_cmd(local_cmd)
 
     # 3. Compiler & AST Verification Gauntlet (Up to 3 autonomous retries)
     for attempt in range(1, 4):
         print(f"[AUTOPILOT] 3. Running Verification Gauntlet (Attempt {attempt}/3)...")
-        code, out, err = run_cmd("cargo check --workspace --all-targets")
+        code, out, err = run_cmd(["cargo", "check", "--workspace", "--all-targets"])
         if code != 0:
             print(f"[AUTOPILOT] Attempt {attempt} failed compilation. Invoking auto-repair...")
             fix_prompt = f"Fix this compilation error for {task_description}:\n{err}\n{out}"
-            _, fix_plan, _ = run_cmd(f"python tools/cloud_agent.py \"{fix_prompt}\"")
+            _, fix_plan, _ = run_cmd([sys.executable, "tools/cloud_agent.py", fix_prompt])
             continue
 
         # AST Invariant Audit
-        code, audit_out, _ = run_cmd("cargo run -p ast_auditor -- audit core/ crates/")
+        code, audit_out, _ = run_cmd(["cargo", "run", "-p", "ast_auditor", "--", "audit", "core/", "crates/"])
         if code == 0 and "Violations: 0" in audit_out:
             print("[AUTOPILOT] Verification Gauntlet: PASSED (0 AST violations, 0 compiler errors).")
             append_status(f"SUCCESS: {task_description}")

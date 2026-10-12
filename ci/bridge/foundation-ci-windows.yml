@@ -1,0 +1,35 @@
+# BRIDGE VERSION: the Windows leg of Foundation CI, on main pushes only, so a pull request never pays for or waits on it and the
+# merge gate (which treats a skipped or missing check as a failure) never sees it.
+name: Foundation CI (Windows)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-ci-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    name: Foundation (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: foundation
+      - name: Format
+        run: cargo fmt --manifest-path foundation/Cargo.toml --all -- --check
+      - name: Test
+        run: cargo test --manifest-path foundation/Cargo.toml
+      - name: Lint
+        run: cargo clippy --manifest-path foundation/Cargo.toml -- -D warnings
