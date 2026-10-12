@@ -50,6 +50,36 @@ fn the_policy_is_valid_and_every_platform_it_can_require_has_a_suite_that_runs_t
 }
 
 #[test]
+fn windows_specific_code_is_verified_on_windows_before_merge() {
+    // Codex review of #199: the Windows-only path containment in foundation_cli was not covered by the first policy.
+    let policy =
+        Policy::parse(&read(ci_dir().join("platform-policy.toml"))).expect("policy parses");
+    for path in [
+        "foundation/crates/foundation_cli/src/agentic_registrar.rs",
+        "foundation/crates/foundation_cli/src/local_worker.rs",
+        "foundation/crates/maintenance_ui/src/main.rs",
+        "foundation/Cargo.lock",
+        "stacks/local-rust.toml",
+        "ci/suites/foundation-ci.toml",
+    ] {
+        let required = policy.required(&[path.to_owned()]);
+        assert!(
+            required.contains(&"windows-x86_64".to_owned()),
+            "{path} must require Windows, got {required:?}"
+        );
+        assert!(
+            required.contains(&"linux-x86_64".to_owned()),
+            "{path} must require Linux, got {required:?}"
+        );
+    }
+    // a pure document change stays Linux-only
+    assert_eq!(
+        policy.required(&["governance/x.md".to_owned()]),
+        ["linux-x86_64"]
+    );
+}
+
+#[test]
 fn foundation_ci_runs_the_same_commands_as_the_workflow_it_replaces() {
     let suite =
         parse_suite(&read(ci_dir().join("suites/foundation-ci.toml"))).expect("suite parses");

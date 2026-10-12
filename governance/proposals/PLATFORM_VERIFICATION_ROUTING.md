@@ -114,8 +114,9 @@ that leaves the repository, a zero or enormous timeout, a duplicate step, and an
 text in git, so any byte change is a new digest.
 
 **Platform policy** (`ci/platform-policy.toml`): the default platforms plus rules mapping a path prefix to an extra platform. Today:
-Linux always; Windows too for `foundation/crates/maintenance_ui/`, `foundation/Cargo.*` and `ci/`. The prefixes are a first guess
-for review, not a finding.
+Linux always; Windows too for anything under `foundation/`, `stacks/` and `ci/`. This is deliberately broad: Codex found
+Windows-only path containment (and Windows-only tests) in `foundation_cli`, which the first, narrower policy missed. Narrow it only
+with dependency and platform evidence, not by guessing which crate is portable; a test pins the Windows-specific paths.
 
 **`suite::plan(request, suite, node_platform)`** refuses a malformed request, one for another platform (misrouted), one naming
 another suite, one whose `suite_digest` differs from the manifest the node itself read, and a suite that does not list the node's

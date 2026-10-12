@@ -2,14 +2,16 @@
 # there. Reviewed like any other file; a node and the hall read it from the base branch, never from the pull request.
 default = ["linux-x86_64"]
 
-# The Windows tray, passive engine and scheduled-task code only means something on Windows.
+# Conservative on purpose (Codex review of #199): foundation_cli contains Windows-specific path containment
+# (agentic_registrar.rs, local_worker.rs) with Windows-only tests, so any maintained Foundation Rust change is verified on
+# Windows too. Narrow this only with dependency and platform evidence, not by guessing which crate is portable.
 [[rule]]
-prefix = "foundation/crates/maintenance_ui/"
+prefix = "foundation/"
 platform = "windows-x86_64"
 
-# A dependency or workspace change can break one platform's build and not the other.
+# Stack declarations are validated by the same workspace build on every platform.
 [[rule]]
-prefix = "foundation/Cargo."
+prefix = "stacks/"
 platform = "windows-x86_64"
 
 # Changing the verification itself is checked on every platform it runs on.

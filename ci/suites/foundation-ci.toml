@@ -11,12 +11,12 @@ timeout_s = 600
 
 [[step]]
 name = "test"
-argv = ["cargo", "test", "--manifest-path", "foundation/Cargo.toml"]
+argv = ["cargo", "test", "--manifest-path", "foundation/Cargo.toml", "--workspace", "--all-targets", "--locked"]
 timeout_s = 3600
 
 [[step]]
 name = "clippy"
-argv = ["cargo", "clippy", "--manifest-path", "foundation/Cargo.toml", "--", "-D", "warnings"]
+argv = ["cargo", "clippy", "--manifest-path", "foundation/Cargo.toml", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
 timeout_s = 1800
 
 [[step]]

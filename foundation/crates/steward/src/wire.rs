@@ -350,6 +350,58 @@ mod tests {
     }
 
     #[test]
+    fn the_whole_path_from_wire_to_evidence_binds_a_result_to_its_own_request() {
+        // Codex review of #199: a valid 64-hex id computed from another valid request passed through the codec and
+        // made evidence() ok. Drive the real path: encode, parse with the adapter's verified flag, then decide.
+        use crate::verification::{Admission, evidence};
+        let intended = request();
+        let other = Request {
+            repo: "Aarogaming/aaroneous".into(),
+            ..request()
+        };
+        let authorised = BTreeMap::from([(
+            "ubuntu-1".to_owned(),
+            BTreeSet::from([intended.platform.clone()]),
+        )]);
+        let admitted = BTreeMap::from([(
+            intended.id(),
+            Admission {
+                attempt: 1,
+                node: "ubuntu-1".into(),
+            },
+        )]);
+        let wire_of = |request_id: String| {
+            let packet = outcome_to_value(&Outcome {
+                request_id,
+                ..outcome()
+            });
+            outcome_from_value(&packet, true).expect("a well-formed packet parses")
+        };
+        let genuine = wire_of(intended.id());
+        assert!(
+            evidence(
+                std::slice::from_ref(&intended),
+                &[genuine],
+                &authorised,
+                &admitted
+            )
+            .ok
+        );
+        for wrong in [other.id(), "d".repeat(64)] {
+            let borrowed = wire_of(wrong);
+            assert!(
+                !evidence(
+                    std::slice::from_ref(&intended),
+                    &[borrowed],
+                    &authorised,
+                    &admitted
+                )
+                .ok
+            );
+        }
+    }
+
+    #[test]
     fn a_node_cannot_vouch_for_its_own_signature() {
         let smuggled = with(
             outcome_to_value(&outcome()),
