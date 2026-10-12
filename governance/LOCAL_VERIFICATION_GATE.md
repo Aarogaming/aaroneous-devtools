@@ -61,6 +61,8 @@ Build with `cargo build --manifest-path foundation/Cargo.toml -p steward
 --bin local-verification --locked`. All path options are absolute and the
 spool directory must already exist. Commands print JSON and return nonzero
 on unreadable authority, malformed input or failed authentication.
+For `run`, exit 0 means that a receipt was stored, not that the suite passed;
+integration must consume the authenticated receipt verdict through `shadow`.
 
 ```text
 local-verification issue --git <native-git> --repo <source-checkout> --repo-name Aarogaming/aaroneous-devtools --head <40-hex> --base <40-hex> --suite foundation-ci --spool <spool>
@@ -120,6 +122,15 @@ restart/recovery and attempt fencing, dirty checkout, stale request/digest,
 log and signature tampering, key revocation and preservation of review gates.
 Foundation formatting, workspace/all-target tests and strict Clippy are the
 required candidate gates. Remote checks remain billing-blocked.
+
+Candidate verification on 2026-10-11 (America/New_York): workspace/all-target
+tests passed (302 tests, one pre-existing ignored differential and one ignored
+subprocess helper that the timeout test explicitly runs). After adding the CLI
+end-to-end test, all eight focused adapter tests passed. Formatting and strict
+workspace/all-target Clippy passed. New-commit Gitleaks scanning found no leaks.
+Evidence is retained in `tmp/public-readiness-evidence/local-gate-*.log`;
+the queue cites the immutable implementation revision. These are Windows-host
+results, not a claim of Linux node execution or independent acceptance.
 
 Rollback removes this adapter/CLI and reverts manifest alignment and test-tool
 inputs. Preserve the spool and evidence for review; no live authority has
