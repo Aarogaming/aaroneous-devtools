@@ -1,0 +1,29 @@
+# Ubuntu TLS front door only. The native Rust coordinator owns the private spool.
+# Required values are explicit; the stack refuses an unset image, hostname or bind IP.
+services:
+  ingress:
+    image: ${VERIFICATION_CADDY_IMAGE:?Use an approved caddy image with @sha256 digest}
+    network_mode: host
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    environment:
+      VERIFICATION_HOST: ${VERIFICATION_HOST:?Explicit TLS hostname required}
+      VERIFICATION_BIND_IP: ${VERIFICATION_BIND_IP:?Explicit LAN or tailnet interface IP required}
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - type: bind
+        source: ${VERIFICATION_TLS_DATA:?Explicit private precreated TLS data directory}
+        target: /data
+      - type: bind
+        source: ${VERIFICATION_TLS_CONFIG:?Explicit private precreated TLS config directory}
+        target: /config
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m,mode=1777
+    restart: "no"

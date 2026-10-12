@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "node": "windows-worker-01",
+  "curl": "C:/Windows/System32/curl.exe",
+  "endpoint": "https://aaroneoushome:8443",
+  "ca_file": "D:/aaroneous-verification/private/ca.crt",
+  "client_environment": {"SYSTEMROOT":"C:/Windows"},
+  "client_scratch": "D:/aaroneous-verification/client-scratch",
+  "token_file": "D:/aaroneous-verification/private/windows-token",
+  "spool": "D:/aaroneous-verification/worker-spool",
+  "checkouts": {"REPLACE_WITH_FULL_HEAD_SHA":"D:/aaroneous-verification/candidates/REPLACE_WITH_FULL_HEAD_SHA"},
+  "execution": {
+    "mode": "native",
+    "runner": {
+      "git":"C:/Program Files/Git/cmd/git.exe",
+      "tools":{"cargo":"C:/REPLACE_WITH_APPROVED_TOOLCHAIN/bin/cargo.exe"},
+      "environment":{"SYSTEMROOT":"C:/Windows","PATH":"C:/REPLACE_WITH_APPROVED_TOOLCHAIN/bin;C:/Windows/System32","CARGO_TARGET_DIR":"D:/aaroneous-verification/targets/job","CARGO_BUILD_JOBS":"2","DEVTOOLS_TEST_GIT":"C:/Program Files/Git/cmd/git.exe","DEVTOOLS_TEST_SSH_KEYGEN":"C:/Windows/System32/OpenSSH/ssh-keygen.exe","DEVTOOLS_TEST_CURL":"C:/Windows/System32/curl.exe","DEVTOOLS_TEST_SYSTEM_ROOT":"C:/Windows"}
+    }
+  },
+  "ssh_keygen":"C:/Windows/System32/OpenSSH/ssh-keygen.exe",
+  "signing_key":"D:/aaroneous-verification/private/windows-node-key",
+  "trust":"owner-trusted-local"
+}

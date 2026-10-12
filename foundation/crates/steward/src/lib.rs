@@ -23,6 +23,7 @@ pub mod coverage;
 pub mod engagement;
 pub mod gate;
 pub mod heads;
+pub mod job_service;
 pub mod local_authority;
 pub mod local_verification;
 pub mod receipts;
