@@ -25,6 +25,7 @@ pub mod gate;
 pub mod heads;
 pub mod receipts;
 pub mod rejected;
+pub mod release;
 pub mod seats;
 pub mod text;
 pub mod verification;
