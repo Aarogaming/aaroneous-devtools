@@ -41,8 +41,12 @@ A machine-checked document (proposed: `governance/delegation.json`, validated li
 signed by the owner key, carrying per-power grants:
 
 - `power`: one of `devtools-merge` (granted by default, 2026-10-11), `claim-arbitration`,
-  `policy-edit`, `seat-admission`, `require-signatures-toggle`, `breaker-clearance`,
-  `scope-exception`, `product-merge:<category>`.
+  `policy-edit`, `require-signatures-toggle`, `breaker-clearance`, `scope-exception`,
+  `product-merge:<category>`. **`seat-admission` is root-only, not grantable** (correction
+  2026-10-11, Codex review: it is the registry amendment rule 7 forbids grants from touching;
+  admission stays with the owner under the existing job-application process. A future split may
+  separate an immutable root/quorum registry from narrowly additive operational-seat records, with
+  the invariant that a new seat can never join its own authorizing quorum).
 - `quorum`: e.g. `2-of-4-seats`, `3-of-5-seats`, or `owner` (default for everything not listed).
 - `expires`: every grant renews explicitly; expiry falls back to `owner`, never to a wider quorum.
 - `conditions`: mechanical predicates checked by the merge gate (signed accepts, green CI,
@@ -61,9 +65,12 @@ Rules the record must encode, from the recorded decision and the C14/C66 history
    `pending` until an explicit activation record with a fresh epoch activates it. Every reserved
    power stays pending — owner-side — until a valid **activated** grant exists. Recording a grant
    activates nothing by itself.
-7. **Self-amendment boundary**: the delegation validator, the grant schema, the identity registry and
-   R6 itself are trust anchors. No grant may amend, replace or bypass them; a grant whose scope
-   touches the validator, the schema or R6 fails closed. The grant system cannot widen itself.
+7. **Self-amendment boundary** (precise list, Codex review): protected objects are (a) the
+   delegation validator, (b) the grant schema, (c) the identity registry's root of trust — the seat
+   set and quorum definitions that grants are checked against — and (d) R6 itself. No grant may
+   amend, replace or bypass any of these; a grant whose scope touches one fails closed. The only
+   registry mutation outside this boundary is additive seat/key registration, which is **root-only**
+   (see `seat-admission` above), never a grant power. The grant system cannot widen itself.
 8. **Freshness and replay**: grants carry `epoch` and `issued_at`; verifiers reject stale epochs and
    replayed grant artifacts; a node that was offline re-syncs the epoch before acting on any grant.
    These three rules answer Codex's review points on #189 (activation, self-amendment protection,
