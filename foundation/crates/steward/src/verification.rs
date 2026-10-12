@@ -7,8 +7,13 @@
 //! verifies it. The node's result is signed and bound to the exact head and suite digest, so it needs no expiry.
 //!
 //! Pure functions: no I/O, no clock, no environment. Time arrives as ticks, signatures are verified by the adapter
-//! (which sets `signature_verified`), and the node roster is an input. Every rule fails closed: an unknown platform,
-//! an unauthorised node, an unverified signature, a stale head, or two results that disagree never count as a pass.
+//! (which sets `signature_verified`), and the node roster and the hall's admitted attempts are inputs. Every rule fails
+//! closed: an unknown platform, an unauthorised node, an unverified signature, a stale head, a result for another request,
+//! a late result from an earlier attempt, or two results that disagree never count as a pass.
+//!
+//! Delivery is at-least-once and routing is not execution: `route` picks a holder, it does not stop an offline holder from
+//! still running. Exactly one *effect* needs durable request and attempt state with atomic admission and fencing in the hall;
+//! this module only guarantees that whatever arrives is judged against what the hall admitted.
 
 use crate::chain::digest;
 use std::collections::{BTreeMap, BTreeSet};
@@ -143,121 +148,166 @@ pub struct Evidence {
     pub platforms: Vec<PlatformStatus>,
 }
 
-/// Decide whether `head` is verified on every `required` platform.
+/// What the hall has issued for one request: the attempt that is current and the node it was assigned to. This is the hall's
+/// own durable state; a node cannot create or change it. An outcome counts only for the admitted attempt on the assigned
+/// node, so a late result from an earlier attempt, or from a node the request was not assigned to, can never turn a newer
+/// pending attempt green.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Admission {
+    pub attempt: u32,
+    pub node: String,
+}
+
+/// Decide whether every expected request is verified.
 ///
-/// `authorised` maps each registered node to the platforms it may attest. A result counts only if its head, platform and
-/// suite digest match, its signature was verified, and its node is authorised for that platform. Of the results that
-/// count, the highest attempt decides; two different verdicts on that attempt are a conflict, not a pass. No required
-/// platform at all is a misconfigured gate and is never ok.
+/// `expected` is the set of validated requests the hall issued for one candidate (one per required platform: same repository,
+/// head and base, different platforms). Each outcome is matched to its request by the request's **canonical id**, so a result
+/// for a different repository, base, suite or digest never counts, however well its own head and platform fit. `admitted`
+/// says which attempt is current and which node holds it. `authorised` maps each registered node to the platforms it may attest.
+///
+/// A result counts only if its id, head, platform and suite digest equal the request's, it is for the admitted attempt on the
+/// assigned node, its signature was verified, and the node is authorised for the platform. Two different verdicts for that
+/// attempt are a conflict, not a pass; `error` is never a pass; a request the hall has not admitted is pending. An empty,
+/// malformed, duplicated-platform or self-contradictory expectation is a misconfigured gate and is never ok.
 #[must_use]
 pub fn evidence(
-    head: &str,
-    suite_digest: &str,
-    required: &[String],
+    expected: &[Request],
     outcomes: &[Outcome],
     authorised: &BTreeMap<String, BTreeSet<String>>,
+    admitted: &BTreeMap<String, Admission>,
 ) -> Evidence {
-    let wanted: BTreeSet<&String> = required.iter().collect();
+    let broken = |detail: String| Evidence {
+        ok: false,
+        platforms: vec![PlatformStatus {
+            platform: "(expectation)".to_owned(),
+            state: State::Error,
+            detail,
+        }],
+    };
+    let Some(first) = expected.first() else {
+        return broken("no platform is required, which is a misconfigured gate".to_owned());
+    };
+    let mut seen = BTreeSet::new();
+    for request in expected {
+        if let Some(problem) = request.problem() {
+            return broken(format!(
+                "expected request for {} is malformed: {problem}",
+                request.platform
+            ));
+        }
+        if !seen.insert(request.platform.as_str()) {
+            return broken(format!("platform {} is expected twice", request.platform));
+        }
+        if request.repo != first.repo
+            || request.head != first.head
+            || request.base_sha != first.base_sha
+        {
+            return broken(
+                "the expected requests disagree about the repository, head or base".to_owned(),
+            );
+        }
+    }
     let mut platforms = Vec::new();
-    for platform in wanted {
-        let matching: Vec<&Outcome> = outcomes
-            .iter()
-            .filter(|o| o.head == head && o.platform == *platform && o.suite_digest == suite_digest)
-            .collect();
-        let unverified = matching.iter().filter(|o| !o.signature_verified).count();
-        let unauthorised = matching
+    let mut ordered: Vec<&Request> = expected.iter().collect();
+    ordered.sort_by(|a, b| a.platform.cmp(&b.platform));
+    for request in ordered {
+        let id = request.id();
+        let platform = request.platform.clone();
+        let pending = |detail: String| PlatformStatus {
+            platform: platform.clone(),
+            state: State::Pending,
+            detail,
+        };
+        let Some(admission) = admitted.get(&id) else {
+            platforms.push(pending("the hall has not admitted this request".to_owned()));
+            continue;
+        };
+        let bound: Vec<&Outcome> = outcomes
             .iter()
             .filter(|o| {
-                o.signature_verified
-                    && !authorised
-                        .get(&o.node)
-                        .is_some_and(|set| set.contains(platform))
+                o.request_id == id
+                    && o.head == request.head
+                    && o.platform == request.platform
+                    && o.suite_digest == request.suite_digest
             })
-            .count();
-        let counted: Vec<&Outcome> = matching
+            .collect();
+        let current: Vec<&Outcome> = bound
+            .iter()
+            .copied()
+            .filter(|o| o.attempt == admission.attempt && o.node == admission.node)
+            .collect();
+        let stale = bound.len() - current.len();
+        let unverified = current.iter().filter(|o| !o.signature_verified).count();
+        let counted: Vec<&Outcome> = current
             .iter()
             .copied()
             .filter(|o| {
                 o.signature_verified
                     && authorised
                         .get(&o.node)
-                        .is_some_and(|set| set.contains(platform))
+                        .is_some_and(|set| set.contains(&request.platform))
             })
             .collect();
-        let status = match counted.iter().map(|o| o.attempt).max() {
-            None => {
-                let mut notes = Vec::new();
-                if unverified > 0 {
-                    notes.push(format!("{unverified} unverified result(s) ignored"));
-                }
-                if unauthorised > 0 {
-                    notes.push(format!("{unauthorised} result(s) from a node not authorised for this platform ignored"));
-                }
-                PlatformStatus {
-                    platform: platform.clone(),
-                    state: State::Pending,
-                    detail: if notes.is_empty() {
-                        "no result yet".to_owned()
-                    } else {
-                        notes.join("; ")
-                    },
-                }
+        let unauthorised = current.len() - unverified - counted.len();
+        if counted.is_empty() {
+            let mut notes = Vec::new();
+            if stale > 0 {
+                notes.push(format!(
+                    "{stale} result(s) from an earlier attempt or an unassigned node ignored"
+                ));
             }
-            Some(top) => {
-                let deciding: Vec<&&Outcome> =
-                    counted.iter().filter(|o| o.attempt == top).collect();
-                let verdicts: BTreeSet<&str> = deciding
-                    .iter()
-                    .map(|o| match o.verdict {
-                        Verdict::Pass => "pass",
-                        Verdict::Fail => "fail",
-                        Verdict::Error => "error",
-                    })
-                    .collect();
-                let nodes: BTreeSet<&str> = deciding.iter().map(|o| o.node.as_str()).collect();
-                let (state, detail) = if verdicts.len() > 1 {
-                    (
-                        State::Conflict,
-                        format!(
-                            "attempt {top}: {} disagree",
-                            nodes.iter().copied().collect::<Vec<_>>().join(", ")
-                        ),
-                    )
-                } else {
-                    match deciding[0].verdict {
-                        Verdict::Pass => (
-                            State::Pass,
-                            format!(
-                                "attempt {top} passed on {}",
-                                nodes.iter().copied().collect::<Vec<_>>().join(", ")
-                            ),
-                        ),
-                        Verdict::Fail => (
-                            State::Fail,
-                            format!(
-                                "attempt {top} failed on {}",
-                                nodes.iter().copied().collect::<Vec<_>>().join(", ")
-                            ),
-                        ),
-                        Verdict::Error => (
-                            State::Error,
-                            format!(
-                                "attempt {top} could not run on {}",
-                                nodes.iter().copied().collect::<Vec<_>>().join(", ")
-                            ),
-                        ),
-                    }
-                };
-                PlatformStatus {
-                    platform: platform.clone(),
-                    state,
-                    detail,
-                }
+            if unverified > 0 {
+                notes.push(format!("{unverified} unverified result(s) ignored"));
+            }
+            if unauthorised > 0 {
+                notes.push(format!(
+                    "{unauthorised} result(s) from a node not authorised for this platform ignored"
+                ));
+            }
+            let detail = if notes.is_empty() {
+                format!(
+                    "attempt {} on {} has not reported",
+                    admission.attempt, admission.node
+                )
+            } else {
+                format!(
+                    "attempt {} on {}: {}",
+                    admission.attempt,
+                    admission.node,
+                    notes.join("; ")
+                )
+            };
+            platforms.push(pending(detail));
+            continue;
+        }
+        let verdicts: BTreeSet<&str> = counted
+            .iter()
+            .map(|o| match o.verdict {
+                Verdict::Pass => "pass",
+                Verdict::Fail => "fail",
+                Verdict::Error => "error",
+            })
+            .collect();
+        let at = format!("attempt {} on {}", admission.attempt, admission.node);
+        let (state, detail) = if verdicts.len() > 1 {
+            (
+                State::Conflict,
+                format!("{at}: the node reported different verdicts"),
+            )
+        } else {
+            match counted[0].verdict {
+                Verdict::Pass => (State::Pass, format!("{at} passed")),
+                Verdict::Fail => (State::Fail, format!("{at} failed")),
+                Verdict::Error => (State::Error, format!("{at} could not run")),
             }
         };
-        platforms.push(status);
+        platforms.push(PlatformStatus {
+            platform,
+            state,
+            detail,
+        });
     }
-    let ok = !platforms.is_empty() && platforms.iter().all(|p| p.state == State::Pass);
+    let ok = platforms.iter().all(|p| p.state == State::Pass);
     Evidence { ok, platforms }
 }
 
@@ -365,12 +415,37 @@ mod tests {
         }
     }
 
-    fn outcome(node: &str, platform: &str, attempt: u32, verdict: Verdict) -> Outcome {
-        Outcome {
-            request_id: "id".into(),
-            head: HEAD.into(),
+    fn req(platforms: &[&str]) -> Vec<String> {
+        platforms.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    fn request_on(platform: &str) -> Request {
+        Request {
             platform: platform.into(),
-            suite_digest: DIGEST.into(),
+            ..request()
+        }
+    }
+
+    /// The expected requests for a candidate verified on Linux and Windows.
+    fn both() -> Vec<Request> {
+        vec![request_on("linux-x86_64"), request_on("windows-x86_64")]
+    }
+
+    fn linux() -> Request {
+        request_on("linux-x86_64")
+    }
+
+    fn windows() -> Request {
+        request_on("windows-x86_64")
+    }
+
+    /// A signed, verified pass for `request`, from `node`, for `attempt`, with its canonical id.
+    fn outcome_for(request: &Request, node: &str, attempt: u32, verdict: Verdict) -> Outcome {
+        Outcome {
+            request_id: request.id(),
+            head: request.head.clone(),
+            platform: request.platform.clone(),
+            suite_digest: request.suite_digest.clone(),
             node: node.into(),
             attempt,
             verdict,
@@ -387,12 +462,30 @@ mod tests {
         };
         BTreeMap::from([
             ("ubuntu-1".to_owned(), set(&["linux-x86_64"])),
+            ("ubuntu-2".to_owned(), set(&["linux-x86_64"])),
             ("windows-1".to_owned(), set(&["windows-x86_64"])),
         ])
     }
 
-    fn req(platforms: &[&str]) -> Vec<String> {
-        platforms.iter().map(|s| (*s).to_owned()).collect()
+    /// The hall admitted attempt `attempt` of each request on the given node.
+    fn admitted(entries: &[(&Request, u32, &str)]) -> BTreeMap<String, Admission> {
+        entries
+            .iter()
+            .map(|(request, attempt, node)| {
+                (
+                    request.id(),
+                    Admission {
+                        attempt: *attempt,
+                        node: (*node).to_owned(),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    /// Both platforms admitted on their usual nodes at attempt 1.
+    fn admitted_both() -> BTreeMap<String, Admission> {
+        admitted(&[(&linux(), 1, "ubuntu-1"), (&windows(), 1, "windows-1")])
     }
 
     #[test]
@@ -472,29 +565,161 @@ mod tests {
     }
 
     #[test]
-    fn a_head_is_verified_only_when_every_required_platform_passed() {
-        let both = req(&["linux-x86_64", "windows-x86_64"]);
-        let linux_only = [outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Pass)];
-        let result = evidence(HEAD, DIGEST, &both, &linux_only, &auth());
+    fn a_head_is_verified_only_when_every_expected_platform_passed() {
+        let linux_only = [outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass)];
+        let result = evidence(&both(), &linux_only, &auth(), &admitted_both());
         assert!(!result.ok);
         assert_eq!(result.platforms[1].platform, "windows-x86_64");
         assert_eq!(result.platforms[1].state, State::Pending);
         let both_pass = [
             linux_only[0].clone(),
-            outcome("windows-1", "windows-x86_64", 1, Verdict::Pass),
+            outcome_for(&windows(), "windows-1", 1, Verdict::Pass),
         ];
-        assert!(evidence(HEAD, DIGEST, &both, &both_pass, &auth()).ok);
+        assert!(evidence(&both(), &both_pass, &auth(), &admitted_both()).ok);
     }
 
     #[test]
-    fn nothing_required_is_a_misconfigured_gate_never_ok() {
+    fn a_misconfigured_expectation_is_never_ok() {
+        let pass = [outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass)];
+        assert!(
+            !evidence(&[], &pass, &auth(), &admitted_both()).ok,
+            "nothing expected"
+        );
+        assert!(
+            !evidence(&[linux(), linux()], &pass, &auth(), &admitted_both()).ok,
+            "a platform expected twice"
+        );
         assert!(
             !evidence(
-                HEAD,
-                DIGEST,
-                &[],
-                &[outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Pass)],
-                &auth()
+                &[Request {
+                    head: "x".into(),
+                    ..linux()
+                }],
+                &pass,
+                &auth(),
+                &admitted_both()
+            )
+            .ok,
+            "malformed request"
+        );
+        // The requests disagree about the candidate. Every one is admitted and every result is a genuine pass, so only the
+        // disagreement itself can stop this from being ok.
+        for (why, other) in [
+            (
+                "repository",
+                Request {
+                    repo: "Aarogaming/aaroneous".into(),
+                    ..windows()
+                },
+            ),
+            (
+                "base",
+                Request {
+                    base_sha: "d".repeat(40),
+                    ..windows()
+                },
+            ),
+            (
+                "head",
+                Request {
+                    head: "d".repeat(40),
+                    ..windows()
+                },
+            ),
+        ] {
+            let pair = [linux(), other.clone()];
+            let adm = admitted(&[(&linux(), 1, "ubuntu-1"), (&other, 1, "windows-1")]);
+            let passes = [
+                outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass),
+                outcome_for(&other, "windows-1", 1, Verdict::Pass),
+            ];
+            assert!(
+                !evidence(&pair, &passes, &auth(), &adm).ok,
+                "requests that disagree about the {why}"
+            );
+        }
+        // and the same setup with agreeing requests is ok, so the check above is what stopped it
+        let adm = admitted_both();
+        let passes = [
+            outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass),
+            outcome_for(&windows(), "windows-1", 1, Verdict::Pass),
+        ];
+        assert!(evidence(&both(), &passes, &auth(), &adm).ok);
+    }
+
+    #[test]
+    fn a_result_for_another_request_does_not_count_however_well_its_head_and_platform_fit() {
+        // Codex review of #197: a verified, authorised pass carrying another valid request's id made evidence ok.
+        let intended = linux();
+        let admitted = admitted(&[(&intended, 1, "ubuntu-1")]);
+        let others = [
+            (
+                "another repository",
+                Request {
+                    repo: "Aarogaming/aaroneous".into(),
+                    ..linux()
+                },
+            ),
+            (
+                "another base",
+                Request {
+                    base_sha: "d".repeat(40),
+                    ..linux()
+                },
+            ),
+            (
+                "another suite",
+                Request {
+                    suite: "dashboard".into(),
+                    ..linux()
+                },
+            ),
+            (
+                "another suite digest",
+                Request {
+                    suite_digest: "e".repeat(64),
+                    ..linux()
+                },
+            ),
+        ];
+        for (why, other) in others {
+            // the outcome keeps the intended head, platform and digest but carries the other request's id
+            let borrowed = Outcome {
+                request_id: other.id(),
+                ..outcome_for(&intended, "ubuntu-1", 1, Verdict::Pass)
+            };
+            let result = evidence(
+                std::slice::from_ref(&intended),
+                &[borrowed],
+                &auth(),
+                &admitted,
+            );
+            assert!(!result.ok, "{why} must not count");
+            assert_eq!(result.platforms[0].state, State::Pending, "{why}");
+        }
+        for bad_id in ["id", "not-an-id", "", &"0".repeat(64)] {
+            let forged = Outcome {
+                request_id: bad_id.to_owned(),
+                ..outcome_for(&intended, "ubuntu-1", 1, Verdict::Pass)
+            };
+            assert!(
+                !evidence(
+                    std::slice::from_ref(&intended),
+                    &[forged],
+                    &auth(),
+                    &admitted
+                )
+                .ok,
+                "id {bad_id:?}"
+            );
+        }
+        let genuine = outcome_for(&intended, "ubuntu-1", 1, Verdict::Pass);
+        assert!(
+            evidence(
+                std::slice::from_ref(&intended),
+                &[genuine],
+                &auth(),
+                &admitted
             )
             .ok
         );
@@ -502,56 +727,103 @@ mod tests {
 
     #[test]
     fn a_result_that_cannot_count_is_ignored_and_says_why() {
-        let need = req(&["linux-x86_64"]);
+        let one = [linux()];
+        let adm = admitted(&[(&linux(), 1, "ubuntu-1")]);
+        let good = outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass);
         let cases: Vec<(&str, Outcome)> = vec![
             (
                 "another head",
                 Outcome {
                     head: "d".repeat(40),
-                    ..outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Pass)
+                    ..good.clone()
                 },
             ),
             (
                 "another suite digest",
                 Outcome {
                     suite_digest: "d".repeat(64),
-                    ..outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Pass)
+                    ..good.clone()
                 },
             ),
             (
                 "another platform",
-                outcome("windows-1", "windows-x86_64", 1, Verdict::Pass),
+                Outcome {
+                    platform: "windows-x86_64".into(),
+                    ..good.clone()
+                },
             ),
             (
                 "unverified signature",
                 Outcome {
                     signature_verified: false,
-                    ..outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Pass)
+                    ..good.clone()
                 },
             ),
             (
-                "unauthorised node",
-                outcome("windows-1", "linux-x86_64", 1, Verdict::Pass),
+                "a node not assigned the request",
+                Outcome {
+                    node: "ubuntu-2".into(),
+                    ..good.clone()
+                },
             ),
             (
-                "unknown node",
-                outcome("stranger", "linux-x86_64", 1, Verdict::Pass),
+                "an earlier attempt",
+                Outcome {
+                    attempt: 0,
+                    ..good.clone()
+                },
+            ),
+            (
+                "a later attempt the hall never admitted",
+                Outcome {
+                    attempt: 2,
+                    ..good.clone()
+                },
             ),
         ];
         for (why, case) in cases {
-            let result = evidence(HEAD, DIGEST, &need, &[case], &auth());
+            let result = evidence(&one, &[case], &auth(), &adm);
             assert!(!result.ok, "{why} must not pass");
             assert_eq!(result.platforms[0].state, State::Pending, "{why}");
         }
-        let detail = evidence(
-            HEAD,
-            DIGEST,
-            &need,
+        // a node that is assigned but not registered for the platform
+        let wrong_platform = admitted(&[(&linux(), 1, "windows-1")]);
+        let result = evidence(
+            &one,
             &[Outcome {
-                signature_verified: false,
-                ..outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Pass)
+                node: "windows-1".into(),
+                ..good.clone()
             }],
             &auth(),
+            &wrong_platform,
+        );
+        assert_eq!(result.platforms[0].state, State::Pending);
+        assert!(
+            result.platforms[0].detail.contains("not authorised"),
+            "{}",
+            result.platforms[0].detail
+        );
+        let unknown = admitted(&[(&linux(), 1, "stranger")]);
+        assert!(
+            !evidence(
+                &one,
+                &[Outcome {
+                    node: "stranger".into(),
+                    ..good.clone()
+                }],
+                &auth(),
+                &unknown
+            )
+            .ok
+        );
+        let detail = evidence(
+            &one,
+            &[Outcome {
+                signature_verified: false,
+                ..good
+            }],
+            &auth(),
+            &adm,
         )
         .platforms[0]
             .detail
@@ -560,42 +832,76 @@ mod tests {
     }
 
     #[test]
-    fn the_highest_attempt_decides_and_a_disagreement_is_a_conflict() {
-        let need = req(&["linux-x86_64"]);
-        let retry_passes = [
-            outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Fail),
-            outcome("ubuntu-1", "linux-x86_64", 2, Verdict::Pass),
-        ];
-        assert!(evidence(HEAD, DIGEST, &need, &retry_passes, &auth()).ok);
-        let later_fails = [
-            outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Pass),
-            outcome("ubuntu-1", "linux-x86_64", 2, Verdict::Fail),
-        ];
-        let result = evidence(HEAD, DIGEST, &need, &later_fails, &auth());
+    fn a_request_the_hall_has_not_admitted_is_pending_whatever_arrives() {
+        let pass = [outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass)];
+        let result = evidence(&[linux()], &pass, &auth(), &BTreeMap::new());
         assert!(!result.ok);
-        assert_eq!(result.platforms[0].state, State::Fail);
-        let mut auth_two = auth();
-        auth_two.insert(
-            "ubuntu-2".to_owned(),
-            BTreeSet::from(["linux-x86_64".to_owned()]),
+        assert_eq!(result.platforms[0].state, State::Pending);
+        assert!(result.platforms[0].detail.contains("not admitted"));
+    }
+
+    #[test]
+    fn a_late_pass_from_an_earlier_attempt_cannot_turn_a_newer_pending_attempt_green() {
+        // Codex review of #197: attempt 1's pass arrives after the hall reassigned the work as attempt 2.
+        let late = outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass);
+        let reassigned = admitted(&[(&linux(), 2, "ubuntu-2")]);
+        let result = evidence(
+            &[linux()],
+            std::slice::from_ref(&late),
+            &auth(),
+            &reassigned,
         );
-        let disagree = [
-            outcome("ubuntu-1", "linux-x86_64", 3, Verdict::Pass),
-            outcome("ubuntu-2", "linux-x86_64", 3, Verdict::Fail),
+        assert!(!result.ok);
+        assert_eq!(result.platforms[0].state, State::Pending);
+        assert!(
+            result.platforms[0].detail.contains("earlier attempt"),
+            "{}",
+            result.platforms[0].detail
+        );
+        // duplicate delivery of the same late packet changes nothing
+        let twice = [late.clone(), late];
+        assert!(!evidence(&[linux()], &twice, &auth(), &reassigned).ok);
+        // once the admitted attempt reports, that result decides
+        let fresh = outcome_for(&linux(), "ubuntu-2", 2, Verdict::Pass);
+        let both_arrive = [twice[0].clone(), fresh.clone()];
+        assert!(evidence(&[linux()], &both_arrive, &auth(), &reassigned).ok);
+        // and a failing current attempt is not rescued by an earlier pass
+        let failing = outcome_for(&linux(), "ubuntu-2", 2, Verdict::Fail);
+        let result = evidence(
+            &[linux()],
+            &[twice[0].clone(), failing],
+            &auth(),
+            &reassigned,
+        );
+        assert_eq!(result.platforms[0].state, State::Fail);
+    }
+
+    #[test]
+    fn the_assigned_node_reporting_two_verdicts_for_one_attempt_is_a_conflict() {
+        let adm = admitted(&[(&linux(), 1, "ubuntu-1")]);
+        let both_verdicts = [
+            outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass),
+            outcome_for(&linux(), "ubuntu-1", 1, Verdict::Fail),
         ];
-        let result = evidence(HEAD, DIGEST, &need, &disagree, &auth_two);
+        let result = evidence(&[linux()], &both_verdicts, &auth(), &adm);
         assert!(!result.ok);
         assert_eq!(result.platforms[0].state, State::Conflict);
+        // the same verdict delivered twice is harmless
+        let twice = [
+            outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass),
+            outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass),
+        ];
+        assert!(evidence(&[linux()], &twice, &auth(), &adm).ok);
     }
 
     #[test]
     fn a_node_error_is_never_a_pass() {
+        let adm = admitted(&[(&linux(), 1, "ubuntu-1")]);
         let result = evidence(
-            HEAD,
-            DIGEST,
-            &req(&["linux-x86_64"]),
-            &[outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Error)],
+            &[linux()],
+            &[outcome_for(&linux(), "ubuntu-1", 1, Verdict::Error)],
             &auth(),
+            &adm,
         );
         assert!(!result.ok);
         assert_eq!(result.platforms[0].state, State::Error);
@@ -603,21 +909,30 @@ mod tests {
 
     #[test]
     fn evidence_does_not_depend_on_the_order_of_results() {
-        let need = req(&["linux-x86_64", "windows-x86_64"]);
         let results = vec![
-            outcome("ubuntu-1", "linux-x86_64", 1, Verdict::Fail),
-            outcome("ubuntu-1", "linux-x86_64", 2, Verdict::Pass),
-            outcome("windows-1", "windows-x86_64", 1, Verdict::Pass),
+            outcome_for(&linux(), "ubuntu-1", 1, Verdict::Fail),
+            outcome_for(&linux(), "ubuntu-1", 2, Verdict::Pass),
+            outcome_for(&windows(), "windows-1", 1, Verdict::Pass),
+            outcome_for(&windows(), "windows-1", 1, Verdict::Pass),
         ];
-        let expected = evidence(HEAD, DIGEST, &need, &results, &auth());
+        let adm = admitted(&[(&linux(), 2, "ubuntu-1"), (&windows(), 1, "windows-1")]);
+        let expected = evidence(&both(), &results, &auth(), &adm);
+        assert!(expected.ok);
         let mut shuffled = results.clone();
         for rotation in 0..shuffled.len() {
             shuffled.rotate_left(rotation);
-            assert_eq!(evidence(HEAD, DIGEST, &need, &shuffled, &auth()), expected);
+            assert_eq!(evidence(&both(), &shuffled, &auth(), &adm), expected);
         }
         let mut reversed = results;
         reversed.reverse();
-        assert_eq!(evidence(HEAD, DIGEST, &need, &reversed, &auth()), expected);
+        assert_eq!(evidence(&both(), &reversed, &auth(), &adm), expected);
+        let mut swapped = both();
+        swapped.reverse();
+        assert_eq!(
+            evidence(&swapped, &shuffled, &auth(), &adm),
+            expected,
+            "the order of the expectation does not matter either"
+        );
     }
 
     #[test]

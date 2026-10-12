@@ -58,12 +58,21 @@ Because it is bound to the exact head and suite digest it needs no expiry.
 
 ## The decision (already implemented, pure Rust)
 
-`verification::evidence(head, suite_digest, required, outcomes, authorised)`:
+`verification::evidence(expected, outcomes, authorised, admitted)`:
 
-- a result counts only if its head, platform and suite digest match, **its signature was verified**, and **its node is authorised
-  for that platform**;
-- of the results that count, the highest `attempt` decides; two different verdicts on that attempt are a **conflict**, not a pass;
-- `error` is never a pass; no required platform at all is a misconfigured gate and is never ok.
+- **`expected`** is the set of validated requests the hall issued for one candidate (one per required platform, same repository, head
+  and base). A result is matched to its request by the request's **canonical id**, not by head and platform alone, so a result for a
+  different repository, base, suite or digest never counts. (Codex reproduced the opposite on the first version: a verified, authorised
+  pass carrying another valid request's id made the gate green. The fix is this signature, with negative tests that change the
+  repository, base, suite, digest and id one at a time.)
+- **`admitted`** is the hall's own durable state: for each request, the attempt that is current and the node it was assigned to. An
+  outcome counts only for the admitted attempt on the assigned node. A late pass from an earlier attempt cannot turn a newer pending
+  attempt green, and a request the hall has not admitted is pending whatever arrives.
+- a result counts only if its id, head, platform and suite digest equal the request's, **its signature was verified**, and **its node is
+  authorised for that platform**;
+- two different verdicts from the assigned node for the admitted attempt are a **conflict**, not a pass; the same verdict delivered twice
+  is harmless;
+- `error` is never a pass; an empty, malformed, duplicated-platform or self-contradictory expectation is a misconfigured gate and is never ok.
 
 `verification::required_platforms(default, rules, changed_paths)` reads the policy as data: Linux for everything, plus Windows
 when a changed path starts with a listed prefix (for example `foundation/crates/platform_bridge/`).
@@ -72,8 +81,11 @@ when a changed path starts with a listed prefix (for example `foundation/crates/
 online node with a free slot and the shortest queue wins, ties by name, so the same roster gives the same answer. A platform with
 no registered node is `Unsupported` (retrying will not help); a platform whose nodes are all offline or full is `Defer`.
 
-Tests: 13 unit tests, and five deliberate breakages each fail one (unverified signatures counting, any node attesting any
-platform, the lowest attempt deciding, an empty requirement being ok, a stale head counting).
+Tests: 16 unit tests. Deliberate breakages that each fail a test: unverified signatures counting, any node attesting any platform,
+an empty expectation being ok, a stale head counting, the request id not compared, the attempt not compared, the assigned node not
+compared, a platform expected twice, requests that disagree about repository, head or base, and an unadmitted request being judged
+anyway. Two first survived because the test did not isolate the rule (the disagreement test left one request unadmitted, so it was
+pending for another reason); they were rewritten so only the rule under test can make the result differ.
 
 ## Telemetry
 
@@ -98,10 +110,10 @@ the per-node token on the channel; only results are signed.
 | Node offline | request is deferred; the gate shows the platform as pending; never skipped |
 | Result with a bad or missing signature | ignored, counted in the detail ("1 unverified result(s) ignored") |
 | Node signs for a platform it is not registered for | ignored |
-| Result for an older head or another suite digest | ignored |
-| Two nodes disagree on the same attempt | conflict, blocks |
+| Result for an older head, another suite digest, another request, or an earlier attempt | ignored |
+| The assigned node reports two verdicts for one attempt | conflict, blocks |
 | Suite manifest changed in the PR | the node verifies against `base_sha`; the PR's change is judged at merge by the next base |
-| Duplicate request | same id, same holder, runs once |
+| Duplicate request | same id; `route` returns the same holder. Delivery is at-least-once: suppressing a duplicate *effect* needs durable request and attempt state with atomic admission and fencing in the hall (a later phase), because an offline holder may still be running when a replacement is assigned |
 | Node cannot run the suite (disk, toolchain) | `error`, blocks, retried with a higher attempt |
 | Node compromised | can attest only the platforms it is registered for, and its key is revocable through the registry; two nodes per platform give a cross-check |
 
@@ -136,6 +148,6 @@ default.
 
 ## Verified and not
 
-Verified: `cargo test -p steward --lib verification` (13 tests), `cargo clippy -p steward --all-targets -- -D warnings`, and
+Verified: `cargo test -p steward --lib verification` (16 tests), `cargo clippy -p steward --all-targets -- -D warnings`, and
 `cargo fmt --all -- --check` (commands and results are in the lane row). **Not run:** nothing here touches a network or a machine;
 the node agent, the hall wiring and every transport are future phases.
