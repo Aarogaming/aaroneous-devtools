@@ -40,14 +40,23 @@ pub struct Model {
 impl Model {
     #[must_use]
     pub fn kv_mb(&self) -> u64 {
-        (self.kv_bytes_per_token * self.context_tokens).div_ceil(MB)
+        self.kv_bytes_per_token
+            .saturating_mul(self.context_tokens)
+            .div_ceil(MB)
     }
 
     /// Everything the model wants resident while it runs.
     #[must_use]
     pub fn needed_mb(&self) -> u64 {
-        self.weights_mb + self.kv_mb() + self.overhead_mb
+        self.weights_mb
+            .saturating_add(self.kv_mb())
+            .saturating_add(self.overhead_mb)
     }
+}
+
+/// Three quarters of `n`, computed without overflow.
+fn three_quarters(n: u64) -> u64 {
+    u64::try_from(u128::from(n) * 3 / 4).unwrap_or(n)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +92,7 @@ pub fn fit(host: &Host, model: &Model, allow_offload: bool) -> Fit {
     let vram = host.vram_mb.saturating_sub(host.reserved_vram_mb);
     if needed <= vram {
         let headroom = vram - needed;
-        return if headroom * 10 < vram {
+        return if u128::from(headroom) * 10 < u128::from(vram) {
             Fit::Tight {
                 needed_mb: needed,
                 headroom_mb: headroom,
@@ -107,13 +116,13 @@ pub fn fit(host: &Host, model: &Model, allow_offload: bool) -> Fit {
             ),
         };
     }
-    if spill * 4 > ram * 3 {
+    if u128::from(spill) * 4 > u128::from(ram) * 3 {
         return Fit::TooBig {
             needed_mb: needed,
-            available_mb: vram + ram * 3 / 4,
+            available_mb: vram.saturating_add(three_quarters(ram)),
             reason: format!(
                 "needs {spill} MB beyond VRAM, more than the {} MB of RAM it may use",
-                ram * 3 / 4
+                three_quarters(ram)
             ),
         };
     }
@@ -146,6 +155,49 @@ pub struct EndpointPolicy {
     pub plain_http_hosts: Vec<String>,
 }
 
+/// Split `host[:port]` or `[ipv6][:port]` into the host (without brackets), the port text, and whether it was bracketed.
+fn split_authority(authority: &str) -> Result<(&str, Option<&str>, bool), String> {
+    if let Some(rest) = authority.strip_prefix('[') {
+        let Some((inner, after)) = rest.split_once(']') else {
+            return Err("endpoint has an unterminated [ in its host".to_owned());
+        };
+        let port = match after {
+            "" => None,
+            other => Some(
+                other
+                    .strip_prefix(':')
+                    .ok_or_else(|| "endpoint has text after the closing ]".to_owned())?,
+            ),
+        };
+        return Ok((inner, port, true));
+    }
+    if authority.contains(['[', ']']) {
+        return Err("brackets are only valid around an IPv6 address".to_owned());
+    }
+    match authority.matches(':').count() {
+        0 => Ok((authority, None, false)),
+        1 => {
+            let (host, port) = authority.split_once(':').unwrap_or((authority, ""));
+            Ok((host, Some(port), false))
+        }
+        _ => Err("an IPv6 address must be written in brackets".to_owned()),
+    }
+}
+
+/// Loopback means a parsed IP address in the loopback range (127.0.0.0/8, ::1) or the literal name `localhost`. Never a
+/// hostname that merely looks like one: `127.attacker.example.com` is a DNS name, not an address.
+fn is_loopback_host(host: &str, bracketed: bool) -> bool {
+    if bracketed {
+        return host
+            .parse::<std::net::Ipv6Addr>()
+            .is_ok_and(|a| a.is_loopback());
+    }
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|a| a.is_loopback())
+}
+
 /// Why `url` may not be used as a model endpoint, or `None`.
 #[must_use]
 pub fn endpoint_problem(url: &str, policy: &EndpointPolicy) -> Option<String> {
@@ -165,11 +217,9 @@ pub fn endpoint_problem(url: &str, policy: &EndpointPolicy) -> Option<String> {
     if authority.contains('@') {
         return Some("endpoint must not embed credentials (user@host)".to_owned());
     }
-    let (host, port) = match authority.rsplit_once(':') {
-        Some((h, p)) if !authority.starts_with('[') || h.ends_with(']') => {
-            (h.trim_matches(['[', ']']), Some(p))
-        }
-        _ => (authority.trim_matches(['[', ']']), None),
+    let (host, port, bracketed) = match split_authority(authority) {
+        Ok(parts) => parts,
+        Err(problem) => return Some(problem),
     };
     if host.is_empty() {
         return Some("endpoint has no host".to_owned());
@@ -181,11 +231,7 @@ pub fn endpoint_problem(url: &str, policy: &EndpointPolicy) -> Option<String> {
             return Some(format!("endpoint port {port:?} must be 1-65535"));
         }
     }
-    let lowered = host.to_ascii_lowercase();
-    let loopback = lowered == "localhost"
-        || lowered == "::1"
-        || lowered.starts_with("127.") && lowered.split('.').count() == 4;
-    if loopback {
+    if is_loopback_host(host, bracketed) {
         return None;
     }
     if !policy
@@ -491,6 +537,113 @@ mod tests {
         ] {
             assert!(endpoint_problem(bad, &policy()).is_some(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_hostname_that_merely_starts_with_127_is_not_loopback() {
+        // Codex review: "127.attacker.example.com" has four dot-separated segments and was admitted as loopback.
+        for host in [
+            "127.attacker.example.com",
+            "127.0.0.1.evil.example",
+            "127.a.b.c",
+            "127.0.0.256",
+            "127.0.0",
+            "127.1",
+            "127.0.0.1.",
+            "localhost.evil.example",
+            "xlocalhost",
+            "0.0.0.0",
+            "[::ffff:127.0.0.1]",
+            "[::2]",
+            "[::1",
+            "::1]",
+        ] {
+            let url = format!("http://{host}:8000/v1");
+            assert!(
+                endpoint_problem(&url, &EndpointPolicy::default()).is_some(),
+                "{url} must not be loopback"
+            );
+        }
+        for host in [
+            "127.0.0.1",
+            "127.255.255.254",
+            "LOCALHOST",
+            "localhost",
+            "[::1]",
+        ] {
+            let url = format!("http://{host}:8000/v1");
+            assert_eq!(
+                endpoint_problem(&url, &EndpointPolicy::default()),
+                None,
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn sizing_arithmetic_cannot_wrap_into_a_fit() {
+        // Codex review: kv_bytes_per_token = 2^63 with context 2 wrapped to 0 in a release build and reported Gpu { needed_mb: 1 }.
+        let hostile = [
+            Model {
+                kv_bytes_per_token: 1 << 63,
+                context_tokens: 2,
+                weights_mb: 1,
+                overhead_mb: 0,
+                ..qwen_7b_q4()
+            },
+            Model {
+                kv_bytes_per_token: u64::MAX,
+                context_tokens: u64::MAX,
+                weights_mb: 0,
+                overhead_mb: 0,
+                ..qwen_7b_q4()
+            },
+            Model {
+                weights_mb: u64::MAX,
+                kv_bytes_per_token: 1,
+                context_tokens: 1,
+                overhead_mb: 1,
+                ..qwen_7b_q4()
+            },
+            Model {
+                weights_mb: u64::MAX / 2 + 1,
+                overhead_mb: u64::MAX / 2 + 1,
+                kv_bytes_per_token: 0,
+                ..qwen_7b_q4()
+            },
+        ];
+        for model in &hostile {
+            for allow_offload in [false, true] {
+                let result = fit(&host_4060(), model, allow_offload);
+                assert!(
+                    matches!(result, Fit::TooBig { .. }),
+                    "{model:?} offload={allow_offload} gave {result:?}"
+                );
+            }
+            assert_eq!(
+                choose(&host_4060(), std::slice::from_ref(model)),
+                None,
+                "{model:?}"
+            );
+        }
+        // absurd host figures must not wrap either
+        let huge_host = Host {
+            vram_mb: u64::MAX,
+            ram_mb: u64::MAX,
+            reserved_vram_mb: 0,
+            reserved_ram_mb: 0,
+            name: "h".into(),
+        };
+        let _ = fit(&huge_host, &qwen_14b_awq(), true);
+        assert!(matches!(
+            fit(&huge_host, &qwen_7b_q4(), false),
+            Fit::Gpu { .. }
+        ));
+        assert_eq!(
+            qwen_7b_q4().needed_mb(),
+            4700 + 448 + 500,
+            "ordinary figures are unchanged"
+        );
     }
 
     #[test]

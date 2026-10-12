@@ -78,8 +78,8 @@ Claude, Codex and Gemini sessions reach theirs through their own applications) s
 
 ## Verified and not
 
-Verified: `cargo test -p steward --lib model_hub` (13 tests), `cargo clippy -p steward --all-targets -- -D warnings`,
-`cargo fmt --all -- --check`; seven deliberate breakages (no VRAM reservation, offload as the default, any host allowed, secret
+Verified: `cargo test -p steward --lib model_hub` (15 tests, in both the debug and the release profile), `cargo clippy -p steward --all-targets -- -D warnings`,
+`cargo fmt --all -- --check`; two review findings are fixed with regressions (a four-label hostname `127.attacker.example.com` was admitted as loopback because the check counted dots instead of parsing an address; and unchecked multiplication let `kv_bytes_per_token = 2^63` wrap to a 1 MB fit in a release build, so loopback now means a parsed 127.0.0.0/8 or `::1` address or the literal `localhost`, and the sizing uses saturating and 128-bit arithmetic); seven deliberate breakages (no VRAM reservation, offload as the default, any host allowed, secret
 fields accepting values, `choose` accepting an offloaded model, the tight threshold removed, a substituted model not flagged) each
 fail a test. **Not run:** nothing touches a machine, a network or a model; VRAM figures are published-architecture estimates, not
 measurements of the Ubuntu host.
