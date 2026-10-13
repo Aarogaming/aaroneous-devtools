@@ -1,4 +1,4 @@
-# Private authority, public releases (lane C135)
+# Private authority, public releases (lane C136)
 
 Status: proposal plus the first Rust slice (`foundation/crates/steward/src/release.rs`). Author: Claude seat. Grants nothing and
 changes no visibility, workflow or policy. Builds on C129 (platform verification, whose evidence the release decision reads) and on
@@ -38,16 +38,24 @@ A release candidate is a private commit that a release rule (data, reviewed like
 `vMAJOR.MINOR.PATCH` (the existing `governance/RELEASES.md` convention) or a confirmed feature add. The exporter does five things:
 
 1. **Verify**: the candidate has passed on every required platform for this exact commit (`verification::evidence(...).ok`, C129).
-2. **Plan the export**: `release::plan_export(policy, entries)` lists the tracked paths of that commit with their git mode and decides
-   each one. It is default-deny: a path must be inside an included area and outside every excluded one, safe to write on any platform
-   (no `..`, no drive or absolute path, no backslash or control character, no `.git` alias such as `.GIT.` or `GIT~1`, no `:` stream),
-   not a symlink or submodule, and not secret-shaped (`.env`, `*.key`, `*.pem`, `id_*` private keys, `credentials`, `.ssh`,
-   `.steward`, ...). The same inputs always give the same plan, in any order.
+2. **Plan the export**: `release::plan_export(policy, entries)` lists the tracked paths of that commit with their git mode and object id
+   and decides each one. It is default-deny: a path must be inside an included area and outside every excluded one, have **one
+   canonical interpretation on every platform**, not be a symlink or submodule, and not be secret-shaped (`.env`, `*.key`, `*.pem`,
+   `id_*` private keys, `credentials`, `.ssh`, `.steward`, ...). Path admission runs *before* any rule or name comparison and rejects,
+   never renames: no `..`, drive or absolute path, backslash or control character; no component ending in a dot or space (Windows drops
+   them, so `credentials.json.` is `credentials.json` there, which is how the first version let aliases slip past the secret-name
+   check); no reserved Windows device name even with an extension (`CON.txt`); none of `< > : " | ? *`; no `.git` alias (`.GIT.`,
+   `GIT~1`); and no two paths that collide on a case-insensitive file system, including a file and a directory that differ only in
+   case. The plan also carries a **tree digest** over every published mode, path and object id. The same inputs always give the same
+   plan, in any order.
 3. **Scan the export tree** (not the private tree): secret scan, advisories, `scripts/publication_check.py` (to be ported), all of which
-   must run clean.
-4. **Decide**: `release::decide(candidate, plan)` blocks, and lists every reason, on a malformed tag or SHA, missing or pending
-   verification, publication checks that did not run clean, open blockers, an empty export, an unsafe path, or a secret-shaped file
-   inside a published area (a mistake to look at, not a path to silently skip).
+   must run clean. The scan's result **names the tree digest it scanned**, and the decision refuses a result for any other tree, so a
+   clean scan cannot be reused after a file changed.
+4. **Decide**: `release::decide(candidate, plan)` blocks, and lists every reason, on a malformed tag or SHA; verification that has not
+   passed; verification evidence whose **subject** (repository, head, base) is not this candidate, or that covers different platforms
+   than the release requires (the evidence constructor sets the subject, so a green result computed for commit A cannot admit commit B);
+   publication checks that did not run clean on this plan's tree; open blockers; an empty export; an unsafe path; or a secret-shaped
+   file inside a published area (a mistake to look at, not a path to silently skip).
 5. **Publish**: write the export tree as a new commit in the public repository with provenance (the private commit id and a digest of
    the plan in the message, no private content), sign the tag, push. Nothing else is ever pushed there.
 
@@ -80,8 +88,10 @@ public repository are accepted at all; how often confirmed feature adds are batc
 
 ## Verified and not
 
-Verified: `cargo test -p steward --lib release` (10 tests), clippy and `cargo fmt --check` (commands and results in the lane row); eleven
-deliberate breakages (default-deny off, prefix matching a name prefix, the git-alias fold removed, symlinks published, sensitive
-names published, verification, publication checks, open blockers, an empty export, an unsafe path, or the tag format not enforced)
-each fail a test. **Not run:** nothing reads a real tree, runs a scanner, touches a repository or pushes anywhere; the export
-policy, the exporter and every adapter are later phases. The stack depends on #197 (`verification::Evidence`).
+Verified: `cargo test -p steward --lib release` (19 tests), clippy and `cargo fmt --check` (commands and results in the lane row). Twenty
+deliberate breakages each fail a test: the eleven rules of the first version (default-deny, directory-boundary prefix matching, the
+git-alias fold, links, secret-shaped names, and each of verification, publication checks, open blockers, an empty export, an unsafe path
+and the tag format) and nine added after Codex's review (trailing dot or space, reserved device names, forbidden characters, case
+collisions, the object-id check, the evidence head, the required-platform set, the scanned-tree digest, and subjectless evidence).
+**Not run:** nothing reads a real tree, runs a scanner, touches a repository or pushes anywhere; the export policy file, the tree
+reader, the exporter and every adapter are later phases. The stack depends on #197 (`verification::Evidence` and its subject).
