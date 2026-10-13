@@ -1,7 +1,7 @@
 {
   "v": 1,
   "node": "windows-worker-01",
-  "curl": "C:/Windows/System32/curl.exe",
+  "curl": "C:/REPLACE_WITH_APPROVED_PRIVATE_CA_CLIENT/bin/curl.exe",
   "endpoint": "https://aaroneoushome:8443",
   "ca_file": "D:/aaroneous-verification/private/ca.crt",
   "client_environment": {"SYSTEMROOT":"C:/Windows"},

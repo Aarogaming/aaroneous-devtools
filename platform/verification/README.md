@@ -5,6 +5,8 @@ owner-trusted operation in shadow mode. It does not install services, migrate
 Git hosting, expose the machine publicly or switch integration authority.
 The [wire and recovery contract](../../contracts/platform-jobs-v1.md) states
 the supported trust boundary and limits.
+The [pair rollout record](ROLLOUT.md) distinguishes the completed two-machine
+HTTPS smoke from production deployment and remaining gate qualification.
 
 ## Roles and deployment
 
@@ -63,12 +65,15 @@ low-port capability. Do not relax the Compose restrictions to fix this.
 Issuer/status configuration has exactly:
 
 ```json
-{"v":1,"curl":"C:/Windows/System32/curl.exe","endpoint":"https://aaroneoushome:8443","ca_file":"D:/aaroneous-verification/private/ca.crt","token_file":"D:/aaroneous-verification/private/issuer-token","client_environment":{"SYSTEMROOT":"C:/Windows"},"client_scratch":"D:/aaroneous-verification/client-scratch"}
+{"v":1,"curl":"C:/REPLACE_WITH_APPROVED_PRIVATE_CA_CLIENT/bin/curl.exe","endpoint":"https://aaroneoushome:8443","ca_file":"D:/aaroneous-verification/private/ca.crt","token_file":"D:/aaroneous-verification/private/issuer-token","client_environment":{"SYSTEMROOT":"C:/Windows"},"client_scratch":"D:/aaroneous-verification/client-scratch"}
 ```
 
 Use `/usr/bin/curl` and `{}` for Linux client environment. Only explicit Windows
 system variables are accepted; credentials, proxy settings and curl defaults
 are not inherited. Client tokens travel through stdin, never command arguments.
+For Caddy's private CA, select an approved compatible TLS client explicitly;
+the built-in Windows Schannel client may require unavailable CRL information.
+See the [tested Windows client choice](ROLLOUT.md#windows-private-ca-compatibility).
 JSON bodies use temporary files under the explicit private `client_scratch`
 directory, removed after the request. Keep it outside candidates and job mounts;
 an interrupted controller may leave a private upload file for later inspection.
