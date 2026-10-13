@@ -73,6 +73,7 @@ Because it is bound to the exact head and suite digest it needs no expiry.
 - two different verdicts from the assigned node for the admitted attempt are a **conflict**, not a pass; the same verdict delivered twice
   is harmless;
 - `error` is never a pass; an empty, malformed, duplicated-platform or self-contradictory expectation is a misconfigured gate and is never ok.
+- the returned `Evidence` carries its **subject** (repository, head, base, and per platform the suite, suite digest and request id), set by this constructor from the validated requests and never by a caller. A consumer that reduces verification to `ok` loses what it was about; the subject lets a release decision (C135) reject a green result computed for another commit (Codex's A-pass/B-candidate counterexample).
 
 `verification::required_platforms(default, rules, changed_paths)` reads the policy as data: Linux for everything, plus Windows
 when a changed path starts with a listed prefix (for example `foundation/crates/platform_bridge/`).
@@ -81,7 +82,7 @@ when a changed path starts with a listed prefix (for example `foundation/crates/
 online node with a free slot and the shortest queue wins, ties by name, so the same roster gives the same answer. A platform with
 no registered node is `Unsupported` (retrying will not help); a platform whose nodes are all offline or full is `Defer`.
 
-Tests: 16 unit tests. Deliberate breakages that each fail a test: unverified signatures counting, any node attesting any platform,
+Tests: 17 unit tests. Deliberate breakages that each fail a test: unverified signatures counting, any node attesting any platform,
 an empty expectation being ok, a stale head counting, the request id not compared, the attempt not compared, the assigned node not
 compared, a platform expected twice, requests that disagree about repository, head or base, and an unadmitted request being judged
 anyway. Two first survived because the test did not isolate the rule (the disagreement test left one request unadmitted, so it was

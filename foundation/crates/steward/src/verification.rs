@@ -141,11 +141,26 @@ pub struct PlatformStatus {
     pub detail: String,
 }
 
+/// Which candidate a piece of evidence is about: the repository, the exact head and base, and the suite and request identity per
+/// platform. It is set by [`evidence`] from the validated requests it was given, never by a caller, so a green result cannot be
+/// carried to a different commit without the mismatch being visible (a release decision compares it to its own candidate).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Subject {
+    pub repo: String,
+    pub head: String,
+    pub base_sha: String,
+    /// One entry per platform, sorted by platform: `(platform, suite, suite_digest, request_id)`.
+    pub requests: Vec<(String, String, String, String)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Evidence {
     /// True only when at least one platform is required and every required platform passed.
     pub ok: bool,
     pub platforms: Vec<PlatformStatus>,
+    /// What this evidence is about. `None` when the expectation itself was empty, malformed or self-contradictory: such
+    /// evidence is never ok and identifies nothing.
+    pub subject: Option<Subject>,
 }
 
 /// What the hall has issued for one request: the attempt that is current and the node it was assigned to. This is the hall's
@@ -183,6 +198,7 @@ pub fn evidence(
             state: State::Error,
             detail,
         }],
+        subject: None,
     };
     let Some(first) = expected.first() else {
         return broken("no platform is required, which is a misconfigured gate".to_owned());
@@ -308,7 +324,29 @@ pub fn evidence(
         });
     }
     let ok = platforms.iter().all(|p| p.state == State::Pass);
-    Evidence { ok, platforms }
+    let mut requests: Vec<(String, String, String, String)> = expected
+        .iter()
+        .map(|r| {
+            (
+                r.platform.clone(),
+                r.suite.clone(),
+                r.suite_digest.clone(),
+                r.id(),
+            )
+        })
+        .collect();
+    requests.sort();
+    let subject = Some(Subject {
+        repo: first.repo.clone(),
+        head: first.head.clone(),
+        base_sha: first.base_sha.clone(),
+        requests,
+    });
+    Evidence {
+        ok,
+        platforms,
+        subject,
+    }
 }
 
 /// Which platforms a change must be verified on: `default`, plus the platform of every rule whose path prefix a changed
@@ -576,6 +614,94 @@ mod tests {
             outcome_for(&windows(), "windows-1", 1, Verdict::Pass),
         ];
         assert!(evidence(&both(), &both_pass, &auth(), &admitted_both()).ok);
+    }
+
+    #[test]
+    fn evidence_names_the_candidate_it_is_about_and_only_the_constructor_sets_it() {
+        let both_pass = [
+            outcome_for(&linux(), "ubuntu-1", 1, Verdict::Pass),
+            outcome_for(&windows(), "windows-1", 1, Verdict::Pass),
+        ];
+        let result = evidence(&both(), &both_pass, &auth(), &admitted_both());
+        let subject = result
+            .subject
+            .clone()
+            .expect("a well-formed expectation has a subject");
+        assert_eq!(subject.repo, "Aarogaming/aaroneous-devtools");
+        assert_eq!(subject.head, "a".repeat(40));
+        assert_eq!(subject.base_sha, "b".repeat(40));
+        assert_eq!(subject.requests.len(), 2);
+        assert_eq!(subject.requests[0].0, "linux-x86_64");
+        assert_eq!(subject.requests[0].1, "foundation-ci");
+        assert_eq!(subject.requests[0].2, linux().suite_digest);
+        assert_eq!(subject.requests[0].3, linux().id());
+        // another head or base or suite digest or repository is a different subject
+        for other in [
+            Request {
+                head: "d".repeat(40),
+                ..request()
+            },
+            Request {
+                base_sha: "d".repeat(40),
+                ..request()
+            },
+            Request {
+                suite_digest: "e".repeat(64),
+                ..request()
+            },
+            Request {
+                repo: "Aarogaming/aaroneous".into(),
+                ..request()
+            },
+        ] {
+            let pair = [
+                Request {
+                    platform: "linux-x86_64".into(),
+                    ..other.clone()
+                },
+                Request {
+                    platform: "windows-x86_64".into(),
+                    ..other
+                },
+            ];
+            let adm: BTreeMap<String, Admission> = pair
+                .iter()
+                .zip(["ubuntu-1", "windows-1"])
+                .map(|(r, node)| {
+                    (
+                        r.id(),
+                        Admission {
+                            attempt: 1,
+                            node: node.to_owned(),
+                        },
+                    )
+                })
+                .collect();
+            let passes: Vec<Outcome> = pair
+                .iter()
+                .zip(["ubuntu-1", "windows-1"])
+                .map(|(r, n)| outcome_for(r, n, 1, Verdict::Pass))
+                .collect();
+            let other_result = evidence(&pair, &passes, &auth(), &adm);
+            assert!(other_result.ok);
+            assert_ne!(other_result.subject, result.subject);
+        }
+        // the order of the expectation does not change the subject
+        let mut swapped = both();
+        swapped.reverse();
+        assert_eq!(
+            evidence(&swapped, &both_pass, &auth(), &admitted_both()).subject,
+            result.subject
+        );
+        // a misconfigured expectation identifies nothing
+        assert_eq!(
+            evidence(&[], &both_pass, &auth(), &admitted_both()).subject,
+            None
+        );
+        assert_eq!(
+            evidence(&[linux(), linux()], &both_pass, &auth(), &admitted_both()).subject,
+            None
+        );
     }
 
     #[test]
