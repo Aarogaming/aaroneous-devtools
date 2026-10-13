@@ -11,7 +11,7 @@
 
 use crate::chain::digest;
 
-const MB: u64 = 1024 * 1024;
+const MB: u128 = 1024 * 1024;
 
 /// One machine, in megabytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,38 +39,37 @@ pub struct Model {
 
 impl Model {
     #[must_use]
-    pub fn kv_mb(&self) -> u64 {
-        self.kv_bytes_per_token
-            .saturating_mul(self.context_tokens)
-            .div_ceil(MB)
+    pub fn kv_mb(&self) -> u128 {
+        (u128::from(self.kv_bytes_per_token) * u128::from(self.context_tokens)).div_ceil(MB)
     }
 
-    /// Everything the model wants resident while it runs.
+    /// Everything the model wants resident while it runs. Exact: the inputs are 64-bit, so the products and sums fit in 128 bits
+    /// and nothing saturates or wraps. A model whose true need exceeds any real host is `TooBig` because the comparison is
+    /// exact, not because the arithmetic gave up (an earlier saturating version understated the need, which could report a
+    /// false GPU fit on a host that declared an absurd amount of memory).
     #[must_use]
-    pub fn needed_mb(&self) -> u64 {
-        self.weights_mb
-            .saturating_add(self.kv_mb())
-            .saturating_add(self.overhead_mb)
+    pub fn needed_mb(&self) -> u128 {
+        u128::from(self.weights_mb) + self.kv_mb() + u128::from(self.overhead_mb)
     }
 }
 
-/// Three quarters of `n`, computed without overflow.
-fn three_quarters(n: u64) -> u64 {
-    u64::try_from(u128::from(n) * 3 / 4).unwrap_or(n)
+/// Three quarters of `n`.
+fn three_quarters(n: u128) -> u128 {
+    n * 3 / 4
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fit {
     /// Fits in VRAM with room to spare.
-    Gpu { needed_mb: u64, headroom_mb: u64 },
+    Gpu { needed_mb: u128, headroom_mb: u128 },
     /// Fits in VRAM, but with less than a tenth of it left: a longer prompt or a second job will not.
-    Tight { needed_mb: u64, headroom_mb: u64 },
+    Tight { needed_mb: u128, headroom_mb: u128 },
     /// Does not fit in VRAM; the server would have to spill `spill_mb` into system RAM, which is far slower.
-    Offload { needed_mb: u64, spill_mb: u64 },
+    Offload { needed_mb: u128, spill_mb: u128 },
     /// Cannot run here at all.
     TooBig {
-        needed_mb: u64,
-        available_mb: u64,
+        needed_mb: u128,
+        available_mb: u128,
         reason: String,
     },
 }
@@ -89,10 +88,10 @@ impl Fit {
 #[must_use]
 pub fn fit(host: &Host, model: &Model, allow_offload: bool) -> Fit {
     let needed = model.needed_mb();
-    let vram = host.vram_mb.saturating_sub(host.reserved_vram_mb);
+    let vram = u128::from(host.vram_mb.saturating_sub(host.reserved_vram_mb));
     if needed <= vram {
         let headroom = vram - needed;
-        return if u128::from(headroom) * 10 < u128::from(vram) {
+        return if headroom * 10 < vram {
             Fit::Tight {
                 needed_mb: needed,
                 headroom_mb: headroom,
@@ -105,7 +104,7 @@ pub fn fit(host: &Host, model: &Model, allow_offload: bool) -> Fit {
         };
     }
     let spill = needed - vram;
-    let ram = host.ram_mb.saturating_sub(host.reserved_ram_mb);
+    let ram = u128::from(host.ram_mb.saturating_sub(host.reserved_ram_mb));
     if !allow_offload {
         return Fit::TooBig {
             needed_mb: needed,
@@ -116,10 +115,10 @@ pub fn fit(host: &Host, model: &Model, allow_offload: bool) -> Fit {
             ),
         };
     }
-    if u128::from(spill) * 4 > u128::from(ram) * 3 {
+    if spill * 4 > ram * 3 {
         return Fit::TooBig {
             needed_mb: needed,
-            available_mb: vram.saturating_add(three_quarters(ram)),
+            available_mb: vram + three_quarters(ram),
             reason: format!(
                 "needs {spill} MB beyond VRAM, more than the {} MB of RAM it may use",
                 three_quarters(ram)
@@ -644,6 +643,56 @@ mod tests {
             4700 + 448 + 500,
             "ordinary figures are unchanged"
         );
+    }
+
+    #[test]
+    fn a_product_that_would_overflow_64_bits_is_measured_exactly_not_understated() {
+        // Codex's counterexample: kv 2^63 bytes/token x 8 tokens is exactly 2^66 bytes = 2^46 MB. A saturating u64 product
+        // reported 2^44 MB and called it a GPU fit on a host that declared 2^45 MB. The exact need is above that host.
+        let model = Model {
+            name: "hostile".into(),
+            weights_mb: 0,
+            kv_bytes_per_token: 1 << 63,
+            context_tokens: 8,
+            overhead_mb: 0,
+        };
+        assert_eq!(model.kv_mb(), 1u128 << 46);
+        assert_eq!(model.needed_mb(), 1u128 << 46);
+        let host = Host {
+            name: "declares-a-lot".into(),
+            vram_mb: 1 << 45,
+            ram_mb: 1 << 45,
+            reserved_vram_mb: 0,
+            reserved_ram_mb: 0,
+        };
+        for allow_offload in [false, true] {
+            let result = fit(&host, &model, allow_offload);
+            assert!(
+                matches!(result, Fit::TooBig { .. }),
+                "offload={allow_offload}: {result:?}"
+            );
+        }
+        assert_eq!(choose(&host, std::slice::from_ref(&model)), None);
+        // and a host that really has the memory fits it, so the answer follows the numbers
+        let enough = Host {
+            vram_mb: 1 << 47,
+            ..host
+        };
+        assert!(matches!(
+            fit(&enough, &model, false),
+            Fit::Gpu { .. } | Fit::Tight { .. }
+        ));
+        // the largest representable inputs are still exact
+        let widest = Model {
+            kv_bytes_per_token: u64::MAX,
+            context_tokens: u64::MAX,
+            weights_mb: u64::MAX,
+            overhead_mb: u64::MAX,
+            ..model
+        };
+        let expected = (u128::from(u64::MAX) * u128::from(u64::MAX)).div_ceil(1 << 20)
+            + 2 * u128::from(u64::MAX);
+        assert_eq!(widest.needed_mb(), expected);
     }
 
     #[test]
