@@ -165,3 +165,16 @@ strict Clippy, coordination evidence, whitespace and secret checks. Remote CI
 remains subject to the account billing block. Revert the collector/policy
 template to roll back; keep observed authority records for review. The existing
 live GitHub gate is unchanged.
+
+### Collector exit and state publication
+
+`collect` prints the JSON decision and exits 0 only when `local_would_integrate`
+is true, 2 for a collected blocked decision, and 1 for errors. Consumers must
+still bind the decision to its exact candidate; a successful exit is not merge authority.
+
+Replay state is staged, flushed and exclusively hard-linked into its immutable
+final name. Unix also flushes the directory. Windows power-loss directory
+durability is not certified. Interrupted staging files are ignored; existing
+corrupt final records fail closed and are never overwritten. Preserve such
+records and recover from verified retained state under owner review; never reset
+the high-water store to make a candidate pass.

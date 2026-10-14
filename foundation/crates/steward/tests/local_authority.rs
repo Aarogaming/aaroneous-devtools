@@ -41,7 +41,14 @@ impl Fixture {
         }
         let mut keys = BTreeMap::new();
         let mut public = BTreeMap::new();
-        for id in ["issuer", "node", "builder", "reviewer-a", "reviewer-b"] {
+        for id in [
+            "issuer",
+            "node",
+            "builder",
+            "reviewer-a",
+            "reviewer-a-2",
+            "reviewer-b",
+        ] {
             let key = root.join("keys").join(id);
             assert!(
                 Command::new(&ssh)
@@ -65,6 +72,7 @@ impl Fixture {
             ("node", "worker", vec!["verify"], vec![platform.as_str()]),
             ("builder", "codex", vec!["implement"], vec![]),
             ("reviewer-a", "claude", vec!["review"], vec![]),
+            ("reviewer-a-2", "claude", vec!["review"], vec![]),
             ("reviewer-b", family_b, vec!["review"], vec![]),
         ] {
             policy.push_str(&format!("\n[[principals]]\nid='{id}'\nfamily='{family}'\nroles={}\nplatforms={}\npublic_key='{}'\n",serde_json::to_string(&roles).unwrap(),serde_json::to_string(&platforms).unwrap(),public[id]));
@@ -629,4 +637,76 @@ fn source_repo_merge_driver_is_not_executed_by_trusted_collector() {
     assert_eq!(report["facts"]["trial_merge_ok"], true);
     assert_eq!(report["candidate_contains_base"], false);
     assert_eq!(report["local_would_integrate"], false);
+}
+
+#[test]
+fn extending_reviewer_names_preserve_independent_replay_histories() {
+    let fixture = Fixture::new("gemini", false);
+    fixture.review("reviewer-a-2", 1, "accept");
+    assert_eq!(fixture.collect()["local_would_integrate"], true);
+    assert_eq!(fixture.collect()["local_would_integrate"], true);
+    fixture.review("reviewer-a-2", 2, "reject");
+    assert_eq!(fixture.collect()["local_would_integrate"], false);
+    fixture.remove("review-reviewer-a-2-2.json");
+    assert!(
+        local_authority::collect(&fixture.input)
+            .unwrap_err()
+            .contains("rolled back")
+    );
+}
+
+#[test]
+fn incomplete_staging_is_ignored_but_corrupt_final_state_is_preserved() {
+    let fixture = Fixture::new("gemini", false);
+    fs::write(fixture.input.state.join(".pending-interrupted"), b"{").unwrap();
+    assert_eq!(fixture.collect()["local_would_integrate"], true);
+    let record = fs::read_dir(&fixture.input.state)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .unwrap();
+    fs::write(&record, b"").unwrap();
+    assert!(local_authority::collect(&fixture.input).is_err());
+    assert_eq!(fs::read(&record).unwrap(), b"");
+    assert_eq!(
+        fs::read(fixture.input.state.join(".pending-interrupted")).unwrap(),
+        b"{"
+    );
+}
+
+#[test]
+fn blocked_cli_returns_two_and_retains_json_decision() {
+    let fixture = Fixture::new("gemini", false);
+    fixture.control(2, true);
+    let cli = Command::new(env!("CARGO_BIN_EXE_local-integration"))
+        .arg("collect")
+        .args([
+            "--git",
+            fixture.input.git.to_str().unwrap(),
+            "--ssh-keygen",
+            fixture.input.ssh_keygen.to_str().unwrap(),
+            "--repo",
+            fixture.input.repo.to_str().unwrap(),
+            "--repo-name",
+            &fixture.input.repo_name,
+            "--base-ref",
+            &fixture.input.base_ref,
+            "--head-ref",
+            &fixture.input.head_ref,
+            "--authority",
+            fixture.input.authority.to_str().unwrap(),
+            "--state",
+            fixture.input.state.to_str().unwrap(),
+            "--spool",
+            fixture.input.spool.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        cli.status.code() == Some(2),
+        "{}",
+        String::from_utf8_lossy(&cli.stderr)
+    );
+    let output: Value = serde_json::from_slice(&cli.stdout).unwrap();
+    assert_eq!(output["local_would_integrate"], false);
 }

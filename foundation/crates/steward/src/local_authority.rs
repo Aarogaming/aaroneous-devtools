@@ -462,10 +462,15 @@ fn remember(state: &Path, label: &str, sequence: u64, digest: &str) -> Result<()
         let Some(name) = name.to_str() else {
             return Err("invalid state name".into());
         };
-        if let Some(number) = name
-            .strip_prefix(&prefix)
-            .and_then(|s| s.strip_suffix(".json"))
+        if let Some(stem) = name.strip_suffix(".json")
+            && stem.starts_with(&prefix)
         {
+            let (stored_label, number) = stem
+                .rsplit_once('-')
+                .ok_or("corrupt authority high-water filename")?;
+            if stored_label != label {
+                continue;
+            }
             let n: u64 = number
                 .parse()
                 .map_err(|_| "corrupt authority high-water filename")?;
@@ -499,14 +504,39 @@ fn remember(state: &Path, label: &str, sequence: u64, digest: &str) -> Result<()
             return Err("authority state mismatch".into());
         }
     } else {
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(path)
-            .map_err(|e| e.to_string())?;
-        file.write_all(&raw)
-            .and_then(|()| file.sync_all())
-            .map_err(|e| e.to_string())?;
+        // Publish only a fully written record; hard links cannot replace a contender.
+        let staged = state.join(format!(
+            ".pending-{}-{}",
+            std::process::id(),
+            TEMP.fetch_add(1, Ordering::SeqCst)
+        ));
+        let result = (|| {
+            let mut file = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&staged)
+                .map_err(|e| e.to_string())?;
+            file.write_all(&raw)
+                .and_then(|()| file.sync_all())
+                .map_err(|e| e.to_string())?;
+            drop(file);
+            if let Err(problem) = fs::hard_link(&staged, &path) {
+                if problem.kind() != std::io::ErrorKind::AlreadyExists {
+                    return Err(problem.to_string());
+                }
+                if bytes(&path)? != raw {
+                    return Err("authority state mismatch".into());
+                }
+            }
+            #[cfg(unix)]
+            fs::File::open(state)
+                .and_then(|dir| dir.sync_all())
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })();
+        let cleanup = fs::remove_file(&staged);
+        result?;
+        cleanup.map_err(|e| e.to_string())?;
     }
     Ok(())
 }

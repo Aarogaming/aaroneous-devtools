@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use steward::local_authority::{self, Inputs};
-fn run() -> Result<serde_json::Value, String> {
+fn run() -> Result<(serde_json::Value, i32), String> {
     let mut arguments = std::env::args().skip(1);
     let command = arguments
         .next()
@@ -49,11 +49,12 @@ fn run() -> Result<serde_json::Value, String> {
         Ok(path)
     };
     if command == "sign" {
-        return Ok(
+        return Ok((
             serde_json::json!({"signature":local_authority::sign(&path("ssh-keygen")?,&path("key")?,&path("document")?)?}),
-        );
+            0,
+        ));
     }
-    local_authority::collect(&Inputs {
+    let report = local_authority::collect(&Inputs {
         git: path("git")?,
         ssh_keygen: path("ssh-keygen")?,
         repo: path("repo")?,
@@ -63,14 +64,21 @@ fn run() -> Result<serde_json::Value, String> {
         authority: path("authority")?,
         state: path("state")?,
         spool: path("spool")?,
-    })
+    })?;
+    let allowed = report["local_would_integrate"]
+        .as_bool()
+        .ok_or("collector decision is not boolean")?;
+    Ok((report, if allowed { 0 } else { 2 }))
 }
 fn main() {
     match run() {
-        Ok(value) => println!(
-            "{}",
-            serde_json::to_string_pretty(&value).expect("JSON value")
-        ),
+        Ok((value, code)) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&value).expect("JSON value")
+            );
+            std::process::exit(code);
+        }
         Err(problem) => {
             eprintln!("local integration blocked: {problem}");
             std::process::exit(1);
