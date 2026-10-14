@@ -122,6 +122,140 @@ class ChangedPaths(unittest.TestCase):
         self.assertEqual(paths, ["governance/notes.md"])
 
 
+class AdditiveIdentityRegistration(unittest.TestCase):
+    """The owner-decision 2026-10-11 exemption: a seat filling in its own already-provisioned login/key
+    is paperwork, not a trust decision, and bypasses condition 3 — but only for exactly that shape."""
+
+    BASE_DOC = ('{"owner": ["Aarogaming"], "seats": {'
+                '"claude": {"logins": [], "keys": ["key-claude"]}, '
+                '"mimo": {"logins": [], "keys": []}'
+                '}}\n')
+
+    def make_repo(self, base_doc=None):
+        import subprocess
+        import tempfile
+        directory = tempfile.mkdtemp(prefix="merge-gate-identity-test-")
+        self.addCleanup(__import__("shutil").rmtree, directory, True)
+
+        def git(*args):
+            result = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", directory, *args],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout.strip()
+
+        git("init", "-q", "-b", "main")
+        os.makedirs(os.path.join(directory, "governance"))
+        with open(os.path.join(directory, "governance", "identities.json"), "w", encoding="utf-8",
+                  newline="\n") as handle:
+            handle.write(base_doc if base_doc is not None else self.BASE_DOC)
+        git("add", ".")
+        git("commit", "-q", "-m", "base")
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        git("checkout", "-q", "-b", "pr")
+        return directory, git
+
+    def write_and_commit(self, directory, git, doc):
+        with open(os.path.join(directory, "governance", "identities.json"), "w", encoding="utf-8",
+                  newline="\n") as handle:
+            handle.write(doc)
+        git("add", ".")
+        git("commit", "-q", "-m", "identities update")
+        return git("rev-parse", "HEAD")
+
+    def test_appending_a_login_to_an_existing_seat_is_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming"], "seats": {'
+            '"claude": {"logins": ["aaroneous-claude-seat[bot]"], "keys": ["key-claude"]}, '
+            '"mimo": {"logins": [], "keys": []}'
+            '}}\n'))
+        self.assertTrue(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_appending_a_key_to_a_previously_empty_seat_is_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming"], "seats": {'
+            '"claude": {"logins": [], "keys": ["key-claude"]}, '
+            '"mimo": {"logins": [], "keys": ["key-mimo"]}'
+            '}}\n'))
+        self.assertTrue(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_a_second_file_in_the_diff_is_not_exempt(self):
+        directory, git = self.make_repo()
+        with open(os.path.join(directory, "governance", "identities.json"), "w", encoding="utf-8",
+                  newline="\n") as handle:
+            handle.write('{"owner": ["Aarogaming"], "seats": {'
+                         '"claude": {"logins": ["x"], "keys": ["key-claude"]}, "mimo": {"logins": [], "keys": []}}}\n')
+        with open(os.path.join(directory, "governance", "notes.md"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("notes\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "two files")
+        head = git("rev-parse", "HEAD")
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH, "governance/notes.md"]))
+
+    def test_adding_a_brand_new_seat_is_not_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming"], "seats": {'
+            '"claude": {"logins": [], "keys": ["key-claude"]}, "mimo": {"logins": [], "keys": []}, '
+            '"antigravity": {"logins": [], "keys": ["key-new"]}'
+            '}}\n'))
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_removing_a_seat_is_not_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git,
+            '{"owner": ["Aarogaming"], "seats": {"claude": {"logins": [], "keys": ["key-claude"]}}}\n')
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_removing_an_existing_key_is_not_exempt(self):
+        # A rotation (drop the old key, add a new one) is a credential change, not a job application.
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming"], "seats": {'
+            '"claude": {"logins": [], "keys": ["key-claude-NEW"]}, "mimo": {"logins": [], "keys": []}'
+            '}}\n'))
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_changing_the_owner_list_is_not_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming", "someone-else"], "seats": {'
+            '"claude": {"logins": [], "keys": ["key-claude"]}, "mimo": {"logins": [], "keys": []}'
+            '}}\n'))
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_malformed_json_on_either_side_is_not_exempt(self):
+        directory, git = self.make_repo(base_doc="not json\n")
+        head = self.write_and_commit(directory, git, '{"owner": ["Aarogaming"], "seats": {}}\n')
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_a_no_op_rewrite_is_still_exempt(self):
+        # Reordering or re-serialising without removing anything is vacuously additive.
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"seats": {"mimo": {"keys": [], "logins": []}, '
+            '"claude": {"keys": ["key-claude"], "logins": []}}, "owner": ["Aarogaming"]}\n'))
+        self.assertTrue(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_wrong_path_is_not_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git,
+            '{"owner": ["Aarogaming"], "seats": {"claude": {"logins": ["x"], "keys": ["key-claude"]}, '
+            '"mimo": {"logins": [], "keys": []}}}\n')
+        self.assertFalse(mg.additive_identity_registration(directory, "main", head, ["governance/other.json"]))
+        self.assertFalse(mg.additive_identity_registration(directory, "main", head, []))
+
+
 class Plan(unittest.TestCase):
     def test_docs_only_changes_get_the_light_gate(self):
         self.assertEqual(mg.gate_plan(["governance/PLATFORM_SPEC.md", "governance/identities.json"])["level"], "light")
@@ -175,7 +309,7 @@ def good_facts(**kw):
         "accept_seats": ["mimo", "codex"], "covered": True, "threads_open": 0,
         "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
         "breaker_tripped": False, "category": "governance/*.md", "is_draft": False,
-        "standing_changes_requested": False,
+        "standing_changes_requested": False, "identity_registration_exempt": False,
     }
     facts.update(kw)
     return facts
@@ -260,6 +394,39 @@ class Checklist(unittest.TestCase):
     def test_standing_changes_requested_fails_the_threads_box(self):
         lines, ok, first = mg.checklist(good_facts(standing_changes_requested=True))
         self.assertEqual(first, "4")
+
+    def test_identity_exemption_bypasses_boxes_3_and_5_with_zero_verdicts(self):
+        lines, ok, first = mg.checklist(good_facts(
+            identity_registration_exempt=True, accept_seats=[], covered=False,
+            counted_verdicts=0, verdicts_missing_evidence=[]))
+        self.assertTrue(ok)
+        self.assertIsNone(first)
+        box3 = [line for line in lines if " 3. " in line][0]
+        box5 = [line for line in lines if " 5. " in line][0]
+        self.assertTrue(box3.startswith("[x]"), box3)
+        self.assertIn("exempt", box3)
+        self.assertTrue(box5.startswith("[x]"), box5)
+        self.assertIn("exempt", box5)
+
+    def test_identity_exemption_does_not_bypass_other_boxes(self):
+        lines, ok, first = mg.checklist(good_facts(
+            identity_registration_exempt=True, accept_seats=[], covered=False, threads_open=2))
+        self.assertFalse(ok)
+        self.assertEqual(first, "4")
+
+    def test_identity_exemption_must_be_exactly_true(self):
+        for value in (False, None, 1, "true"):
+            lines, ok, first = mg.checklist(good_facts(
+                identity_registration_exempt=value, accept_seats=["mimo"], covered=True))
+            self.assertFalse(ok, value)
+            self.assertEqual(first, "3", value)
+
+    def test_identity_exemption_absent_falls_through_to_the_ordinary_bar(self):
+        facts = good_facts(accept_seats=["mimo"], covered=True)
+        del facts["identity_registration_exempt"]
+        lines, ok, first = mg.checklist(facts)
+        self.assertFalse(ok)
+        self.assertEqual(first, "3")
 
 
 class Reconcile(unittest.TestCase):

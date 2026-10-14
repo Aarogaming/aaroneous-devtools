@@ -50,6 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import review_coverage as rc  # noqa: E402
 
 DOCS_ALLOWLIST = ("governance/", "docs/", "architecture/")
+IDENTITIES_PATH = "governance/identities.json"
 # `git diff --check` with no revision inspects only uncommitted changes, and run_checks runs it in a clean detached worktree,
 # so it always exited 0 whatever whitespace errors the PR committed (Codex P2 on #98). The range form checks the PR itself.
 FULL_GATE = [
@@ -103,6 +104,13 @@ def checklist(facts):
     threads_open = facts.get("threads_open")
     standing = facts.get("standing_changes_requested")
     tripped = facts.get("breaker_tripped")
+    # Owner decision 2026-10-11 (DECISIONS.md): a seat registering its own already-provisioned GitHub
+    # App login or SSH attestation key is paperwork ("a job application"), not a judgement about trust,
+    # so it is exempt from condition 3's >=2-accept bar (and, since no verdict is required, box 5's
+    # per-verdict evidence check too). The exemption itself stays strict: only True, never inferred from
+    # an absent or wrongly-typed fact, grants it — anything else falls through to the ordinary bar.
+    identity_exempt = facts.get("identity_registration_exempt") is True
+    exempt_suffix = " — exempt: additive-only identities.json registration (owner decision 2026-10-11)"
 
     def is_count(value):
         return isinstance(value, int) and not isinstance(value, bool)
@@ -114,14 +122,18 @@ def checklist(facts):
          f"base={facts['base_ref']}", ""),
         ("2b", None if facts.get("is_draft") is None else not facts["is_draft"], "PR is not a draft", "",
          "draft status unavailable (fail closed)"),
-        ("3", None if not seats_known or not isinstance(covered_fact, bool) else len(distinct_seats) >= 2 and covered_fact,
-         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}", "",
+        ("3", True if identity_exempt else
+         (None if not seats_known or not isinstance(covered_fact, bool) else len(distinct_seats) >= 2 and covered_fact),
+         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}"
+         + (exempt_suffix if identity_exempt else ""), "",
          "accepting seats or coverage unavailable"),
         ("4", None if not is_count(threads_open) or not isinstance(standing, bool) else threads_open == 0 and not standing,
          "Zero open blocking threads", f"count checked: {threads_open}",
          "thread count unavailable" if not is_count(threads_open) else "standing-rejection status unavailable"),
-        ("5", None if not is_count(counted) or not isinstance(missing_evidence, list) else counted > 0 and not missing_evidence,
-         "Each counted verdict cites command + exit code",
+        ("5", True if identity_exempt else
+         (None if not is_count(counted) or not isinstance(missing_evidence, list) else counted > 0 and not missing_evidence),
+         "Each counted verdict cites command + exit code"
+         + (exempt_suffix if identity_exempt else ""),
          f"verdicts missing evidence: {missing_evidence}" if missing_evidence else f"counted: {counted}",
          "verdict evidence facts unavailable"),
         ("6", facts.get("revertible"), "Revertible via plain `git revert` (no migration/external side effect)", "",
@@ -166,6 +178,42 @@ def changed_paths(repo_dir, base_ref, head):
     # consumers that matched on raw path strings (Codex P1 on #91, skeptic probe).
     out = rc.git(repo_dir, "diff", "--name-only", "-z", "--no-renames", f"origin/{base_ref}...{head}").stdout
     return [path for path in out.split("\0") if path]
+
+
+def additive_identity_registration(repo_dir, base_ref, head, paths):
+    """True only for a PR whose sole changed path is governance/identities.json and whose only edits are
+    new entries appended to an *existing* seat's logins/keys lists: the set of seat names is unchanged
+    (admitting a new seat is a trust decision, not paperwork), the owner list is unchanged, and no login
+    or key present at the base is missing at the head (removing one is a credential change, not additive
+    registration, and still needs the ordinary >=2-accept review). Malformed or unreadable JSON on
+    either side is not exempt — the ordinary bar is the fail-safe default, not this one."""
+    if paths != [IDENTITIES_PATH]:
+        return False
+    try:
+        base_doc = json.loads(rc.git(repo_dir, "show", f"origin/{base_ref}:{IDENTITIES_PATH}").stdout)
+        head_doc = json.loads(rc.git(repo_dir, "show", f"{head}:{IDENTITIES_PATH}").stdout)
+    except ValueError:
+        return False
+    if not isinstance(base_doc, dict) or not isinstance(head_doc, dict):
+        return False
+    if base_doc.get("owner") != head_doc.get("owner"):
+        return False
+    base_seats, head_seats = base_doc.get("seats"), head_doc.get("seats")
+    if not isinstance(base_seats, dict) or not isinstance(head_seats, dict):
+        return False
+    if set(base_seats) != set(head_seats):
+        return False
+    for name, base_seat in base_seats.items():
+        head_seat = head_seats[name]
+        if not isinstance(base_seat, dict) or not isinstance(head_seat, dict):
+            return False
+        for field in ("logins", "keys"):
+            base_values, head_values = base_seat.get(field), head_seat.get(field)
+            if not isinstance(base_values, list) or not isinstance(head_values, list):
+                return False
+            if not set(base_values) <= set(head_values):
+                return False
+    return True
 
 
 def breaker_files(repo_dir, default_branch):
@@ -312,6 +360,10 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
     facts["base_tip"] = tip or "?"
     docs = bool(paths) and all(p.endswith((".md", ".json")) and p.startswith(DOCS_ALLOWLIST) for p in paths)
     facts["revertible"] = True if docs else None
+    try:
+        facts["identity_registration_exempt"] = additive_identity_registration(repo_dir, pr["base"], pr["head"], paths)
+    except Exception:
+        facts["identity_registration_exempt"] = False
     try:
         view = rc.gh_json("pr", "view", str(pr["number"]), "-R", repo, "--json", "statusCheckRollup")
         facts["ci"] = ci_state(view.get("statusCheckRollup", []))
