@@ -4,13 +4,15 @@
 //! [`crate::release::Entry`] values, and refuses anything it cannot represent exactly (a non-UTF-8 path, a malformed record, a mode
 //! that does not match its type, an object id that is not one). [`list_tree`] is the thin adapter that runs git for one commit,
 //! with the same environment hardening the other local adapters use: every inherited `GIT_*` variable removed, replace objects off,
-//! system and global configuration neutralised, no prompts. [`summarize`] turns a plan into a dry-run report.
+//! system and global configuration neutralised, no prompts; it requires the object to be a commit and buffers a bounded amount of
+//! output. [`summarize`] turns a plan into a dry-run report.
 
 use crate::release::{ExportPolicy, Plan, Withheld, plan_export};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, ExitStatus, Stdio};
 
 use crate::release::Entry;
 
@@ -84,35 +86,19 @@ pub fn parse_ls_tree(output: &[u8]) -> Result<Vec<Entry>, String> {
     Ok(entries)
 }
 
-/// List the tracked tree of `commit` in `repo`. `git` must be an absolute path to a native git executable; `commit` must be a full
-/// lower-case SHA, so it can never be read as an option or a ref name.
-///
-/// # Errors
-/// A sentence naming what failed.
-pub fn list_tree(git: &Path, repo: &Path, commit: &str) -> Result<Vec<Entry>, String> {
-    if !git.is_absolute() || !repo.is_absolute() {
-        return Err("explicit absolute git and repository paths required".to_owned());
-    }
-    if !is_oid(commit) {
-        return Err("commit must be a full lower-case object id".to_owned());
-    }
+/// A git command with the environment hardening every call here shares: every inherited `GIT_*` variable removed, replace objects
+/// off, system and global configuration neutralised, no prompts, no input, and stderr discarded so it can never fill a pipe nobody
+/// reads or grow without bound.
+fn hardened(git: &Path, repo: &Path) -> Command {
     let mut command = Command::new(git);
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("GIT_") {
             command.env_remove(key);
         }
     }
-    let output = command
+    command
         .arg("-C")
         .arg(repo)
-        .args([
-            "ls-tree",
-            "-r",
-            "-z",
-            "--full-tree",
-            "--end-of-options",
-            commit,
-        ])
         .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env(
@@ -120,15 +106,81 @@ pub fn list_tree(git: &Path, repo: &Path, commit: &str) -> Result<Vec<Entry>, St
             if cfg!(windows) { "NUL" } else { "/dev/null" },
         )
         .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        return Err(format!(
-            "git ls-tree failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    command
+}
+
+/// Run `command` and keep at most `cap` bytes of its standard output. Reading stops at `cap + 1` bytes: on overflow the child is
+/// killed and reaped, and the call refuses, so a hostile repository can never make this process buffer more than `cap + 1` bytes.
+/// Only one pipe is read (standard error is discarded by [`hardened`]), so there is no pipe to deadlock on and no thread is started.
+/// There is no deadline: a child that neither writes nor exits is not interrupted here (the caller's supervisor owns timeouts).
+fn run_bounded(mut command: Command, cap: usize) -> Result<(Vec<u8>, ExitStatus), String> {
+    let mut child = command.spawn().map_err(|e| e.to_string())?;
+    let Some(mut stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err("git standard output was not captured".to_owned());
+    };
+    let mut kept = Vec::new();
+    let read = (&mut stdout).take(cap as u64 + 1).read_to_end(&mut kept);
+    let overflow = kept.len() > cap;
+    if overflow || read.is_err() {
+        drop(stdout);
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(match read {
+            Err(e) => e.to_string(),
+            Ok(_) => "git output exceeds the size limit".to_owned(),
+        });
     }
-    parse_ls_tree(&output.stdout)
+    let status = child.wait().map_err(|e| e.to_string())?;
+    Ok((kept, status))
+}
+
+/// List the tracked tree of `commit` in `repo`. `git` must be an absolute path to a native git executable; `commit` must be a full
+/// lower-case object id of an object whose type is `commit` (a tree, blob or annotated tag with that syntax is refused, never peeled
+/// or listed). At most [`LIMIT`] bytes of git output are buffered.
+///
+/// # Errors
+/// A sentence naming what failed.
+pub fn list_tree(git: &Path, repo: &Path, commit: &str) -> Result<Vec<Entry>, String> {
+    list_tree_limited(git, repo, commit, LIMIT)
+}
+
+fn list_tree_limited(
+    git: &Path,
+    repo: &Path,
+    commit: &str,
+    limit: usize,
+) -> Result<Vec<Entry>, String> {
+    if !git.is_absolute() || !repo.is_absolute() {
+        return Err("explicit absolute git and repository paths required".to_owned());
+    }
+    if !is_oid(commit) {
+        return Err("commit must be a full lower-case object id".to_owned());
+    }
+    let mut type_command = hardened(git, repo);
+    type_command.args(["cat-file", "-t", "--end-of-options", commit]);
+    let (kind, status) = run_bounded(type_command, 32)?;
+    if !status.success() || kind != b"commit\n" {
+        return Err("the requested object must exist and have type commit".to_owned());
+    }
+    let mut command = hardened(git, repo);
+    command.args([
+        "ls-tree",
+        "-r",
+        "-z",
+        "--full-tree",
+        "--end-of-options",
+        commit,
+    ]);
+    let (listing, status) = run_bounded(command, limit)?;
+    if !status.success() {
+        return Err(format!("git ls-tree failed ({status})"));
+    }
+    parse_ls_tree(&listing)
 }
 
 fn reason_name(reason: &Withheld) -> &'static str {
@@ -409,6 +461,174 @@ mod tests {
         assert!(
             !text.contains("foundation/a.rs"),
             "published paths are counted, not listed"
+        );
+    }
+
+    /// A real, absolute git executable found on `PATH`, or `None` when the machine has none (the process tests then cannot run).
+    fn find_git() -> Option<std::path::PathBuf> {
+        let names: &[&str] = if cfg!(windows) {
+            &["git.exe"]
+        } else {
+            &["git"]
+        };
+        std::env::split_paths(&std::env::var_os("PATH")?)
+            .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+            .find(|candidate| candidate.is_absolute() && candidate.is_file())
+    }
+
+    /// A scratch bare repository holding one blob, one tree, one commit and one annotated tag, removed on drop.
+    struct Repo {
+        git: std::path::PathBuf,
+        dir: std::path::PathBuf,
+        blob: String,
+        tree: String,
+        commit: String,
+        tag: String,
+    }
+
+    impl Repo {
+        fn run(git: &Path, dir: &Path, args: &[&str], input: &[u8]) -> String {
+            use std::io::Write;
+            let mut child = Command::new(git)
+                .arg("-C")
+                .arg(dir)
+                .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid"])
+                .args(args)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env(
+                    "GIT_CONFIG_GLOBAL",
+                    if cfg!(windows) { "NUL" } else { "/dev/null" },
+                )
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child.stdin.take().unwrap().write_all(input).unwrap();
+            let output = child.wait_with_output().unwrap();
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8(output.stdout).unwrap().trim().to_owned()
+        }
+
+        fn new(git: std::path::PathBuf, blob_bytes: usize) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let dir = std::env::temp_dir().join(format!(
+                "steward-release-tree-{}-{nanos}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            Self::run(&git, &dir, &["init", "--bare", "-q"], b"");
+            let blob = Self::run(
+                &git,
+                &dir,
+                &["hash-object", "-w", "--stdin"],
+                &vec![b'x'; blob_bytes],
+            );
+            let tree = Self::run(
+                &git,
+                &dir,
+                &["mktree"],
+                format!("100644 blob {blob}\ta.txt\n").as_bytes(),
+            );
+            let commit = Self::run(&git, &dir, &["commit-tree", &tree, "-m", "m"], b"");
+            Self::run(&git, &dir, &["tag", "-a", "-m", "m", "v1", &commit], b"");
+            let tag = Self::run(&git, &dir, &["rev-parse", "refs/tags/v1"], b"");
+            Self {
+                git,
+                dir,
+                blob,
+                tree,
+                commit,
+                tag,
+            }
+        }
+    }
+
+    impl Drop for Repo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn only_an_object_of_type_commit_is_listed() {
+        let Some(git) = find_git() else {
+            eprintln!("NOT RUN: no git executable on PATH");
+            return;
+        };
+        let repo = Repo::new(git, 1);
+        let entries = list_tree(&repo.git, &repo.dir, &repo.commit).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "a.txt");
+        assert_eq!(entries[0].oid, repo.blob);
+        for (what, id) in [
+            ("tree", repo.tree.as_str()),
+            ("blob", repo.blob.as_str()),
+            ("annotated tag", repo.tag.as_str()),
+            ("absent object", "ffffffffffffffffffffffffffffffffffffffff"),
+        ] {
+            let error = list_tree(&repo.git, &repo.dir, id).unwrap_err();
+            assert!(error.contains("type commit"), "{what}: {error}");
+        }
+    }
+
+    #[test]
+    fn process_output_is_bounded_while_it_is_read_not_after() {
+        let Some(git) = find_git() else {
+            eprintln!("NOT RUN: no git executable on PATH");
+            return;
+        };
+        // A 3 MiB blob: `cat-file blob` writes all of it, but the cap lets only cap + 1 bytes be buffered.
+        let repo = Repo::new(git, 3 * 1024 * 1024);
+        let blob_command = |cap: usize| {
+            let mut command = hardened(&repo.git, &repo.dir);
+            command.args(["cat-file", "blob", &repo.blob]);
+            run_bounded(command, cap)
+        };
+        let (kept, status) = blob_command(3 * 1024 * 1024).unwrap();
+        assert!(status.success());
+        assert_eq!(
+            kept.len(),
+            3 * 1024 * 1024,
+            "output exactly at the cap is accepted whole"
+        );
+        let error = blob_command(3 * 1024 * 1024 - 1).unwrap_err();
+        assert!(
+            error.contains("size limit"),
+            "one byte over the cap is refused: {error}"
+        );
+        let error = blob_command(1000).unwrap_err();
+        assert!(error.contains("size limit"), "{error}");
+        // The refusal reaped the child and left nothing wedged: a normal call afterwards still works.
+        assert_eq!(
+            list_tree(&repo.git, &repo.dir, &repo.commit).unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn an_oversized_tree_listing_is_refused_by_the_adapter() {
+        let Some(git) = find_git() else {
+            eprintln!("NOT RUN: no git executable on PATH");
+            return;
+        };
+        let repo = Repo::new(git, 1);
+        // The listing is one record: mode, type, oid, a tab, the path and a NUL.
+        let exact = "100644 blob ".len() + repo.blob.len() + "\ta.txt\0".len();
+        let error = list_tree_limited(&repo.git, &repo.dir, &repo.commit, exact - 1).unwrap_err();
+        assert!(error.contains("size limit"), "{error}");
+        assert_eq!(
+            list_tree_limited(&repo.git, &repo.dir, &repo.commit, exact)
+                .unwrap()
+                .len(),
+            1
         );
     }
 }
