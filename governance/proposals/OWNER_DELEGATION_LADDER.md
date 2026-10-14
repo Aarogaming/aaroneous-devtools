@@ -59,8 +59,14 @@ Rules the record must encode, from the recorded decision and the C14/C66 history
 2. A quorum is seats with **verified** signatures (R1+R2), never names on an unauthenticated channel.
 3. Powers are granted one at a time, each behind its own trust-building observation period.
 4. Revocation is owner-held (R6) and **epoch-bounded**, not prose-instant (correction 2026-10-11, Codex review): grants carry an `epoch` and `issued_at`; revocation bumps the epoch, verifiers reject stale-epoch grants and replayed artifacts, and an offline node cannot act past its epoch window — so revocation is bounded by the window, never claimed as instantaneous.
-5. Owner-demotion ("user") is declared only when every power in the bundle has a live grant and the
-   trust-building periods have closed — recorded as a final owner decision, not assumed.
+5. Owner-demotion ("user") is declared only when every **delegable operation** has an activated
+   grant and the trust-building periods have closed — recorded as a final owner decision, not
+   assumed. The bundle splits into two classes (correction 2026-10-13, Codex review of #184):
+   retained roots (seat-admission, R6 revocation, the rule-7 trust anchors) are **not** in the
+   completion set — they stay with the owner as the standing fail-safe and are simply never used;
+   delegable operations (the other `power` values) are the set the completion predicate quantifies
+   over. Without this split the predicate is unsatisfiable: seat-admission cannot both be
+   root-only and carry a grant.
 6. **Activation, not just recording** (correction 2026-10-11, Codex review of #189): a grant is
    `pending` until an explicit activation record with a fresh epoch activates it. Every reserved
    power stays pending — owner-side — until a valid **activated** grant exists. Recording a grant
