@@ -72,8 +72,9 @@ public history is curated.
 ## Phases, with exit evidence
 
 1. **This PR:** the export planner and release decision with tests and this document.
-2. The tracked-tree reader (git `ls-tree` with modes), the export policy file (`ci/export-policy.toml`, validated like the platform
-   policy), and the scanners wired in; a dry run on the real tree printing what would be published and why each other path is withheld.
+2. **Done in the stacked PR (C137):** the tracked-tree reader (`release_tree`: strict `ls-tree -r -z` parser plus a hardened git adapter), the
+   export policy parser (`ExportPolicy::parse`), a draft `ci/export-policy.toml` (grants nothing; for owner review) and the `release-plan`
+   dry-run binary. **Still to do:** wire the publication scanners in.
 3. The exporter: build the tree, make the provenance commit and signed tag in a scratch public repository; a test that exports the
    same commit twice and gets identical trees.
 4. Stage 1 of the GitHub plan (git-native evidence and the importer for PR evidence), then the authoritative bare repository and its
@@ -93,5 +94,9 @@ deliberate breakages each fail a test: the eleven rules of the first version (de
 git-alias fold, links, secret-shaped names, and each of verification, publication checks, open blockers, an empty export, an unsafe path
 and the tag format) and nine added after Codex's review (trailing dot or space, reserved device names, forbidden characters, case
 collisions, the object-id check, the evidence head, the required-platform set, the scanned-tree digest, and subjectless evidence).
+**Phase 2 (C137):** `cargo test -p steward --lib` 89 tests; the policy parser and the tree reader each have their rules broken one at a time (23 breakages, each fails a test; two further checks, the leading `/` and the six-digit mode width, are redundant with the empty-segment and mode-table checks, so removing either alone changes no outcome).
+A dry run of `release-plan` on the real tree at `d2a65fe` with the draft policy: 95 paths published, 277 withheld (all "not included"), no blockers;
+with a policy that includes `scripts/`, `governance/`, `migrations/`, `.github/`, `worker-jobs/`, `ci/` and `inventories/` there are still no blockers, so
+the tree currently holds no secret-shaped or platform-unsafe path. That is the path-shape check only; **the content scanners have not run**.
 **Not run:** nothing reads a real tree, runs a scanner, touches a repository or pushes anywhere; the export policy file, the tree
 reader, the exporter and every adapter are later phases. The stack depends on #197 (`verification::Evidence` and its subject).
