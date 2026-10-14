@@ -234,17 +234,31 @@ pub fn checklist(facts: &Value) -> Result<Checklist, String> {
         String::new(),
         "draft status unavailable (fail closed)".to_owned(),
     ));
+    // Owner decision 2026-10-11 (DECISIONS.md), mirrored from scripts/merge_gate.py: only an exact boolean true grants the exemption.
+    let identity_exempt = matches!(
+        facts.get("identity_registration_exempt"),
+        Some(Value::Bool(true))
+    );
+    let exempt_suffix = if identity_exempt {
+        " — exempt: additive-only identities.json registration (owner decision 2026-10-11)"
+    } else {
+        ""
+    };
     let seat_label = match &seats {
         Some(list) if !list.is_empty() => list.join(", "),
         _ => "none".to_owned(),
     };
     checks.push((
         "3",
-        match (&seats, covered) {
-            (Some(_), Some(c)) => Some(distinct >= 2 && c),
-            _ => None,
+        if identity_exempt {
+            Some(true)
+        } else {
+            match (&seats, covered) {
+                (Some(_), Some(c)) => Some(distinct >= 2 && c),
+                _ => None,
+            }
         },
-        format!(">=2 independent accept verdicts at {head}, seats: {seat_label}"),
+        format!(">=2 independent accept verdicts at {head}, seats: {seat_label}{exempt_suffix}"),
         String::new(),
         "accepting seats or coverage unavailable".to_owned(),
     ));
@@ -278,11 +292,15 @@ pub fn checklist(facts: &Value) -> Result<Checklist, String> {
     };
     checks.push((
         "5",
-        match (counted, missing_evidence) {
-            (Some(n), Some(list)) => Some(n > 0 && list.is_empty()),
-            _ => None,
+        if identity_exempt {
+            Some(true)
+        } else {
+            match (counted, missing_evidence) {
+                (Some(n), Some(list)) => Some(n > 0 && list.is_empty()),
+                _ => None,
+            }
         },
-        "Each counted verdict cites command + exit code".to_owned(),
+        format!("Each counted verdict cites command + exit code{exempt_suffix}"),
         evidence_detail,
         "verdict evidence facts unavailable".to_owned(),
     ));
