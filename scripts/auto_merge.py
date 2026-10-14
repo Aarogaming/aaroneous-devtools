@@ -30,9 +30,10 @@ import merge_gate as mg  # noqa: E402
 ALLOWED_REPO = "Aarogaming/aaroneous-devtools"
 
 
-def merge(repo, pr_number):
+def merge(repo, pr_number, expected_head):
     return subprocess.run(
-        ["gh", "pr", "merge", str(pr_number), "--merge", "-R", repo],
+        ["gh", "pr", "merge", str(pr_number), "--merge", "-R", repo,
+         "--match-head-commit", expected_head],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
 
@@ -53,7 +54,7 @@ def run(repo, repo_dir, identities_path, only_pr, dry_run, merge_fn=merge):
         if dry_run:
             lines.append(f"  (dry run: would merge #{d['pr']})")
             continue
-        result = merge_fn(repo, d["pr"])
+        result = merge_fn(repo, d["pr"], d["head"])
         if result.returncode != 0:
             lines.append(f"  merge failed: {result.stderr.strip()}")
             exit_code = 1
