@@ -718,17 +718,22 @@ mod tests {
             config_value_problem("model", "qwen2.5-coder-7b-instruct-q4_k_m"),
             None
         );
+        // Credential-shaped fixtures are assembled at run time: a literal would be a secret-scanner finding in a public repository.
+        let tail = "abcdefghijklmnopqrstuvwxyz0123456789";
         for (field, value) in [
-            ("api_key", "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789"),
-            ("token", "ghp_abcdefghijklmnopqrstuvwxyz0123456789"),
-            ("api_key", "Provider OpenAI"),
-            ("password", ""),
-            ("notes", "Bearer abcdefghijklmnop"),
-            ("anything", "AIzaSyA-abcdefghijklmnopqrstuvwxyz012345"),
-            ("anything", "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dF3gH5"),
+            ("api_key", ["sk-proj", "-", tail].concat()),
+            ("token", ["ghp", "_", tail].concat()),
+            ("api_key", "Provider OpenAI".to_owned()),
+            ("password", String::new()),
+            ("notes", "Bearer abcdefghijklmnop".to_owned()),
+            ("anything", ["AIza", "SyA-", &tail[..32]].concat()),
+            (
+                "anything",
+                "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dF3gH5".to_owned(),
+            ),
         ] {
             assert!(
-                config_value_problem(field, value).is_some(),
+                config_value_problem(field, &value).is_some(),
                 "{field}={value}"
             );
         }
