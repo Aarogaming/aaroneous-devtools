@@ -663,10 +663,20 @@ fn incomplete_staging_is_ignored_but_corrupt_final_state_is_preserved() {
     let record = fs::read_dir(&fixture.input.state)
         .unwrap()
         .map(|entry| entry.unwrap().path())
-        .find(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("r-")
+        })
         .unwrap();
     fs::write(&record, b"").unwrap();
-    assert!(local_authority::collect(&fixture.input).is_err());
+    assert!(
+        local_authority::collect(&fixture.input)
+            .unwrap_err()
+            .contains("corrupt authority high-water record")
+    );
     assert_eq!(fs::read(&record).unwrap(), b"");
     assert_eq!(
         fs::read(fixture.input.state.join(".pending-interrupted")).unwrap(),

@@ -543,12 +543,30 @@ fn remember(state: &Path, label: &str, sequence: u64, digest: &str) -> Result<()
 
 fn check_observed(state: &Path, label: &str, sequence: u64, digest: &str) -> Result<(), String> {
     let path = state.join(format!("{label}-{sequence}.json"));
-    if path.exists()
-        && bytes(&path)?
-            != serde_json::to_vec(&json!({"sequence":sequence,"digest":digest}))
-                .map_err(|e| e.to_string())?
-    {
-        return Err("previously observed authority record changed".into());
+    if path.exists() {
+        let raw = bytes(&path)
+            .map_err(|problem| format!("unreadable authority high-water record: {problem}"))?;
+        let value: Value = serde_json::from_slice(&raw)
+            .map_err(|problem| format!("corrupt authority high-water record: {problem}"))?;
+        object(&value, &["sequence", "digest"])
+            .map_err(|problem| format!("corrupt authority high-water record: {problem}"))?;
+        let stored_sequence = value["sequence"]
+            .as_u64()
+            .filter(|number| *number > 0 && *number <= 1_000_000)
+            .ok_or("corrupt authority high-water record: invalid sequence")?;
+        let stored_digest = text(&value, "digest")
+            .map_err(|problem| format!("corrupt authority high-water record: {problem}"))?;
+        if !crate::local_authority::digest(stored_digest) {
+            return Err("corrupt authority high-water record: invalid digest".into());
+        }
+        if stored_sequence != sequence
+            || stored_digest != digest
+            || raw
+                != serde_json::to_vec(&json!({"sequence":sequence,"digest":digest}))
+                    .map_err(|problem| problem.to_string())?
+        {
+            return Err("previously observed authority record changed".into());
+        }
     }
     Ok(())
 }
