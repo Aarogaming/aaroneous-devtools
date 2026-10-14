@@ -18,3 +18,28 @@ platform = "windows-x86_64"
 [[rule]]
 prefix = "ci/"
 platform = "windows-x86_64"
+
+# Build inputs at the repository root and in the toolchain configuration decide what every platform compiles, so a change to any of
+# them is verified on Windows too (Codex's second review of #199). Prefix rules also select near-matching names, which is the safe
+# direction; an exact-match schema could narrow them later.
+[[rule]]
+prefix = ".cargo/"
+platform = "windows-x86_64"
+
+[[rule]]
+prefix = "Cargo.toml"
+platform = "windows-x86_64"
+
+[[rule]]
+prefix = "Cargo.lock"
+platform = "windows-x86_64"
+
+# Covers `rust-toolchain` and `rust-toolchain.toml`.
+[[rule]]
+prefix = "rust-toolchain"
+platform = "windows-x86_64"
+
+# Covers `foundation-ci.yml` and `foundation-ci-windows.yml`: the workflow that runs the suite is part of what is being verified.
+[[rule]]
+prefix = ".github/workflows/foundation-ci"
+platform = "windows-x86_64"

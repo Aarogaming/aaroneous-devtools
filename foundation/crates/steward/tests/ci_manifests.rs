@@ -61,6 +61,13 @@ fn windows_specific_code_is_verified_on_windows_before_merge() {
         "foundation/Cargo.lock",
         "stacks/local-rust.toml",
         "ci/suites/foundation-ci.toml",
+        ".cargo/config.toml",
+        "Cargo.toml",
+        "Cargo.lock",
+        "rust-toolchain",
+        "rust-toolchain.toml",
+        ".github/workflows/foundation-ci.yml",
+        ".github/workflows/foundation-ci-windows.yml",
     ] {
         let required = policy.required(&[path.to_owned()]);
         assert!(

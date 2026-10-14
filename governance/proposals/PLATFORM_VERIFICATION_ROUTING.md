@@ -114,7 +114,7 @@ that leaves the repository, a zero or enormous timeout, a duplicate step, and an
 text in git, so any byte change is a new digest.
 
 **Platform policy** (`ci/platform-policy.toml`): the default platforms plus rules mapping a path prefix to an extra platform. Today:
-Linux always; Windows too for anything under `foundation/`, `stacks/` and `ci/`. This is deliberately broad: Codex found
+Linux always; Windows too for anything under `foundation/`, `stacks/` and `ci/`, the root build inputs (`Cargo.toml`, `Cargo.lock`, `.cargo/`, `rust-toolchain*`) and the Foundation CI workflow files, which Codex's second review of #199 found missing. This is deliberately broad: Codex found
 Windows-only path containment (and Windows-only tests) in `foundation_cli`, which the first, narrower policy missed. Narrow it only
 with dependency and platform evidence, not by guessing which crate is portable; a test pins the Windows-specific paths.
 
