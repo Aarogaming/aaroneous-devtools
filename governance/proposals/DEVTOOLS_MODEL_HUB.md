@@ -58,7 +58,7 @@ share of VRAM up front is less forgiving than a llama.cpp-style server with part
 Every call the hub makes records a receipt: node, provider, the model asked for, **the model the server said answered**, digests of
 the request and the response, and the tick. A mismatch (a silent fallback, a mislabelled alias) is flagged. This is the first
 runtime-backed answer to the limit noted in review of C125: the model named in an attestation is self-declared. Once an attestation
-can cite a receipt id, "the model that ran" for hub-made calls is observed, not claimed. Seats whose models run outside the hub (the
+can cite a receipt id (an id is a hash of the length-prefixed fields, so no value can shift a boundary between two of them; found by Codex on #198), "the model that ran" for hub-made calls is observed, not claimed. Seats whose models run outside the hub (the
 Claude, Codex and Gemini sessions reach theirs through their own applications) stay self-declared.
 
 ## Endpoints

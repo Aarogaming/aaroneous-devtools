@@ -321,19 +321,24 @@ pub struct Receipt {
 }
 
 impl Receipt {
-    /// Identity of the receipt: any field changing changes it.
+    /// Identity of the receipt: any field changing changes it, and no two different receipts share one. Every text
+    /// field is written as its byte length, a colon and the bytes, so no value, whatever it contains (newlines
+    /// included), can move a boundary between two fields; the layout is parsed from the front.
     #[must_use]
     pub fn id(&self) -> String {
-        digest(&format!(
-            "receipt-v1\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-            self.node,
-            self.provider,
-            self.model_requested,
-            self.model_reported,
-            self.request_digest,
-            self.response_digest,
-            self.tick
-        ))
+        let mut text = String::from("receipt-v2\n");
+        for field in [
+            &self.node,
+            &self.provider,
+            &self.model_requested,
+            &self.model_reported,
+            &self.request_digest,
+            &self.response_digest,
+        ] {
+            text.push_str(&format!("{}:{field}\n", field.len()));
+        }
+        text.push_str(&format!("{}\n", self.tick));
+        digest(&text)
     }
 
     /// Set when the server answered with a different model than the one asked for (a silent fallback, a mislabelled
@@ -793,5 +798,75 @@ mod tests {
             ..receipt()
         };
         assert!(swapped.mismatch().is_some_and(|m| m.contains("answered")));
+    }
+
+    #[test]
+    fn separators_inside_a_field_cannot_move_a_boundary_between_fields() {
+        // Codex's collision on #198: the same bytes split differently across two adjacent fields.
+        let a = Receipt {
+            node: "node\nprovider-a".into(),
+            provider: "provider-b".into(),
+            ..receipt()
+        };
+        let b = Receipt {
+            node: "node".into(),
+            provider: "provider-a\nprovider-b".into(),
+            ..receipt()
+        };
+        assert_ne!(a, b);
+        assert_ne!(a.id(), b.id());
+        // The same property for every adjacent pair of text fields and for the separators a length prefix could be
+        // confused with: a newline, a colon, a digit run, and a value that looks like the next field's prefix.
+        for glue in ["\n", ":", "5:", "\n3:abc\n", ""] {
+            for pair in 0..5 {
+                let make = |split: usize| {
+                    let mut fields = [
+                        "alpha".to_owned(),
+                        "beta".to_owned(),
+                        "gamma".to_owned(),
+                        "delta".to_owned(),
+                        "epsilon".to_owned(),
+                        "zeta".to_owned(),
+                    ];
+                    let joined = format!("{}{glue}{}", fields[pair], fields[pair + 1]);
+                    let (left, right) = joined.split_at(split);
+                    fields[pair] = left.to_owned();
+                    fields[pair + 1] = right.to_owned();
+                    let [
+                        node,
+                        provider,
+                        model_requested,
+                        model_reported,
+                        request_digest,
+                        response_digest,
+                    ] = fields;
+                    Receipt {
+                        node,
+                        provider,
+                        model_requested,
+                        model_reported,
+                        request_digest,
+                        response_digest,
+                        tick: 7,
+                    }
+                };
+                let first = make(5);
+                let second = make(5 + glue.len().max(1));
+                assert_ne!(first, second);
+                assert_ne!(first.id(), second.id(), "glue {glue:?} pair {pair}");
+            }
+        }
+        // A tick can never be confused with the end of a text field.
+        let t = Receipt {
+            response_digest: "z\n8".into(),
+            tick: 9,
+            ..receipt()
+        };
+        let u = Receipt {
+            response_digest: "z".into(),
+            tick: 89,
+            ..receipt()
+        };
+        assert_ne!(t.id(), u.id());
     }
 }
