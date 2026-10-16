@@ -19,6 +19,10 @@ The canonical local ledger is `D:/aaroneous-devtools/governance/COORDINATION_QUE
 it contains uncommitted updates absent from main. C141 preserves that checkout.
 This proposal is stacked on C140, PR #222, at
 `614ca2a2951bfa51bb02dacab5cb76e4d3c91a4e`.
+The stable contribution identity is `C141/codex-queue-reconciliation-v1`.
+Claude separately allocated C141 to duplicate advisory PR #223, then closed
+that PR as superseded by #222. Preserve that closed contribution's history;
+the short lane ID alone must not conflate its security scope with this report.
 
 ## Merge facts and proposed dispositions
 
@@ -94,8 +98,15 @@ successor's acceptance, required product verification and authorized integration
 ## Next integration sequence
 
 1. Complete C140's independent review. On 2026-10-16, [PR #222](https://github.com/Aarogaming/aaroneous-devtools/pull/222)
-   has Gemini's acceptance at `614ca2a` and all hosted checks successful; the
-   second independent acceptance required by devtools policy remains absent.
+   has Gemini and [Claude acceptances](https://github.com/Aarogaming/aaroneous-devtools/pull/222#issuecomment-6220192407)
+   at `614ca2a` and all hosted checks successful. The read-only merge checker
+   exited 0 and counted both seats, but withheld eligibility: box 5 requires
+   Claude's command evidence inside the signed JSON, and box 6 remains
+   unclassified. The current checker only sets revertibility automatically
+   for documentation paths (`scripts/merge_gate.py`, `gather_facts`); it leaves
+   this lockfile repair unknown. An author cannot change a reviewer's signed
+   evidence or infer an eligible decision from the remaining green boxes.
+   See the [retained gate handoff](https://github.com/Aarogaming/aaroneous-devtools/pull/222#issuecomment-6220280073).
 2. After C140 integrates, update the affected devtools PRs through normal branch
    synchronization and refresh checks/review coverage at any changed head.
 3. Review this evidence packet. Prioritize C109 and maintenance C112 for explicit
