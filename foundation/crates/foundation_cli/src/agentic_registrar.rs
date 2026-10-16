@@ -1445,6 +1445,53 @@ pub fn git_discover_repository(checkout: &Path) -> Result<Vec<String>> {
     Ok(files)
 }
 
+const TASK_REGISTRATION_SCRIPT: &str = r#"$ErrorActionPreference = 'Stop'
+$inputData = ConvertFrom-Json -InputObject $env:DEVTOOLS_TASK_REGISTRATION
+$action = New-ScheduledTaskAction -Execute $inputData.binary -Argument $inputData.arguments
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $inputData.interval)
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+Register-ScheduledTask -TaskName $inputData.name -Action $action -Trigger $trigger -Settings $settings
+"#;
+
+fn task_registration_payload(
+    binary_path: &Path,
+    task_name: &str,
+    interval_minutes: u32,
+) -> Result<String> {
+    if !binary_path.is_absolute()
+        || binary_path.to_str().is_none()
+        || binary_path
+            .to_string_lossy()
+            .chars()
+            .any(|c| c.is_control() || c == '"')
+        || binary_path.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+        || task_name.trim().is_empty()
+        || task_name.len() > 200
+        || task_name
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\'))
+        || !(1..=1440).contains(&interval_minutes)
+    {
+        bail!("Use an absolute binary path, a bounded task name and an interval of 1–1440 minutes");
+    }
+    let config_path = binary_path
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("config").join("registrar_config.toml"))
+        .context("Failed to derive registrar_config.toml path relative to binary")?;
+    // Values enter PowerShell as JSON data, never as executable script text.
+    Ok(serde_json::to_string(&serde_json::json!({
+        "binary": binary_path.to_str().context("binary path is not UTF-8")?,
+        "arguments": format!("agentic-registrar daemon --config \"{}\"", config_path.display()),
+        "name": task_name, "interval": interval_minutes,
+    }))?)
+}
+
 pub fn register_task_scheduler(
     binary_path: &Path,
     task_name: &str,
@@ -1454,26 +1501,19 @@ pub fn register_task_scheduler(
         bail!("Task Scheduler registration is supported on Windows host platforms only");
     }
 
-    let config_path = binary_path
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("config").join("registrar_config.toml"))
-        .context("Failed to derive registrar_config.toml path relative to binary")?;
-
-    let ps_script = format!(
-        r#"$action = New-ScheduledTaskAction -Execute '{bin}' -Argument 'agentic-registrar daemon --config "{config}"'
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes {interval})
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-Register-ScheduledTask -TaskName '{name}' -Action $action -Trigger $trigger -Settings $settings -Force
-"#,
-        bin = binary_path.display(),
-        config = config_path.display(),
-        interval = interval_minutes,
-        name = task_name
-    );
+    let payload = task_registration_payload(binary_path, task_name, interval_minutes)?;
+    if !binary_path.is_file() {
+        bail!("Task binary must be an existing file");
+    }
 
     let status = Command::new("pwsh")
-        .args(["-Command", &ps_script])
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            TASK_REGISTRATION_SCRIPT,
+        ])
+        .env("DEVTOOLS_TASK_REGISTRATION", payload)
         .status()
         .context("Failed to execute PowerShell Task Scheduler registration command")?;
 
@@ -2570,6 +2610,61 @@ fn append_progress_log(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scheduler_inputs_are_data_and_invalid_inputs_fail_closed() {
+        let root = tempfile::tempdir().expect("root");
+        let binary = root.path().join("owner's tools").join("foundation.exe");
+        let name = "agent'; Write-Output 'INJECTED'; #";
+        let text = task_registration_payload(&binary, name, 15).expect("payload");
+        let data: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+        assert_eq!(data["name"], name);
+        assert_eq!(data["binary"], binary.to_str().expect("path"));
+        assert!(!TASK_REGISTRATION_SCRIPT.contains(name));
+        assert!(!TASK_REGISTRATION_SCRIPT.contains("-Force"));
+        assert!(task_registration_payload(Path::new("relative.exe"), "agent", 15).is_err());
+        assert!(task_registration_payload(&binary, "bad\nname", 15).is_err());
+        assert!(task_registration_payload(&binary, "folder/task", 15).is_err());
+        assert!(task_registration_payload(&binary, "agent", 0).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn scheduler_script_preserves_injection_text_without_executing_it() {
+        // Stub the scheduler cmdlets: exercise the real PowerShell parser without
+        // installing anything or changing the host's scheduled tasks.
+        let root = tempfile::tempdir().expect("root");
+        let binary = root.path().join("owner's tools").join("foundation.exe");
+        let name = "agent'; Write-Output 'INJECTED'; #";
+        let payload = task_registration_payload(&binary, name, 15).expect("payload");
+        let stubs = r#"
+function New-ScheduledTaskAction { param($Execute, $Argument); @{binary=$Execute;arguments=$Argument} }
+function New-ScheduledTaskTrigger { param([switch]$Once, $At, $RepetitionInterval); @{} }
+function New-ScheduledTaskSettingsSet { param([switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries, [switch]$StartWhenAvailable); @{} }
+function Register-ScheduledTask { param($TaskName, $Action, $Trigger, $Settings); @{name=$TaskName;binary=$Action.binary;arguments=$Action.arguments} | ConvertTo-Json -Compress }
+"#;
+        let output = Command::new("pwsh")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!("{stubs}\n{TASK_REGISTRATION_SCRIPT}"),
+            ])
+            .env("DEVTOOLS_TASK_REGISTRATION", &payload)
+            .output()
+            .expect("PowerShell");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let actual: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("only stub JSON, no injected output");
+        let expected: serde_json::Value = serde_json::from_str(&payload).expect("JSON");
+        assert_eq!(actual["name"], expected["name"]);
+        assert_eq!(actual["binary"], expected["binary"]);
+        assert_eq!(actual["arguments"], expected["arguments"]);
+    }
     #[test]
     fn http_framing_requires_complete_bounded_unambiguous_requests() {
         fn parse(raw: &str) -> Result<HttpRequest> {
