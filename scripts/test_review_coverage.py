@@ -524,5 +524,49 @@ class GitSaysWhoImplemented(unittest.TestCase):
         self.assertEqual(rc.unattributed_commits(log, "codex/x"), 0)
 
 
+class EvidenceSupersession(unittest.TestCase):
+    """Merge-gate box 5: a seat's later record with commands covers its own earlier record without them."""
+
+    @staticmethod
+    def counted(*specs):
+        out = []
+        for comment, reviewer, commands in specs:
+            record = rec(H1, reviewer=reviewer)
+            record["comment"] = comment
+            if commands:
+                record["commands"] = ["cargo test -> exit 0"]
+            out.append(record)
+        return out
+
+    def test_a_later_record_with_commands_covers_the_same_seats_earlier_record(self):
+        counted = self.counted((3, "claude", False), (7, "claude", True), (6, "gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [])
+
+    def test_a_seat_that_never_cited_a_command_still_blocks(self):
+        counted = self.counted((3, "claude", False), (6, "gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_another_seats_commands_do_not_cover_this_seat(self):
+        counted = self.counted((3, "claude", False), (6, "gemini", True), (7, "gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_spelling_variants_of_one_seat_are_one_seat(self):
+        counted = self.counted((3, "Claude", False), (7, "claude", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [])
+
+    def test_an_ambiguous_reviewer_is_never_covered_by_anyone_elses_commands(self):
+        counted = self.counted((3, "claude/gemini", False), (6, "gemini", True), (7, "claude", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_two_unresolvable_reviewers_do_not_cover_each_other(self):
+        counted = self.counted((3, "claude/gemini", False), (7, "claude/gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_nothing_counted_means_nothing_missing_and_all_bare_means_all_missing(self):
+        self.assertEqual(rc.unevidenced_verdicts([]), [])
+        counted = self.counted((3, "claude", False), (6, "gemini", False))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3, 6])
+
+
 if __name__ == "__main__":
     unittest.main()

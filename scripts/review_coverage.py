@@ -244,6 +244,21 @@ def canonical_reviewer_seat(name):
     return next(iter(seats)) if len(seats) == 1 else None
 
 
+def unevidenced_verdicts(counted):
+    """Comment ids of counted verdicts that cite no command evidence (merge-gate box 5).
+
+    A reviewer may supplement an earlier accept at the same head with a later signed one that carries the commands and exit
+    codes; both records stay counted (nothing is deleted or edited), but the seat has then shown its evidence, so the earlier
+    record no longer blocks. A seat that never cited a command at this head, and any other seat's record, still blocks."""
+    cited = {canonical_reviewer_seat(r["reviewer"]) for r in counted if r.get("commands")}
+    cited.discard(None)
+    return [
+        r.get("comment")
+        for r in counted
+        if not r.get("commands") and canonical_reviewer_seat(r["reviewer"]) not in cited
+    ]
+
+
 def independent(record):
     """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
     ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
@@ -485,7 +500,7 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                 "reasons": decision["reasons"],
                 "accept_seats": decision["accept_seats"],
                 "counted_verdicts": len(decision["counted"]),
-                "verdicts_missing_evidence": [r.get("comment") for r in decision["counted"] if not r.get("commands")],
+                "verdicts_missing_evidence": unevidenced_verdicts(decision["counted"]),
                 "structured_attestations": len(structured),
                 "authenticated_reviews": len(formal),
                 "signed_attestations": sum(1 for r in structured if r.get("verified")),
