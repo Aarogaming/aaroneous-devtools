@@ -18,6 +18,7 @@ serde_json = "1.0"
 toml = "1.1"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 steward = { path = "../steward" }
+devtools_ops = { path = "../devtools_ops" }
 regex = "1.10"
 tempfile = "3.10"
 
