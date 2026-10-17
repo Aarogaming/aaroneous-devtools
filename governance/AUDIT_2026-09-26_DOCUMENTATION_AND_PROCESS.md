@@ -94,10 +94,10 @@ Finding 2 below survived undetected.
    transcription error — they are missing from the file itself, replaced by a
    literal tab character):
    ```
-   - **Execution**: enzyme, EnzymeRunner -> worker_runner, worker_types, 	ask_worker
+   - **Execution**: enzyme, EnzymeRunner -> worker_runner, worker_types, task_worker
    - **Heuristics**: dopamine, curiosity -> eward_system, exploration_worker
    - **Orchestration**: prefrontal_cortex, utonomic_loop -> intent_orchestrator, supervisory_loop
-   - **Limits**: iology, homeostasis, 	hermodynamic_governor -> system_limits, resource_governor, 	hroughput_governor
+   - **Limits**: iology, homeostasis, thermodynamic_governor -> system_limits, resource_governor, throughput_governor
    ```
    `task_worker`, `reward_system`, `autonomic_loop`, `biology`, and
    `thermodynamic_governor` each lost their leading character(s) to a tab.

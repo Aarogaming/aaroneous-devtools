@@ -150,6 +150,13 @@ SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
 # punctuation form (skeptic probe on #99: reviewer "Claude" with implementers ["claude-sonnet-5-5"] was independent).
 KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen")
 
+# A model family named without its seat word still names the seat that runs it: "Opus 5.5" is Claude, "gpt-5.5" is Codex.
+# Without this the string kept its own first token as an "unknown seat", so a Claude session labelling itself "Opus"
+# was independent of an implementer "claude" and two labels ("Opus", "Sonnet") counted as two reviewing seats
+# (skeptic probe on #99 main: both covered a PR whose only implementer was claude).
+MODEL_FAMILY_SEATS = {"opus": "claude", "sonnet": "claude", "haiku": "claude", "fable": "claude", "anthropic": "claude",
+                      "gpt": "codex", "openai": "codex"}
+
 
 def seat_names(name):
     """The set of seats a reviewer or implementer string names. A string may name several ("Claude, Mimo",
@@ -163,6 +170,9 @@ def seat_names(name):
         for seat in KNOWN_SEATS:
             if token.startswith(seat):
                 found.add(SEAT_NAME_ALIASES.get(seat, seat))
+        for family, seat in MODEL_FAMILY_SEATS.items():
+            if token.startswith(family):
+                found.add(seat)
     if not found and tokens:
         found.add(tokens[0])
     return found
@@ -241,6 +251,14 @@ def non_ascii_seat_names(record):
     return [n for n in names if not unicodedata.normalize("NFKC", str(n)).isascii()]
 
 
+def canonical_reviewer_seat(name):
+    """The single canonical seat an attestation reviewer resolves to.
+    Fails closed (returns None) if the reviewer is ambiguous (names multiple distinct seats) or empty
+    (Codex P2 on #111: an ambiguous reviewer like 'Opus/gpt-5.5' cannot contribute multiple seats to accept_seats)."""
+    seats = seat_names(name)
+    return next(iter(seats)) if len(seats) == 1 else None
+
+
 def independent(record):
     """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
     ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
@@ -280,7 +298,11 @@ def evaluate(head, merge_base, records, is_ancestor):
         r
         for r in records
         if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base
+        and canonical_reviewer_seat(r["reviewer"]) is not None
     ]
+    # Only a `whole` accept seeds coverage (governance/PLATFORM_SPEC.md section 3: "Delta accepts compose only when
+    # chained from a whole-diff accept"). A delta that starts at the merge base reviewed the whole PR diff, but its
+    # author must say so by labelling it `whole`; the tool tells them (see the reason below) and does not guess.
     covered = {r["head"] for r in valid if r["scope"] == "whole"}
     changed = True
     while changed:
@@ -297,7 +319,11 @@ def evaluate(head, merge_base, records, is_ancestor):
     ok = head in covered and not blockers
     if head not in covered:
         if any(r["verdict"] in ACCEPT and r["head"] == head for r in records):
-            reasons.append("accept at head exists but is not chained to a whole accept at this base")
+            reason = "accept at head exists but is not chained to a whole accept at this base"
+            if any(r["scope"] == "delta" and r["head"] == head and r["from"] == merge_base for r in valid):
+                reason += (f"; its delta starts at the merge base {merge_base[:8]}, which is the whole PR diff, so if the "
+                           "reviewer read all of base...head they should re-post it with scope \"whole\"")
+            reasons.append(reason)
             for r in at_head:
                 if r["verdict"] not in ACCEPT or r in valid:
                     continue
@@ -315,7 +341,7 @@ def evaluate(head, merge_base, records, is_ancestor):
         "reasons": reasons,
         "accepts_at_head": len(at_head),
         "counted": counted,
-        "accept_seats": sorted(set().union(*(seat_names(r["reviewer"]) for r in counted)) if counted else []),
+        "accept_seats": sorted({canonical_reviewer_seat(r["reviewer"]) for r in counted if canonical_reviewer_seat(r["reviewer"])}),
     }
 
 
@@ -418,8 +444,10 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
         parsed, problems, legacy = parse_attestations(pr.get("comments", []))
         allowed = attest_sig.allowed_signers(keys) if keys else ""
         for record in parsed:
-            record["verified"] = bool(record.get("_sig")) and attest_sig.verify(
-                record["_canon"], record["_sig"], record["reviewer"], allowed
+            canon = canonical_reviewer_seat(record["reviewer"])
+            principal = canon or record["reviewer"]
+            record["verified"] = bool(record.get("_sig") and canon) and attest_sig.verify(
+                record["_canon"], record["_sig"], principal, allowed
             )
         if require_signatures:
             for record in [r for r in parsed if not r["verified"]]:
@@ -509,7 +537,7 @@ def checkout_matches(remote_url, repo):
 
 def pr_list_args(repo):
     return ["pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
-            "number,headRefOid,baseRefName,headRefName"]
+            "number,headRefOid,baseRefName,headRefName,isDraft"]
 
 
 def gh_json(*args):
@@ -545,6 +573,7 @@ def live_snapshot(repo, repo_dir):
                 "branch": item.get("headRefName", ""),
                 "commit_log": log.stdout if log.returncode == 0 else "",
                 "base": item["baseRefName"],
+                "draft": item["isDraft"],
                 "merge_base": mb,
                 "comments": flatten_pages(pages),
                 "reviews": flatten_pages(

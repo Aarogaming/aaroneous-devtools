@@ -17,8 +17,9 @@ scripts/golden/steward/ so the contract does not depend on Python:
   seats        review_coverage.seat_names (sorted): which seats a reviewer or implementer string names
   pushes       steward_run.pushes (heads recorded, seats credited with a moved or new head)
   coverage     review_coverage.evaluate      audit      next_task.build_cards across ticks
-  Merge-gate vectors (the owner-facing eligibility decision):
-  gate_tier    merge_gate.tier_of, touches_protected, gate_plan, category_of
+  Merge-gate vectors (the mechanical eligibility decision; no path is owner-gated, see
+  governance/AUTOMATED_MERGE_POLICY.md and the 2026-10-09 DECISIONS.md entry):
+  gate_plan    merge_gate.gate_plan, category_of
   gate_ci      merge_gate.ci_state           gate_breaker   merge_gate.breaker_state
   gate_threads merge_gate.open_threads       gate_checklist merge_gate.checklist
   gate_decide  merge_gate.decide and reconcile
@@ -131,6 +132,37 @@ ATTRIBUTION = [
     {"body": "### Codex bounded independent review: verification incomplete", "strict": True},
     {"body": "Independent review by Codex", "strict": True},
     {"body": "### Independent review", "strict": True},
+    {"body": "\r\n\r\nCodex whole-diff packet\r\nmore", "strict": True},
+    {"body": "   \n\u2028\n  \t Gemini packet\n", "strict": True},
+    {"body": "\x1f\x1f\nMimo packet", "strict": True},
+    {"body": "first line names nobody\u2028Claude seat: done", "strict": True},
+    {"body": "Reviewer: CODEX (gpt)", "strict": False},
+    {"body": "Reviewer seat - Gemini", "strict": False},
+    {"body": "Reviewer / Seat \u2014 Antigravity", "strict": False},
+    {"body": "see the note\nSeat/agent:Claude", "strict": True},
+    {"body": "SEAT / AGENT: mimo", "strict": False},
+    {"body": "Claude Seat finished", "strict": True},
+    {"body": "####### Claude over-long heading", "strict": True},
+    {"body": "## Independent  Mimo review", "strict": False},
+    {"body": "xGemini packet", "strict": True},
+    {"body": "Geminis packet", "strict": True},
+    # Found by a differential run of the Rust port against this oracle (110,000 generated bodies): Python's \\s counts
+    # U+001C..U+001F, and its \\w does not count combining marks, joiners or connector punctuation but does count
+    # superscript digits.
+    {"body": "\r\x1fClaude)", "strict": False},
+    {"body": "\x1f\x1fSeat\x1f/\x1fagent: Codex", "strict": False},
+    {"body": "Claude\u0301\u200dCODEX", "strict": False},
+    {"body": "\u0345Gemini packet", "strict": True},
+    {"body": "\u00b2Gemini packet", "strict": True},
+    {"body": "\u24b6Mimo packet", "strict": True},
+    # Found by a differential run on the merged tree (20,000 bodies, 581 disagreements): a completion receipt that opens
+    # a comment is not prose, so in strict mode the seat name right after it opens the comment.
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] Gemini whole-diff packet", "strict": True},
+    {"body": "  [done:fix_threads:7:" + "c" * 40 + "] - Codex", "strict": True},
+    {"body": "[done:fix_threads:7:" + "c" * 40 + "]: Mimo reviewed this", "strict": True},
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] Gemini whole-diff packet", "strict": False},
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] all threads answered\nGemini whole-diff packet", "strict": True},
+    {"body": "[done:needs_review:7:" + "c" * 39 + "] Gemini whole-diff packet", "strict": True},
 ]
 
 HEADS = [
@@ -141,6 +173,11 @@ HEADS = [
     {"body": "head " + "C" * 40, "head": H},
     {"body": "no hash here", "head": H},
     {"body": f"head {H}", "head": ""},
+    {"body": "head cccccccc\u0301", "head": H},
+    {"body": "head cccccccc\u0e31", "head": H},
+    {"body": "head cccccccc\u203f", "head": H},
+    {"body": "head cccccccc\u00b2", "head": H},
+    {"body": "head \u00b2cccccccc", "head": H},
 ]
 
 
@@ -169,6 +206,9 @@ RECEIPTS = [
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "a receipt naming another PR does not count",
      "snapshot": snapshot_for(7, [receipt("fix_threads", 8, H, "Claude seat: ok")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a receipt whose PR number is written in non-ASCII digits does not count",
+     "snapshot": snapshot_for(7, [receipt("fix_threads", "\u0667", H, "Claude seat: ok")]),
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "only the author completes thread fixes",
      "snapshot": snapshot_for(7, [receipt("fix_threads", 7, H, "Codex seat: ok")]),
@@ -200,6 +240,15 @@ RECEIPTS = [
     {"name": "a receipt for a not_mergeable card is not read: the conflict is observable on GitHub",
      "snapshot": snapshot_for(7, [receipt("not_mergeable", 7, H, "Gemini seat: fixed"),
                                   receipt("not_mergeable", 7, H, "Claude seat: fixed")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a combining mark inside the attribution does not hide the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "x\u0301Gemini seat: ok")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a seat name that opens the text after the receipt prefix names the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini whole-diff packet")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a dash after the receipt prefix does not hide the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "- Codex whole-diff packet")]),
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "the first eligible receipt names the seat",
      "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini seat: first"),
@@ -339,7 +388,8 @@ COVERAGE = [
 
 SEATS = ["Gemini", "gemini", "Gemini/Antigravity", "Antigravity", "Claude Sonnet 5.5", "Claude (steward)",
          "Mimo (OpenCode)", "Local Qwen", "gemini-3.8-flash", "claude-sonnet-5-5", "Claude, Mimo", "claude+mimo",
-         "codex:session-01a1", "CLAUDE.", "someone else", "!!!", ""]
+         "codex:session-01a1", "CLAUDE.", "someone else", "!!!", "",
+         "Opus 5.5", "Fable", "sonnet-5.5", "Anthropic", "gpt-5.5", "OpenAI Codex"]
 
 
 def evaluate_case(case):
@@ -357,21 +407,21 @@ def audit_scenario(tick):
                  last_merged={"number": 54, "merge_commit": "m" * 40, "head": "h" * 40}), tick
 
 
-GATE_TIER = [
-    {"name": "docs and governance markdown is tier B with the light gate", "paths": ["governance/NOTES.md", "docs/x.md"]},
-    {"name": "AGENTS.md is owner-only", "paths": ["AGENTS.md"]},
-    {"name": "workflow files are owner-only", "paths": [".github/workflows/ci.yml", "scripts/a.py"]},
-    {"name": "an owner-only path wins over a safe family", "paths": ["governance/AUTOMATED_MERGE_POLICY.md", "docs/a.md"]},
-    {"name": "scripts are tier B but get the full gate", "paths": ["scripts/steward_run.py", "scripts/test_steward_run.py"]},
-    {"name": "Rust sources are unclassified, never assumed safe", "paths": ["foundation/crates/foundation_cli/src/main.rs"]},
-    {"name": "one unrecognised path makes the whole change unclassified", "paths": ["docs/a.md", "Cargo.toml"]},
+GATE_PLAN = [
+    {"name": "docs and governance markdown gets the light gate", "paths": ["governance/NOTES.md", "docs/x.md"]},
+    {"name": "AGENTS.md gets the full gate (not a docs-allowlist path)", "paths": ["AGENTS.md"]},
+    {"name": "workflow files and scripts get the full gate", "paths": [".github/workflows/ci.yml", "scripts/a.py"]},
+    {"name": "governance markdown mixed with other docs still gets the light gate",
+     "paths": ["governance/AUTOMATED_MERGE_POLICY.md", "docs/a.md"]},
+    {"name": "scripts get the full gate", "paths": ["scripts/steward_run.py", "scripts/test_steward_run.py"]},
+    {"name": "Rust sources get the full gate", "paths": ["foundation/crates/foundation_cli/src/main.rs"]},
+    {"name": "one non-docs path makes the whole change get the full gate", "paths": ["docs/a.md", "Cargo.toml"]},
     {"name": "a doc extension outside the family is not trusted", "paths": ["docs/diagram.png"]},
     {"name": "an unlisted directory is not trusted for the light gate", "paths": ["notes/x.md"]},
-    {"name": "no paths is tier B and a full gate", "paths": []},
+    {"name": "no paths is a full gate", "paths": []},
     {"name": "mixed directories report mixed", "paths": ["docs/a.md", "governance/b.md"]},
-    {"name": "a lookalike prefix is also owner-only (prefix match, fails closed)", "paths": ["AGENTS.md.bak"]},
-    {"name": "the seat identity map is owner-only", "paths": ["governance/identities.json"]},
-    {"name": "another governance json file is still tier B", "paths": ["governance/other.json"]},
+    {"name": "the seat identity map gets the light gate (it's a governance json file)", "paths": ["governance/identities.json"]},
+    {"name": "another governance json file gets the light gate too", "paths": ["governance/other.json"]},
 ]
 
 GATE_CI = [
@@ -417,7 +467,7 @@ GATE_GREEN = {
     "head": "h" * 40, "ci": {"state": "success", "detail": "3 checks: SUCCESS"}, "trial_merge_ok": True, "base_ref": "main",
     "default_branch": "main", "base_tip": "t" * 40, "accept_seats": ["codex", "gemini"], "covered": True, "threads_open": 0,
     "standing_changes_requested": False, "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
-    "breaker_tripped": False, "trust": [5, 5], "category": "scripts/*.py", "tier": ["B", ""],
+    "breaker_tripped": False, "category": "scripts/*.py", "is_draft": False,
 }
 GATE_CHECKLIST = [
     {"name": "every box green would merge", "override": {}},
@@ -426,6 +476,8 @@ GATE_CHECKLIST = [
     {"name": "pending CI blocks", "override": {"ci": {"state": "pending", "detail": "checks still running"}}},
     {"name": "a merge conflict blocks", "override": {"trial_merge_ok": False}},
     {"name": "a stacked base blocks", "override": {"base_ref": "proposal/x"}},
+    {"name": "a draft PR blocks", "override": {"is_draft": True}},
+    {"name": "an unknown draft status is blocked", "override": {"is_draft": None}},
     {"name": "one accept seat is not enough", "override": {"accept_seats": ["codex"]}},
     {"name": "two seats but not covered", "override": {"covered": False}},
     {"name": "an open thread blocks", "override": {"threads_open": 1}},
@@ -436,27 +488,26 @@ GATE_CHECKLIST = [
     {"name": "an unclassified revertibility is blocked", "override": {"revertible": None}},
     {"name": "a tripped breaker blocks", "override": {"breaker_tripped": True}},
     {"name": "an unreadable breaker is blocked", "override": {"breaker_tripped": None}},
-    {"name": "trust below the threshold blocks", "override": {"trust": [4, 5]}},
-    {"name": "no trust counter fails", "override": {"trust": None}},
-    {"name": "tier A is owner-only", "override": {"tier": ["A", "touches owner-only paths: ['AGENTS.md']"]}},
-    {"name": "an unclassified tier is blocked", "override": {"tier": ["unclassified", "unrecognised paths"]}},
+    {"name": "additive identity registration is exempt from the accept bar (owner decision 2026-10-11)",
+     "override": {"identity_registration_exempt": True, "accept_seats": [], "covered": False,
+                  "counted_verdicts": 0, "verdicts_missing_evidence": []}},
+    {"name": "the identity-registration exemption does not bypass other boxes",
+     "override": {"identity_registration_exempt": True, "accept_seats": [], "covered": False, "threads_open": 1}},
 ]
 
 GATE_DECIDE = [
     {"name": "covered clean docs PR on main is eligible", "row": {"covered": True}, "paths": ["governance/N.md"],
-     "base": "main", "trial": True, "owner": False},
+     "base": "main", "trial": True},
     {"name": "uncovered is blocked with condition a", "row": {"covered": False}, "paths": ["governance/N.md"],
-     "base": "main", "trial": True, "owner": False},
+     "base": "main", "trial": True},
     {"name": "a conflicting trial merge is blocked with condition b", "row": {"covered": True}, "paths": ["docs/a.md"],
-     "base": "main", "trial": False, "owner": False},
+     "base": "main", "trial": False},
     {"name": "a stacked base is blocked with condition d", "row": {"covered": True}, "paths": ["docs/a.md"],
-     "base": "proposal/x", "trial": True, "owner": False},
-    {"name": "protected paths need owner confirmation (f)", "row": {"covered": True}, "paths": ["AGENTS.md"],
-     "base": "main", "trial": True, "owner": False},
-    {"name": "owner confirmation lifts only condition f", "row": {"covered": True}, "paths": ["AGENTS.md"],
-     "base": "main", "trial": True, "owner": True},
+     "base": "proposal/x", "trial": True},
+    {"name": "a workflow file path is not owner-gated and is eligible", "row": {"covered": True},
+     "paths": [".github/workflows/x.yml"], "base": "main", "trial": True},
     {"name": "every blocking reason is reported together", "row": {"covered": False}, "paths": [".github/workflows/x.yml"],
-     "base": "proposal/x", "trial": False, "owner": False},
+     "base": "proposal/x", "trial": False},
 ]
 
 
@@ -468,7 +519,7 @@ def gate_case(case):
 
 
 def gate_decide_case(case):
-    result = mg.decide(case["row"], case["paths"], case["base"], case["trial"], case["owner"])
+    result = mg.decide(case["row"], case["paths"], case["base"], case["trial"])
     green = json.loads(json.dumps(GATE_GREEN))
     _, eligible, first = mg.reconcile(result["eligible"], green)
     return {"decide": result, "reconciled_with_all_green_checklist": {"eligible": eligible, "first_blocker": first}}
@@ -476,10 +527,9 @@ def gate_decide_case(case):
 
 def build_gate_vectors():
     out = {}
-    out["gate_tier.in.json"] = GATE_TIER
-    out["gate_tier.out.json"] = [
-        {"tier": list(mg.tier_of(c["paths"])), "protected": mg.touches_protected(c["paths"]),
-         "plan_level": mg.gate_plan(c["paths"])["level"], "category": mg.category_of(c["paths"])} for c in GATE_TIER]
+    out["gate_plan.in.json"] = GATE_PLAN
+    out["gate_plan.out.json"] = [
+        {"plan_level": mg.gate_plan(c["paths"])["level"], "category": mg.category_of(c["paths"])} for c in GATE_PLAN]
     out["gate_ci.in.json"] = GATE_CI
     out["gate_ci.out.json"] = [mg.ci_state(c["rollup"]) for c in GATE_CI]
     out["gate_breaker.in.json"] = GATE_BREAKER
