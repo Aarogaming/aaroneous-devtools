@@ -1,0 +1,45 @@
+# Which platforms a change must be verified on (lane C129). Linux always; Windows too when the change can behave differently
+# there. Reviewed like any other file; a node and the hall read it from the base branch, never from the pull request.
+default = ["linux-x86_64"]
+
+# Conservative on purpose (Codex review of #199): foundation_cli contains Windows-specific path containment
+# (agentic_registrar.rs, local_worker.rs) with Windows-only tests, so any maintained Foundation Rust change is verified on
+# Windows too. Narrow this only with dependency and platform evidence, not by guessing which crate is portable.
+[[rule]]
+prefix = "foundation/"
+platform = "windows-x86_64"
+
+# Stack declarations are validated by the same workspace build on every platform.
+[[rule]]
+prefix = "stacks/"
+platform = "windows-x86_64"
+
+# Changing the verification itself is checked on every platform it runs on.
+[[rule]]
+prefix = "ci/"
+platform = "windows-x86_64"
+
+# Build inputs at the repository root and in the toolchain configuration decide what every platform compiles, so a change to any of
+# them is verified on Windows too (Codex's second review of #199). Prefix rules also select near-matching names, which is the safe
+# direction; an exact-match schema could narrow them later.
+[[rule]]
+prefix = ".cargo/"
+platform = "windows-x86_64"
+
+[[rule]]
+prefix = "Cargo.toml"
+platform = "windows-x86_64"
+
+[[rule]]
+prefix = "Cargo.lock"
+platform = "windows-x86_64"
+
+# Covers `rust-toolchain` and `rust-toolchain.toml`.
+[[rule]]
+prefix = "rust-toolchain"
+platform = "windows-x86_64"
+
+# Covers `foundation-ci.yml` and `foundation-ci-windows.yml`: the workflow that runs the suite is part of what is being verified.
+[[rule]]
+prefix = ".github/workflows/foundation-ci"
+platform = "windows-x86_64"
