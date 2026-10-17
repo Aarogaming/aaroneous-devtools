@@ -28,6 +28,8 @@ pub mod receipts;
 pub mod rejected;
 pub mod release;
 pub mod seats;
+pub mod suite;
 pub mod text;
 pub mod verification;
+pub mod wire;
 pub mod work;
