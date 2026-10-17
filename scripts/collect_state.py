@@ -37,13 +37,13 @@ SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
 
 
 SEAT_IN_TEXT = re.compile(
-    r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)"
+    r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)[^\w\r\n]{0,24}(Claude|Mimo|Codex|Gemini|Antigravity)"
     # A seat name that opens a line, optionally after a markdown heading mark and the word "Independent" ("### Codex
     # bounded review", "Independent Codex verdict: ACCEPT"), which is how the seats title their reviews.
     r"|^\s*(?:#{1,6}\s*)?(?:Independent\s+)?(Claude|Codex|Gemini|Mimo|Antigravity)\b",
     re.I | re.M,
 )
-SEAT_DECLARED = re.compile(r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)", re.I)
+SEAT_DECLARED = re.compile(r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)[^\w\r\n]{0,24}(Claude|Mimo|Codex|Gemini|Antigravity)", re.I)
 ALIASES = {"antigravity": "gemini"}
 MAX_REJECTED_PER_SEAT = 2
 

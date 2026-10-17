@@ -132,6 +132,18 @@ ATTRIBUTION = [
     {"body": "### Codex bounded independent review: verification incomplete", "strict": True},
     {"body": "Independent review by Codex", "strict": True},
     {"body": "### Independent review", "strict": True},
+    # A fixed-width review packet pads the label to a column: "Seat / agent:" then eight blanks then the seat. The old
+    # gap of six non-word characters returned no seat for it (seen on PR #68); the gap is now 24, and a label far
+    # from the name still attributes nothing.
+    {"body": "REVIEW PACKET\nSeat / agent:        Claude (this session, Sonnet 5)\n", "strict": True},
+    {"body": "REVIEW PACKET\nSeat / agent:        Claude (this session, Sonnet 5)\n", "strict": False},
+    {"body": "```text\nReviewer / Seat:          Gemini\n```\n", "strict": True},
+    {"body": "Reviewer seat:\t\t\tCodex\n", "strict": True},
+    {"body": "Seat / agent:" + " " * 40 + "Claude", "strict": True},
+    {"body": "Seat / agent:\n------------\nClaude reviewed this earlier", "strict": True},
+    {"body": "Seat / agent:\r\n------------\r\nClaude reviewed this earlier", "strict": True},
+    {"body": "Seat / agent:\n------------\nClaude reviewed this earlier", "strict": False},
+    {"body": "Seat / agent:\r\n------------\r\nClaude reviewed this earlier", "strict": False},
     {"body": "\r\n\r\nCodex whole-diff packet\r\nmore", "strict": True},
     {"body": "   \n\u2028\n  \t Gemini packet\n", "strict": True},
     {"body": "\x1f\x1f\nMimo packet", "strict": True},
