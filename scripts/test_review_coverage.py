@@ -141,6 +141,26 @@ class Coverage(unittest.TestCase):
         two = ev(H1, records + [rec(H1, reviewer="Codex", impl=("Claude",))])
         self.assertEqual(two["accept_seats"], ["codex", "gemini"])
 
+    def test_lookalike_characters_cannot_hide_an_implementer(self):
+        # Probe: reviewer "Claude" with implementer "\u0421laude" (Cyrillic capital) was independent and covered, because
+        # the lookalike split the name into the unknown seat "laude". Full-width forms are folded by NFKC instead.
+        self.assertEqual(rc.seat_names("\uff23laude"), {"claude"})
+        self.assertEqual(rc.seat_names("\uff27\uff45\uff4d\uff49\uff4e\uff49"), {"gemini"})
+        for reviewer, implementers in (("Claude", ("\u0421laude",)), ("Gemini", ("G\u0435mini",)),
+                                       ("Codex", ("C\u043ddex",)), ("Claude", ("Cl\u0430ude",)),
+                                       ("Claude", ("\uff23laude",)), ("Cl\u0430ude", ("Claude",))):
+            self.assertFalse(rc.independent(rec(H1, reviewer=reviewer, impl=implementers)), (reviewer, implementers))
+        genuine = rec(H1, reviewer="Codex", impl=("Claude",))
+        self.assertTrue(rc.independent(genuine))
+
+    def test_a_record_with_a_non_ascii_seat_name_is_reported_and_never_counted(self):
+        for reviewer, implementers in (("Gemini", ["\u0421laude"]), ("G\u0435mini", ["Claude"])):
+            structured, problems, _ = rc.parse_attestations([block(rec(H1, reviewer=reviewer, impl=tuple(implementers)))])
+            self.assertEqual(structured, [], (reviewer, implementers))
+            self.assertEqual(len(problems), 1)
+            self.assertIn("non-ASCII", problems[0]["problem"])
+
+
     def test_a_model_family_name_without_the_seat_word_names_that_seat(self):
         # Probe: reviewers "Opus" and "Sonnet" against implementer "claude" were two independent seats and covered.
         self.assertEqual(rc.seat_names("Opus 5.5"), {"claude"})

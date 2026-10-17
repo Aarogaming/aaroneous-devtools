@@ -30,6 +30,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import attest_sig  # noqa: E402
@@ -66,6 +67,10 @@ def validate(record):
     if not isinstance(record["verdict"], str) or record["verdict"] not in ACCEPT | REJECT:
         return (f"unknown verdict {record['verdict']!r}: use accept, needs_revision or changes_requested "
                 "(lower case); nothing was counted")
+    lookalikes = non_ascii_seat_names(record)
+    if lookalikes:
+        return (f"seat name(s) {lookalikes!r} contain non-ASCII characters that no spelling comparison can match to a "
+                "seat; use the plain ASCII seat name; nothing was counted")
     return None
 
 
@@ -157,7 +162,9 @@ def seat_names(name):
     """The set of seats a reviewer or implementer string names. A string may name several ("Claude, Mimo",
     "claude+mimo", "Gemini/Antigravity"); a string that names none keeps its first alphanumeric token, so an unknown
     seat still compares with itself."""
-    tokens = [t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t]
+    # NFKC first: a full-width "\uff23laude" is the seat "claude". Lookalikes from another script (Cyrillic "\u0421laude")
+    # survive NFKC and would split into "laude", an unknown seat, so `non_ascii_seat_names` rejects those names outright.
+    tokens = [t for t in re.split(r"[^a-z0-9]+", unicodedata.normalize("NFKC", str(name)).strip().lower()) if t]
     found = set()
     for token in tokens:
         for seat in KNOWN_SEATS:
@@ -236,6 +243,14 @@ def seat_name(name):
     return seats[0] if seats else ""
 
 
+def non_ascii_seat_names(record):
+    """The reviewer and implementer strings that still hold a non-ASCII character after NFKC. Such a name cannot be
+    matched to a seat by spelling ("\u0421laude" with a Cyrillic capital is not "Claude" to a string comparison), so a
+    record carrying one is rejected and, if it reaches `independent` another way, is never independent."""
+    names = [record.get("reviewer")] + list(record.get("implementers") or [])
+    return [n for n in names if not unicodedata.normalize("NFKC", str(n)).isascii()]
+
+
 def canonical_reviewer_seat(name):
     """The single canonical seat an attestation reviewer resolves to.
     Fails closed (returns None) if the reviewer is ambiguous (names multiple distinct seats) or empty
@@ -248,6 +263,8 @@ def independent(record):
     """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
     ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
     raw comparison let an implementer's own verdict count under a spelling variant)."""
+    if non_ascii_seat_names(record):
+        return False
     implementers = set().union(*(seat_names(i) for i in record["implementers"])) if record["implementers"] else set()
     return not (seat_names(record["reviewer"]) & implementers)
 
