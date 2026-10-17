@@ -29,4 +29,5 @@ pub mod receipts;
 pub mod rejected;
 pub mod seats;
 pub mod text;
+pub mod verification;
 pub mod work;
