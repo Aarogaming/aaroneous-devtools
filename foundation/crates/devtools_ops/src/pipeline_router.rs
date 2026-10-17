@@ -21,7 +21,11 @@ pub enum RoutingAction {
         has_code_draft: bool,
     },
     /// Result has conformance issues or test failures; fed back for refinement.
-    FeedbackForRefinement { job_id: String, issues: Vec<String> },
+    FeedbackForRefinement {
+        job_id: String,
+        evidence: Vec<String>,
+        issues: Vec<String>,
+    },
     /// Result is an exploration summary or status record; recorded in ledger.
     RecordTelemetry { job_id: String },
 }
@@ -74,12 +78,36 @@ impl PipelineRouterConfig {
     }
 }
 
+/// Extracts declared evidence files from the raw job input text, falling back to a default.
+fn extract_evidence_from_input(input: &str) -> Vec<String> {
+    for line in input.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("evidence = [") {
+            let inner = rest.trim_end_matches(']').trim();
+            let mut list = Vec::new();
+            for item in inner.split(',') {
+                let s = item.trim().trim_matches('"').trim_matches('\'');
+                if !s.is_empty() {
+                    list.push(s.to_string());
+                }
+            }
+            if !list.is_empty() {
+                return list;
+            }
+        }
+    }
+    vec!["AGENTS.md".to_string()]
+}
+
 /// Evaluates a single worker result and determines the next loop action.
 pub fn evaluate_result(payload: &WorkerResultPayload) -> RoutingAction {
+    let evidence = extract_evidence_from_input(&payload.input);
+
     // If there are conformance flags (e.g. unanchored citations), route back for refinement
     if !payload.conformance_flags.is_empty() {
         return RoutingAction::FeedbackForRefinement {
             job_id: payload.job_id.clone(),
+            evidence,
             issues: payload.conformance_flags.clone(),
         };
     }
@@ -87,6 +115,7 @@ pub fn evaluate_result(payload: &WorkerResultPayload) -> RoutingAction {
     if let Some(err) = &payload.error {
         return RoutingAction::FeedbackForRefinement {
             job_id: payload.job_id.clone(),
+            evidence,
             issues: vec![format!("Execution error: {}", err)],
         };
     }
@@ -153,11 +182,18 @@ pub fn route_all_pending_results(config: &PipelineRouterConfig) -> Result<Vec<Ro
                 fs::copy(&path, &dest)?;
                 fs::remove_file(&path)?;
             }
-            RoutingAction::FeedbackForRefinement { job_id, issues } => {
+            RoutingAction::FeedbackForRefinement {
+                job_id,
+                evidence,
+                issues,
+            } => {
                 // Generate a feedback job manifest matching strict Job schema
+                let ev_str = serde_json::to_string(evidence)
+                    .unwrap_or_else(|_| "[\"AGENTS.md\"]".to_string());
                 let feedback_manifest = format!(
-                    "schema_version = 1\nid = \"REFINE-{}\"\nmode = \"code-draft\"\nevidence = []\ninstruction = \"Refine previous proposal to address reported conformance issues: {}\"\n",
+                    "schema_version = 1\nid = \"REFINE-{}\"\nmode = \"code-draft\"\nevidence = {}\ninstruction = \"Refine previous proposal to address reported conformance issues: {}\"\n",
                     job_id.replace("FEED-", ""),
+                    ev_str,
                     issues.join("; ")
                 );
                 let manifest_path = config
@@ -249,8 +285,13 @@ mod tests {
 
         let action = evaluate_result(&payload);
         match action {
-            RoutingAction::FeedbackForRefinement { job_id, issues } => {
+            RoutingAction::FeedbackForRefinement {
+                job_id,
+                evidence,
+                issues,
+            } => {
                 assert_eq!(job_id, "JOB-200");
+                assert_eq!(evidence, vec!["AGENTS.md"]);
                 assert_eq!(issues.len(), 1);
             }
             _ => panic!("Expected FeedbackForRefinement"),

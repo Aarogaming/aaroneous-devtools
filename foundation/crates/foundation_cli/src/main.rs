@@ -480,7 +480,9 @@ fn main() -> Result<()> {
                     } => {
                         println!("  [STAGED] {job_id} -> {target_path} (code: {has_code_draft})");
                     }
-                    devtools_ops::RoutingAction::FeedbackForRefinement { job_id, issues } => {
+                    devtools_ops::RoutingAction::FeedbackForRefinement {
+                        job_id, issues, ..
+                    } => {
                         println!(
                             "  [FEEDBACK] {job_id} -> generated refinement job (issues: {})",
                             issues.join(", ")
