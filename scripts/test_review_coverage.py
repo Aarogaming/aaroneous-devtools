@@ -524,5 +524,100 @@ class GitSaysWhoImplemented(unittest.TestCase):
         self.assertEqual(rc.unattributed_commits(log, "codex/x"), 0)
 
 
+class EvidenceSupersession(unittest.TestCase):
+    """Merge-gate box 5: a seat's later record with commands covers its own earlier record without them."""
+
+    @staticmethod
+    def counted(*specs):
+        out = []
+        for comment, reviewer, commands in specs:
+            record = rec(H1, reviewer=reviewer)
+            record["comment"] = comment
+            if commands:
+                record["commands"] = ["cargo test -> exit 0"]
+            out.append(record)
+        return out
+
+    def test_a_later_record_with_commands_covers_the_same_seats_earlier_record(self):
+        counted = self.counted((3, "claude", False), (7, "claude", True), (6, "gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [])
+
+    def test_a_seat_that_never_cited_a_command_still_blocks(self):
+        counted = self.counted((3, "claude", False), (6, "gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_another_seats_commands_do_not_cover_this_seat(self):
+        counted = self.counted((3, "claude", False), (6, "gemini", True), (7, "gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_spelling_variants_of_one_seat_are_one_seat(self):
+        counted = self.counted((3, "Claude", False), (7, "claude", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [])
+
+    def test_an_ambiguous_reviewer_is_never_covered_by_anyone_elses_commands(self):
+        counted = self.counted((3, "claude/gemini", False), (6, "gemini", True), (7, "claude", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_two_unresolvable_reviewers_do_not_cover_each_other(self):
+        counted = self.counted((3, "claude/gemini", False), (7, "claude/gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_usable_evidence_is_a_command_with_an_exit_code_not_anything_truthy(self):
+        good = [
+            ["cargo test -> exit 0 (all ok)"],
+            ["git diff --check -> exit 0", "cargo clippy -> exit 101 (failed)"],
+            ["cargo -> exit -1"],
+            ["x (exit 0)"], ["cargo test: exit 2"], ["cargo test -> exit 0."], ["cargo test, exit 1"],  # other separators in use
+            ["cargo test -> exit 0failed -> exit 1"], ["cargo test -> exit 0" + chr(10)], ["cargo test -> exit0"],  # a later complete code, a newline, `exit0`
+            [{"cmd": "cargo audit --file foundation/Cargo.lock", "rc": 0}],  # the shape one seat already signs
+            [{"garbage": True}, "git diff --check -> exit 0"],  # one real entry among noise still counts
+            ["cargo test -> exit0,54 integration tests"],  # real records write the code with no space
+            [{"command": "python -m unittest discover -s scripts", "exit_code": 0}],  # PLATFORM_SPEC section 3
+            [{"command": "cargo test", "exit_code": 101, "passed": 5, "failed": 1, "count": 6, "log_ref": "tmp/x.log",
+              "log_sha256": "0" * 64, "log": "tail"}],
+        ]
+        for commands in good:
+            self.assertTrue(rc.usable_evidence(commands), commands)
+        bad = [
+            None, [], {}, "", "cargo test -> exit 0",  # not a list
+            {"garbage": True}, [{"garbage": True}], [123], [None], [["cargo test -> exit 0"]],  # Codex's counterexample and kin
+            {"cargo test -> exit 0": True},  # a dict iterates as its keys, which must not be read as entries
+            ["cargo test"], ["cargo test -> exited 0"], ["exit 0"], [" -> exit 0"], ["cargo preexit 0"],  # no command or no exit code
+            [{"cmd": "x", "rc": True}], [{"cmd": "x", "rc": "0"}], [{"cmd": "x", "rc": 0.5}],  # rc must be an integer
+            [{"cmd": "", "rc": 0}], [{"cmd": "  ", "rc": 0}], [{"cmd": 1, "rc": 0}],  # cmd must be text
+            [{"cmd": "x", "rc": 0, "extra": 1}], [{"cmd": "x"}], [{"rc": 0}],  # exactly those two keys
+            [{"command": "x"}], [{"exit_code": 0}], [{"command": "x", "exit_code": True}],  # the spec shape needs both, real ints
+            [{"command": "x", "exit_code": "0"}], [{"command": " ", "exit_code": 0}], [{"command": 1, "exit_code": 0}],
+            [{"command": "x", "exit_code": 0, "surprise": 1}],  # only the documented extras are allowed
+            ["x -> exited 0"], ["x preexit0"],
+            ["cargo test -> exit 0failed"], ["cargo test -> exit 0_"], ["cargo test -> exit 12abc"], ["cargo test -> exit -1x"],  # Codex on #226
+            ["cargo test -> exit 0.5"], ["the test might exit 0"], ["cargo test exit 0"], ["cargo test -> exit 1.25 seconds"],  # Codex on #226
+            ["cargo test -> exit 0failed", "x -> exit"],  # a malformed entry does not become usable next to another bad one
+        ]
+        for commands in bad:
+            self.assertFalse(rc.usable_evidence(commands), commands)
+
+    def test_a_malformed_record_neither_satisfies_box_5_nor_covers_another(self):
+        for garbage in ({"garbage": True}, [{"garbage": True}], "cargo test -> exit 0", ["cargo test"], [{"cmd": "x", "rc": True}]):
+            bare = rec(H1, reviewer="codex")
+            bare["comment"] = 1
+            covering = rec(H1, reviewer="codex")
+            covering["comment"] = 2
+            covering["commands"] = garbage
+            # Codex's counterexample on #226: the malformed record used to clear the bare one and pass box 5 itself.
+            self.assertEqual(rc.unevidenced_verdicts([bare, covering]), [1, 2], garbage)
+        real = rec(H1, reviewer="codex")
+        real["comment"] = 3
+        real["commands"] = ["cargo test -> exit 0"]
+        bare = rec(H1, reviewer="codex")
+        bare["comment"] = 1
+        self.assertEqual(rc.unevidenced_verdicts([bare, real]), [])
+
+    def test_nothing_counted_means_nothing_missing_and_all_bare_means_all_missing(self):
+        self.assertEqual(rc.unevidenced_verdicts([]), [])
+        counted = self.counted((3, "claude", False), (6, "gemini", False))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3, 6])
+
+
 if __name__ == "__main__":
     unittest.main()

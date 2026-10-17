@@ -244,6 +244,63 @@ def canonical_reviewer_seat(name):
     return next(iter(seats)) if len(seats) == 1 else None
 
 
+# An exit code is stated as a separator (`->`, `=>`, `:`, `=`, `(`, `,` or `;`) then `exit` then a whole integer: `cargo test -> exit 0
+# (ok)`, `x (exit 0)`, `exit0,54 tests`. Prose such as `the test might exit 0` has no separator and states no result, and the digits
+# must end at a token boundary and not continue as a decimal: `exit 0failed` and `exit 0.5` are not complete codes (Codex on #226).
+# Checked against all 527 command strings in the repository's signed records: nothing that was usable before is rejected.
+_EXIT_CODE = re.compile(r"[A-Za-z0-9][^\n]*?(?:->|=>|[:=(,;])[ \t]*exit[ \t]*-?\d+(?![A-Za-z0-9_]|\.\d)", re.IGNORECASE)
+# PLATFORM_SPEC section 3: `commands` is a list of {command, exit_code, passed, failed, log_ref, log_sha256}; `count` and `log`
+# are the optional extras older reviews carry.
+_SPEC_COMMAND_KEYS = {"command", "exit_code", "passed", "failed", "count", "log_ref", "log_sha256", "log"}
+
+
+def usable_evidence(commands):
+    """True when `commands` really records a command and its exit code (merge-gate box 5).
+
+    It must be a list with at least one entry that is one of three shapes, all of which are in real use:
+      - a string stating a complete exit code after some command text (a separator before `exit`, and no letter, digit,
+        underscore or decimal point right after the digits), such as `cargo test -> exit 0 (ok)`, the shape
+        `make_attestation --command` writes;
+      - the shape PLATFORM_SPEC section 3 documents, an object with a non-empty string `command` and an integer
+        `exit_code`, and optionally only the documented extras (`passed`, `failed`, `count`, `log_ref`, `log_sha256`, `log`);
+      - an object with exactly `cmd` (non-empty string) and `rc` (an integer), the shape one seat signs.
+    Integers must be real integers, never booleans. Anything else, such as a dict, a bare string, an empty list or a list
+    of unrelated objects, is not evidence however truthy it is, so a malformed record can neither satisfy box 5 itself nor
+    cover another record (Codex on #226)."""
+    if not isinstance(commands, list):
+        return False
+    for entry in commands:
+        if isinstance(entry, str):
+            if _EXIT_CODE.search(entry):
+                return True
+        elif isinstance(entry, dict):
+            if set(entry) == {"cmd", "rc"}:
+                command, code = entry["cmd"], entry["rc"]
+            elif {"command", "exit_code"} <= set(entry) and set(entry) <= _SPEC_COMMAND_KEYS:
+                command, code = entry["command"], entry["exit_code"]
+            else:
+                continue
+            if isinstance(command, str) and command.strip() and isinstance(code, int) and not isinstance(code, bool):
+                return True
+    return False
+
+
+def unevidenced_verdicts(counted):
+    """Comment ids of counted verdicts that cite no command evidence (merge-gate box 5).
+
+    A reviewer may supplement an earlier accept at the same head with a later signed one that carries the commands and exit
+    codes; both records stay counted (nothing is deleted or edited), but the seat has then shown its evidence, so the earlier
+    record no longer blocks. Only `usable_evidence` counts, for the record itself and for covering another. A seat that never
+    cited usable evidence at this head, and any other seat's record, still blocks."""
+    cited = {canonical_reviewer_seat(r["reviewer"]) for r in counted if usable_evidence(r.get("commands"))}
+    cited.discard(None)
+    return [
+        r.get("comment")
+        for r in counted
+        if not usable_evidence(r.get("commands")) and canonical_reviewer_seat(r["reviewer"]) not in cited
+    ]
+
+
 def independent(record):
     """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
     ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
@@ -485,7 +542,7 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                 "reasons": decision["reasons"],
                 "accept_seats": decision["accept_seats"],
                 "counted_verdicts": len(decision["counted"]),
-                "verdicts_missing_evidence": [r.get("comment") for r in decision["counted"] if not r.get("commands")],
+                "verdicts_missing_evidence": unevidenced_verdicts(decision["counted"]),
                 "structured_attestations": len(structured),
                 "authenticated_reviews": len(formal),
                 "signed_attestations": sum(1 for r in structured if r.get("verified")),
