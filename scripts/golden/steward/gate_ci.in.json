@@ -71,5 +71,244 @@
         "status": "completed"
       }
     ]
+  },
+  {
+    "name": "a failed run later re-run successfully counts as success",
+    "rollup": [
+      {
+        "conclusion": "FAILURE",
+        "name": "Dependency advisories",
+        "startedAt": "2026-10-14T19:09:00Z",
+        "status": "COMPLETED",
+        "workflowName": "Security checks"
+      },
+      {
+        "conclusion": "SUCCESS",
+        "name": "Dependency advisories",
+        "startedAt": "2026-10-17T02:45:00Z",
+        "status": "COMPLETED",
+        "workflowName": "Security checks"
+      }
+    ]
+  },
+  {
+    "name": "a successful run later followed by a failure fails",
+    "rollup": [
+      {
+        "conclusion": "SUCCESS",
+        "name": "Foundation",
+        "startedAt": "2026-10-14T19:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "conclusion": "FAILURE",
+        "name": "Foundation",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      }
+    ]
+  },
+  {
+    "name": "a re-run in progress is pending, not the old failure",
+    "rollup": [
+      {
+        "conclusion": "FAILURE",
+        "name": "Foundation",
+        "startedAt": "2026-10-14T19:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "conclusion": "",
+        "name": "Foundation",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "CI"
+      }
+    ]
+  },
+  {
+    "name": "the same name in another workflow is a different check",
+    "rollup": [
+      {
+        "conclusion": "SUCCESS",
+        "name": "build",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "A"
+      },
+      {
+        "conclusion": "FAILURE",
+        "name": "build",
+        "startedAt": "2026-10-14T02:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "B"
+      }
+    ]
+  },
+  {
+    "name": "a tie keeps the worse result",
+    "rollup": [
+      {
+        "conclusion": "SUCCESS",
+        "name": "lint",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "conclusion": "FAILURE",
+        "name": "lint",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      }
+    ]
+  },
+  {
+    "name": "an unnamed failure is never replaced",
+    "rollup": [
+      {
+        "conclusion": "FAILURE",
+        "status": "COMPLETED"
+      },
+      {
+        "conclusion": "SUCCESS",
+        "name": "lint",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      }
+    ]
+  },
+  {
+    "name": "completedAt orders runs that have no startedAt",
+    "rollup": [
+      {
+        "completedAt": "2026-10-14T02:00:00Z",
+        "conclusion": "FAILURE",
+        "name": "lint",
+        "status": "COMPLETED"
+      },
+      {
+        "completedAt": "2026-10-17T02:00:00Z",
+        "conclusion": "SUCCESS",
+        "name": "lint",
+        "status": "COMPLETED"
+      }
+    ]
+  },
+  {
+    "name": "an empty name falls back to the context (found by the differential harness)",
+    "rollup": [
+      {
+        "conclusion": "FAILURE",
+        "context": "ci/legacy",
+        "name": "",
+        "startedAt": "2026-10-14T02:00:00Z",
+        "status": "COMPLETED"
+      },
+      {
+        "conclusion": "SUCCESS",
+        "context": "ci/legacy",
+        "name": "",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED"
+      }
+    ]
+  },
+  {
+    "name": "a queued re-run with no timestamps is pending, not discarded as older (Codex on #227)",
+    "rollup": [
+      {
+        "conclusion": "SUCCESS",
+        "name": "Foundation",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "completedAt": null,
+        "conclusion": "",
+        "name": "Foundation",
+        "startedAt": null,
+        "status": "QUEUED",
+        "workflowName": "CI"
+      }
+    ]
+  },
+  {
+    "name": "the same queued re-run listed first is still pending",
+    "rollup": [
+      {
+        "completedAt": null,
+        "conclusion": "",
+        "name": "Foundation",
+        "startedAt": null,
+        "status": "QUEUED",
+        "workflowName": "CI"
+      },
+      {
+        "conclusion": "SUCCESS",
+        "name": "Foundation",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      }
+    ]
+  },
+  {
+    "name": "a queued re-run after a failure is pending",
+    "rollup": [
+      {
+        "conclusion": "FAILURE",
+        "name": "Foundation",
+        "startedAt": "2026-10-14T19:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "name": "Foundation",
+        "status": "QUEUED",
+        "workflowName": "CI"
+      }
+    ]
+  },
+  {
+    "name": "a failure with no timestamps is never replaced by a timestamped success",
+    "rollup": [
+      {
+        "conclusion": "FAILURE",
+        "name": "Foundation",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "conclusion": "SUCCESS",
+        "name": "Foundation",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      }
+    ]
+  },
+  {
+    "name": "a legacy status context is matched by its context name",
+    "rollup": [
+      {
+        "conclusion": "FAILURE",
+        "context": "ci/legacy",
+        "startedAt": "2026-10-14T02:00:00Z",
+        "status": "COMPLETED"
+      },
+      {
+        "conclusion": "SUCCESS",
+        "context": "ci/legacy",
+        "startedAt": "2026-10-17T02:00:00Z",
+        "status": "COMPLETED"
+      }
+    ]
   }
 ]
