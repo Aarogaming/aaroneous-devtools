@@ -42,6 +42,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -346,6 +347,78 @@ def open_threads(data):
         return None
 
 
+def registry_version_checksum_update(before_text, after_text):
+    """Prove the narrow lockfile shape; this says nothing about dependency safety or CI."""
+    if max(len(before_text), len(after_text)) > 2 * 1024 * 1024:
+        return False
+    try:
+        before, after = tomllib.loads(before_text), tomllib.loads(after_text)
+    except (tomllib.TOMLDecodeError, TypeError):
+        return False
+    before_packages = before.pop("package", None)
+    after_packages = after.pop("package", None)
+    if (before != after or type(before.get("version")) is not int or before["version"] not in (3, 4)
+            or not isinstance(before_packages, list) or not isinstance(after_packages, list)
+            or not before_packages or len(before_packages) != len(after_packages)):
+        return False
+    changed = False
+    for old, new in zip(before_packages, after_packages):
+        if not isinstance(old, dict) or not isinstance(new, dict):
+            return False
+        if old == new:
+            continue
+        # Preserve package identity, provenance, dependencies and every other field.
+        if ({k: v for k, v in old.items() if k not in ("version", "checksum")}
+                != {k: v for k, v in new.items() if k not in ("version", "checksum")}):
+            return False
+        if old.get("source") != "registry+https://github.com/rust-lang/crates.io-index":
+            return False
+        if not isinstance(old.get("name"), str) or not old["name"]:
+            return False
+        for record in (old, new):
+            if (not isinstance(record.get("version"), str)
+                    or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?", record["version"])
+                    or not isinstance(record.get("checksum"), str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", record["checksum"])):
+                return False
+        if old["version"] == new["version"] or old["checksum"] == new["checksum"]:
+            return False
+        changed = True
+    return changed
+
+
+def repository_revertibility(repo_dir, base, head, paths):
+    """Classify tracked content only. Unknown shapes remain blocked by checklist box 6."""
+    def documentation(path):
+        return path.endswith((".md", ".json")) and path.startswith(DOCS_ALLOWLIST)
+
+    if paths and all(documentation(path) for path in paths):
+        return True  # Preserve the existing documentation classification.
+    lock = "foundation/Cargo.lock"
+    if not paths or lock not in paths or any(p != lock and not documentation(p) for p in paths):
+        return None
+    # Resolve immutable commits and the actual diff base, not the caller's worktree files.
+    try:
+        common = rc.git(repo_dir, "--no-replace-objects", "merge-base", base, head)
+        if common.returncode or not re.fullmatch(r"[0-9a-f]{40}", common.stdout.strip()):
+            return None
+        revisions = (common.stdout.strip(), head)
+        texts = []
+        for revision in revisions:
+            if not re.fullmatch(r"[0-9a-f]{40}", revision):
+                return None
+            entry = rc.git(repo_dir, "--no-replace-objects", "ls-tree", revision, "--", lock)
+            if entry.returncode or not re.fullmatch(r"100644 blob [0-9a-f]{40}\tfoundation/Cargo.lock\n?", entry.stdout):
+                return None
+            contents = rc.git(repo_dir, "--no-replace-objects", "show", f"{revision}:{lock}")
+            if contents.returncode:
+                return None
+            texts.append(contents.stdout)
+        return True if registry_version_checksum_update(*texts) else None
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
     """Live facts for one PR, read-only. Anything that cannot be read stays None (blocked, fail closed)."""
     facts = {
@@ -358,8 +431,7 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
     }
     tip = rc.git(repo_dir, "rev-parse", f"origin/{pr['base']}").stdout.strip()
     facts["base_tip"] = tip or "?"
-    docs = bool(paths) and all(p.endswith((".md", ".json")) and p.startswith(DOCS_ALLOWLIST) for p in paths)
-    facts["revertible"] = True if docs else None
+    facts["revertible"] = repository_revertibility(repo_dir, tip, pr["head"], paths)
     try:
         facts["identity_registration_exempt"] = additive_identity_registration(repo_dir, pr["base"], pr["head"], paths)
     except Exception:
