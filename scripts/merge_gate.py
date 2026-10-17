@@ -253,12 +253,34 @@ def run_checks(repo_dir, head, base_ref, plan):
     return results
 
 
+def latest_checks(rollup):
+    """The newest run of each check. GitHub keeps every run on a commit in the rollup, so a failure that was later re-run
+    successfully (a re-run, a close and reopen, a flaky job) stays listed beside its replacement; only the newest run of a
+    given workflow and name counts. Runs are ordered by `startedAt` (else `completedAt`); on a tie the worse result is
+    kept (a failed or unfinished run outranks a successful one). An entry with no name, or with no timestamp at all (a
+    queued re-run has not started), cannot be placed in that order, so it can never be discarded as older and always counts
+    (fail closed)."""
+    newest, unplaced = {}, []
+    for item in rollup:
+        name = item.get("name") or item.get("context") or ""
+        stamp = item.get("startedAt") or item.get("completedAt") or ""
+        if not name or not stamp:
+            unplaced.append(item)
+            continue
+        key = (item.get("workflowName") or "", name)
+        good = (item.get("conclusion") or "").upper() == "SUCCESS" and (item.get("status") or "").upper() == "COMPLETED"
+        rank = (stamp, 0 if good else 1)
+        if key not in newest or rank > newest[key][0]:
+            newest[key] = (rank, item)
+    return [entry[1] for entry in newest.values()] + unplaced
+
+
 def ci_state(rollup):
     """Fail-closed CI state from a statusCheckRollup list; pending or absent is never success."""
     if not rollup:
         return {"state": "missing", "detail": "no CI status found"}
     states = []
-    for item in rollup:
+    for item in latest_checks(rollup):
         conclusion = (item.get("conclusion") or "").upper()
         status = (item.get("status") or "").upper()
         states.append(conclusion if status == "COMPLETED" or conclusion else "PENDING")

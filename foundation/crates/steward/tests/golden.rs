@@ -266,14 +266,7 @@ fn check_gate_ci() -> Result<(), String> {
     for case in load("gate_ci.in.json").as_array().ok_or("not a list")? {
         let rollup: Vec<CiCheck> = case["rollup"]
             .as_array()
-            .map(|list| {
-                list.iter()
-                    .map(|c| CiCheck {
-                        conclusion: c["conclusion"].as_str().map(str::to_owned),
-                        status: c["status"].as_str().map(str::to_owned),
-                    })
-                    .collect()
-            })
+            .map(|list| list.iter().map(CiCheck::from_json).collect())
             .unwrap_or_default();
         let state = ci_state(&rollup);
         actual.push(json!({"state": state.state, "detail": state.detail}));
