@@ -1,3 +1,6 @@
+# BRIDGE VERSION (hosted runners, fewer minutes): Linux only on pull requests, superseded pushes cancelled, and a fast path that
+# skips the Rust build when a pull request touches nothing cargo verifies. Windows moved to foundation-ci-windows.yml, which runs on
+# main only. Replace with ci/proposed-workflows/ once the self-hosted runners exist.
 name: Foundation CI
 
 on:
@@ -10,27 +13,53 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: foundation-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   foundation:
-    name: Foundation (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    name: Foundation (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+      # A pull request that touches no Rust, stack or CI path (a document, a queue row, a script) has nothing for cargo to
+      # verify. The job still runs and succeeds in seconds, so the merge gate still sees a green check on the exact head; it just
+      # does not rebuild the workspace. Pushes to main always build. If the diff cannot be read, build.
+      - name: What changed
+        id: changes
+        run: |
+          set -eu
+          build=true
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if files=$(git diff --name-only HEAD^1 HEAD 2>/dev/null); then
+              if ! printf '%s\n' "$files" | grep -Eq '^(foundation/|stacks/|ci/|\.cargo/|Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.github/workflows/foundation-ci)'; then
+                build=false
+              fi
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "build=$build"
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249
+        if: steps.changes.outputs.build == 'true'
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        if: steps.changes.outputs.build == 'true'
         with:
           workspaces: foundation
       - name: Format
+        if: steps.changes.outputs.build == 'true'
         run: cargo fmt --manifest-path foundation/Cargo.toml --all -- --check
       - name: Test
-        run: cargo test --manifest-path foundation/Cargo.toml
+        if: steps.changes.outputs.build == 'true'
+        run: cargo test --manifest-path foundation/Cargo.toml --workspace --all-targets --locked
       - name: Lint
-        run: cargo clippy --manifest-path foundation/Cargo.toml -- -D warnings
+        if: steps.changes.outputs.build == 'true'
+        run: cargo clippy --manifest-path foundation/Cargo.toml --workspace --all-targets --locked -- -D warnings
       - name: Validate declared stack
+        if: steps.changes.outputs.build == 'true'
         run: cargo run --manifest-path foundation/Cargo.toml -p foundation_cli -- validate-stack --manifest ${{ github.workspace }}/stacks/local-rust.toml

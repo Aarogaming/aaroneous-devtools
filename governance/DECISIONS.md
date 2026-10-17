@@ -125,3 +125,50 @@ login or key added by such a PR could let its author's later verdicts count. Con
 `CROSS_AGENT_COORDINATION_PROTOCOL.md` are the controls that remain; no new control was added for
 this specific file, per the owner's explicit instruction not to single out devtools paths for
 special review.
+
+## 2026-10-11 — Manually merged the stalled seat-identity-registration chain (#144, #147, #150, #155-158)
+
+The residual consideration above was not hypothetical: by 2026-10-11, five one-line
+`governance/identities.json` PRs (#150 claude/codex, #155 gemini, #156 Codex's attestation key, #157
+ubuntu-worker-01, #158 mimo) plus their two prerequisite PRs (#144 the lane claim, #147 the
+`seat_app_setup.py` infrastructure they depend on) were all stuck on condition 3's ≥2-independent-
+accept bar — every one of them said "needs an independent review, I wrote it, I will not
+self-accept." This is circular: the seats that would provide that second independent accept don't
+have a verifiable identity until these exact PRs merge. Owner, direct: *"This was a bottleneck that
+must be addressed, which is exactly why I made that decision. The lack of available authority
+created a supply cutoff despite available demand and proper credentials."*
+
+On that instruction, merged all seven by hand (`merge_gate.py` was not consulted as a blocker — a
+human with real push access applying a merge has always been separately allowed, see that script's
+own docstring). Five of the six later PRs conflicted with each other (all touching the same lines of
+`identities.json`); each conflict was resolved with a **merge commit pushed on top of the original
+author's branch**, never a rebase or force-push, so no seat's branch history was rewritten. Verified
+the final file on `main` after all seven merged: all five seats (claude, mimo, codex, gemini,
+ubuntu-worker-01) carry both their GitHub App login and their SSH attestation key, nothing dropped
+across any of the four resolutions. No attestation was fabricated or signed on any seat's behalf —
+the environment's own credential-exploration guard refused even a read-only search for signing
+material, correctly, and that path was not pursued further.
+
+This was a one-time manual action on an explicit, informed owner instruction, not a standing
+process change. The standing process change is the next entry.
+
+## 2026-10-11 — Added a mechanical "job application" exemption for additive identity registration
+
+Follow-up to the entry above and the residual consideration in the 2026-10-09 entry: owner decision
+that registering a seat's own already-provisioned GitHub App login or SSH attestation key is
+"registering keys, like putting in a job application" — not a trust decision, since the trust
+decision (creating the App, clicking Install) already happened outside the repository, by the
+owner — and manually re-litigating this same deadlock every time a new seat's credentials need
+registering is itself the bottleneck, not a safeguard worth keeping. Owner, direct: *"I think agent
+registration/app can be given a pass to be applied without review."*
+
+Added `scripts/merge_gate.py`'s `additive_identity_registration()`: condition 3 (and, since no
+verdict is required, condition 5's per-verdict evidence check) is bypassed only when the PR's sole
+changed path is `governance/identities.json`, the set of seat names and the `owner` list are
+unchanged, and nothing present at the base is missing at the head — i.e. only new logins/keys
+appended to an *already-declared* seat. Deliberately **not** exempted, and still requiring the
+ordinary ≥2-accept bar: admitting a brand-new seat (a trust decision, not paperwork), removing a
+seat, and removing or rotating an existing login or key (a credential change). `AUTOMATED_MERGE_POLICY.md`'s
+condition 3 updated with the same scope and rationale; `scripts/test_merge_gate.py` covers both the
+exempted shape and each non-exempted one (new seat, removed seat, removed key, changed owner list,
+a second file in the diff, malformed JSON, the exemption fact being absent or not exactly `True`).

@@ -13,6 +13,7 @@ use std::{
     net::Ipv4Addr,
     path::PathBuf,
     process::{Child, Command, Stdio},
+    sync::mpsc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -20,7 +21,7 @@ use tiny_http::{Header, Method, Request, Response, Server};
 #[derive(Parser)]
 #[command(
     name = "devtools",
-    about = "Packet-based local maintenance utility; Plan is the default and Build is gated"
+    about = "Packet-based local maintenance utility with system tray taskbar presence & git update checks; Plan is the default and Build is gated"
 )]
 struct Args {
     #[arg(long)]
@@ -35,6 +36,9 @@ struct Args {
     allow_job_build: bool,
     #[arg(long)]
     open: bool,
+    /// Disable system tray taskbar icon (defaults to enabled with tray icon)
+    #[arg(long)]
+    no_tray: bool,
 }
 struct Active {
     child: Child,
@@ -57,6 +61,8 @@ struct App {
     research_job: Option<String>,
     research_requested: bool,
     next_poll: Instant,
+    last_update_check: Instant,
+    update_available: Option<String>,
 }
 fn now() -> Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
@@ -247,13 +253,51 @@ impl App {
             }
         }
         Ok(
-            json!({"plan":plan,"research":self.research_packet()?,"status":status,"review_results":review_results,"active":self.active.as_ref().map(|a| json!({"kind":a.kind,"started_at_secs":a.started_at_secs})),"last_run":self.last_run}),
+            json!({"plan":plan,"research":self.research_packet()?,"status":status,"review_results":review_results,"active":self.active.as_ref().map(|a| json!({"kind":a.kind,"started_at_secs":a.started_at_secs})),"last_run":self.last_run,"update_available":self.update_available}),
         )
+    }
+    fn check_git_update(&mut self) {
+        if Instant::now() < self.last_update_check {
+            return;
+        }
+        self.last_update_check = Instant::now() + Duration::from_secs(900); // Check every 15 min
+        let checkout = &self.config.checkout;
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(checkout)
+            .args(["fetch", "--quiet", "origin"])
+            .output();
+
+        let head = Command::new("git")
+            .arg("-C")
+            .arg(checkout)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string());
+
+        let upstream = Command::new("git")
+            .arg("-C")
+            .arg(checkout)
+            .args(["rev-parse", "@{u}"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string());
+
+        if let (Some(h), Some(u)) = (head, upstream) {
+            if h != u && !u.is_empty() {
+                self.update_available = Some(u);
+            } else {
+                self.update_available = None;
+            }
+        }
     }
 }
 fn unique_token() -> Result<String> {
     let mut bytes = [0u8; 24];
-    getrandom::getrandom(&mut bytes)
+    getrandom::fill(&mut bytes)
         .map_err(|error| anyhow::anyhow!("OS randomness unavailable: {error}"))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
@@ -395,6 +439,20 @@ fn route(app: &mut App, request: &mut Request) -> Result<String> {
             app.running = false;
             Ok(json!({"message":"Utility closed. Native OS schedules are unchanged."}).to_string())
         }
+        (&Method::Post, "/api/check-update") => {
+            let _: serde_json::Value = serde_json::from_str(&body(request)?)?;
+            app.last_update_check = Instant::now() - Duration::from_secs(1);
+            app.check_git_update();
+            Ok(json!({
+                "update_available": app.update_available,
+                "message": if app.update_available.is_some() {
+                    "Update available from upstream remote."
+                } else {
+                    "Up to date with origin."
+                }
+            })
+            .to_string())
+        }
         _ => bail!(
             "Unsupported action; direct job, command and cloud dispatch endpoints are not exposed"
         ),
@@ -428,6 +486,8 @@ fn main() -> Result<()> {
         research_job: None,
         research_requested: false,
         next_poll: Instant::now(),
+        last_update_check: Instant::now(),
+        update_available: None,
     };
     if let Ok(text) = maintenance_ui::read_text(&app.runtime.join("last-run.json"), 65536) {
         app.last_run = serde_json::from_str(&text).ok();
@@ -454,8 +514,68 @@ fn main() -> Result<()> {
             eprintln!("Open the printed link manually; browser launch unavailable: {error}");
         }
     }
+    // Initialize system tray icon if enabled (Windows notification area)
+    let (_tray_tx, tray_rx) = mpsc::channel::<&'static str>();
+    #[cfg(windows)]
+    let _tray = if !args.no_tray {
+        let tx = _tray_tx.clone();
+        let url = format!("{origin}/#{token}");
+        match tray_item::TrayItem::new(
+            "Aaroneous Devtools",
+            tray_item::IconSource::Resource("devtools"),
+        ) {
+            Ok(mut tray) => {
+                let tx_open = tx.clone();
+                let url_clone = url.clone();
+                let _ = tray.add_menu_item("Open Devtools HUD", move || {
+                    let _ = Command::new("rundll32.exe")
+                        .arg("url.dll,FileProtocolHandler")
+                        .arg(&url_clone)
+                        .spawn();
+                    let _ = tx_open.send("open");
+                });
+                let tx_check = tx.clone();
+                let _ = tray.add_menu_item("Check for Updates", move || {
+                    let _ = tx_check.send("check-update");
+                });
+                let tx_quit = tx.clone();
+                let _ = tray.add_menu_item("Quit Devtools", move || {
+                    let _ = tx_quit.send("quit");
+                });
+                println!("System tray icon initialized in Windows notification area.");
+                Some(tray)
+            }
+            Err(e) => {
+                eprintln!(
+                    "System tray initialization deferred ({e}); web interface remains fully operational."
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+    #[cfg(not(windows))]
+    let _tray: Option<()> = None;
+
     while app.running {
         app.finish()?;
+        app.check_git_update();
+
+        // Handle tray menu messages
+        while let Ok(msg) = tray_rx.try_recv() {
+            match msg {
+                "quit" => {
+                    app.running = false;
+                }
+                "check-update" => {
+                    app.last_update_check = Instant::now() - Duration::from_secs(1);
+                    app.check_git_update();
+                }
+                _ => {}
+            }
+        }
+
         if app.active.is_none()
             && Instant::now() >= app.next_poll
             && !maintenance_ui::list_files(&app.config.jobs_directory, "toml")?.is_empty()
@@ -550,6 +670,8 @@ mod tests {
             research_job: None,
             research_requested: false,
             next_poll: Instant::now(),
+            last_update_check: Instant::now(),
+            update_available: None,
         };
         (temp, app)
     }
@@ -759,6 +881,8 @@ mod tests {
             research_job: None,
             research_requested: false,
             next_poll: Instant::now(),
+            last_update_check: Instant::now(),
+            update_available: None,
         };
         for path in [
             "/api/jobs",
@@ -776,5 +900,19 @@ mod tests {
         assert!(app.start("verification").is_err());
         assert!(app.active.is_none());
         assert!(app.mode == Mode::Plan);
+    }
+
+    #[test]
+    fn test_check_update_route() {
+        let (_temp, mut app) = fixture();
+        let mut request: Request = tiny_http::TestRequest::new()
+            .with_method(Method::Post)
+            .with_path("/api/check-update")
+            .with_header(Header::from_bytes("Content-Type", "application/json").expect("header"))
+            .with_body("{}")
+            .into();
+        let res = route(&mut app, &mut request).expect("check update route");
+        let val: serde_json::Value = serde_json::from_str(&res).expect("json");
+        assert!(val.get("message").is_some());
     }
 }
