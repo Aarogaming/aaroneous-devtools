@@ -1,0 +1,58 @@
+name: CI smoke (self-hosted runners)
+
+# Run once after installing the runners, and again after any change to ci/ubuntu/. It proves the runners are alive, are the
+# right kind, and cannot read the seats' credentials. Manual only.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci-runner:
+    name: devtools-ci runner
+    runs-on: [self-hosted, devtools-ci]
+    timeout-minutes: 10
+    steps:
+      - name: Identity and toolchain
+        run: |
+          set -euo pipefail
+          test "$(id -un)" = "devtools-ci"
+          uname -a
+          cargo --version
+          rustc --version
+      - name: Cannot read other accounts
+        run: |
+          set -euo pipefail
+          for path in /home/*/.steward /home/*/.ssh /root /etc/shadow /var/lib/devtools-merge; do
+            [ -e "$path" ] || continue
+            if [ -r "$path" ]; then echo "FAIL: $path is readable by $(id -un)"; exit 1; fi
+          done
+          echo "ok: no other account's files are readable"
+      - name: Workspace is clean (previous job's files are gone)
+        run: |
+          set -euo pipefail
+          count="$(find "$RUNNER_WORKSPACE/.." -mindepth 1 -maxdepth 1 ! -name '_tool' ! -name '_actions' ! -name '_temp' ! -name '_PipelineMapping' ! -name "$(basename "$RUNNER_WORKSPACE")" | wc -l)"
+          echo "other entries in _work: $count"
+
+  merge-runner:
+    name: devtools-merge runner
+    runs-on: [self-hosted, devtools-merge]
+    timeout-minutes: 10
+    steps:
+      - name: Identity
+        run: |
+          set -euo pipefail
+          test "$(id -un)" = "devtools-merge"
+          python3 --version
+          git --version
+          gh --version | head -1
+      - name: Cannot read the other runner or any seat
+        run: |
+          set -euo pipefail
+          for path in /home/*/.steward /home/*/.ssh /root /etc/shadow /var/lib/devtools-ci; do
+            [ -e "$path" ] || continue
+            if [ -r "$path" ]; then echo "FAIL: $path is readable by $(id -un)"; exit 1; fi
+          done
+          echo "ok"

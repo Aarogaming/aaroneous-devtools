@@ -1,3 +1,4 @@
+# BRIDGE VERSION: Linux only (the dashboard is a web build; Windows adds minutes, not coverage).
 name: Dashboard CI
 
 on:
@@ -21,19 +22,15 @@ concurrency:
 
 jobs:
   dashboard:
-    name: Dashboard (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Dashboard (ubuntu-latest)
+    runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
     defaults:
       run:
         working-directory: gui
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
           cache: npm
