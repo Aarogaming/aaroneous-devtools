@@ -539,6 +539,30 @@ class Checklist(unittest.TestCase):
         self.assertEqual(mg.ci_state([{"status": "COMPLETED", "conclusion": "SUCCESS"},
                                       {"status": "COMPLETED", "conclusion": "FAILURE"}])["state"], "failure")
 
+    def test_only_the_newest_run_of_each_check_counts(self):
+        def run(name, started, status, conclusion, workflow="CI"):
+            return {"name": name, "workflowName": workflow, "startedAt": started, "status": status, "conclusion": conclusion}
+        old_fail = run("advisories", "2026-10-14T19:09:00Z", "COMPLETED", "FAILURE")
+        new_pass = run("advisories", "2026-10-17T02:45:00Z", "COMPLETED", "SUCCESS")
+        # A failure that was re-run successfully no longer blocks, whatever order GitHub lists the runs in.
+        self.assertEqual(mg.ci_state([old_fail, new_pass])["state"], "success")
+        self.assertEqual(mg.ci_state([new_pass, old_fail])["state"], "success")
+        # The newest run decides: a later failure, a later unfinished run or a worse tie still blocks.
+        self.assertEqual(mg.ci_state([new_pass, run("advisories", "2026-10-18T00:00:00Z", "COMPLETED", "FAILURE")])["state"], "failure")
+        self.assertEqual(mg.ci_state([old_fail, run("advisories", "2026-10-18T00:00:00Z", "IN_PROGRESS", "")])["state"], "pending")
+        self.assertEqual(mg.ci_state([new_pass, run("advisories", "2026-10-17T02:45:00Z", "COMPLETED", "FAILURE")])["state"], "failure")
+        # Another workflow's check of the same name, another name, or an unnamed entry is never replaced.
+        self.assertEqual(mg.ci_state([new_pass, run("advisories", "2026-10-01T00:00:00Z", "COMPLETED", "FAILURE", "Other")])["state"], "failure")
+        self.assertEqual(mg.ci_state([new_pass, run("lint", "2026-10-01T00:00:00Z", "COMPLETED", "FAILURE")])["state"], "failure")
+        self.assertEqual(mg.ci_state([new_pass, {"status": "COMPLETED", "conclusion": "FAILURE"}])["state"], "failure")
+        # Runs without startedAt are ordered by completedAt; a legacy context is matched by its context name.
+        self.assertEqual(mg.ci_state([
+            {"name": "x", "completedAt": "2026-10-14T00:00:00Z", "status": "COMPLETED", "conclusion": "FAILURE"},
+            {"name": "x", "completedAt": "2026-10-17T00:00:00Z", "status": "COMPLETED", "conclusion": "SUCCESS"}])["state"], "success")
+        self.assertEqual(mg.ci_state([
+            {"context": "ci/legacy", "startedAt": "2026-10-14T00:00:00Z", "status": "COMPLETED", "conclusion": "FAILURE"},
+            {"context": "ci/legacy", "startedAt": "2026-10-17T00:00:00Z", "status": "COMPLETED", "conclusion": "SUCCESS"}])["state"], "success")
+
     def test_two_seats_must_also_be_covered(self):
         lines, ok, first = mg.checklist(good_facts(covered=False))
         self.assertFalse(ok)

@@ -26,5 +26,41 @@
   {
     "detail": "1 checks: SUCCESS",
     "state": "success"
+  },
+  {
+    "detail": "1 checks: SUCCESS",
+    "state": "success"
+  },
+  {
+    "detail": "1 checks: FAILURE",
+    "state": "failure"
+  },
+  {
+    "detail": "checks still running",
+    "state": "pending"
+  },
+  {
+    "detail": "2 checks: FAILURE, SUCCESS",
+    "state": "failure"
+  },
+  {
+    "detail": "1 checks: FAILURE",
+    "state": "failure"
+  },
+  {
+    "detail": "2 checks: FAILURE, SUCCESS",
+    "state": "failure"
+  },
+  {
+    "detail": "1 checks: SUCCESS",
+    "state": "success"
+  },
+  {
+    "detail": "1 checks: SUCCESS",
+    "state": "success"
+  },
+  {
+    "detail": "1 checks: SUCCESS",
+    "state": "success"
   }
 ]
