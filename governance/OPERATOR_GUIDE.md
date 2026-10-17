@@ -28,10 +28,10 @@ Inside devtools the layers are, from least to most authority:
 | Layer | What it does | Authority |
 | --- | --- | --- |
 | Tier 0 gates | Compiler, clippy, tests, `cargo xtask gate`, CI | The real authority; nothing lands without them |
-| Local model (Qwen, "Mimo") | Drafts and classifies bounded jobs | Output is a draft; software validates; a different seat accepts |
-| Cloud seats (Claude, Codex, Gemini/Antigravity) | Implement, review, take over a local model's pushed branch | Open PRs and post independent reviews; never self-accept |
+| Qwen support worker | Drafts and classifies declared evidence bundles | Proposal output only; cannot claim work, execute commands, push a shared branch or declare verification successful; the responsible primary owner reviews and adopts it |
+| Registered primary seats (Claude, Codex, Gemini/Antigravity, MiMo/OpenCode) | Implement and review under their registered identity and exact-path claims | Open PRs and post independent reviews; never self-accept; choosing a model does not create a seat or grant authority |
 | Steward | Reads GitHub and the queue, hands each seat one task card, logs what happened | Advises; changes nothing by itself |
-| Merge gate | Decides offline whether a PR is eligible | Report-only today; the owner presses merge |
+| Merge gate | Decides whether a PR is eligible | Reports eligibility; the separately configured integration path acts only under [AUTOMATED_MERGE_POLICY.md](AUTOMATED_MERGE_POLICY.md), not an owner-only devtools rule |
 | Owner | The Aaroneous product repo, policy and priorities; devtools has no owner-gated paths since 2026-10-09 | Final |
 
 The end state the owner is working toward is the local model operating autonomously, with cloud agents
@@ -41,7 +41,7 @@ Aaroneous. Sections 1 and 7 say how far each piece is from that today. Nothing h
 ## 1. What is real today
 
 Status as of 2026-10-09. "Operating" means a command exists and was run; it does not mean installed as a
-service. Anything marked proposal changes no behaviour until the owner accepts it.
+service. Anything marked proposal changes no behaviour until integrated and activated under the applicable review rules; product-repository decisions retain their own authority boundary.
 
 | Piece | State | Where it is described |
 | --- | --- | --- |
@@ -65,8 +65,12 @@ service. Anything marked proposal changes no behaviour until the owner accepts i
    and the "Active and ready lanes" table at the top of [COORDINATION_QUEUE.md](COORDINATION_QUEUE.md);
    [CROSS_AGENT_COORDINATION_PROTOCOL.md](CROSS_AGENT_COORDINATION_PROTOCOL.md). To brief a fresh session,
    paste [ROUND_TABLE_INTRO_PROMPT.md](ROUND_TABLE_INTRO_PROMPT.md) first.
-2. Pick your seat name: `claude`, `codex`, `gemini` (also written Antigravity) or `mimo` (the local Qwen).
-   Use it exactly in every comment, attestation and receipt.
+2. Use the primary seat actually registered for the acting operator: `claude`, `codex`, `gemini`
+   (also written Antigravity), or `mimo` (the MiMo/OpenCode principal). Use it consistently in comments,
+   attestations and receipts. The Qwen support model is not that principal and does not obtain its signing,
+   claim or review authority by selecting a model name. For Qwen, follow
+   [LOCAL_AGENT_CONTROL_PLANE.md](LOCAL_AGENT_CONTROL_PLANE.md): the primary owner supplies an explicit
+   evidence bundle, reviews the proposal, and alone claims paths, runs commands and verifies adopted output.
 3. Get a signing key, register it, and set up your own GitHub identity so your posts do not show as the owner
    (section 3).
 4. Fetch, then run the steward against your own persistent log (section 4) and read your card.
@@ -78,8 +82,8 @@ service. Anything marked proposal changes no behaviour until the owner accepts i
 
 ## 3. Get a seat key and your own GitHub identity
 
-Why: every seat posts under one shared GitHub login, so a pasted verdict block cannot be told from a real
-one. A signature proves the seat holding the private key made the verdict. The full procedure, trust
+Why: a shared GitHub login alone cannot identify the seat behind a pasted verdict. Use the registered
+seat App and signing key; a signature proves the key holder made the verdict, not that its execution claims are true. The full procedure, trust
 levels and the rule for switching enforcement on are in [IDENTITY_SETUP.md](IDENTITY_SETUP.md); the short
 version:
 
@@ -98,8 +102,10 @@ cat ~/.ssh/aaroneous_attest_SEAT.pub        # the one line to register; the priv
 - Check how your verdict counts: `python scripts/review_coverage.py --repo OWNER/NAME --repo-dir . --identities
   governance/identities.json --pr N`. The trust level shows as `signed`, `authenticated` or `attested-only`.
 
-Today (2026-10-09) the merge gate always requires signatures, so a seat with no registered key has no
-verdict the gate counts. Keys are registered for claude, mimo and gemini; codex has none yet.
+The merge gate requires registered-key signatures. Read the trusted current
+`governance/identities.json` for actual registrations rather than this guide's dated status snapshot;
+a seat with no registered key has no verifiable signed verdict. Key existence does not certify review
+independence, command evidence, or merge eligibility.
 
 ### Your own GitHub identity (a GitHub App per seat)
 
