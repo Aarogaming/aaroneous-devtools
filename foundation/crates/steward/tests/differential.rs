@@ -262,10 +262,7 @@ fn gate_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             .as_array()
             .unwrap()
             .iter()
-            .map(|c| CiCheck {
-                conclusion: c["conclusion"].as_str().map(str::to_owned),
-                status: c["status"].as_str().map(str::to_owned),
-            })
+            .map(CiCheck::from_json)
             .collect();
         let state = ci_state(&rollup);
         if state.state != case["out"]["state"].as_str().unwrap()
