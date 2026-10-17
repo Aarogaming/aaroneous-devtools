@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 pub mod attribution;
+pub mod board;
 pub mod cards;
 pub mod chain;
 pub mod checklist;
