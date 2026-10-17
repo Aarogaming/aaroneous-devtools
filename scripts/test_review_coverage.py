@@ -212,6 +212,52 @@ class Coverage(unittest.TestCase):
         self.assertIn("changes_requested", " ".join(decision["reasons"]))
 
 
+class ReviewerMustNameASeat(unittest.TestCase):
+    def test_a_reviewer_that_names_no_known_seat_is_malformed_and_counts_for_nothing(self):
+        # Found by a scout over every attestation in the repository's comments: the template comment on PR #46 carries
+        # reviewer "<your seat>"; with a real head and base it validated, and evaluate() counted it as an independent
+        # accept by a seat called "your" (an empty reviewer even made covered=True with no seat at all).
+        for reviewer in ("<your seat>", "unknown", "x", "", "   "):
+            problem = rc.validate(rec(H1, reviewer=reviewer))
+            self.assertIsNotNone(problem, reviewer)
+            self.assertIn("names no known seat", problem)
+
+    def test_a_reviewer_that_is_not_a_string_is_malformed_and_counts_for_nothing(self):
+        # Found by Codex review finding on PR #140: a non-string reviewer like ["codex"] or {"seat": "codex"}
+        # would previously be stringified by known_seat_names() and pass validation, then raise TypeError in attest_sig.verify().
+        for reviewer in (["codex"], {"seat": "codex"}, 123, None):
+            problem = rc.validate(rec(H1, reviewer=reviewer))
+            self.assertIsNotNone(problem, reviewer)
+            self.assertIn("names no known seat", problem)
+
+    def test_an_implementers_list_with_a_blank_or_non_string_entry_is_malformed(self):
+        # Found by a skeptic probe: implementers [""] and [None] passed the non-empty-list check, so the accept
+        # declared no real implementer and counted as independent of nobody (covered=True, accept_seats ["mimo"]).
+        for implementers in ([""], ["   "], [None], ["claude", ""], [7]):
+            problem = rc.validate(rec(H1, impl=implementers))
+            self.assertIsNotNone(problem, implementers)
+            self.assertIn("non-blank strings", problem)
+
+    def test_a_normal_implementers_list_still_validates(self):
+        for implementers in (["claude"], ["Claude", "codex"], ["gemini-3.8-flash"]):
+            self.assertIsNone(rc.validate(rec(H1, impl=implementers)), implementers)
+
+    def test_a_seat_registered_in_identities_json_can_post_a_verdict_without_editing_the_known_list(self):
+        # ubuntu-worker-01 was registered on main (#139) after this check was written; every registered seat must be
+        # able to attest, whatever KNOWN_SEATS says.
+        for seat in sorted(rc.registered_seats()):
+            self.assertIsNone(rc.validate(rec(H1, reviewer=seat)), seat)
+        with mock.patch.object(rc, "registered_seats", return_value={"ubuntu-worker-01"}):
+            for reviewer in ("ubuntu-worker-01", "Ubuntu-Worker-01 (RTX 4090)"):
+                self.assertIsNone(rc.validate(rec(H1, reviewer=reviewer)), reviewer)
+            for reviewer in ("ubuntu-worker", "ubuntu-worker-011", "<your seat>"):
+                self.assertIsNotNone(rc.validate(rec(H1, reviewer=reviewer)), reviewer)
+
+    def test_every_known_way_of_naming_a_seat_still_validates(self):
+        for reviewer in ("mimo", "Gemini", "Antigravity (gemini-3.8-flash)", "claude-sonnet-5-5", "Codex", "qwen"):
+            self.assertIsNone(rc.validate(rec(H1, reviewer=reviewer)), reviewer)
+
+
 class Subprocesses(unittest.TestCase):
     """gh and git output is UTF-8. Decoding it with the platform default (cp1252 on Windows) raised UnicodeDecodeError on
     any comment holding an emoji, so the coverage tool could not run at all on this repository's real comments."""

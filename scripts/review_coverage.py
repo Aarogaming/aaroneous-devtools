@@ -61,11 +61,18 @@ def validate(record):
     implementers = record["implementers"]
     if not isinstance(implementers, list) or not implementers:
         return "implementers must be a non-empty list"
+    if not all(isinstance(entry, str) and entry.strip() for entry in implementers):
+        return ("implementers must list seat names as non-blank strings (found "
+                f"{[entry for entry in implementers if not (isinstance(entry, str) and entry.strip())]!r}): "
+                "an empty entry declares no implementer, so independence would be vacuous; nothing was counted")
     if record["scope"] not in ("whole", "delta"):
         return f"unknown scope: {record['scope']!r}"
     if not isinstance(record["verdict"], str) or record["verdict"] not in ACCEPT | REJECT:
         return (f"unknown verdict {record['verdict']!r}: use accept, needs_revision or changes_requested "
                 "(lower case); nothing was counted")
+    if not isinstance(record["reviewer"], str) or not record["reviewer"].strip() or not names_a_known_seat(record["reviewer"]):
+        return (f"reviewer {record['reviewer']!r} names no known seat ({', '.join(sorted(set(KNOWN_SEATS) | registered_seats()))}): "
+                "copy the seat name from your own packet, not a template placeholder; nothing was counted")
     return None
 
 
@@ -169,6 +176,29 @@ def seat_names(name):
     if not found and tokens:
         found.add(tokens[0])
     return found
+
+
+def registered_seats():
+    """Seat names registered in governance/identities.json (lower case), so a newly onboarded seat such as
+    ubuntu-worker-01 can post verdicts without editing KNOWN_SEATS. Empty when the file cannot be read."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "governance", "identities.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return {str(seat).strip().lower() for seat in json.load(handle).get("seats", {})}
+    except (OSError, ValueError, AttributeError):
+        return set()
+
+
+def names_a_known_seat(name):
+    """True when `name` names a built-in seat or starts with a registered seat's full name ("ubuntu-worker-01" or
+    "Ubuntu-Worker-01 (RTX)"), never a bare prefix of one."""
+    if known_seat_names(name):
+        return True
+    text = str(name).strip().lower()
+    for seat in registered_seats():
+        if seat and text.startswith(seat) and not text[len(seat):len(seat) + 1].isalnum():
+            return True
+    return False
 
 
 def known_seat_names(name):
