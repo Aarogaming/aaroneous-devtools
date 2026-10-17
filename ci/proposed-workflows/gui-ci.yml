@@ -1,0 +1,40 @@
+name: Dashboard CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gui/**'
+      - '.github/workflows/gui-ci.yml'
+  pull_request:
+    paths:
+      - 'gui/**'
+      - '.github/workflows/gui-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dashboard:
+    name: Dashboard (ubuntu-self-hosted)
+    runs-on: [self-hosted, devtools-ci]
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: gui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Type check and build
+        run: npm run build

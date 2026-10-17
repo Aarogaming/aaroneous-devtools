@@ -34,6 +34,8 @@ struct Job {
     mode: Mode,
     evidence: Vec<String>,
     instruction: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    contribution_id: Option<String>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -65,6 +67,8 @@ struct Record {
     /// Shadow-mode claim-check flags (C93): recorded, never used to reject a draft yet.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     conformance_flags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    contribution_id: Option<String>,
 }
 struct Reservation(PathBuf);
 impl Drop for Reservation {
@@ -145,8 +149,8 @@ fn evidence_file(root: &Path, relative: &str) -> Result<PathBuf> {
 }
 fn scope_reserved(queue: &str, evidence: &[String]) -> bool {
     queue.lines().filter(|s| s.starts_with('|')).any(|row| {
-        let cols: Vec<_> = row.split('|').map(str::trim).collect();
-        if cols.len() < 5 || !matches!(cols[3], "Claimed" | "Review") {
+        let cols = crate::table::cells(row);
+        if cols.len() < 5 || !matches!(cols[3].as_str(), "Claimed" | "Review") {
             return false;
         }
         evidence.iter().any(|path| {
@@ -387,6 +391,7 @@ where
             proposal: None,
             error: None,
             conformance_flags: Vec::new(),
+            contribution_id: job.contribution_id.clone(),
         };
         match delegate(&c.endpoint, &record.input) {
             Ok(proposal) => {
@@ -860,6 +865,7 @@ mod tests {
             mode: Mode::Analysis,
             evidence: vec!["lib.rs".into()],
             instruction: "review reducer".into(),
+            contribution_id: None,
         };
         fs::write(
             c.jobs_directory.join("job.toml"),
@@ -1093,6 +1099,7 @@ instruction = \"x\"
             mode: Mode::Analysis,
             evidence: vec!["a.rs".into()],
             instruction: "x".repeat(8193),
+            contribution_id: None,
         };
         assert_eq!(
             job_problem(&job),
@@ -1111,6 +1118,7 @@ instruction = \"x\"
             mode: Mode::Analysis,
             evidence: vec!["a.rs".into()],
             instruction: "do".into(),
+            contribution_id: None,
         };
         assert_eq!(job_problem(&job), None);
         job.id = "no spaces".into();
@@ -1351,6 +1359,7 @@ instruction = \"x\"
             mode: Mode::Analysis,
             evidence: vec!["a.rs".into()],
             instruction: "recurring audit, content changes every cycle".into(),
+            contribution_id: None,
         };
         let job_b = Job {
             schema_version: 1,
@@ -1358,6 +1367,7 @@ instruction = \"x\"
             mode: Mode::Analysis,
             evidence: vec!["b.rs".into()],
             instruction: "ordinary job, never gets a turn under pure alphabetical order".into(),
+            contribution_id: None,
         };
         fs::write(
             c.jobs_directory.join("a.toml"),

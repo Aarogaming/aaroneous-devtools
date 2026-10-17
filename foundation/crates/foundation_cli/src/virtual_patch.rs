@@ -218,6 +218,13 @@ pub fn validate_patch_path(file_path: &str) -> Result<()> {
         bail!("file_path must not be empty");
     }
     let norm = file_path.replace('\\', "/");
+    // The same patch may be reviewed on Linux and applied on Windows. Reject
+    // case aliases and Win32 trailing-dot/space aliases on every platform.
+    if norm.split('/').any(|segment| {
+        segment.is_empty() || segment.ends_with(['.', ' ']) || segment.bytes().any(|byte| byte < 32)
+    }) {
+        bail!("file_path contains a non-portable path component: {file_path}");
+    }
     if norm.starts_with('/') {
         bail!("file_path must be relative: {file_path}");
     }
@@ -237,7 +244,7 @@ pub fn validate_patch_path(file_path: &str) -> Result<()> {
             }
             Component::Normal(seg) => {
                 let s = seg.to_string_lossy();
-                if s == ".git" {
+                if s.eq_ignore_ascii_case(".git") {
                     bail!("modification of .git directory is strictly forbidden: {file_path}");
                 }
             }
@@ -245,11 +252,12 @@ pub fn validate_patch_path(file_path: &str) -> Result<()> {
     }
 
     // Framework boundary protection: build/workflow files forbidden from automated patch sets
-    if norm.starts_with(".github/")
-        || norm.starts_with(".cargo/")
-        || norm.starts_with("xtask/")
-        || norm == "build.rs"
-        || norm.ends_with("/build.rs")
+    let folded = norm.to_ascii_lowercase();
+    if folded.starts_with(".github/")
+        || folded.starts_with(".cargo/")
+        || folded.starts_with("xtask/")
+        || folded == "build.rs"
+        || folded.ends_with("/build.rs")
     {
         bail!("framework boundary violation: {file_path} is an infrastructure path");
     }
@@ -705,6 +713,61 @@ mod tests {
         assert!(validate_patch_path(".cargo/config.toml").is_err());
         assert!(validate_patch_path("xtask/src/main.rs").is_err());
         assert!(validate_patch_path("build.rs").is_err());
+    }
+
+    #[test]
+    fn protected_paths_reject_windows_aliases_before_materialization() {
+        for path in [
+            ".GIT/config",
+            ".GiT/hooks/pre-commit",
+            "src/.GIT/config",
+            ".GITHUB/workflows/ci.yml",
+            ".CARGO/config.toml",
+            "XTASK/src/main.rs",
+            "Build.rs",
+            "crates/demo/BUILD.RS",
+            ".git./config",
+            ".git /config",
+            "src/name./file.rs",
+            "src/name /file.rs",
+            "src//file.rs",
+        ] {
+            assert!(validate_patch_path(path).is_err(), "accepted {path}");
+            let root = tempdir().expect("root");
+            let patch = VirtualPatch {
+                patch_index: 0,
+                file_path: path.into(),
+                base_digest: None,
+                search_block: String::new(),
+                replace_block: "malicious hook".into(),
+                hunk_digest: compute_hunk_digest("", "malicious hook"),
+            };
+            let patches = vec![patch];
+            let set = VirtualPatchSet {
+                schema_version: SCHEMA_VERSION,
+                artifact_kind: ARTIFACT_KIND.into(),
+                patch_set_id: "ALIAS".into(),
+                task_id: "ALIAS".into(),
+                base_revision: "base".into(),
+                created_at_secs: 0,
+                patch_set_digest: compute_patch_set_digest("ALIAS", "ALIAS", "base", &patches),
+                patches,
+                provenance: PatchProvenance {
+                    generator_model: "fixture".into(),
+                    endpoint: None,
+                    instruction: "fixture".into(),
+                    rationale: None,
+                },
+            };
+            let selection = ReviewSelection {
+                selected_patch_indices: vec![0],
+                reviewer: "owner".into(),
+                disposition: ReviewDisposition::Approved,
+                rationale: "fixture".into(),
+            };
+            assert!(materialize(root.path(), &set, &selection).is_err());
+            assert_eq!(fs::read_dir(root.path()).expect("entries").count(), 0);
+        }
     }
 
     #[test]

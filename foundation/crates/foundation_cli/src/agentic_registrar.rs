@@ -117,6 +117,12 @@ pub struct Record {
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub virtual_patch_set: Option<crate::virtual_patch::VirtualPatchSet>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<crate::contribution::ContributionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub envelope: Option<crate::contribution::ContributionEnvelope>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -963,6 +969,29 @@ fn dispatch_locked(config: &RegistrarConfig, target_task_id: Option<&str>, now: 
         task.instruction.clone()
     };
 
+    let parsed_cid = crate::contribution::ContributionId::parse(&task.id).ok();
+    let origin_rev = git_current_revision(&config.checkout).ok();
+    let base_content_sha = crate::virtual_patch::sha256_digest(existing_code.as_bytes());
+    let evidence_key = crate::virtual_patch::sha256_digest(
+        format!(
+            "task_id:{}\ncrate:{}\ntarget:{}\ninstruction:{}\nbase_sha256:{}",
+            task.id, task.crate_name, task.target_file, instruction, base_content_sha
+        )
+        .as_bytes(),
+    );
+    let initial_envelope = match (parsed_cid.as_ref(), origin_rev.as_ref()) {
+        (Some(cid), Some(rev)) => crate::contribution::ContributionEnvelope::new(
+            cid.clone(),
+            rev,
+            &task.crate_name,
+            &task.target_file,
+            &instruction,
+            evidence_key,
+        )
+        .ok(),
+        _ => None,
+    };
+
     let mut record = Record {
         schema_version: 1,
         artifact_kind: "foundation.agentic-registrar-result".into(),
@@ -976,6 +1005,9 @@ fn dispatch_locked(config: &RegistrarConfig, target_task_id: Option<&str>, now: 
         proposal: None,
         error: None,
         virtual_patch_set: None,
+        contribution_id: parsed_cid,
+        origin_revision: origin_rev,
+        envelope: initial_envelope,
     };
 
     let system_prompt = format!(
@@ -1052,6 +1084,9 @@ review — it will not be applied or committed automatically.",
                         replace_block: rust_source,
                     }],
                 ) {
+                    if let Some(ref mut env) = record.envelope {
+                        let _ = env.bind_virtual_patch(&vps);
+                    }
                     record.virtual_patch_set = Some(vps);
                 }
             }
@@ -1201,6 +1236,47 @@ fn promote_locked(config: &RegistrarConfig, task_id: &str) -> Result<()> {
     }
 
     validate_target(&config.checkout, &record.crate_name, &record.target_file)?;
+
+    // Verify bound virtual patch set and envelope before git checkout or file mutation
+    if let Some(ref vps) = record.virtual_patch_set {
+        crate::virtual_patch::verify_patch_set(vps)
+            .context("virtual patch set failed integrity verification before promotion")?;
+
+        let matching_patch = vps
+            .patches
+            .iter()
+            .find(|p| p.file_path == record.target_file)
+            .context("virtual patch set does not contain a patch for target_file")?;
+
+        if matching_patch.replace_block != draft.rust_source {
+            bail!("promoted source does not match virtual patch set replace block");
+        }
+
+        if let Some(ref env) = record.envelope {
+            if let Some(ref env_patch_id) = env.virtual_patch_set_id {
+                if env_patch_id != &vps.patch_set_id {
+                    bail!(
+                        "envelope virtual_patch_set_id '{env_patch_id}' does not match record patch_set_id '{}'",
+                        vps.patch_set_id
+                    );
+                }
+            }
+            if let Some(ref patch_sha) = env.patch_sha256 {
+                if patch_sha != &vps.patch_set_digest {
+                    bail!(
+                        "envelope patch_sha256 '{patch_sha}' does not match record patch_set_digest '{}'",
+                        vps.patch_set_digest
+                    );
+                }
+            }
+            env.validate(Some(&config.checkout))
+                .context("envelope validation failed before promotion")?;
+        }
+    } else if let Some(ref env) = record.envelope {
+        env.validate(Some(&config.checkout))
+            .context("envelope validation failed before promotion")?;
+    }
+
     let full_target_path = config.checkout.join(&record.target_file);
     let pre_existing = full_target_path.exists();
 
@@ -1244,6 +1320,7 @@ fn promote_locked(config: &RegistrarConfig, task_id: &str) -> Result<()> {
                     &record.crate_name,
                     &record.target_file,
                     &record.instruction,
+                    record.contribution_id.as_ref(),
                 )?;
                 match git_push_branch(&config.checkout, &branch_name) {
                     Ok(()) => Ok(PromoteOutcome::Pushed(hash)),
@@ -1368,6 +1445,53 @@ pub fn git_discover_repository(checkout: &Path) -> Result<Vec<String>> {
     Ok(files)
 }
 
+const TASK_REGISTRATION_SCRIPT: &str = r#"$ErrorActionPreference = 'Stop'
+$inputData = ConvertFrom-Json -InputObject $env:DEVTOOLS_TASK_REGISTRATION
+$action = New-ScheduledTaskAction -Execute $inputData.binary -Argument $inputData.arguments
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $inputData.interval)
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+Register-ScheduledTask -TaskName $inputData.name -Action $action -Trigger $trigger -Settings $settings
+"#;
+
+fn task_registration_payload(
+    binary_path: &Path,
+    task_name: &str,
+    interval_minutes: u32,
+) -> Result<String> {
+    if !binary_path.is_absolute()
+        || binary_path.to_str().is_none()
+        || binary_path
+            .to_string_lossy()
+            .chars()
+            .any(|c| c.is_control() || c == '"')
+        || binary_path.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+        || task_name.trim().is_empty()
+        || task_name.len() > 200
+        || task_name
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\'))
+        || !(1..=1440).contains(&interval_minutes)
+    {
+        bail!("Use an absolute binary path, a bounded task name and an interval of 1–1440 minutes");
+    }
+    let config_path = binary_path
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("config").join("registrar_config.toml"))
+        .context("Failed to derive registrar_config.toml path relative to binary")?;
+    // Values enter PowerShell as JSON data, never as executable script text.
+    Ok(serde_json::to_string(&serde_json::json!({
+        "binary": binary_path.to_str().context("binary path is not UTF-8")?,
+        "arguments": format!("agentic-registrar daemon --config \"{}\"", config_path.display()),
+        "name": task_name, "interval": interval_minutes,
+    }))?)
+}
+
 pub fn register_task_scheduler(
     binary_path: &Path,
     task_name: &str,
@@ -1377,26 +1501,19 @@ pub fn register_task_scheduler(
         bail!("Task Scheduler registration is supported on Windows host platforms only");
     }
 
-    let config_path = binary_path
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("config").join("registrar_config.toml"))
-        .context("Failed to derive registrar_config.toml path relative to binary")?;
-
-    let ps_script = format!(
-        r#"$action = New-ScheduledTaskAction -Execute '{bin}' -Argument 'agentic-registrar daemon --config "{config}"'
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes {interval})
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-Register-ScheduledTask -TaskName '{name}' -Action $action -Trigger $trigger -Settings $settings -Force
-"#,
-        bin = binary_path.display(),
-        config = config_path.display(),
-        interval = interval_minutes,
-        name = task_name
-    );
+    let payload = task_registration_payload(binary_path, task_name, interval_minutes)?;
+    if !binary_path.is_file() {
+        bail!("Task binary must be an existing file");
+    }
 
     let status = Command::new("pwsh")
-        .args(["-Command", &ps_script])
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            TASK_REGISTRATION_SCRIPT,
+        ])
+        .env("DEVTOOLS_TASK_REGISTRATION", payload)
         .status()
         .context("Failed to execute PowerShell Task Scheduler registration command")?;
 
@@ -2230,6 +2347,7 @@ fn git_stage_and_commit(
     crate_name: &str,
     target_file: &str,
     instruction: &str,
+    contribution_id: Option<&crate::contribution::ContributionId>,
 ) -> Result<String> {
     let add_status = Command::new("git")
         .args(["add", "--", target_file])
@@ -2241,7 +2359,17 @@ fn git_stage_and_commit(
         bail!("git add failed for target file: {target_file}");
     }
 
-    let commit_msg = format!("feat({crate_name}): {instruction} ({task_id})");
+    let parsed_cid = contribution_id
+        .cloned()
+        .or_else(|| crate::contribution::ContributionId::parse(task_id).ok());
+
+    let commit_msg = if let Some(cid) = parsed_cid {
+        let trailers = cid.as_trailers(None).join("\n");
+        format!("feat({crate_name}): {instruction} ({task_id})\n\n{trailers}")
+    } else {
+        format!("feat({crate_name}): {instruction} ({task_id})")
+    };
+
     let commit_out = Command::new("git")
         .args(["commit", "-m", &commit_msg])
         .current_dir(checkout)
@@ -2482,6 +2610,61 @@ fn append_progress_log(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scheduler_inputs_are_data_and_invalid_inputs_fail_closed() {
+        let root = tempfile::tempdir().expect("root");
+        let binary = root.path().join("owner's tools").join("foundation.exe");
+        let name = "agent'; Write-Output 'INJECTED'; #";
+        let text = task_registration_payload(&binary, name, 15).expect("payload");
+        let data: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+        assert_eq!(data["name"], name);
+        assert_eq!(data["binary"], binary.to_str().expect("path"));
+        assert!(!TASK_REGISTRATION_SCRIPT.contains(name));
+        assert!(!TASK_REGISTRATION_SCRIPT.contains("-Force"));
+        assert!(task_registration_payload(Path::new("relative.exe"), "agent", 15).is_err());
+        assert!(task_registration_payload(&binary, "bad\nname", 15).is_err());
+        assert!(task_registration_payload(&binary, "folder/task", 15).is_err());
+        assert!(task_registration_payload(&binary, "agent", 0).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn scheduler_script_preserves_injection_text_without_executing_it() {
+        // Stub the scheduler cmdlets: exercise the real PowerShell parser without
+        // installing anything or changing the host's scheduled tasks.
+        let root = tempfile::tempdir().expect("root");
+        let binary = root.path().join("owner's tools").join("foundation.exe");
+        let name = "agent'; Write-Output 'INJECTED'; #";
+        let payload = task_registration_payload(&binary, name, 15).expect("payload");
+        let stubs = r#"
+function New-ScheduledTaskAction { param($Execute, $Argument); @{binary=$Execute;arguments=$Argument} }
+function New-ScheduledTaskTrigger { param([switch]$Once, $At, $RepetitionInterval); @{} }
+function New-ScheduledTaskSettingsSet { param([switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries, [switch]$StartWhenAvailable); @{} }
+function Register-ScheduledTask { param($TaskName, $Action, $Trigger, $Settings); @{name=$TaskName;binary=$Action.binary;arguments=$Action.arguments} | ConvertTo-Json -Compress }
+"#;
+        let output = Command::new("pwsh")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!("{stubs}\n{TASK_REGISTRATION_SCRIPT}"),
+            ])
+            .env("DEVTOOLS_TASK_REGISTRATION", &payload)
+            .output()
+            .expect("PowerShell");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let actual: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("only stub JSON, no injected output");
+        let expected: serde_json::Value = serde_json::from_str(&payload).expect("JSON");
+        assert_eq!(actual["name"], expected["name"]);
+        assert_eq!(actual["binary"], expected["binary"]);
+        assert_eq!(actual["arguments"], expected["arguments"]);
+    }
     #[test]
     fn http_framing_requires_complete_bounded_unambiguous_requests() {
         fn parse(raw: &str) -> Result<HttpRequest> {
@@ -2968,6 +3151,9 @@ mod tests {
             }),
             error: None,
             virtual_patch_set: None,
+            contribution_id: None,
+            origin_revision: None,
+            envelope: None,
         };
         persist(&config.results_directory, &record).expect("persist");
 
@@ -3011,6 +3197,9 @@ mod tests {
             }),
             error: None,
             virtual_patch_set: None,
+            contribution_id: None,
+            origin_revision: None,
+            envelope: None,
         }
     }
 
@@ -3479,5 +3668,53 @@ mod tests {
         let tools = v["result"]["tools"].as_array().unwrap();
         assert!(tools.iter().any(|t| t["name"] == "verify_gate_suite"));
         assert!(tools.iter().any(|t| t["name"] == "get_repository_status"));
+    }
+
+    #[test]
+    fn git_stage_and_commit_generates_canonical_trailers() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path();
+
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let file = repo.join("test.txt");
+        std::fs::write(&file, "hello world").unwrap();
+
+        let cid =
+            crate::contribution::ContributionId::parse("C117/gemini-contribution-lifecycle-v1")
+                .unwrap();
+        let hash = git_stage_and_commit(
+            repo,
+            "C117/gemini-contribution-lifecycle-v1",
+            "foundation_cli",
+            "test.txt",
+            "test instruction",
+            Some(&cid),
+        )
+        .unwrap();
+        assert!(!hash.is_empty());
+
+        let log = Command::new("git")
+            .args(["log", "-n", "1", "--format=%B"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let body = String::from_utf8_lossy(&log.stdout);
+        assert!(body.contains("Contribution-ID: C117/gemini-contribution-lifecycle-v1"));
+        assert!(body.contains("Co-Authored-By: Gemini <gemini@aarogaming.local>"));
     }
 }

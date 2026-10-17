@@ -69,29 +69,29 @@ legitimate production throttle pacing or async retry intervals. Not test code.
 
 ### 3.1 BANNED: fixed sleep for concurrency synchronization
 
-`ust
+```rust
 // BANNED in tests — races on slow machines
 tokio::time::sleep(Duration::from_millis(100)).await;
 assert_eq!(shared_state.load(Ordering::SeqCst), EXPECTED);
-`
+```
 
 **Replacement — join the task:**
-`ust
+```rust
 // ok — join the spawned task; it completes or panics, no race
 let result = tokio::spawn(async { do_work() }).await.unwrap();
 assert_eq!(result, EXPECTED);
-`
+```
 
 **Replacement — use a channel or Notify:**
-`ust
+```rust
 // ok — block on the signal, not on a timer
 let (tx, rx) = tokio::sync::oneshot::channel();
 tokio::spawn(async move { do_work(); tx.send(()).unwrap(); });
 rx.await.unwrap();
-`
+```
 
 **Replacement — bounded poll with timeout (last resort):**
-`ust
+```rust
 // ok — fails fast on CI if condition never arrives
 let deadline = std::time::Instant::now() + Duration::from_secs(5);
 loop {
@@ -99,19 +99,19 @@ loop {
     assert!(std::time::Instant::now() < deadline, "timed out");
     std::thread::sleep(Duration::from_millis(10));
 }
-`
+```
 
 ### 3.2 BANNED: sleeping for filesystem mtime granularity
 
-`ust
+```rust
 // BANNED — flaky on FAT32/btrfs/network drives, wastes 1s+
 fs::write(&path, data).unwrap();
 std::thread::sleep(Duration::from_millis(1100));
 fs::write(&other_path, other_data).unwrap();
-`
+```
 
 **Replacement — backdate the earlier file using `std::fs::FileTimes`:**
-`ust
+```rust
 // ok — works on any filesystem, runs in microseconds
 let cache_path = write_cache_file(&dir).unwrap();
 {
@@ -125,7 +125,7 @@ let cache_path = write_cache_file(&dir).unwrap();
         .unwrap();
 }
 write_manifest_file(&dir).unwrap(); // mtime = now > now - 10s
-`
+```
 
 `std::fs::FileTimes` is stable since Rust 1.75. No external crate required.
 On Windows: `SetFileTime`. On POSIX: `utimensat`.
@@ -136,7 +136,7 @@ When the unit under test is itself time-driven (circuit breaker cool-down, token
 bucket refill, retry backoff), a sleep is acceptable **only if** the sleep duration
 is derived from the same config value used to construct the type, with >= 2x margin:
 
-`ust
+```rust
 // ok — sleep is 2x the configured open_duration
 let cb = CircuitBreaker::new(CircuitBreakerConfig {
     open_duration: Duration::from_millis(20),
@@ -144,7 +144,7 @@ let cb = CircuitBreaker::new(CircuitBreakerConfig {
 });
 std::thread::sleep(Duration::from_millis(40)); // 2x
 assert_eq!(cb.state(), CircuitState::HalfOpen);
-`
+```
 
 The `open_duration` itself must be < 100ms so the total wait is bounded.
 
