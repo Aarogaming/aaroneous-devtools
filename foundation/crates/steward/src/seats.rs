@@ -20,7 +20,7 @@ const MODEL_FAMILY_SEATS: [(&str, &str); 7] = [
 /// Seats that are another seat under a different name.
 const ALIASES: [(&str, &str); 2] = [("antigravity", "gemini"), ("qwen", "mimo")];
 
-fn canonical(seat: &str) -> &str {
+pub(crate) fn canonical(seat: &str) -> &str {
     ALIASES
         .iter()
         .find(|(from, _)| *from == seat)
@@ -33,13 +33,30 @@ fn canonical(seat: &str) -> &str {
 /// included, separates them.
 #[must_use]
 pub fn seat_names(name: &str) -> BTreeSet<String> {
+    let mut found = named_seats(name);
+    if found.is_empty() {
+        let lowered = name.to_lowercase();
+        let tokens: Vec<&str> = lowered
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|token| !token.is_empty())
+            .collect();
+        if let Some(first) = tokens.first() {
+            found.insert((*first).to_owned());
+        }
+    }
+    found
+}
+
+/// The known seats `name` names (by seat word, alias or model family), with no fallback: a string that names no
+/// known seat names none. `seat_names` adds the fallback so an unknown seat still compares with itself.
+#[must_use]
+pub fn named_seats(name: &str) -> BTreeSet<String> {
     let lowered = name.to_lowercase();
-    let tokens: Vec<&str> = lowered
+    let mut found = BTreeSet::new();
+    for token in lowered
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|token| !token.is_empty())
-        .collect();
-    let mut found = BTreeSet::new();
-    for token in &tokens {
+    {
         for seat in KNOWN_SEATS {
             if token.starts_with(seat) {
                 found.insert(canonical(seat).to_owned());
@@ -49,11 +66,6 @@ pub fn seat_names(name: &str) -> BTreeSet<String> {
             if token.starts_with(family) {
                 found.insert(seat.to_owned());
             }
-        }
-    }
-    if found.is_empty() {
-        if let Some(first) = tokens.first() {
-            found.insert((*first).to_owned());
         }
     }
     found

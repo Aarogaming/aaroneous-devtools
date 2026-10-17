@@ -99,6 +99,10 @@ def checklist(facts):
     seats_known = isinstance(raw_seats, list) and all(isinstance(s, str) for s in raw_seats)
     seats = raw_seats if seats_known else []
     distinct_seats = {s.strip() for s in seats if s.strip()}
+    raw_families = facts.get("accept_families")
+    families_known = isinstance(raw_families, list) and all(isinstance(f, str) for f in raw_families)
+    families = raw_families if families_known else []
+    distinct_families = {f.strip() for f in families if f.strip()}
     covered_fact = facts.get("covered")
     missing_evidence = facts.get("verdicts_missing_evidence")
     counted = facts.get("counted_verdicts")
@@ -124,10 +128,12 @@ def checklist(facts):
         ("2b", None if facts.get("is_draft") is None else not facts["is_draft"], "PR is not a draft", "",
          "draft status unavailable (fail closed)"),
         ("3", True if identity_exempt else
-         (None if not seats_known or not isinstance(covered_fact, bool) else len(distinct_seats) >= 2 and covered_fact),
-         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}"
+         (None if not seats_known or not families_known or not isinstance(covered_fact, bool)
+          else len(distinct_seats) >= 2 and len(distinct_families) >= 2 and covered_fact),
+         f">=2 independent accept verdicts from >=2 model families at {head}, seats: {', '.join(seats) or 'none'}, "
+         f"families: {', '.join(families) or 'none'}"
          + (exempt_suffix if identity_exempt else ""), "",
-         "accepting seats or coverage unavailable"),
+         "accepting seats, model families or coverage unavailable"),
         ("4", None if not is_count(threads_open) or not isinstance(standing, bool) else threads_open == 0 and not standing,
          "Zero open blocking threads", f"count checked: {threads_open}",
          "thread count unavailable" if not is_count(threads_open) else "standing-rejection status unavailable"),
@@ -446,6 +452,7 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
     facts = {
         "head": pr["head"], "base_ref": pr["base"], "default_branch": default_branch,
         "trial_merge_ok": trial_ok, "covered": row["covered"], "accept_seats": row["accept_seats"],
+        "accept_families": row["accept_families"],
         "counted_verdicts": row["counted_verdicts"], "verdicts_missing_evidence": row["verdicts_missing_evidence"],
         "standing_changes_requested": any("changes_requested" in r or "needs_revision" in r for r in row["reasons"]),
         "category": category_of(paths), "is_draft": pr.get("draft"),

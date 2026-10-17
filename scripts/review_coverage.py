@@ -244,6 +244,133 @@ def canonical_reviewer_seat(name):
     return next(iter(seats)) if len(seats) == 1 else None
 
 
+def _hyphenated(text):
+    """Lower-case alphanumeric runs joined by hyphens: 'Ubuntu Worker 01', 'ubuntu_worker_01' and 'ubuntu-worker-01' agree."""
+    return "-".join(t for t in re.split(r"[^a-z0-9]+", str(text).strip().lower()) if t)
+
+
+def named_seats(name):
+    """The known seats a string names (seat word, alias or model family), with no fallback: `seat_names` plus nothing."""
+    found = set()
+    for token in (t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t):
+        for seat in KNOWN_SEATS:
+            if token.startswith(seat):
+                found.add(SEAT_NAME_ALIASES.get(seat, seat))
+        for family, seat in MODEL_FAMILY_SEATS.items():
+            if token.startswith(family):
+                found.add(seat)
+    return found
+
+
+def resolve_seat(label, registered=None):
+    """The seat a reviewer label names, or None when it names none or more than one. A registered seat is matched by its
+    whole hyphen-delimited name; every other seat the label names (a second registered seat, or a known seat or model family
+    such as `codex` or `Opus`) makes it ambiguous, so `ubuntu-worker-01 and codex` is not read as `ubuntu-worker-01`."""
+    flat = "-" + _hyphenated(label) + "-"
+    hits = sorted(seat for seat in (registered or ()) if _hyphenated(seat) and "-" + _hyphenated(seat) + "-" in flat)
+    if not hits:
+        return canonical_reviewer_seat(label)
+    if len(hits) > 1:
+        return None
+    rest = flat.replace("-" + _hyphenated(hits[0]) + "-", "-", 1)
+    others = named_seats(rest) - {SEAT_NAME_ALIASES.get(hits[0], hits[0])}
+    return None if others else hits[0]
+
+
+FAMILY_LABEL = re.compile(r"[a-z][a-z0-9-]{0,31}")
+STEM = re.compile(r"[a-z][a-z0-9.-]{0,31}")
+MODEL_MAX = 80
+
+
+def clean_model(value):
+    """The model id a record declares, or None. Declaring is optional and never refused: a missing, non-string, over-long or
+    non-printable value is simply not used (the family falls back to the seat's registered profile). Printable means ASCII space to
+    '~': model ids are ASCII, and the Rust port then agrees without a Unicode table."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value or len(value) > MODEL_MAX or any(not " " <= c <= "~" for c in value):
+        return None
+    return value
+
+
+def seat_profiles(identities_data):
+    """{seat: {model, family, runtime, ...}} from the optional `profile` each registered seat may carry: what the seat last
+    reported about itself at registration. Gathered, never required, never a reason to refuse anyone."""
+    seats = identities_data.get("seats") if isinstance(identities_data, dict) else None
+    out = {}
+    if isinstance(seats, dict):
+        for seat, entry in seats.items():
+            profile = entry.get("profile") if isinstance(entry, dict) else None
+            if isinstance(profile, dict):
+                clean = {k: v.strip() for k, v in profile.items() if isinstance(v, str) and v.strip()}
+                if "family" in clean and not FAMILY_LABEL.fullmatch(clean["family"]):
+                    del clean["family"]
+                out[seat] = clean
+    return out
+
+
+def model_table(identities_data):
+    """[(stem, family)] longest stem first, from the registry's `model_families` table."""
+    table = identities_data.get("model_families") if isinstance(identities_data, dict) else None
+    pairs = []
+    if isinstance(table, dict):
+        for key, family in table.items():
+            if isinstance(key, str) and STEM.fullmatch(key) and isinstance(family, str) and FAMILY_LABEL.fullmatch(family):
+                pairs.append((key, family))
+    return sorted(pairs, key=lambda kv: (-len(kv[0]), kv[0]))
+
+
+def model_family(model, table):
+    """The family a model id belongs to per `table`, or None for a model the table does not know. The id's last path segment
+    is matched against each stem: equal, or followed by a non-letter ('qwen3.8', 'claude-sonnet-5-5', 'Qwen/Qwen3.8-Coder',
+    'gpt-5.5'), never by a letter ('qwenish' is not qwen)."""
+    model = clean_model(model)
+    if model is None:
+        return None
+    name = model.lower().rsplit("/", 1)[-1]
+    for key, family in table:
+        if name.startswith(key) and (len(name) == len(key) or not name[len(key)].isalpha()):
+            return family
+    return None
+
+
+def independence(counted, registered, profiles, table):
+    """What the accepting verdicts say about who judged: (families, entries, notes). One entry per accepting seat and declared
+    model: the family comes from the model the signed record declares, else the seat's registered profile, else the seat
+    stands alone. The notes are the self-report: an unclassified model, a model that differs from the registered profile,
+    and accepts that share a family. Nothing here refuses anyone; the gate only counts distinct families."""
+    entries, notes, seen = [], [], set()
+    for record in counted:
+        seat = resolve_seat(record["reviewer"], registered)
+        if not seat:
+            continue
+        model = clean_model(record.get("model"))
+        registered_family = (profiles.get(seat) or {}).get("family")
+        declared = model_family(model, table) if model else None
+        if declared:
+            family, source = declared, "declared"
+        elif registered_family:
+            family, source = registered_family, "registered"
+        else:
+            family, source = f"seat:{seat}", "seat"
+        key = (seat, model, family)
+        if key in seen:
+            continue
+        seen.add(key)
+        if model and not declared:
+            notes.append(f"{seat} declared model {model!r}, which model_families does not classify; counted as {family} ({source})")
+        elif declared and registered_family and declared != registered_family:
+            notes.append(f"{seat} is registered as {registered_family} but ran {model!r} ({declared}): the declared model is used")
+        entries.append({"seat": seat, "model": model, "family": family, "source": source})
+    families = sorted({e["family"] for e in entries})
+    for family in families:
+        sharing = sorted({e["seat"] for e in entries if e["family"] == family})
+        if len(sharing) > 1:
+            notes.append(f"{', '.join(sharing)} are the same model family ({family}): counted as one judge")
+    return families, entries, notes
+
+
 def independent(record):
     """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
     ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
@@ -252,7 +379,7 @@ def independent(record):
     return not (seat_names(record["reviewer"]) & implementers)
 
 
-def evaluate(head, merge_base, records, is_ancestor):
+def evaluate(head, merge_base, records, is_ancestor, registered=None):
     """Pure coverage decision for one PR head.
 
     ``is_ancestor(a, b)`` says whether commit a is an ancestor of commit b. A delta accept extends
@@ -281,8 +408,12 @@ def evaluate(head, merge_base, records, is_ancestor):
         r
         for r in records
         if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base
-        and canonical_reviewer_seat(r["reviewer"]) is not None
+        and resolve_seat(r["reviewer"], registered) is not None
     ]
+    for r in records:
+        if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base and resolve_seat(r["reviewer"], registered) is None:
+            reasons.append(f"reviewer {r['reviewer']!r} does not name exactly one seat, so its accept counts for no one; "
+                           "name your seat alone and put the model in the record's `model` field")
     # Only a `whole` accept seeds coverage (governance/PLATFORM_SPEC.md section 3: "Delta accepts compose only when
     # chained from a whole-diff accept"). A delta that starts at the merge base reviewed the whole PR diff, but its
     # author must say so by labelling it `whole`; the tool tells them (see the reason below) and does not guess.
@@ -324,7 +455,7 @@ def evaluate(head, merge_base, records, is_ancestor):
         "reasons": reasons,
         "accepts_at_head": len(at_head),
         "counted": counted,
-        "accept_seats": sorted({canonical_reviewer_seat(r["reviewer"]) for r in counted if canonical_reviewer_seat(r["reviewer"])}),
+        "accept_seats": sorted({resolve_seat(r["reviewer"], registered) for r in counted if resolve_seat(r["reviewer"], registered)}),
     }
 
 
@@ -423,11 +554,14 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
     if not repo:
         raise ValueError("snapshot needs a top-level 'repo' (OWNER/NAME) naming the subject repository")
     rows = []
+    registered = set(keys["seats"]) if isinstance(keys, dict) and isinstance(keys.get("seats"), dict) else None
+    profiles = seat_profiles(keys) if isinstance(keys, dict) else {}
+    table = model_table(keys) if isinstance(keys, dict) else []
     for pr in snapshot["prs"]:
         parsed, problems, legacy = parse_attestations(pr.get("comments", []))
         allowed = attest_sig.allowed_signers(keys) if keys else ""
         for record in parsed:
-            canon = canonical_reviewer_seat(record["reviewer"])
+            canon = resolve_seat(record["reviewer"], registered)
             principal = canon or record["reviewer"]
             record["verified"] = bool(record.get("_sig") and canon) and attest_sig.verify(
                 record["_canon"], record["_sig"], principal, allowed
@@ -464,7 +598,8 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                     f"{sorted(seat_names(record['reviewer']) & implied)} as an implementer (branch prefix or "
                     "commit trailer) and the attestation's implementers list does not")
             records.append(dict(record, implementers=list(record["implementers"]) + extra) if extra else record)
-        decision = evaluate(pr["head"], pr["merge_base"], records, ancestry)
+        decision = evaluate(pr["head"], pr["merge_base"], records, ancestry, registered)
+        families, family_entries, family_notes = independence(decision["counted"], registered, profiles, table)
         decision["reasons"] = decision["reasons"] + conflicts
         loose = unattributed_commits(pr.get("commit_log"), pr.get("branch"))
         if loose:
@@ -484,6 +619,8 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                 "covered": decision["covered"],
                 "reasons": decision["reasons"],
                 "accept_seats": decision["accept_seats"],
+                "accept_families": families,
+                "independence": {"entries": family_entries, "notes": family_notes},
                 "counted_verdicts": len(decision["counted"]),
                 "verdicts_missing_evidence": [r.get("comment") for r in decision["counted"] if not r.get("commands")],
                 "structured_attestations": len(structured),
