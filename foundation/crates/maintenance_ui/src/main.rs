@@ -297,7 +297,7 @@ impl App {
 }
 fn unique_token() -> Result<String> {
     let mut bytes = [0u8; 24];
-    getrandom::getrandom(&mut bytes)
+    getrandom::fill(&mut bytes)
         .map_err(|error| anyhow::anyhow!("OS randomness unavailable: {error}"))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
