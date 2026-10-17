@@ -60,6 +60,22 @@
     "state": "success"
   },
   {
+    "detail": "checks still running",
+    "state": "pending"
+  },
+  {
+    "detail": "checks still running",
+    "state": "pending"
+  },
+  {
+    "detail": "checks still running",
+    "state": "pending"
+  },
+  {
+    "detail": "2 checks: FAILURE, SUCCESS",
+    "state": "failure"
+  },
+  {
     "detail": "1 checks: SUCCESS",
     "state": "success"
   }

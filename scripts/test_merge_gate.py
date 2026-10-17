@@ -563,6 +563,21 @@ class Checklist(unittest.TestCase):
             {"context": "ci/legacy", "startedAt": "2026-10-14T00:00:00Z", "status": "COMPLETED", "conclusion": "FAILURE"},
             {"context": "ci/legacy", "startedAt": "2026-10-17T00:00:00Z", "status": "COMPLETED", "conclusion": "SUCCESS"}])["state"], "success")
 
+    def test_a_run_that_cannot_be_ordered_is_never_discarded(self):
+        done = {"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                "status": "COMPLETED", "conclusion": "SUCCESS"}
+        queued = {"name": "Foundation", "workflowName": "CI", "startedAt": None, "completedAt": None,
+                  "status": "QUEUED", "conclusion": ""}
+        # Codex's counterexample on #227, in both orders: a queued re-run has no timestamps yet.
+        self.assertEqual(mg.ci_state([done, queued])["state"], "pending")
+        self.assertEqual(mg.ci_state([queued, done])["state"], "pending")
+        failed = dict(done, startedAt="2026-10-14T19:00:00Z", conclusion="FAILURE")
+        self.assertEqual(mg.ci_state([failed, queued])["state"], "pending")
+        # A failure whose time is unknown is not hidden behind a later success either.
+        unplaced_failure = {"name": "Foundation", "workflowName": "CI", "status": "COMPLETED", "conclusion": "FAILURE"}
+        self.assertEqual(mg.ci_state([unplaced_failure, done])["state"], "failure")
+        self.assertEqual(mg.ci_state([done, unplaced_failure])["state"], "failure")
+
     def test_two_seats_must_also_be_covered(self):
         lines, ok, first = mg.checklist(good_facts(covered=False))
         self.assertFalse(ok)

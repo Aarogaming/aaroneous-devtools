@@ -170,22 +170,24 @@ impl CiCheck {
 
 /// The newest run of each check. GitHub keeps every run on a commit in the rollup, so a failure that was later re-run
 /// successfully stays listed beside its replacement; only the newest run of a given workflow and name counts. Runs are
-/// ordered by `started` (else `completed`); on a tie the worse result is kept. An unnamed entry always counts.
+/// ordered by `started` (else `completed`); on a tie the worse result is kept. An entry with no name, or with no timestamp
+/// at all (a queued re-run has not started), cannot be placed in that order, so it is never discarded as older and
+/// always counts (fail closed).
 fn latest_checks(rollup: &[CiCheck]) -> Vec<&CiCheck> {
     let mut newest: BTreeMap<CheckKey, (CheckRank, &CiCheck)> = BTreeMap::new();
     let mut order: Vec<CheckKey> = Vec::new();
-    let mut unnamed: Vec<&CiCheck> = Vec::new();
+    let mut unplaced: Vec<&CiCheck> = Vec::new();
     for item in rollup {
         let name = item.name.clone().unwrap_or_default();
-        if name.is_empty() {
-            unnamed.push(item);
-            continue;
-        }
-        let key = (item.workflow.clone().unwrap_or_default(), name);
         let stamp = match item.started.as_deref() {
             Some(started) if !started.is_empty() => started.to_owned(),
             _ => item.completed.clone().unwrap_or_default(),
         };
+        if name.is_empty() || stamp.is_empty() {
+            unplaced.push(item);
+            continue;
+        }
+        let key = (item.workflow.clone().unwrap_or_default(), name);
         let good = item
             .conclusion
             .as_deref()
@@ -212,7 +214,7 @@ fn latest_checks(rollup: &[CiCheck]) -> Vec<&CiCheck> {
         .iter()
         .filter_map(|key| newest.get(key).map(|(_, item)| *item))
         .collect();
-    kept.extend(unnamed);
+    kept.extend(unplaced);
     kept
 }
 
@@ -487,7 +489,42 @@ mod tests {
             conclusion: Some("FAILURE".into()),
             ..CiCheck::default()
         };
-        assert_eq!(ci_state(&[new_pass, unnamed]).state, "failure");
+        assert_eq!(ci_state(&[new_pass.clone(), unnamed]).state, "failure");
+        // A queued re-run has no timestamps: it cannot be ordered, so it is never discarded as older (Codex on #227).
+        let queued = CiCheck {
+            name: Some("advisories".into()),
+            workflow: Some("Security".into()),
+            status: Some("QUEUED".into()),
+            ..CiCheck::default()
+        };
+        assert_eq!(
+            ci_state(&[new_pass.clone(), queued.clone()]).state,
+            "pending"
+        );
+        assert_eq!(
+            ci_state(&[queued.clone(), new_pass.clone()]).state,
+            "pending"
+        );
+        let failed = run(
+            "advisories",
+            "Security",
+            "2026-10-14T19:09:00Z",
+            "COMPLETED",
+            "FAILURE",
+        );
+        assert_eq!(ci_state(&[failed, queued]).state, "pending");
+        let unplaced_failure = CiCheck {
+            name: Some("advisories".into()),
+            workflow: Some("Security".into()),
+            status: Some("COMPLETED".into()),
+            conclusion: Some("FAILURE".into()),
+            ..CiCheck::default()
+        };
+        assert_eq!(
+            ci_state(&[unplaced_failure.clone(), new_pass.clone()]).state,
+            "failure"
+        );
+        assert_eq!(ci_state(&[new_pass, unplaced_failure]).state, "failure");
     }
 
     #[test]
