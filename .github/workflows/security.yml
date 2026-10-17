@@ -1,0 +1,65 @@
+name: Security checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: Secret and publication checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install checksum-verified Gitleaks
+        run: |
+          curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o "$RUNNER_TEMP/gitleaks.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP/gitleaks"
+      - name: Scan the current revision, including bundled archives
+        run: |
+          "$RUNNER_TEMP/gitleaks/gitleaks" dir . --config .gitleaks.toml --redact --max-archive-depth 3
+          python3 scripts/publication_check.py --repo "$GITHUB_WORKSPACE" --revision HEAD --output "$RUNNER_TEMP/publication.json"
+      - name: Scan added commit content
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: '"$RUNNER_TEMP/gitleaks/gitleaks" git . --config .gitleaks.toml --redact --max-archive-depth 3 --log-opts="$BASE_SHA..HEAD"'
+      - name: Regression tests for publication inventory and merge guard
+        run: |
+          python3 -B -m unittest discover -s scripts -p test_publication_check.py
+          python3 -B -m unittest discover -s scripts -p test_auto_merge.py
+
+  dependencies:
+    name: Dependency advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Audit locked npm dependencies
+        working-directory: gui
+        run: npm audit --package-lock-only --ignore-scripts
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - name: Audit locked Cargo dependencies
+        run: |
+          cargo install cargo-audit --version 0.22.1 --locked
+          cargo audit --file foundation/Cargo.lock --db "$RUNNER_TEMP/advisory-db"

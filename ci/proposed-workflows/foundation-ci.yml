@@ -1,0 +1,39 @@
+name: Foundation CI
+
+# Runs on the Ubuntu machine's `devtools-ci` runner (governance/CI_ON_UBUNTU.md, lane C128): no hosted minutes.
+# The Windows leg moved to foundation-ci-windows.yml (main and nightly) so a pull request never waits on, or shows
+# a skipped check for, a machine that may be off: the merge gate treats any non-success check as a failure.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    name: Foundation (ubuntu-self-hosted)
+    runs-on: [self-hosted, devtools-ci]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          rustup show
+          cargo --version
+      - name: Format
+        run: cargo fmt --manifest-path foundation/Cargo.toml --all -- --check
+      - name: Test
+        run: cargo test --manifest-path foundation/Cargo.toml
+      - name: Lint
+        run: cargo clippy --manifest-path foundation/Cargo.toml -- -D warnings
+      - name: Validate declared stack
+        run: cargo run --manifest-path foundation/Cargo.toml -p foundation_cli -- validate-stack --manifest ${{ github.workspace }}/stacks/local-rust.toml

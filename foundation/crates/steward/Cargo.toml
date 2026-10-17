@@ -13,5 +13,5 @@ serde_json = "1.0"
 # sha2: already used by maintenance_ui (the log chain is SHA-256).
 sha2 = "0.10"
 # toml: already used by foundation_cli; only the parser is needed (the circuit-breaker file).
-toml = { version = "0.8", default-features = false, features = ["parse"] }
+toml = { version = "1.1", default-features = false, features = ["parse"] }
 regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case", "unicode-gencat"] }

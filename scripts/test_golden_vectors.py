@@ -98,8 +98,14 @@ class Golden(unittest.TestCase):
                                                  else load(f"{family}.in.json"), load(f"{family}.out.json"))}
 
         checklist = named("gate_checklist")
+        # Two named cases legitimately merge despite not being the baseline "every box green" case: the
+        # identity-registration exemption (owner decision 2026-10-11) is specifically designed to let a
+        # PR merge with zero accept seats, as long as every other box is still green.
+        exempt_name = "additive identity registration is exempt from the accept bar (owner decision 2026-10-11)"
+        merging = {"every box green would merge", exempt_name}
         self.assertTrue(checklist["every box green would merge"]["would_merge"])
-        for blocked in [n for n in checklist if n != "every box green would merge"]:
+        self.assertTrue(checklist[exempt_name]["would_merge"])
+        for blocked in [n for n in checklist if n not in merging]:
             self.assertFalse(checklist[blocked]["would_merge"], blocked)
         self.assertEqual(checklist["red CI blocks"]["first_blocker"], "1")
         self.assertEqual(checklist["a merge conflict blocks"]["first_blocker"], "2")
@@ -108,6 +114,7 @@ class Golden(unittest.TestCase):
         self.assertEqual(checklist["one accept seat is not enough"]["first_blocker"], "3")
         self.assertEqual(checklist["an open thread blocks"]["first_blocker"], "4")
         self.assertEqual(checklist["a tripped breaker blocks"]["first_blocker"], "7")
+        self.assertEqual(checklist["the identity-registration exemption does not bypass other boxes"]["first_blocker"], "4")
         plan = named("gate_plan")
         self.assertEqual(plan["docs and governance markdown gets the light gate"]["plan_level"], "light")
         self.assertEqual(plan["scripts get the full gate"]["plan_level"], "full")

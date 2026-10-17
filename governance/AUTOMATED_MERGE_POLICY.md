@@ -108,6 +108,28 @@ For a given PR head commit, before anything merges it automatically:
    part of the diff ("delta-only") does not count unless paired with an
    earlier whole-diff accept that delta chains from, exactly as the
    existing review-packet convention already records.
+
+   **Exception, owner decision 2026-10-11 (job-application exemption).**
+   This condition does not apply to a PR whose sole changed path is
+   `governance/identities.json` and whose only edits append a login or key
+   to a seat that already exists in the file — the set of seat names and
+   the `owner` list must be unchanged, and nothing present at the base may
+   be missing at the head. A seat registering its own already-provisioned
+   GitHub App login or SSH attestation key is submitting paperwork, not
+   making a trust decision — the trust decision (creating the GitHub App,
+   clicking Install) already happened outside the repository, by the owner.
+   Admitting a brand-new seat, removing a seat, or removing/rotating an
+   existing login or key is **not** covered by this exception and still
+   needs the ordinary ≥2-accept bar: those are judgement calls about who is
+   trusted, not paperwork. `scripts/merge_gate.py`'s
+   `additive_identity_registration()` implements the check; the owner
+   reasoning that motivated it: *"This was a bottleneck that must be
+   addressed... The lack of available authority created a supply cutoff
+   despite available demand and proper credentials... agent registration/app
+   can be given a pass to be applied without review. They're registering
+   keys. Like putting in a job application."* This closes the "known
+   residual consideration" `DECISIONS.md`'s 2026-10-09 entry flagged and
+   deliberately left open rather than acting on unilaterally.
 4. **Zero open red-circle / blocking-labelled review threads** from any
    bot or human reviewer at that head. Optional/nit findings do not
    block. GitHub itself only exposes resolved/unresolved on a review
@@ -145,9 +167,9 @@ checklist, not a narrative — a check that can't be rendered as one of
 [ ] 1. CI green on head <sha> (run id / workflow / conclusion)
 [ ] 2. No merge conflict vs. <base-branch> tip <sha>
 [ ] 2a. Base branch is the repository default branch
-[ ] 3. >=2 independent accept verdicts at <sha>, seats: <a>, <b>, ...
+[ ] 3. >=2 independent accept verdicts at <sha>, seats: <a>, <b>, ... (or: exempt — additive-only identities.json registration)
 [ ] 4. Zero open blocking/red-circle threads (count checked: N)
-[ ] 5. Each counted verdict cites command + exit code (verdict ids: ...)
+[ ] 5. Each counted verdict cites command + exit code (verdict ids: ...) (or: exempt, no verdict required)
 [ ] 6. Revertible via plain `git revert` (no migration/external side effect)
 [ ] 7. circuit_breaker_override.toml: tripped = false
 ```
