@@ -71,6 +71,56 @@ class Build(unittest.TestCase):
         self.assertEqual(record["verdict"], "changes_requested")
 
 
+class Commands(unittest.TestCase):
+    """--command evidence is signed into the record, which is where the merge gate reads it (checklist box 5)."""
+
+    GOOD = ["git diff --stat a..b -> exit 0 (1 file)", "python -m unittest -> exit code 0 (Ran 19 tests, OK)"]
+
+    def test_commands_are_carried_in_the_record_and_survive_the_coverage_parser(self):
+        record, error = ma.build_record("o/r", 7, HEAD, BASE, "gemini", ["claude"], "accept", commands=self.GOOD)
+        self.assertIsNone(error)
+        self.assertEqual(record["commands"], self.GOOD)
+        structured, problems, _ = rc.parse_attestations([{"body": ma.render_block(record)}])
+        self.assertEqual(problems, [])
+        self.assertEqual(structured[0]["commands"], self.GOOD)
+        self.assertTrue(structured[0]["commands"], "the gate's evidence test is `not r.get('commands')`")
+
+    def test_without_commands_the_record_has_no_commands_key(self):
+        record, _ = ma.build_record("o/r", 7, HEAD, BASE, "gemini", ["claude"], "accept")
+        self.assertNotIn("commands", record)
+
+    def test_an_entry_that_states_no_exit_code_is_refused(self):
+        for bad in (["ran the tests"], ["python -m unittest -> OK"], ["exit"], ["exit code none"]):
+            record, error = ma.build_record("o/r", 7, HEAD, BASE, "gemini", ["claude"], "accept", commands=bad)
+            self.assertIsNone(record, bad)
+            self.assertIn("exit code", error)
+
+    def test_malformed_lists_are_refused(self):
+        too_many = ["cmd -> exit 0"] * (ma.MAX_COMMANDS + 1)
+        too_long = ["cmd -> exit 0 " + "x" * ma.MAX_COMMAND_LENGTH]
+        for bad, expected in (([], "non-empty list"), ("cmd -> exit 0", "non-empty list"), ([""], "non-empty string"),
+                              ([7], "non-empty string"), (too_many, "at most"), (too_long, "keep each under")):
+            record, error = ma.build_record("o/r", 7, HEAD, BASE, "gemini", ["claude"], "accept", commands=bad)
+            self.assertIsNone(record, bad)
+            self.assertIn(expected, error)
+
+    def test_a_signed_block_with_commands_verifies_and_changing_a_command_breaks_the_signature(self):
+        if not shutil.which("ssh-keygen"):
+            self.skipTest("ssh-keygen is not available")
+        import attest_sig
+        directory = tempfile.mkdtemp(prefix="make-attestation-")
+        self.addCleanup(shutil.rmtree, directory, True)
+        key = os.path.join(directory, "key")
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key], check=True)
+        public = open(key + ".pub", encoding="utf-8").read().strip()
+        record, _ = ma.build_record("o/r", 7, HEAD, BASE, "gemini", ["claude"], "accept", commands=self.GOOD)
+        signature = attest_sig.sign(attest_sig.canonical(record), key)
+        allowed = attest_sig.allowed_signers({"seats": {"gemini": {"logins": [], "keys": [public]}}})
+        self.assertTrue(attest_sig.verify(attest_sig.canonical(record), signature, "gemini", allowed))
+        tampered = dict(record, commands=["python -m unittest -> exit 0 (all tests passed)"])
+        self.assertFalse(attest_sig.verify(attest_sig.canonical(tampered), signature, "gemini", allowed))
+
+
 class Gather(unittest.TestCase):
     """gather() against real throwaway repositories: a bare remote, a work tree, and a clone."""
 
