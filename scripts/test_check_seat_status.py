@@ -2,6 +2,7 @@
 """Stdlib tests for the C112 per-seat status validator."""
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -121,12 +122,43 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(css.main([self.directory, "--as-of", "2026-10-09T07:00:00Z"]), 0)
         self.assertEqual(css.main([self.directory, "--as-of", "bad"]), 1)
 
+    def test_refresh_to_a_later_instant_still_valid(self):
+        """Regression for the #146 defect: a refreshed row must not read as "in the future".
+
+        The shipped-directory check once compared the committed ledger against a
+        module-level AS_OF frozen at 2026-10-09T07:00:00Z, so the first
+        legitimate refresh reported "measured-at is N minutes in the future" and
+        the suite went red. A declaration checked against its own measurement
+        instant is always current, whatever the wall clock says.
+        """
+        later = "2999-01-01T00:00:00Z"
+        self.write(content=f"{HEADER}\n{SEP}\n{row(measured=later)}\n")
+        errors, _ = self.check(as_of=css.parse_time(later))
+        self.assertEqual(errors, [])
+
     def test_shipped_directory(self):
+        """The committed ledger stays valid as time passes.
+
+        Freshness is measured per file against that file's own `measured-at`,
+        not a frozen instant, so a seat refreshing its row cannot break the
+        suite and one seat's stale row cannot fail another's check.
+        """
         directory = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "governance", "seat-status")
         if not os.path.isdir(directory):
             self.skipTest("not in checkout")
-        errors, _ = css.check(directory, as_of=AS_OF, identities=None)
-        self.assertEqual(errors, [])
+        shipped = [n for n in sorted(os.listdir(directory)) if n.endswith(".md") and n != "README.md"]
+        self.assertTrue(shipped, "no shipped <seat-id>.md files to validate")
+        for name in shipped:
+            with self.subTest(file=name):
+                row_cells, problem = css.table_rows(os.path.join(directory, name))
+                self.assertIsNone(problem, problem)
+                measured = css.parse_time(row_cells[4])
+                self.assertIsNotNone(measured, f"{name}: unparseable measured-at {row_cells[4]!r}")
+                isolated = os.path.join(self.tmp.name, "shipped-" + name)
+                os.mkdir(isolated)
+                shutil.copyfile(os.path.join(directory, name), os.path.join(isolated, name))
+                errors, _ = css.check(isolated, as_of=measured, identities=None)
+                self.assertEqual(errors, [])
 
 if __name__ == "__main__":
     unittest.main()
