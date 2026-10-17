@@ -567,6 +567,7 @@ class EvidenceSupersession(unittest.TestCase):
             ["cargo test -> exit 0 (all ok)"],
             ["git diff --check -> exit 0", "cargo clippy -> exit 101 (failed)"],
             ["cargo -> exit -1"],
+            ["x (exit 0)"], ["cargo test: exit 2"], ["cargo test -> exit 0."], ["cargo test, exit 1"],  # other separators in use
             ["cargo test -> exit 0failed -> exit 1"], ["cargo test -> exit 0" + chr(10)], ["cargo test -> exit0"],  # a later complete code, a newline, `exit0`
             [{"cmd": "cargo audit --file foundation/Cargo.lock", "rc": 0}],  # the shape one seat already signs
             [{"garbage": True}, "git diff --check -> exit 0"],  # one real entry among noise still counts
@@ -590,6 +591,7 @@ class EvidenceSupersession(unittest.TestCase):
             [{"command": "x", "exit_code": 0, "surprise": 1}],  # only the documented extras are allowed
             ["x -> exited 0"], ["x preexit0"],
             ["cargo test -> exit 0failed"], ["cargo test -> exit 0_"], ["cargo test -> exit 12abc"], ["cargo test -> exit -1x"],  # Codex on #226
+            ["cargo test -> exit 0.5"], ["the test might exit 0"], ["cargo test exit 0"], ["cargo test -> exit 1.25 seconds"],  # Codex on #226
             ["cargo test -> exit 0failed", "x -> exit"],  # a malformed entry does not become usable next to another bad one
         ]
         for commands in bad:

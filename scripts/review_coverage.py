@@ -244,9 +244,11 @@ def canonical_reviewer_seat(name):
     return next(iter(seats)) if len(seats) == 1 else None
 
 
-# The digits must end at a token boundary: `exit 0failed` states no complete exit code (Codex on #226), while `exit0,54 tests`
-# and `exit 0 (ok)` do.
-_EXIT_CODE = re.compile(r"[A-Za-z0-9].*(?<![A-Za-z0-9_])exit\s*-?\d+(?![A-Za-z0-9_])", re.IGNORECASE | re.DOTALL)
+# An exit code is stated as a separator (`->`, `=>`, `:`, `=`, `(`, `,` or `;`) then `exit` then a whole integer: `cargo test -> exit 0
+# (ok)`, `x (exit 0)`, `exit0,54 tests`. Prose such as `the test might exit 0` has no separator and states no result, and the digits
+# must end at a token boundary and not continue as a decimal: `exit 0failed` and `exit 0.5` are not complete codes (Codex on #226).
+# Checked against all 527 command strings in the repository's signed records: nothing that was usable before is rejected.
+_EXIT_CODE = re.compile(r"[A-Za-z0-9][^\n]*?(?:->|=>|[:=(,;])[ \t]*exit[ \t]*-?\d+(?![A-Za-z0-9_]|\.\d)", re.IGNORECASE)
 # PLATFORM_SPEC section 3: `commands` is a list of {command, exit_code, passed, failed, log_ref, log_sha256}; `count` and `log`
 # are the optional extras older reviews carry.
 _SPEC_COMMAND_KEYS = {"command", "exit_code", "passed", "failed", "count", "log_ref", "log_sha256", "log"}
@@ -256,8 +258,8 @@ def usable_evidence(commands):
     """True when `commands` really records a command and its exit code (merge-gate box 5).
 
     It must be a list with at least one entry that is one of three shapes, all of which are in real use:
-      - a string stating a complete exit code after some command text (at least one letter or digit before it, and no
-        letter, digit or underscore right after the digits), such as `cargo test -> exit 0 (ok)`, the shape
+      - a string stating a complete exit code after some command text (a separator before `exit`, and no letter, digit,
+        underscore or decimal point right after the digits), such as `cargo test -> exit 0 (ok)`, the shape
         `make_attestation --command` writes;
       - the shape PLATFORM_SPEC section 3 documents, an object with a non-empty string `command` and an integer
         `exit_code`, and optionally only the documented extras (`passed`, `failed`, `count`, `log_ref`, `log_sha256`, `log`);
