@@ -76,6 +76,22 @@
     "strict": true
   },
   {
+    "body": "Seat / agent:\n------------\nClaude reviewed this earlier",
+    "strict": true
+  },
+  {
+    "body": "Seat / agent:\r\n------------\r\nClaude reviewed this earlier",
+    "strict": true
+  },
+  {
+    "body": "Seat / agent:\n------------\nClaude reviewed this earlier",
+    "strict": false
+  },
+  {
+    "body": "Seat / agent:\r\n------------\r\nClaude reviewed this earlier",
+    "strict": false
+  },
+  {
     "body": "\r\n\r\nCodex whole-diff packet\r\nmore",
     "strict": true
   },
