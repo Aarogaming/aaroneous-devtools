@@ -17,3 +17,12 @@
 /gui/dist/
 __pycache__/
 *.pyc
+
+# Local checkouts, agent state and generated worker archives are not publication inputs.
+/tmp/
+/logs/
+/.antigravity/
+/.gemini/
+/worker-jobs-archive/
+*.pem
+*.key

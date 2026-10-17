@@ -17,6 +17,10 @@ Read [the companion operating model](governance/OPERATING_MODEL.md). Devtools pe
 
 Claim only a `Ready` item. Record the owner, branch, UTC start time, exact files, intended evidence, and verification gate in the queue before editing. One primary agent owns a file scope at a time. Claims expire after 24 hours without an update; a successor records a handoff before taking over.
 
+### Seat-status self-refresh exception (owner-authorized 2026-10-09, C112)
+
+After an ordinary exact-path claim has created `governance/seat-status/<seat-id>.md`, that seat may refresh **only its own existing file** without another queue claim. A refresh must run `python3 scripts/check_seat_status.py governance/seat-status` and cite its exit in the commit or PR. It may not create, rename, delete, or edit another seat's status file; edit `governance/seat-status/README.md`; change the validator or its tests; claim work; grant authority; or include any unrelated path in the refresh. Initial creation, protocol/schema changes, and removal remain ordinary claimed work.
+
 Choose an independent task. Do not open overlapping inventory, terminology, interface, or package work merely because a second model is available. Keep the default to three primary lanes and one review lane.
 
 ## Working rules

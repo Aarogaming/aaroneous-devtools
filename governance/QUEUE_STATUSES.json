@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "statuses": ["Ready", "Claimed", "Review", "Done", "Blocked"],
+  "notes": "The status words a lane row in governance/COORDINATION_QUEUE.md may use. This list mirrors the matches! in foundation/crates/foundation_cli/src/multithreader.rs queue_ids, which silently skips any other status, so a row using another word never enters the existing-ID set. scripts/check_coordination_evidence.py rejects an added or edited lane row whose status is not listed here, and scripts/test_check_coordination_evidence.py asserts this list equals the Rust list. Changing it needs the Rust change and a protocol amendment. 'Proposed' is deliberately absent until the owner decides whether it becomes a real lifecycle state."
+}

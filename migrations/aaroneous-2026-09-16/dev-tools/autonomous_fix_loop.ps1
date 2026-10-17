@@ -1,11 +1,12 @@
 param (
     [string]$Mode = "fix",
-    [int]$MaxLoops = 20
+    [int]$MaxLoops = 20,
+    [Parameter(Mandatory = $true)]
+    [string]$ApiKey
 )
 
 $QueuePath = "d:\Aaroneous\dev\docs\audits\active\ACTIVE_AUDIT_QUEUE.md"
 $LmStudioUrl = "http://127.0.0.1:1234/v1/chat/completions"
-$ApiKey = "sk-lm-jK3LgcoP:JMdzXzEQ2ZBrv5mVWIXL"
 $Model = "qwen/qwen3.5-9b:2"
 
 Write-Host "Starting Autonomous Fix Loop..." -ForegroundColor Cyan

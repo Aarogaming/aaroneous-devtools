@@ -94,6 +94,12 @@ async function refresh() {
   if (research.error) list(el('research'), 'Failure evidence', [research.error]);
   el('operation').textContent = active ? `${active.kind === 'verification' ? 'Prepared checks' : 'Read-only research'} is running.` : last_run?.meaning || 'No operation recorded.';
   el('evidence').textContent = JSON.stringify({repository_status: status.repository_status, worker_observation: status.worker_observation, worker_status_stale: status.worker_status_stale, reservation_present: status.reservation_present, last_run}, null, 2);
+  if (snapshot.update_available) {
+    el('update-banner').style.display = 'block';
+    el('update-banner').textContent = `🔔 Newer Git revision available from origin: ${snapshot.update_available.slice(0, 12)}. Run git pull to update.`;
+  } else {
+    el('update-banner').style.display = 'none';
+  }
   controls();
   notice('Connected. Results remain unverified; review decisions never authorize product edits.');
 }
@@ -108,6 +114,10 @@ function action(work, refreshAfter = true) {
 }
 for (const button of document.querySelectorAll('[data-packet]')) button.onclick = () => action(async () => (await api('/api/packet', {packet:button.dataset.packet})).message);
 el('refresh-button').onclick = () => action(refresh, false);
+el('update-button').onclick = () => action(async () => {
+  const res = await api('/api/check-update', {});
+  return res.message;
+}, true);
 el('mode-button').onclick = () => action(async () => (await api('/api/mode', {mode:snapshot.plan.mode === 'build' ? 'plan' : 'build'})).message);
 for (const button of document.querySelectorAll('[data-disposition]')) button.onclick = () => action(async () => {
   if (!selectedResult || !el('review-note').value.trim()) throw new Error('Inspect a result and enter a review note first.');

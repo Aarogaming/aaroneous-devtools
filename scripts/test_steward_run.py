@@ -82,6 +82,61 @@ class Chain(unittest.TestCase):
         os.unlink(path)
 
 
+class ChainProblemsAreReported(unittest.TestCase):
+    """A damaged log must produce a message from verify_chain, not a traceback out of the tick."""
+
+    def log(self, count=3):
+        path = tmp_log()
+        for i in range(count):
+            sr.append_event(path, "x", {"i": i}, NOW)
+        return path
+
+    def test_a_partial_last_line_is_reported_as_a_problem(self):
+        path = self.log()
+        with open(path, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write(read_lines(path)[-1][:30])
+        ok, problem = sr.verify_chain(path)
+        self.assertFalse(ok)
+        self.assertIn("not valid JSON", problem)
+        self.assertIn("line 4", problem)
+
+    def test_a_byte_order_mark_and_a_non_object_line_are_reported(self):
+        path = self.log()
+        with open(path, "rb") as handle:
+            data = handle.read()
+        with open(path, "wb") as handle:
+            handle.write(b"\xef\xbb\xbf" + data)
+        self.assertIn("not valid JSON", sr.verify_chain(path)[1])
+        path = self.log()
+        write_lines(path, ["[]"] + read_lines(path))
+        self.assertEqual(sr.verify_chain(path), (False, "line 1: not a JSON object"))
+
+    def test_the_tick_refuses_a_damaged_log_with_a_message(self):
+        path = self.log()
+        with open(path, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write("{broken")
+        with self.assertRaises(SystemExit) as raised:
+            sr.tick_under_lock(path, {}, {"prs": []}, None, NOW, 3)
+        self.assertIn("event log failed verification", str(raised.exception))
+
+    def test_a_forged_sequence_number_with_the_right_prev_is_caught(self):
+        # Probe: a line appended with prev = digest of the last line and seq = 1 passed verify_chain (only the sidecar,
+        # which the same writer can update, noticed).
+        path = self.log()
+        prev = sr.digest(read_lines(path)[-1])
+        forged = {"seq": 1, "ts": NOW, "type": "x", "data": {}, "prev": prev}
+        with open(path, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(forged, sort_keys=True) + "\n")
+        ok, problem = sr.verify_chain(path)
+        self.assertFalse(ok)
+        self.assertIn("sequence number 1 where 4 was expected", problem)
+
+    def test_blank_lines_do_not_shift_the_sequence(self):
+        path = self.log()
+        write_lines(path, read_lines(path)[:1] + [""] + read_lines(path)[1:])
+        self.assertEqual(sr.verify_chain(path), (True, ""))
+
+
 class Tip(unittest.TestCase):
     def log(self):
         path = tmp_log()
@@ -702,6 +757,30 @@ class Delivery(unittest.TestCase):
         self.assertEqual(h["expired"]["gemini|needs_review:51:aaaaaaaa"], 1)
         self.assertEqual(h["agents"]["mimo"], {"done": 1, "expired": 0})
         self.assertEqual(h["last_head"]["gemini|51"], "aaaaaaaa")
+
+
+class OneSnapshotPerTick(unittest.TestCase):
+    def test_main_reads_github_once_and_hands_the_same_snapshot_to_state_and_ingest(self):
+        # Measured: a tick took 126s, 118s of it two live_snapshot passes (one gh call per open PR each).
+        import types
+        from unittest import mock
+        snapshot = {"repo": "o/r", "prs": []}
+        calls = []
+        result = {"tip": {"count": 1, "sha256": "0" * 64}}
+
+        def collect(*args, **kwargs):
+            calls.append(("collect", kwargs.get("snapshot")))
+            return {"prs": []}
+
+        def tick(log, state, snap, *rest, **kwargs):
+            calls.append(("tick", snap))
+            return result
+
+        done = types.SimpleNamespace(stdout="https://github.com/o/r.git", returncode=0)
+        with mock.patch.object(sr.cs.rc, "git", return_value=done),                 mock.patch.object(sr.cs.rc, "checkout_matches", return_value=True),                 mock.patch.object(sr.cs.rc, "live_snapshot", return_value=snapshot) as live,                 mock.patch.object(sr.cs, "collect", side_effect=collect),                 mock.patch.object(sr, "tick_under_lock", side_effect=tick),                 mock.patch.object(sr, "render", return_value="ok"),                 mock.patch("builtins.print"):
+            self.assertEqual(sr.main(["--repo", "o/r", "--repo-dir", ".", "--log", "x.jsonl"]), 0)
+        self.assertEqual(live.call_count, 1)
+        self.assertEqual(calls, [("collect", snapshot), ("tick", snapshot)])
 
 
 if __name__ == "__main__":

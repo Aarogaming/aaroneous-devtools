@@ -2,7 +2,6 @@
   {
     "base": "main",
     "name": "covered clean docs PR on main is eligible",
-    "owner": false,
     "paths": [
       "governance/N.md"
     ],
@@ -14,7 +13,6 @@
   {
     "base": "main",
     "name": "uncovered is blocked with condition a",
-    "owner": false,
     "paths": [
       "governance/N.md"
     ],
@@ -26,7 +24,6 @@
   {
     "base": "main",
     "name": "a conflicting trial merge is blocked with condition b",
-    "owner": false,
     "paths": [
       "docs/a.md"
     ],
@@ -38,7 +35,6 @@
   {
     "base": "proposal/x",
     "name": "a stacked base is blocked with condition d",
-    "owner": false,
     "paths": [
       "docs/a.md"
     ],
@@ -49,22 +45,9 @@
   },
   {
     "base": "main",
-    "name": "protected paths need owner confirmation (f)",
-    "owner": false,
+    "name": "a workflow file path is not owner-gated and is eligible",
     "paths": [
-      "AGENTS.md"
-    ],
-    "row": {
-      "covered": true
-    },
-    "trial": true
-  },
-  {
-    "base": "main",
-    "name": "owner confirmation lifts only condition f",
-    "owner": true,
-    "paths": [
-      "AGENTS.md"
+      ".github/workflows/x.yml"
     ],
     "row": {
       "covered": true
@@ -74,7 +57,6 @@
   {
     "base": "proposal/x",
     "name": "every blocking reason is reported together",
-    "owner": false,
     "paths": [
       ".github/workflows/x.yml"
     ],

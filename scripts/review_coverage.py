@@ -66,6 +66,9 @@ def validate(record):
         return "implementers must be a non-empty list"
     if record["scope"] not in ("whole", "delta"):
         return f"unknown scope: {record['scope']!r}"
+    if not isinstance(record["verdict"], str) or record["verdict"] not in ACCEPT | REJECT:
+        return (f"unknown verdict {record['verdict']!r}: use accept, needs_revision or changes_requested "
+                "(lower case); nothing was counted")
     return None
 
 
@@ -82,6 +85,16 @@ def looks_like_attestation(raw):
     return record if isinstance(head, str) and FULL_SHA.fullmatch(head) else None
 
 
+def fold_rejection(record):
+    """A rejecting verdict spelled in the wrong case still blocks (``NEEDS_REVISION`` is read as ``needs_revision``).
+    An accept does not get the same leniency: it must be spelled exactly, so a misspelt accept never covers a PR, but a
+    misspelt rejection must never be silently ignored while the PR reads as covered."""
+    if isinstance(record, dict) and isinstance(record.get("verdict"), str):
+        folded = record["verdict"].strip().lower()
+        if folded in REJECT:
+            record["verdict"] = folded
+
+
 def parse_attestations(comments):
     """Return (structured, problems, legacy). Malformed records are reported, never counted."""
     structured, problems, legacy = [], [], []
@@ -95,6 +108,7 @@ def parse_attestations(comments):
             except ValueError as error:
                 problems.append({"comment": index, "problem": f"invalid JSON: {error}"})
                 continue
+            fold_rejection(record)
             problem = validate(record)
             if problem:
                 problems.append({"comment": index, "problem": problem})
@@ -148,6 +162,13 @@ SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
 # punctuation form (skeptic probe on #99: reviewer "Claude" with implementers ["claude-sonnet-5-5"] was independent).
 KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen")
 
+# A model family named without its seat word still names the seat that runs it: "Opus 5.5" is Claude, "gpt-5.5" is Codex.
+# Without this the string kept its own first token as an "unknown seat", so a Claude session labelling itself "Opus"
+# was independent of an implementer "claude" and two labels ("Opus", "Sonnet") counted as two reviewing seats
+# (skeptic probe on #99 main: both covered a PR whose only implementer was claude).
+MODEL_FAMILY_SEATS = {"opus": "claude", "sonnet": "claude", "haiku": "claude", "fable": "claude", "anthropic": "claude",
+                      "gpt": "codex", "openai": "codex"}
+
 
 def seat_names(name):
     """The set of seats a reviewer or implementer string names. A string may name several ("Claude, Mimo",
@@ -159,15 +180,85 @@ def seat_names(name):
         for seat in KNOWN_SEATS:
             if token.startswith(seat):
                 found.add(SEAT_NAME_ALIASES.get(seat, seat))
+        for family, seat in MODEL_FAMILY_SEATS.items():
+            if token.startswith(family):
+                found.add(seat)
     if not found and tokens:
         found.add(tokens[0])
     return found
+
+
+def known_seat_names(name):
+    """The KNOWN seats a string names, with no fallback: `seat_names` keeps an unknown string's first token so it can
+    compare with itself; here a string that names no seat names none."""
+    found = set()
+    for token in (t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t):
+        for seat in KNOWN_SEATS:
+            if token.startswith(seat):
+                found.add(SEAT_NAME_ALIASES.get(seat, seat))
+    return found
+
+
+TRAILER = re.compile(r"^(?:co-authored-by|contribution-id|git-author):(.*)$", re.I | re.M)
+
+
+def commit_chunks(commit_log):
+    """The commits of a `git log --format=%x1egit-author: %an <%ae>%n%B` listing, one string per commit."""
+    return [chunk for chunk in str(commit_log or "").split("\x1e") if chunk.strip()]
+
+
+def git_implementers(commit_log, branch):
+    """The seats git itself says implemented a PR: the seat named by the branch prefix ("codex/..."), and every seat
+    named in a Co-Authored-By or Contribution-ID trailer or by the commit author's name, for any commit in base..head. The attestation's own
+    `implementers` list is the reviewer's word; this is the history's, and an accept from a seat in it is not
+    independent however the attestation spells the list (Gemini committed to #116 and attested it as independent)."""
+    seats = known_seat_names(str(branch or "").split("/", 1)[0])
+    for chunk in commit_chunks(commit_log):
+        for trailer in TRAILER.findall(chunk):
+            seats |= known_seat_names(trailer)
+    return seats
+
+
+def unattributed_commits(commit_log, branch):
+    """How many commits in base..head name no implementing seat: no seat trailer, and the branch prefix names none
+    either. With such a commit, git cannot say who wrote part of the diff, so independence rests on the
+    attestation's word alone."""
+    if known_seat_names(str(branch or "").split("/", 1)[0]):
+        return 0
+    return sum(1 for chunk in commit_chunks(commit_log)
+               if not any(known_seat_names(t) for t in TRAILER.findall(chunk)))
+
+
+STAND_IN = re.compile(r"\b(?:in lieu of|on behalf of|acting for|operating for|standing in for)\s+(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+                      re.I)
+
+
+def stand_in_seats(comments):
+    """The seats whose behalf a comment claims to act on ("Author Update (operating in lieu of Codex)"): the shared login
+    posts for every seat, so such a comment is written by a seat it does not name, and the seat it does name is not the
+    one that worked. Only the first non-blank line is read, and "in lieu of X" never attributes the comment to X.
+    Scout sample: three comments on #20, #47 and #60 said this about Codex; text attribution rightly leaves them
+    unattributed, but nothing told a reader that someone other than the branch's seat was pushing."""
+    found = []
+    for comment in comments or []:
+        body = comment.get("body", "") if isinstance(comment, dict) else ""
+        first = next((line for line in body.splitlines() if line.strip()), "")
+        found.extend(SEAT_NAME_ALIASES.get(m.lower(), m.lower()) for m in STAND_IN.findall(first))
+    return sorted(set(found))
 
 
 def seat_name(name):
     """One seat for display and de-duplication: the first of the sorted seats `seat_names` finds."""
     seats = sorted(seat_names(name))
     return seats[0] if seats else ""
+
+
+def canonical_reviewer_seat(name):
+    """The single canonical seat an attestation reviewer resolves to.
+    Fails closed (returns None) if the reviewer is ambiguous (names multiple distinct seats) or empty
+    (Codex P2 on #111: an ambiguous reviewer like 'Opus/gpt-5.5' cannot contribute multiple seats to accept_seats)."""
+    seats = seat_names(name)
+    return next(iter(seats)) if len(seats) == 1 else None
 
 
 def independent(record):
@@ -189,16 +280,29 @@ def evaluate(head, merge_base, records, is_ancestor):
         return {"covered": False, "reasons": ["merge-base unresolved: coverage cannot be judged"], "accepts_at_head": 0,
                 "counted": [], "accept_seats": []}
     at_head = [r for r in records if r["head"] == head]
+    # A record is valid only while the merge base equals its base_sha (PLATFORM_SPEC.md, attestation record): a retarget
+    # or rebase invalidates a rejection like any other record (Codex P1 on #114). A rejection that names another base is
+    # therefore not a blocker, but it is no longer silent: a hand-typed base_sha is the likelier cause, and ignoring
+    # such a rejection unannounced is how a reviewer's request for changes gets lost.
     blockers = [r for r in at_head if r["verdict"] in REJECT and r["base_sha"] == merge_base]
     reasons = []
     if blockers:
         reasons.append(f"standing {blockers[0]['verdict']} at head by {blockers[0]['reviewer']}")
+    for r in at_head:
+        if r["verdict"] in REJECT and r["base_sha"] != merge_base:
+            reasons.append(f"a rejection by {r['reviewer']} names base_sha {str(r['base_sha'])[:12]}, but the merge base is "
+                           f"{merge_base[:12]}, so it is ignored as stale; if the base_sha was mistyped, that reviewer must "
+                           "re-attest against the current merge base")
 
     valid = [
         r
         for r in records
         if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base
+        and canonical_reviewer_seat(r["reviewer"]) is not None
     ]
+    # Only a `whole` accept seeds coverage (governance/PLATFORM_SPEC.md section 3: "Delta accepts compose only when
+    # chained from a whole-diff accept"). A delta that starts at the merge base reviewed the whole PR diff, but its
+    # author must say so by labelling it `whole`; the tool tells them (see the reason below) and does not guess.
     covered = {r["head"] for r in valid if r["scope"] == "whole"}
     changed = True
     while changed:
@@ -215,7 +319,20 @@ def evaluate(head, merge_base, records, is_ancestor):
     ok = head in covered and not blockers
     if head not in covered:
         if any(r["verdict"] in ACCEPT and r["head"] == head for r in records):
-            reasons.append("accept at head exists but is not chained to a whole accept at this base")
+            reason = "accept at head exists but is not chained to a whole accept at this base"
+            if any(r["scope"] == "delta" and r["head"] == head and r["from"] == merge_base for r in valid):
+                reason += (f"; its delta starts at the merge base {merge_base[:8]}, which is the whole PR diff, so if the "
+                           "reviewer read all of base...head they should re-post it with scope \"whole\"")
+            reasons.append(reason)
+            for r in at_head:
+                if r["verdict"] not in ACCEPT or r in valid:
+                    continue
+                if r["base_sha"] != merge_base:
+                    reasons.append(f"the accept by {r['reviewer']} names base_sha {str(r['base_sha'])[:12]}, but the merge "
+                                   f"base is {merge_base[:12]}: re-attest against the current merge base")
+                elif not independent(r):
+                    reasons.append(f"the accept by {r['reviewer']} is not independent of its implementers "
+                                   f"{sorted(r['implementers'])}")
         else:
             reasons.append("no accept at the current head")
     counted = [r for r in valid if r["head"] == head]
@@ -224,20 +341,29 @@ def evaluate(head, merge_base, records, is_ancestor):
         "reasons": reasons,
         "accepts_at_head": len(at_head),
         "counted": counted,
-        "accept_seats": sorted(set().union(*(seat_names(r["reviewer"]) for r in counted)) if counted else []),
+        "accept_seats": sorted({canonical_reviewer_seat(r["reviewer"]) for r in counted if canonical_reviewer_seat(r["reviewer"])}),
     }
+
+
+def read_identities(path):
+    """The identities file, validated: a file with a problem stops the tool with the problems listed (see
+    `attest_sig.validate_identities`)."""
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    problems = attest_sig.validate_identities(data)
+    if problems:
+        raise SystemExit(f"{path} is not a usable identities file:\n  " + "\n  ".join(problems))
+    return data
 
 
 def load_keys(path):
     """Return the raw identities data (seat -> logins/keys) for signature verification."""
-    with open(path, encoding="utf-8") as handle:
-        return json.load(handle)
+    return read_identities(path)
 
 
 def load_identities(path):
     """Return {login_lower: seat} from governance/identities.json ({"seats": {seat: [logins]}})."""
-    with open(path, encoding="utf-8") as handle:
-        data = json.load(handle)
+    data = read_identities(path)
     mapping = {}
     for seat, entry in data.get("seats", {}).items():
         logins = entry.get("logins", []) if isinstance(entry, dict) else entry
@@ -318,8 +444,10 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
         parsed, problems, legacy = parse_attestations(pr.get("comments", []))
         allowed = attest_sig.allowed_signers(keys) if keys else ""
         for record in parsed:
-            record["verified"] = bool(record.get("_sig")) and attest_sig.verify(
-                record["_canon"], record["_sig"], record["reviewer"], allowed
+            canon = canonical_reviewer_seat(record["reviewer"])
+            principal = canon or record["reviewer"]
+            record["verified"] = bool(record.get("_sig") and canon) and attest_sig.verify(
+                record["_canon"], record["_sig"], principal, allowed
             )
         if require_signatures:
             for record in [r for r in parsed if not r["verified"]]:
@@ -342,7 +470,29 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
         )
         problems = problems + formal_problems
         ancestry = is_ancestor or pairs_ancestry(pr.get("ancestry", []))
-        decision = evaluate(pr["head"], pr["merge_base"], structured + formal, ancestry)
+        implied = git_implementers(pr.get("commit_log"), pr.get("branch"))
+        records, conflicts = [], []
+        for record in structured + formal:
+            named = set().union(*(seat_names(i) for i in record["implementers"])) if record["implementers"] else set()
+            extra = sorted(implied - named)
+            if extra and record["verdict"] in ACCEPT and record["head"] == pr["head"] and seat_names(record["reviewer"]) & implied:
+                conflicts.append(
+                    f"the accept by {record['reviewer']} is not counted: git history names "
+                    f"{sorted(seat_names(record['reviewer']) & implied)} as an implementer (branch prefix or "
+                    "commit trailer) and the attestation's implementers list does not")
+            records.append(dict(record, implementers=list(record["implementers"]) + extra) if extra else record)
+        decision = evaluate(pr["head"], pr["merge_base"], records, ancestry)
+        decision["reasons"] = decision["reasons"] + conflicts
+        loose = unattributed_commits(pr.get("commit_log"), pr.get("branch"))
+        if loose:
+            decision["reasons"].append(
+                f"{loose} commit(s) in base..head name no implementing seat (no Co-Authored-By trailer, no seat-named "
+                "branch), so git cannot show who wrote them and independence rests on the attestation's word alone")
+        stand_ins = stand_in_seats(pr.get("comments"))
+        if stand_ins:
+            decision["reasons"].append(
+                f"comment(s) on this PR say they were written in lieu of {', '.join(stand_ins)}: the seat that actually "
+                "worked on it is not named, so independence rests on the attestation's word alone")
         rows.append(
             {
                 "pr": pr["number"],
@@ -387,7 +537,7 @@ def checkout_matches(remote_url, repo):
 
 def pr_list_args(repo):
     return ["pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json",
-            "number,headRefOid,baseRefName"]
+            "number,headRefOid,baseRefName,headRefName,isDraft"]
 
 
 def gh_json(*args):
@@ -415,11 +565,15 @@ def live_snapshot(repo, repo_dir):
         pages = gh_json("api", f"repos/{repo}/issues/{item['number']}/comments", "--paginate", "--slurp")
         base = f"origin/{item['baseRefName']}"
         mb = git(repo_dir, "merge-base", base, item["headRefOid"]).stdout.strip() or "unknown"
+        log = git(repo_dir, "log", "--format=%x1egit-author: %an <%ae>%n%B", f"{base}..{item['headRefOid']}")
         prs.append(
             {
                 "number": item["number"],
                 "head": item["headRefOid"],
+                "branch": item.get("headRefName", ""),
+                "commit_log": log.stdout if log.returncode == 0 else "",
                 "base": item["baseRefName"],
+                "draft": item["isDraft"],
                 "merge_base": mb,
                 "comments": flatten_pages(pages),
                 "reviews": flatten_pages(
