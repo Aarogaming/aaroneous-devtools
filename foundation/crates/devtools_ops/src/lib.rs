@@ -10,7 +10,12 @@
 pub mod coordination;
 pub mod management;
 pub mod pending;
+pub mod pipeline_router;
 
 pub use coordination::{LaneClaim, SeatIdentity};
 pub use management::{HostTelemetry, LocalWorkerState};
 pub use pending::{CandidateComponent, EvaluationStatus};
+pub use pipeline_router::{
+    PipelineRouterConfig, RoutingAction, WorkerProposal, WorkerResultPayload, evaluate_result,
+    route_all_pending_results,
+};

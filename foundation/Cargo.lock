@@ -409,6 +409,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "devtools_ops",
  "regex",
  "reqwest",
  "serde",
