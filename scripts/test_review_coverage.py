@@ -338,6 +338,69 @@ class Parsing(unittest.TestCase):
         self.assertIn("not a JSON object", problems[0]["problem"])
 
 
+class NestedAttestations(unittest.TestCase):
+    """A verdict counts only when a reader sees it as posted. Scout sample of 790 real comments: none nested one, but a
+    complete record inside an example fence or an HTML comment (invisible when rendered) was counted as an accept."""
+
+    RECORD = json.dumps(rec(H1, reviewer="gemini"))
+
+    def parse(self, body):
+        return rc.parse_attestations([{"body": body}])
+
+    def test_a_record_inside_an_example_fence_is_not_counted_but_is_named(self):
+        for opener, closer in (("````markdown", "````"), ("~~~", "~~~"), ("```text", "```")):
+            body = "The format:\n" + opener + "\n```attestation\n" + self.RECORD + "\n```\n" + closer + "\n"
+            structured, problems, _ = self.parse(body)
+            self.assertEqual(structured, [], opener)
+            self.assertEqual(len(problems), 1, (opener, problems))
+            self.assertIn("not a posted verdict", problems[0]["problem"])
+
+    def test_a_record_inside_an_html_comment_is_not_counted_but_is_named(self):
+        for body in ("<!--\n```attestation\n" + self.RECORD + "\n```\n-->\n",
+                     "intro\n<!-- hidden\n```attestation\n" + self.RECORD + "\n```\n-->\nvisible"):
+            structured, problems, _ = self.parse(body)
+            self.assertEqual(structured, [], body)
+            self.assertEqual(len(problems), 1, body)
+            self.assertIn(H1, problems[0]["problem"])
+
+    def test_a_posted_record_still_counts_beside_an_example_and_after_a_closed_comment(self):
+        body = ("<!-- note -->\n````markdown\n```attestation\n" + self.RECORD + "\n```\n````\n"
+                "```attestation\n" + self.RECORD + "\n```\n")
+        structured, problems, _ = self.parse(body)
+        self.assertEqual([r["head"] for r in structured], [H1])
+        self.assertEqual(len(problems), 1, "the example is named, the posted block counts")
+        closed = "<!--\nbefore\n-->\n```attestation\n" + self.RECORD + "\n```"
+        self.assertEqual(len(self.parse(closed)[0]), 1)
+
+    def test_ordinary_blocks_are_unchanged(self):
+        for body in ("```attestation\n" + self.RECORD + "\n```",
+                     "```attestation\r\n" + self.RECORD + "\r\n```\r\n",
+                     "text mentioning ` ```attestation ` inline\n```attestation\n" + self.RECORD + "\n```"):
+            structured, problems, _ = self.parse(body)
+            self.assertEqual((len(structured), problems), (1, []), body)
+
+    def test_an_indented_code_example_is_not_counted_even_with_a_signature_block_after_it(self):
+        # Codex P1 on #125: a four-space-indented fence renders as literal code; with a real top-level signature block
+        # next to it, the hidden example must not pair with it and satisfy the signature-required gate.
+        sig = "```attestation-sig\n-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n```"
+        body = "Example:\n\n    ```attestation\n    " + self.RECORD + "\n    ```\n\n" + sig
+        structured, problems, _ = self.parse(body)
+        self.assertEqual(structured, [])
+        self.assertEqual(len(problems), 1)
+        self.assertIn("not a posted verdict", problems[0]["problem"])
+
+    def test_a_block_indented_inside_a_list_item_counts(self):
+        # The old pattern needed the closing fence at the start of a line, so a verdict whose fence sat inside a list
+        # item (closer indented with the opener) was dropped with no count and no problem.
+        body = "- list item\n   ```attestation\n" + self.RECORD + "\n   ```\n"
+        structured, problems, _ = self.parse(body)
+        self.assertEqual((len(structured), problems), (1, []))
+
+    def test_a_template_with_placeholders_inside_an_example_raises_nothing(self):
+        body = '````markdown\n```attestation\n{"head": "<40-hex>", "verdict": "accept"}\n```\n````'
+        self.assertEqual(self.parse(body)[:2], ([], []))
+
+
 class Plumbing(unittest.TestCase):
     def test_flatten_pages_merges_slurped_arrays(self):
         pages = [[{"a": 1}], [{"a": 2}, {"a": 3}], []]
