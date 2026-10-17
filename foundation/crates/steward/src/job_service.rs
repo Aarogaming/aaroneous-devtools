@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 pub const BODY_LIMIT: usize = 32 * 1024 * 1024;
+const SMALL_BODY_LIMIT: usize = 4 * 1024;
 const FILE_LIMIT: usize = 8 * 1024 * 1024;
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -284,6 +285,22 @@ impl Service {
         }
         Ok(())
     }
+    fn principal(&self, bearer: &str) -> Result<&Principal, String> {
+        self.principals
+            .iter()
+            .find(|p| equal_secret(p.token.as_bytes(), bearer.as_bytes()))
+            .ok_or_else(|| "authentication refused".into())
+    }
+    fn request_body_limit(&self, bearer: &str, method: &str, route: &str) -> Result<usize, String> {
+        let principal = self.principal(bearer)?;
+        match (method, route, principal.role.as_str()) {
+            ("GET", "/v1/jobs", "issuer" | "worker") => Ok(0),
+            ("POST", "/v1/jobs", "issuer") => Ok(SMALL_BODY_LIMIT),
+            ("POST", "/v1/claim", "worker") => Ok(SMALL_BODY_LIMIT),
+            ("POST", "/v1/results", "worker") => Ok(BODY_LIMIT),
+            _ => Err("route or role refused".into()),
+        }
+    }
     pub fn handle(
         &self,
         bearer: &str,
@@ -291,11 +308,7 @@ impl Service {
         route: &str,
         body: &Value,
     ) -> Result<Value, String> {
-        let principal = self
-            .principals
-            .iter()
-            .find(|p| equal_secret(p.token.as_bytes(), bearer.as_bytes()))
-            .ok_or("authentication refused")?;
+        let principal = self.principal(bearer)?;
         let store = local::Store::open(&self.spool)?;
         match (method, route) {
             ("POST", "/v1/jobs") if principal.role == "issuer" => {
@@ -342,12 +355,12 @@ impl Service {
                     if !principal.platforms.contains(&r.platform) {
                         continue;
                     }
-                    self.permitted(&r)?;
                     let directory = self.spool.join(r.id());
                     let attempt = store.latest_attempt(&r)?;
                     if directory.join(format!("received-{attempt}.json")).exists() {
                         continue;
                     }
+                    self.permitted(&r)?;
                     let lock = directory.join("claim.json");
                     if lock.exists() {
                         let claim = read_json(&lock)?;
@@ -549,7 +562,7 @@ pub fn serve(service: Service, address: SocketAddr) -> Result<(), String> {
     );
     for stream in listener.incoming() {
         let mut stream = stream.map_err(|e| e.to_string())?;
-        let answer = read_http(&mut stream).and_then(|(method, route, bearer, body)| {
+        let answer = read_http(&mut stream, &service).and_then(|(method, route, bearer, body)| {
             service.handle(&bearer, &method, &route, &body)
         });
         let (status, body) = match answer {
@@ -570,7 +583,7 @@ pub fn serve(service: Service, address: SocketAddr) -> Result<(), String> {
     Ok(())
 }
 type HttpInput = (String, String, String, Value);
-pub fn read_http(stream: &mut TcpStream) -> Result<HttpInput, String> {
+pub fn read_http(stream: &mut TcpStream, service: &Service) -> Result<HttpInput, String> {
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .map_err(|e| e.to_string())?;
@@ -627,7 +640,8 @@ pub fn read_http(stream: &mut TcpStream) -> Result<HttpInput, String> {
         .unwrap_or(&"0")
         .parse::<usize>()
         .map_err(|e| e.to_string())?;
-    if length > BODY_LIMIT
+    let route_limit = service.request_body_limit(bearer, parts[0], parts[1])?;
+    if length > route_limit
         || (parts[0] == "GET" && length != 0)
         || (parts[0] == "POST" && headers.get("content-type") != Some(&"application/json"))
     {

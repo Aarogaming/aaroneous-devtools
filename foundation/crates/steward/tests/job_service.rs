@@ -231,6 +231,37 @@ fn reconnect_and_restart_resume_same_durable_claim() {
     );
 }
 #[test]
+fn completed_claims_skip_policy_revalidation() {
+    let f = Fixture::new();
+    let service = f.service();
+    let issued = service
+        .handle(
+            ISSUER,
+            "POST",
+            "/v1/jobs",
+            &json!({"v":1,"head":f.request.head,"suite":"probe"}),
+        )
+        .unwrap();
+    let request = wire::request_from_value(&issued["cards"][0]).unwrap();
+    let directory = f.root.join("server").join(request.id());
+    assert_eq!(
+        service
+            .handle(WORKER, "POST", "/v1/claim", &json!({"v":1}))
+            .unwrap()["attempt"],
+        1
+    );
+    fs::write(directory.join("received-1.json"), b"completed").unwrap();
+
+    // A completed card needs no Git policy subprocess on the next worker poll.
+    // Removing the explicit checkout makes any accidental revalidation fail.
+    let repo = f.root.join("repo");
+    fs::rename(&repo, f.root.join("repo-unavailable")).unwrap();
+    let response = service
+        .handle(WORKER, "POST", "/v1/claim", &json!({"v":1}))
+        .unwrap();
+    assert_eq!(response["idle"], true);
+}
+#[test]
 fn signed_receipts_import_idempotently_and_feed_existing_gate() {
     let f = Fixture::new();
     let b = f.result();
@@ -382,14 +413,46 @@ fn http_rejects_ambiguous_framing_and_truncated_bodies() {
     ] {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
+        let service = Fixture::new().service();
         let thread = std::thread::spawn(move || {
             let (mut s, _) = listener.accept().unwrap();
-            service::read_http(&mut s)
+            service::read_http(&mut s, &service)
         });
         let mut stream = TcpStream::connect(address).unwrap();
         write!(stream,"POST /v1/claim HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {WORKER}\r\n{header}\r\n").unwrap();
         stream.shutdown(std::net::Shutdown::Write).unwrap();
         assert!(thread.join().unwrap().is_err());
+    }
+}
+#[test]
+fn http_authenticates_and_caps_route_body_before_reading_it() {
+    let f = Fixture::new();
+    for (route, bearer, length) in [
+        ("/v1/results", "not-enrolled", service::BODY_LIMIT),
+        ("/v1/claim", WORKER, 4 * 1024 + 1),
+        ("/v1/claim", ISSUER, 1),
+    ] {
+        let service = f.service();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let started = std::time::Instant::now();
+            let result = service::read_http(&mut stream, &service);
+            (result, started.elapsed())
+        });
+        let mut stream = TcpStream::connect(address).unwrap();
+        write!(
+            stream,
+            "POST {route} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {bearer}\r\nContent-Type: application/json\r\nContent-Length: {length}\r\n\r\n"
+        )
+        .unwrap();
+        let (result, elapsed) = thread.join().unwrap();
+        assert!(result.is_err(), "{route} with content length {length}");
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "rejected before body read, took {elapsed:?}"
+        );
     }
 }
 struct Server(Child);
@@ -524,9 +587,10 @@ fn large_json_body_roundtrips_without_expect_or_quoting_loss() {
     let address = listener.local_addr().unwrap();
     let body = json!({"v":1,"payload":"0123456789\\\"\n\u{263a}".repeat(100000)});
     let expected = body.clone();
+    let service = f.service();
     let server = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let (method, route, bearer, actual) = service::read_http(&mut stream).unwrap();
+        let (method, route, bearer, actual) = service::read_http(&mut stream, &service).unwrap();
         assert_eq!((method.as_str(), route.as_str()), ("POST", "/v1/results"));
         assert_eq!(bearer, WORKER);
         assert_eq!(actual, expected);
