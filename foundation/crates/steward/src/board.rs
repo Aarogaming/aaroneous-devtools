@@ -294,18 +294,27 @@ pub fn build_appended_entry(
     Ok((entry, serialized, receipt))
 }
 
+/// Paginates entries in reverse chronological order (newest first) and returns the page in ascending order.
+///
+/// Matches `board.py` validation rules:
+/// - `before` must be `>= 1` if provided.
+/// - `limit` must be `1..=PAGE_MAX` (`1..=128`).
+///
+/// # Errors
+/// Returns `Err("pagination out of bounds")` if `limit` is 0 or exceeds `PAGE_MAX`, or if `before < 1`.
 pub fn paginate_entries(
     all_entries: &[BoardEntry],
     before: Option<u64>,
     limit: usize,
-) -> (Vec<BoardEntry>, bool, Option<u64>) {
-    let bounded_limit = if limit == 0 {
-        64
-    } else if limit > PAGE_MAX {
-        PAGE_MAX
-    } else {
-        limit
-    };
+) -> Result<(Vec<BoardEntry>, bool, Option<u64>), &'static str> {
+    if limit == 0 || limit > PAGE_MAX {
+        return Err("pagination out of bounds");
+    }
+    if let Some(b) = before {
+        if b < 1 {
+            return Err("pagination out of bounds");
+        }
+    }
 
     let mut filtered: Vec<&BoardEntry> = all_entries
         .iter()
@@ -315,8 +324,8 @@ pub fn paginate_entries(
     // Sort descending by ID to grab the newest matching
     filtered.sort_by_key(|a| std::cmp::Reverse(a.id));
 
-    let has_older = filtered.len() > bounded_limit;
-    let selected_refs = &filtered[..filtered.len().min(bounded_limit)];
+    let has_older = filtered.len() > limit;
+    let selected_refs = &filtered[..filtered.len().min(limit)];
 
     let older_cursor = if has_older {
         selected_refs.last().map(|e| e.id)
@@ -328,7 +337,7 @@ pub fn paginate_entries(
     let mut page: Vec<BoardEntry> = selected_refs.iter().map(|&e| (*e).clone()).collect();
     page.reverse();
 
-    (page, has_older, older_cursor)
+    Ok((page, has_older, older_cursor))
 }
 
 #[cfg(test)]
@@ -509,7 +518,7 @@ mod tests {
             .collect();
 
         // Page 5 newest (16..=20)
-        let (page, has_older, cursor) = paginate_entries(&entries, None, 5);
+        let (page, has_older, cursor) = paginate_entries(&entries, None, 5).unwrap();
         assert_eq!(page.len(), 5);
         assert_eq!(page.first().unwrap().id, 16);
         assert_eq!(page.last().unwrap().id, 20);
@@ -517,11 +526,29 @@ mod tests {
         assert_eq!(cursor, Some(16));
 
         // Fetch older before cursor 16 (11..=15)
-        let (older_page, has_more_older, next_cursor) = paginate_entries(&entries, Some(16), 5);
+        let (older_page, has_more_older, next_cursor) =
+            paginate_entries(&entries, Some(16), 5).unwrap();
         assert_eq!(older_page.len(), 5);
         assert_eq!(older_page.first().unwrap().id, 11);
         assert_eq!(older_page.last().unwrap().id, 15);
         assert!(has_more_older);
         assert_eq!(next_cursor, Some(11));
+
+        // Bound validations:
+        // limit = 0 rejected
+        assert_eq!(
+            paginate_entries(&entries, None, 0).unwrap_err(),
+            "pagination out of bounds"
+        );
+        // limit > PAGE_MAX (128) rejected
+        assert_eq!(
+            paginate_entries(&entries, None, 129).unwrap_err(),
+            "pagination out of bounds"
+        );
+        // before < 1 rejected
+        assert_eq!(
+            paginate_entries(&entries, Some(0), 10).unwrap_err(),
+            "pagination out of bounds"
+        );
     }
 }
