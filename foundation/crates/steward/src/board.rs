@@ -5,7 +5,7 @@
 //! - Deterministic snapshot creation, reverse cursor pagination, and storage budget calculation.
 //! - Atomic append ledger modeling and SHA-256 contribution verification.
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 pub const LIMIT: usize = 16384;
@@ -87,19 +87,33 @@ pub struct AppendReceipt {
 }
 
 impl BoardEntry {
+    /// Serializes the entry with deterministic insertion key ordering matching `board.py`:
+    /// `actor, kind, text, evidence, id, received_at_epoch, attribution, accepted, status`.
+    #[must_use]
+    pub fn to_ordered_value(&self) -> Value {
+        let mut map = Map::new();
+        map.insert("actor".to_string(), Value::String(self.actor.clone()));
+        map.insert("kind".to_string(), Value::String(self.kind.clone()));
+        map.insert("text".to_string(), Value::String(self.text.clone()));
+        map.insert("evidence".to_string(), Value::String(self.evidence.clone()));
+        map.insert("id".to_string(), Value::Number(self.id.into()));
+        if let Some(n) = serde_json::Number::from_f64(self.received_at_epoch) {
+            map.insert("received_at_epoch".to_string(), Value::Number(n));
+        } else {
+            map.insert("received_at_epoch".to_string(), Value::Null);
+        }
+        map.insert(
+            "attribution".to_string(),
+            Value::String(self.attribution.clone()),
+        );
+        map.insert("accepted".to_string(), Value::Bool(self.accepted));
+        map.insert("status".to_string(), Value::String(self.status.clone()));
+        Value::Object(map)
+    }
+
     #[must_use]
     pub fn to_value(&self) -> Value {
-        json!({
-            "id": self.id,
-            "actor": self.actor,
-            "kind": self.kind,
-            "text": self.text,
-            "evidence": self.evidence,
-            "received_at_epoch": self.received_at_epoch,
-            "attribution": self.attribution,
-            "accepted": self.accepted,
-            "status": self.status,
-        })
+        self.to_ordered_value()
     }
 
     /// # Errors
@@ -193,7 +207,7 @@ pub fn evaluate_session_state(
         }
     }
 
-    let closed = state != "open" || (closes_at.is_some() && clock_now >= closes_at.unwrap());
+    let closed = state != "open" || closes_at.is_some_and(|d| clock_now >= d);
     Ok((state, closes_at, closed))
 }
 
@@ -212,7 +226,7 @@ pub fn validate_contribution(payload: &ContributionPayload) -> Result<(), &'stat
         return Err("unknown contribution kind");
     }
     let trimmed_len = payload.text.trim().chars().count();
-    if trimmed_len == 0 || payload.text.chars().count() > 10000 {
+    if trimmed_len == 0 || trimmed_len > 10000 {
         return Err("contribution requires 1-10000 characters");
     }
     if payload.evidence.chars().count() > 3000 {
@@ -221,11 +235,27 @@ pub fn validate_contribution(payload: &ContributionPayload) -> Result<(), &'stat
     Ok(())
 }
 
+/// Builds, validates bounds, serializes, and hashes an appended entry.
+///
+/// Matches `board.py` append rules:
+/// - Fails if `now` is non-finite (`NaN` / `Inf`).
+/// - Checks serialized payload length against `LIMIT * 2 = 32768` bytes ("entry byte bound exceeded").
+/// - Checks `used_bytes + len > max_storage_bytes` ("storage budget reached; history retained, no automatic eviction").
+/// - Produces identical SHA-256 contribution hashes to `board.py`.
+///
+/// # Errors
+/// Returns `Err` if time is non-finite, serialized bytes exceed bounds, or storage budget is exceeded.
 pub fn build_appended_entry(
     payload: ContributionPayload,
     id: u64,
     now: f64,
-) -> (BoardEntry, Vec<u8>, AppendReceipt) {
+    used_bytes: u64,
+    max_storage_bytes: u64,
+) -> Result<(BoardEntry, Vec<u8>, AppendReceipt), &'static str> {
+    if !now.is_finite() {
+        return Err("invalid received_at_epoch: must be finite");
+    }
+
     let entry = BoardEntry {
         id,
         actor: payload.actor,
@@ -239,8 +269,17 @@ pub fn build_appended_entry(
         status: "advisory-unverified".to_string(),
     };
 
-    let val = entry.to_value();
-    let serialized = serde_json::to_vec_pretty(&val).unwrap();
+    let val = entry.to_ordered_value();
+    let serialized = serde_json::to_vec_pretty(&val).map_err(|_| "serialization failed")?;
+
+    if serialized.len() > LIMIT * 2 {
+        return Err("entry byte bound exceeded");
+    }
+
+    if used_bytes.saturating_add(serialized.len() as u64) > max_storage_bytes {
+        return Err("storage budget reached; history retained, no automatic eviction");
+    }
+
     let mut hasher = Sha256::new();
     hasher.update(&serialized);
     let hash_hex = format!("{:x}", hasher.finalize());
@@ -252,7 +291,7 @@ pub fn build_appended_entry(
         contract_version: 3,
     };
 
-    (entry, serialized, receipt)
+    Ok((entry, serialized, receipt))
 }
 
 pub fn paginate_entries(
@@ -354,23 +393,103 @@ mod tests {
             validate_contribution(&empty_text).unwrap_err(),
             "contribution requires 1-10000 characters"
         );
+
+        // Probe 3 test: 10000 'x' followed by 50 spaces should be accepted (trimmed len <= 10000)
+        let mut text_with_trailing = "x".repeat(10000);
+        text_with_trailing.push_str(&" ".repeat(50));
+        let probe3 = ContributionPayload {
+            text: text_with_trailing,
+            ..good.clone()
+        };
+        assert!(validate_contribution(&probe3).is_ok());
+
+        // Text exceeding 10000 trimmed chars should be rejected
+        let text_too_long = "x".repeat(10001);
+        let too_long = ContributionPayload {
+            text: text_too_long,
+            ..good.clone()
+        };
+        assert_eq!(
+            validate_contribution(&too_long).unwrap_err(),
+            "contribution requires 1-10000 characters"
+        );
     }
 
     #[test]
-    fn test_deterministic_append_receipt() {
+    fn test_deterministic_append_receipt_and_hash_parity() {
         let payload = ContributionPayload {
-            actor: "Claude".into(),
+            actor: "Guest".into(),
             kind: "idea".into(),
-            text: "Proposal for native round table".into(),
-            evidence: "None".into(),
+            text: "Hello world".into(),
+            evidence: "test".into(),
         };
-        let (entry, bytes, receipt) = build_appended_entry(payload, 101, 1792000000.0);
-        assert_eq!(entry.id, 101);
-        assert_eq!(receipt.id, 101);
+        let res = build_appended_entry(payload, 1, 1000.0, 0, 32768);
+        assert!(res.is_ok());
+        let (entry, bytes, receipt) = res.unwrap();
+        assert_eq!(entry.id, 1);
+        assert_eq!(receipt.id, 1);
         assert_eq!(receipt.contract_version, 3);
         assert!(!receipt.accepted);
         assert_eq!(receipt.sha256.len(), 64);
-        assert!(!bytes.is_empty());
+        assert_eq!(bytes.len(), 271);
+        // Exact SHA-256 parity with board.py Python output:
+        assert_eq!(
+            receipt.sha256,
+            "3d085ab5b1c4491abbac496dba98ecdc888e8461d4c070481227c19171e9f10c"
+        );
+    }
+
+    #[test]
+    fn test_probe_1_entry_byte_bound_and_storage_budget() {
+        // Probe 1: 10000 4-byte characters (🦀 = 4 bytes) plus 3000 evidence characters
+        // validate_contribution checks chars (10000 and 3000) so it passes character count check
+        let four_byte_char = "\u{1F980}"; // 🦀
+        let large_payload = ContributionPayload {
+            actor: "Gemini".into(),
+            kind: "evidence".into(),
+            text: four_byte_char.repeat(10000),
+            evidence: "e".repeat(3000),
+        };
+        assert!(validate_contribution(&large_payload).is_ok());
+
+        // Serialized size is > 40000 bytes, which exceeds LIMIT * 2 = 32768 bytes
+        let res = build_appended_entry(large_payload, 10, 1000.0, 0, 1000000);
+        assert_eq!(res.unwrap_err(), "entry byte bound exceeded");
+
+        // Storage budget test
+        let normal_payload = ContributionPayload {
+            actor: "Gemini".into(),
+            kind: "evidence".into(),
+            text: "normal text".into(),
+            evidence: "evidence".into(),
+        };
+        // Budget only allows 100 bytes, entry is > 200 bytes
+        let budget_res = build_appended_entry(normal_payload, 11, 1000.0, 0, 100);
+        assert_eq!(
+            budget_res.unwrap_err(),
+            "storage budget reached; history retained, no automatic eviction"
+        );
+    }
+
+    #[test]
+    fn test_probe_2_non_finite_time_rejected() {
+        let payload = ContributionPayload {
+            actor: "Gemini".into(),
+            kind: "idea".into(),
+            text: "Testing nan".into(),
+            evidence: "".into(),
+        };
+        let res_nan = build_appended_entry(payload.clone(), 1, f64::NAN, 0, 32768);
+        assert_eq!(
+            res_nan.unwrap_err(),
+            "invalid received_at_epoch: must be finite"
+        );
+
+        let res_inf = build_appended_entry(payload, 1, f64::INFINITY, 0, 32768);
+        assert_eq!(
+            res_inf.unwrap_err(),
+            "invalid received_at_epoch: must be finite"
+        );
     }
 
     #[test]
