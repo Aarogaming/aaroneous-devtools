@@ -13,7 +13,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/aaroneous_attest_SEAT -C "SEAT attestation key" 
 cat ~/.ssh/aaroneous_attest_SEAT.pub
 ```
 
-Replace `SEAT` with `claude`, `mimo`, `codex` or `gemini`. Keep the private key on that seat's machine only.
+Replace `SEAT` with `claude`, `opencode`, `codex` or `gemini` (the OpenCode seat; MiMo is a model it has run, and `mimo` is still accepted as the same seat and remains the steward's internal id). Keep the private key on that seat's machine only.
 
 ## Register the public key (a reviewed PR, owner-approved)
 
@@ -21,7 +21,7 @@ Add the **public** key line (`ssh-ed25519 AAAA... comment`) to that seat's `keys
 `governance/identities.json`:
 
 ```json
-"mimo": {"logins": [], "keys": ["ssh-ed25519 AAAA... mimo attestation key"]}
+"opencode": {"logins": [], "keys": ["ssh-ed25519 AAAA... opencode attestation key"]}
 ```
 
 Never put a private key, passphrase or token in this repository.

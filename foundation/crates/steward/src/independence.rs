@@ -149,6 +149,23 @@ fn hyphenated(text: &str) -> String {
         .join("-")
 }
 
+/// `seat` as the registry spells it. The steward's stable id for the OpenCode seat is `mimo`; the registry may spell it
+/// `mimo` or `opencode`, and a label resolves to whichever is registered, so the order in which code and registry change
+/// never strands a signature. A seat the registry has under neither spelling, or under two, is returned unchanged.
+#[must_use]
+pub fn registry_spelling(seat: &str, registered: &BTreeSet<String>) -> String {
+    if registered.contains(seat) {
+        return seat.to_owned();
+    }
+    let mut spelled = registered
+        .iter()
+        .filter(|name| name.as_str() != seat && canonical(name) == seat);
+    match (spelled.next(), spelled.next()) {
+        (Some(name), None) => name.clone(),
+        _ => seat.to_owned(),
+    }
+}
+
 /// The seat a reviewer label names, or `None` when it names none or more than one. A registered seat is matched by its
 /// whole hyphen-delimited name (`ubuntu-worker-01`, never the unknown seat `ubuntu`); every other seat the label names
 /// (a second registered seat, or a known seat or model family such as `codex` or `Opus`) makes it ambiguous, so
@@ -164,7 +181,7 @@ pub fn resolve_seat(label: &str, registered: &BTreeSet<String>) -> Option<String
         })
         .collect();
     match hits.as_slice() {
-        [] => canonical_reviewer_seat(label),
+        [] => canonical_reviewer_seat(label).map(|seat| registry_spelling(&seat, registered)),
         [seat] => {
             let rest = flat.replacen(&format!("-{}-", hyphenated(seat)), "-", 1);
             let mut others = named_seats(&rest);

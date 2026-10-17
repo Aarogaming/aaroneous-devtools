@@ -4,6 +4,41 @@
       {
         "family": "mimo",
         "model": null,
+        "seat": "mimo",
+        "source": "registered"
+      },
+      {
+        "family": "qwen",
+        "model": null,
+        "seat": "ubuntu-worker-01",
+        "source": "registered"
+      }
+    ],
+    "families": [
+      "mimo",
+      "qwen"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "mimo",
+        "model": null,
+        "seat": "opencode",
+        "source": "registered"
+      }
+    ],
+    "families": [
+      "mimo"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "mimo",
+        "model": null,
         "seat": "opencode",
         "source": "registered"
       },

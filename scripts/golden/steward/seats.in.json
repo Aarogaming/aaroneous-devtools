@@ -21,5 +21,8 @@
   "sonnet-5.5",
   "Anthropic",
   "gpt-5.5",
-  "OpenAI Codex"
+  "OpenAI Codex",
+  "opencode",
+  "OpenCode (MiMo)",
+  "opencode+claude"
 ]

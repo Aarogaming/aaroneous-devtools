@@ -290,6 +290,16 @@ class FamilyIndependenceEndToEnd(unittest.TestCase):
         self.assertTrue(any("same model family" in n for n in row["independence"]["notes"]), row["independence"])
         self.assertTrue(any("registered as qwen but ran" in n for n in row["independence"]["notes"]), row["independence"])
 
+    def test_an_accept_labelled_with_the_stable_id_verifies_against_a_renamed_registry_key(self):
+        # the OpenCode seat signs as "mimo" today; after the registry key becomes "opencode" the same key must still verify
+        renamed = {"seats": {"opencode": {"logins": [], "keys": [self.keys["mimo"][1]]}}}
+        for label in ("mimo", "OpenCode (MiMo)", "opencode"):
+            rec = record(reviewer=label)
+            sig = at.sign(at.canonical(rec), self.keys["mimo"][0])
+            snapshot = {"repo": "o/r", "prs": [{"number": 7, "head": H1, "merge_base": MB, "comments": [comment(rec, sig)]}]}
+            row = rc.report_snapshot(snapshot, None, None, renamed, True)[0]
+            self.assertEqual((row["signed_attestations"], row["accept_seats"]), (1, ["opencode"]), label)
+
     def test_changing_the_declared_model_after_signing_breaks_the_signature(self):
         rec = record(reviewer="ubuntu-worker-01")
         rec["model"] = "qwen3.8"

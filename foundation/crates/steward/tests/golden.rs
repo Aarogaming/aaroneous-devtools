@@ -561,15 +561,15 @@ fn family_key(stem: &str) -> String {
 /// coverage and chain all emptied, 3 tests passed). The floors only rise: add a family here when you port it, and raise
 /// a number when vectors are added.
 const MIN_CASES: [(&str, usize); 17] = [
-    ("seats", 23),
+    ("seats", 26),
     ("heads", 12),
     ("attribution", 34),
     ("rejected", 7),
     ("receipts", 19),
     ("stalls", 9),
     ("pushes", 7),
-    ("coverage", 21),
-    ("independence", 20),
+    ("coverage", 24),
+    ("independence", 22),
     ("gate_plan", 13),
     ("gate_ci", 7),
     ("gate_breaker", 7),

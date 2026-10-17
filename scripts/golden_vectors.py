@@ -396,6 +396,14 @@ COVERAGE = [
     {"name": "an ambiguous label does not count beside a valid one", "head": A, "merge_base": MB,
      "records": [rec(A, reviewer="Gemini / ubuntu-worker-01"), rec(A, reviewer="Codex")], "ancestry": [],
      "registered": ["claude", "codex", "gemini", "ubuntu-worker-01"]},
+    {"name": "opencode and mimo are one seat; a registry that still says mimo spells it mimo", "head": A,
+     "merge_base": MB, "records": [rec(A, reviewer="OpenCode", implementers=("claude",)), rec(A, reviewer="Local Qwen")],
+     "ancestry": [], "registered": ["claude", "mimo", "codex"]},
+    {"name": "opencode and mimo are one seat; a registry that says opencode spells it opencode", "head": A,
+     "merge_base": MB, "records": [rec(A, reviewer="mimo"), rec(A, reviewer="Local Qwen")], "ancestry": [],
+     "registered": ["claude", "opencode", "codex"]},
+    {"name": "an implementer named opencode excludes the mimo seat", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="mimo", implementers=("opencode",))], "ancestry": [], "registered": ["opencode"]},
     {"name": "an empty registry changes nothing", "head": A, "merge_base": MB,
      "records": [rec(A, reviewer="Codex")], "ancestry": [], "registered": []},
 ]
@@ -403,7 +411,7 @@ COVERAGE = [
 SEATS = ["Gemini", "gemini", "Gemini/Antigravity", "Antigravity", "Claude Sonnet 5.5", "Claude (steward)",
          "Mimo (OpenCode)", "Local Qwen", "gemini-3.8-flash", "claude-sonnet-5-5", "Claude, Mimo", "claude+mimo",
          "codex:session-01a1", "CLAUDE.", "someone else", "!!!", "",
-         "Opus 5.5", "Fable", "sonnet-5.5", "Anthropic", "gpt-5.5", "OpenAI Codex"]
+         "Opus 5.5", "Fable", "sonnet-5.5", "Anthropic", "gpt-5.5", "OpenAI Codex", "opencode", "OpenCode (MiMo)", "opencode+claude"]
 
 
 def evaluate_case(case):
@@ -545,7 +553,13 @@ IDENTITIES = {
     "model_families": {"qwen": "qwen", "mimo": "mimo", "claude": "anthropic", "gpt": "openai", "gemini": "google",
                        "Bad": "x", "bad stem": "x", "okstem": "Bad Family"},
 }
+MIMO_REGISTRY = {"seats": {"mimo": {"profile": {"family": "mimo"}}, "ubuntu-worker-01": {"profile": {"family": "qwen"}}},
+                 "model_families": {"qwen": "qwen", "mimo": "mimo"}}
 INDEPENDENCE = [
+    {"name": "a registry that still spells the seat mimo keeps its profile and name", "identities": MIMO_REGISTRY,
+     "counted": [{"reviewer": "OpenCode"}, {"reviewer": "ubuntu-worker-01"}]},
+    {"name": "a registry that spells the seat opencode resolves the stable id mimo to it", "identities": IDENTITIES,
+     "counted": [{"reviewer": "mimo"}, {"reviewer": "Local Qwen"}]},
     {"name": "no declared model: the registered profiles decide", "identities": IDENTITIES,
      "counted": [{"reviewer": "opencode"}, {"reviewer": "ubuntu-worker-01"}]},
     {"name": "the same hardware on one model is one judge", "identities": IDENTITIES,
