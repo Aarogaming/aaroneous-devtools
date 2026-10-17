@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "git": "/usr/bin/git",
+  "repo": "/srv/aaroneous-verification/source",
+  "repo_name": "Aarogaming/aaroneous-devtools",
+  "base": "REPLACE_WITH_TRUSTED_FULL_BASE_SHA",
+  "suites": ["foundation-ci"],
+  "spool": "/srv/aaroneous-verification/spool",
+  "staging": "/srv/aaroneous-verification/staging",
+  "ssh_keygen": "/usr/bin/ssh-keygen",
+  "allowed_signers": "/srv/aaroneous-verification/private/allowed-signers",
+  "principals": [
+    {"id":"issuer","role":"issuer","platforms":[],"token_file":"/srv/aaroneous-verification/private/issuer-token"},
+    {"id":"ubuntu-worker-01","role":"worker","platforms":["linux-x86_64"],"token_file":"/srv/aaroneous-verification/private/ubuntu-token"},
+    {"id":"windows-worker-01","role":"worker","platforms":["windows-x86_64"],"token_file":"/srv/aaroneous-verification/private/windows-token"}
+  ]
+}

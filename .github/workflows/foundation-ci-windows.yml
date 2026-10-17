@@ -33,6 +33,8 @@ jobs:
         env:
           DEVTOOLS_TEST_GIT: C:/Program Files/Git/cmd/git.exe
           DEVTOOLS_TEST_SSH_KEYGEN: C:/Windows/System32/OpenSSH/ssh-keygen.exe
+          DEVTOOLS_TEST_CURL: C:/Windows/System32/curl.exe
+          DEVTOOLS_TEST_SYSTEM_ROOT: C:/Windows
         run: cargo test --manifest-path foundation/Cargo.toml --workspace --all-targets --locked
       - name: Lint
         run: cargo clippy --manifest-path foundation/Cargo.toml --workspace --all-targets --locked -- -D warnings
