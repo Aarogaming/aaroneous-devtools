@@ -1,0 +1,34 @@
+title = "Devtools secret detection"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "lm-studio-token"
+description = "LM Studio bearer credential"
+regex = '''\bsk-lm-[A-Za-z0-9_:.-]{16,}\b'''
+keywords = ["sk-lm-"]
+
+[[allowlists]]
+description = "Invalid PEM fixture bodies only; real keys in the same test remain detectable"
+targetRules = ["private-key"]
+condition = "AND"
+paths = ['''(^|/)scripts/test_seat_app_setup\.py$''']
+regexTarget = "match"
+regexes = ['''-----BEGIN RSA PRIVATE KEY-----\\n(?:xyz|placeholder)\\n(?:-----END RSA PRIVATE KEY-----\\n)?''']
+
+[[allowlists]]
+description = "Deterministic HTTP-token test fixture only"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)foundation/crates/maintenance_ui/src/lib\.rs$''']
+regexTarget = "secret"
+regexes = ['''^0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef$''']
+
+[[allowlists]]
+description = "Historical prose mistaken for an API credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)experiments/topic-path-navigation/README\.md$''']
+regexTarget = "match"
+regexes = ['''^API deployment, voting/scheduling ''']

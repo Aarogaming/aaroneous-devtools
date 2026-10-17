@@ -1,0 +1,36 @@
+[
+  {
+    "data": {
+      "per_seat": {
+        "mimo": 2
+      },
+      "tick": 1,
+      "unattributed": 0
+    },
+    "now": "2026-10-05T00:00:00Z",
+    "type": "ingest"
+  },
+  {
+    "data": {
+      "agent": "gemini",
+      "expires": 7,
+      "key": "needs_review:1:01010101",
+      "tick": 1
+    },
+    "now": "2026-10-05T00:00:01Z",
+    "type": "lease_grant"
+  },
+  {
+    "data": {
+      "agents": [
+        "gemini"
+      ],
+      "tasks": [
+        "Post a review — déjà vu"
+      ],
+      "tick": 1
+    },
+    "now": "2026-10-05T00:00:02Z",
+    "type": "cards"
+  }
+]

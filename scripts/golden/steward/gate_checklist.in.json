@@ -1,0 +1,166 @@
+{
+  "cases": [
+    {
+      "name": "every box green would merge",
+      "override": {}
+    },
+    {
+      "name": "red CI blocks",
+      "override": {
+        "ci": {
+          "detail": "1 failed",
+          "state": "failure"
+        }
+      }
+    },
+    {
+      "name": "missing CI is blocked, not green",
+      "override": {
+        "ci": {
+          "detail": "no CI status found",
+          "state": "missing"
+        }
+      }
+    },
+    {
+      "name": "pending CI blocks",
+      "override": {
+        "ci": {
+          "detail": "checks still running",
+          "state": "pending"
+        }
+      }
+    },
+    {
+      "name": "a merge conflict blocks",
+      "override": {
+        "trial_merge_ok": false
+      }
+    },
+    {
+      "name": "a stacked base blocks",
+      "override": {
+        "base_ref": "proposal/x"
+      }
+    },
+    {
+      "name": "a draft PR blocks",
+      "override": {
+        "is_draft": true
+      }
+    },
+    {
+      "name": "an unknown draft status is blocked",
+      "override": {
+        "is_draft": null
+      }
+    },
+    {
+      "name": "one accept seat is not enough",
+      "override": {
+        "accept_seats": [
+          "codex"
+        ]
+      }
+    },
+    {
+      "name": "two seats but not covered",
+      "override": {
+        "covered": false
+      }
+    },
+    {
+      "name": "an open thread blocks",
+      "override": {
+        "threads_open": 1
+      }
+    },
+    {
+      "name": "an unknown thread count is blocked",
+      "override": {
+        "threads_open": null
+      }
+    },
+    {
+      "name": "a standing changes-requested blocks",
+      "override": {
+        "standing_changes_requested": true
+      }
+    },
+    {
+      "name": "no counted verdict blocks",
+      "override": {
+        "counted_verdicts": 0
+      }
+    },
+    {
+      "name": "a verdict without evidence blocks",
+      "override": {
+        "verdicts_missing_evidence": [
+          3
+        ]
+      }
+    },
+    {
+      "name": "an unclassified revertibility is blocked",
+      "override": {
+        "revertible": null
+      }
+    },
+    {
+      "name": "a tripped breaker blocks",
+      "override": {
+        "breaker_tripped": true
+      }
+    },
+    {
+      "name": "an unreadable breaker is blocked",
+      "override": {
+        "breaker_tripped": null
+      }
+    },
+    {
+      "name": "additive identity registration is exempt from the accept bar (owner decision 2026-10-11)",
+      "override": {
+        "accept_seats": [],
+        "counted_verdicts": 0,
+        "covered": false,
+        "identity_registration_exempt": true,
+        "verdicts_missing_evidence": []
+      }
+    },
+    {
+      "name": "the identity-registration exemption does not bypass other boxes",
+      "override": {
+        "accept_seats": [],
+        "covered": false,
+        "identity_registration_exempt": true,
+        "threads_open": 1
+      }
+    }
+  ],
+  "green": {
+    "accept_seats": [
+      "codex",
+      "gemini"
+    ],
+    "base_ref": "main",
+    "base_tip": "tttttttttttttttttttttttttttttttttttttttt",
+    "breaker_tripped": false,
+    "category": "scripts/*.py",
+    "ci": {
+      "detail": "3 checks: SUCCESS",
+      "state": "success"
+    },
+    "counted_verdicts": 2,
+    "covered": true,
+    "default_branch": "main",
+    "head": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh",
+    "is_draft": false,
+    "revertible": true,
+    "standing_changes_requested": false,
+    "threads_open": 0,
+    "trial_merge_ok": true,
+    "verdicts_missing_evidence": []
+  }
+}

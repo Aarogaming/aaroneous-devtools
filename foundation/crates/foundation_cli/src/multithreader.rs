@@ -28,8 +28,12 @@ fn queue_ids(queue: &str) -> (BTreeSet<String>, Vec<String>) {
     let mut ids = BTreeSet::new();
     let mut errors = Vec::new();
     for row in queue.lines().filter(|s| s.starts_with('|')) {
-        let cols: Vec<_> = row.split('|').map(str::trim).collect();
-        if cols.len() < 5 || !matches!(cols[3], "Ready" | "Claimed" | "Review" | "Done" | "Blocked")
+        let cols = crate::table::cells(row);
+        if cols.len() < 5
+            || !matches!(
+                cols[3].as_str(),
+                "Ready" | "Claimed" | "Review" | "Done" | "Blocked"
+            )
         {
             continue;
         }
@@ -101,14 +105,19 @@ pub(crate) fn run(config_path: &Path) -> Result<()> {
     let (mut ids, diagnostics) = queue_ids(&queue);
     let program = read_bounded(&c.program, 65536)?;
     for row in program.lines().filter(|r| r.starts_with('|')) {
-        let cols: Vec<_> = row.split('|').map(str::trim).collect();
-        if cols.len() > 3 && matches!(cols[1], "P0" | "P1" | "P2" | "P3" | "Done" | "Retired") {
-            ids.insert(cols[2].to_owned());
+        let cols = crate::table::cells(row);
+        if cols.len() > 3
+            && matches!(
+                cols[1].as_str(),
+                "P0" | "P1" | "P2" | "P3" | "Done" | "Retired"
+            )
+        {
+            ids.insert(cols[2].clone());
         }
     }
     let mut evidence = format!("Existing IDs: {ids:?}\nExisting queue scopes (avoid overlaps):\n");
     for row in queue.lines().filter(|r| r.starts_with('|')) {
-        let cols: Vec<_> = row.split('|').collect();
+        let cols = crate::table::raw_cells(row);
         if cols.len() > 3 {
             evidence.push_str(&format!("{} {}\n", cols[1], cols[2]));
         }
@@ -244,6 +253,14 @@ pub(crate) fn serve(config_path: &Path, interval_minutes: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_row_with_escaped_pipes_in_a_cell_is_still_a_queue_row() {
+        let (ids, errors) =
+            queue_ids(r#"| C89 | profile = "kernel\|control\|tooling" | Ready | Unowned |"#);
+        assert!(errors.is_empty());
+        assert_eq!(ids.into_iter().collect::<Vec<_>>(), ["C89"]);
+    }
+
     #[test]
     fn duplicate_queue_ids_are_visible() {
         let (ids, errors) =

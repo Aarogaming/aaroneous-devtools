@@ -1,0 +1,68 @@
+[
+  {
+    "base": "main",
+    "name": "covered clean docs PR on main is eligible",
+    "paths": [
+      "governance/N.md"
+    ],
+    "row": {
+      "covered": true
+    },
+    "trial": true
+  },
+  {
+    "base": "main",
+    "name": "uncovered is blocked with condition a",
+    "paths": [
+      "governance/N.md"
+    ],
+    "row": {
+      "covered": false
+    },
+    "trial": true
+  },
+  {
+    "base": "main",
+    "name": "a conflicting trial merge is blocked with condition b",
+    "paths": [
+      "docs/a.md"
+    ],
+    "row": {
+      "covered": true
+    },
+    "trial": false
+  },
+  {
+    "base": "proposal/x",
+    "name": "a stacked base is blocked with condition d",
+    "paths": [
+      "docs/a.md"
+    ],
+    "row": {
+      "covered": true
+    },
+    "trial": true
+  },
+  {
+    "base": "main",
+    "name": "a workflow file path is not owner-gated and is eligible",
+    "paths": [
+      ".github/workflows/x.yml"
+    ],
+    "row": {
+      "covered": true
+    },
+    "trial": true
+  },
+  {
+    "base": "proposal/x",
+    "name": "every blocking reason is reported together",
+    "paths": [
+      ".github/workflows/x.yml"
+    ],
+    "row": {
+      "covered": false
+    },
+    "trial": false
+  }
+]
