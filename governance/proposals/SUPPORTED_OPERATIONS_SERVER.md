@@ -1,11 +1,11 @@
 # Supported operations server and home operations host
 Status: DESIGN PROPOSAL, NOT IMPLEMENTED, NOT INDEPENDENTLY ACCEPTED.
-Candidate devtools lane: C102 (queue-only intake; Proposed until capacity and scope are confirmed).
+Devtools design lane: C102; proposal delivered for review in PR135. Implementation and deployment require separate scoped claims.
 Intended repository destination: governance/proposals/SUPPORTED_OPERATIONS_SERVER.md.
 Owner direction, 2026-10-05: expand the local gathering into a supported Windows/Linux devtools server; use an Ubuntu backup PC as a persistent operations center. Earlier design-first, claim and independent-review requirements remain.
 
 ## 1. Existing evidence and overlap
-At devtools main c42a87aba43fbff9036b65460473597805b7d0f0:
+Historical source snapshot (2026-10-05) at devtools main c42a87aba43fbff9036b65460473597805b7d0f0; source locations and operational observations below are dated evidence, not current installation or availability claims:
 - maintenance_ui already builds the Rust devtools binary with explicit worker-config, runtime and foundation inputs, a loopback HTTP server, a runtime lease, a two-minute research poll and local-worker-tick child invocation. Source read only; server was NOT RUN for this proposal.
 - maintenance_ui owns packet authoring, status, result review and archive operations. Extend this capability through a coordinated source lane; do not port the temporary Python board into a second maintained server.
 - foundation_cli schedule-review reads queue/program and emits a capacity report. It is a read-only planning tool, not the continuous execution scheduler.
@@ -38,7 +38,7 @@ Ubuntu is the proposed persistent operations host. Windows can run the same serv
 - Source: Git pins and PRs; each executing seat has its own isolated checkout. Runtime state does not live in a shared mutable Git working directory.
 
 The owner reports16GB DDR5, i5-14400F, Asus RTX4060 with likely 8GB VRAM and shared Wi-Fi. Inventory, exact VRAM, disk, Ubuntu release, GPU drivers, SSH/Tailscale access and model fit are NOT VERIFIED. Initial pilot should run one bounded inference at a time and serialize heavy builds; measure peak RAM/VRAM, context, latency and failure behavior before increasing concurrency. CPU/state service planning is an engineering estimate, not a completed capacity benchmark.
-Read-only network discovery found no online Ubuntu Tailscale peer. Eight already-visible LAN neighbors were probed only for an SSH greeting: four refused and four did not return a greeting. No Ubuntu identity, SSH login or installation occurred. Exact addresses are retained privately in network-discovery-private.json and ssh-banner-discovery-private.json, not in the repository proposal. Ubuntu may be running with SSH disabled; its hostname/address is still needed.
+Historical initial discovery did not establish an accessible Ubuntu host; later dated notes below supersede that observation. This is not a current availability check. Deployment still requires an explicitly selected endpoint and fresh authenticated evidence; private discovery inventories remain outside the shared proposal.
 
 ## 2.1 Client-owned memory and local operating loops
 Each client is an operator node with its own bounded working context, durable memory and local controller. This is a proposed capability, NOT IMPLEMENTED by the current discussion board.
@@ -158,7 +158,7 @@ Official references:
 These references establish hosting/network options, not this application's implementation or support.
 
 ## 12. Delivery, support and graduation gates
-1. Resolve C102 intake capacity/scope and publish an authoritative Ready row; claim it through the approved queue process. Publish this one-file design in its own proposal PR, independently review it and record owner decisions.
+1. C102's design is now delivered in PR135. Resolve its independent review and retained findings before claiming any implementation. Reconcile existing platform-verification work: [PR197](https://github.com/Aarogaming/aaroneous-devtools/pull/197) supplies the pure verification core; [PR203](https://github.com/Aarogaming/aaroneous-devtools/pull/203), [PR204](https://github.com/Aarogaming/aaroneous-devtools/pull/204) and [PR206](https://github.com/Aarogaming/aaroneous-devtools/pull/206) are separate local-verification/integration/job-service proposals. Their presence or acceptance is not evidence of production deployment or of a browser-hosted discussion board.
 2. Claim the existing maintenance_ui and relevant contract paths for a bounded topic/case read-view increment. Keep the temporary board intact until verified import preserves every original ID/digest/attribution and dissent.
 3. Connect ONE existing seat end to end: outbox -> leased pull -> native tool receipt -> result -> independent disposition -> next bounded task. No invented jobs to keep a GPU occupied.
 4. Reconcile the common stage interface with steward/native scheduler work. Freeze cross-language vectors before a Rust rewrite. Never run duplicate effectful dispatchers in shadow.
@@ -175,14 +175,14 @@ Unresolved: canonical ledger/schema owner; stage contract acceptance; independen
 Claim intake does not reserve implementation paths or override active lanes. No Aaroneous checkout, service, credentials, network settings or other agent checkout was changed to produce this proposal.
 
 ## Host-access follow-through — 2026-10-05
-The earlier discovery limitation is superseded: the owner supplied100.109.8.12 and Tailscale identifies online Linux peer AaroneousHome. tailscale ping --c 1 --timeout 5s 100.109.8.12 exited0, direct route response2ms. Receipt ubuntu-access-receipt-20261005T061703Z.json retained privately. SSH TCP22 actively refused; no login or hardware inventory. Ubuntu account name and a reachable approved SSH endpoint remain necessary. No host settings/install/deployment changed. This records network reachability only, not application/service readiness.
+Historical access notes reported a responding private Linux peer followed by a refused SSH port. These were bounded transport observations, not authentication, inventory or service readiness. Host identifiers, endpoint addresses and raw access receipts belong in the operator's explicitly selected private evidence store and are intentionally omitted from this public proposal.
 
 ## Ubuntu SSH account follow-through — 2026-10-05
-Owner supplied aaroneous@100.109.8.12. Installed tailscale ssh --help exit0; Tailscale SSH attempt reached a required browser identity check, then timed out255 while awaiting it. Exact requested read-only commands, log and receipt: ubuntu-inventory-request-20261005T062951Z.json, ubuntu-inventory-20261005T062951Z.log, ubuntu-inventory-receipt-20261005T062951Z.json. No remote inventory command outcome observed, no hardware/OS/tool verification or settings/install change. Browser identity check requested from owner through existing chat; retry same bounded inspection after owner completes it. Earlier TCP22 refusal is superseded by this responding SSH endpoint. This is access progress, not completed authentication.
+Historical follow-through reported an interactive identity check and timeout before the requested read-only inventory completed. It did not establish deployment readiness or authorize unattended access. Refer to private operator receipts for exact transport/account details; do not publish them as part of the design.
 Operational finding: interactive Tailscale SSH checks may prevent unattended operations. Keep owner inspection access separate from any future explicitly authorized service identity/access policy; do not disable checks or widen permissions automatically.
 
 ## Ubuntu inspection completed — 2026-10-05 America/New_York
-Tailscale SSH retry0, owner account aaroneous; retained supported-server/HOST_READINESS-20261005.md with exact request/log receipts. Confirmed Ubuntu26.04.1LTS/kernel7.0.0-34, i5-14400F, Linux-visible RAM16027201536bytes and root840G available, ASUS RTX4060 PCI identity. VRAM NOT VERIFIED. nvidia-smi18 driver/library mismatch: loaded595.91.07, disk module/libraries580.178.04; reboot marker present. No GPU inference or application-ready claim. First recovery candidate owner-controlled restart then read-only recheck, not guaranteed fix. No reboot performed or authorized, install/settings/product/service change. Git/systemctl found; Rust/Ollama/llama-server not on current PATH, not a complete filesystem absence claim. Findings retained for existing deployment/component lanes; no new jobs/cadence.
+Historical inspection was subsequently reported successful under the designated operator account; private host-readiness receipts contain the exact commands and observations. The reported OS, GPU/driver and tool findings were a point-in-time 2026-10-05 snapshot, not a present health certificate or a claim that the proposed operations server was installed. Any provisioning or restart requires its own current scoped authorization and evidence.
 
 ## Model/operator network and optional Linear — 2026-10-05
 Status: recommendation and rollout sequence, NOT IMPLEMENTED or accepted.
@@ -250,7 +250,7 @@ Keep any eventual evaluation in an isolated project with explicit config, bound 
 
 Other candidates: beads_rust is a local CLI alternative, but its LICENSE includes an OpenAI/Anthropic rider; do not present it as plain MIT or a cleared dependency. kanban-tool documents an unauthenticated web interface, so it is not selected as a shared operations server.
 
-Next: complete the existing C102 intake/Ready/claim sequence and one-file design proposal, then independently review one bounded local adapter trial. Retain the Ubuntu GPU mismatch and Windows calibration blocker as separate recovery work.
+Next: finish independent review of this existing C102 design and reconcile the verification/job-service lanes before claiming a bounded adapter trial. Revalidate dated host/model assumptions through private operational evidence; no new deployment or service claim is made here.
 
 References (read-only, branch views; immutable source revision NOT VERIFIED):
 - https://github.com/VoidNullable/lific
