@@ -244,7 +244,9 @@ def canonical_reviewer_seat(name):
     return next(iter(seats)) if len(seats) == 1 else None
 
 
-_EXIT_CODE = re.compile(r"[A-Za-z0-9].*(?<![A-Za-z0-9_])exit\s*-?\d+", re.IGNORECASE | re.DOTALL)
+# The digits must end at a token boundary: `exit 0failed` states no complete exit code (Codex on #226), while `exit0,54 tests`
+# and `exit 0 (ok)` do.
+_EXIT_CODE = re.compile(r"[A-Za-z0-9].*(?<![A-Za-z0-9_])exit\s*-?\d+(?![A-Za-z0-9_])", re.IGNORECASE | re.DOTALL)
 # PLATFORM_SPEC section 3: `commands` is a list of {command, exit_code, passed, failed, log_ref, log_sha256}; `count` and `log`
 # are the optional extras older reviews carry.
 _SPEC_COMMAND_KEYS = {"command", "exit_code", "passed", "failed", "count", "log_ref", "log_sha256", "log"}
@@ -254,8 +256,9 @@ def usable_evidence(commands):
     """True when `commands` really records a command and its exit code (merge-gate box 5).
 
     It must be a list with at least one entry that is one of three shapes, all of which are in real use:
-      - a string stating an exit code after some command text (at least one letter or digit before it), such as
-        `cargo test -> exit 0 (ok)`, the shape `make_attestation --command` writes;
+      - a string stating a complete exit code after some command text (at least one letter or digit before it, and no
+        letter, digit or underscore right after the digits), such as `cargo test -> exit 0 (ok)`, the shape
+        `make_attestation --command` writes;
       - the shape PLATFORM_SPEC section 3 documents, an object with a non-empty string `command` and an integer
         `exit_code`, and optionally only the documented extras (`passed`, `failed`, `count`, `log_ref`, `log_sha256`, `log`);
       - an object with exactly `cmd` (non-empty string) and `rc` (an integer), the shape one seat signs.
