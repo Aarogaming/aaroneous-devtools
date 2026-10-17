@@ -100,6 +100,11 @@ for _ in range(int(sys.argv[1]) // 5):
         item = {}
         if random.random() < 0.85: item["conclusion"] = random.choice(["SUCCESS", "success", "FAILURE", "SKIPPED", "", None, "NEUTRAL", "stale"])
         if random.random() < 0.85: item["status"] = random.choice(["COMPLETED", "completed", "IN_PROGRESS", "QUEUED", "", None, "WAITING"])
+        if random.random() < 0.6: item["name"] = random.choice(["a", "b", "c", "", None])
+        if random.random() < 0.15: item["context"] = random.choice(["a", "b", ""])
+        if random.random() < 0.5: item["workflowName"] = random.choice(["W1", "W2", ""])
+        if random.random() < 0.6: item["startedAt"] = random.choice(["2026-10-14T00:00:00Z", "2026-10-15T00:00:00Z", "2026-10-17T00:00:00Z", "", None])
+        if random.random() < 0.3: item["completedAt"] = random.choice(["2026-10-14T00:00:00Z", "2026-10-16T00:00:00Z", "", None])
         rollup.append(item)
     gate_ci.append({"rollup": rollup, "out": mg.ci_state(rollup)})
 TOKENS = ["tripped", " ", "=", "true", "false", "True", "1", '"', "'", "#", "\n", "[", "]", "[a]", ".", "a", "tripped = true\n", "tripped = false\n", "tripped=false", "x = 1\n", "\t", "{", "}", ",", "0x1", "1e3", "inf", "nan", "\"false\"", "tripped.sub = true\n", "[t]\ntripped = true\n", "\r\n", "\u00e9", "'" "'" "'", '\"\"\"']

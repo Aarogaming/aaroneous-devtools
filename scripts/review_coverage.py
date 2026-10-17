@@ -244,25 +244,37 @@ def canonical_reviewer_seat(name):
     return next(iter(seats)) if len(seats) == 1 else None
 
 
-_EXIT_CODE = re.compile(r"[A-Za-z0-9].*(?<![A-Za-z0-9_])exit\s+-?\d+", re.IGNORECASE | re.DOTALL)
+_EXIT_CODE = re.compile(r"[A-Za-z0-9].*(?<![A-Za-z0-9_])exit\s*-?\d+", re.IGNORECASE | re.DOTALL)
+# PLATFORM_SPEC section 3: `commands` is a list of {command, exit_code, passed, failed, log_ref, log_sha256}; `count` and `log`
+# are the optional extras older reviews carry.
+_SPEC_COMMAND_KEYS = {"command", "exit_code", "passed", "failed", "count", "log_ref", "log_sha256", "log"}
 
 
 def usable_evidence(commands):
     """True when `commands` really records a command and its exit code (merge-gate box 5).
 
-    It must be a list with at least one entry that is either a string stating an exit code after some command text (at least one letter or digit before it)
-    (`cargo test -> exit 0 (ok)`, the shape `make_attestation --command` writes) or an object with exactly the keys `cmd`
-    (non-empty string) and `rc` (an integer, not a boolean), the shape one seat already signs. Anything else, such as a
-    dict, a bare string, an empty list or a list of unrelated objects, is not evidence however truthy it is, so a malformed
-    record can neither satisfy box 5 itself nor cover another record (Codex on #226)."""
+    It must be a list with at least one entry that is one of three shapes, all of which are in real use:
+      - a string stating an exit code after some command text (at least one letter or digit before it), such as
+        `cargo test -> exit 0 (ok)`, the shape `make_attestation --command` writes;
+      - the shape PLATFORM_SPEC section 3 documents, an object with a non-empty string `command` and an integer
+        `exit_code`, and optionally only the documented extras (`passed`, `failed`, `count`, `log_ref`, `log_sha256`, `log`);
+      - an object with exactly `cmd` (non-empty string) and `rc` (an integer), the shape one seat signs.
+    Integers must be real integers, never booleans. Anything else, such as a dict, a bare string, an empty list or a list
+    of unrelated objects, is not evidence however truthy it is, so a malformed record can neither satisfy box 5 itself nor
+    cover another record (Codex on #226)."""
     if not isinstance(commands, list):
         return False
     for entry in commands:
         if isinstance(entry, str):
             if _EXIT_CODE.search(entry):
                 return True
-        elif isinstance(entry, dict) and set(entry) == {"cmd", "rc"}:
-            command, code = entry["cmd"], entry["rc"]
+        elif isinstance(entry, dict):
+            if set(entry) == {"cmd", "rc"}:
+                command, code = entry["cmd"], entry["rc"]
+            elif {"command", "exit_code"} <= set(entry) and set(entry) <= _SPEC_COMMAND_KEYS:
+                command, code = entry["command"], entry["exit_code"]
+            else:
+                continue
             if isinstance(command, str) and command.strip() and isinstance(code, int) and not isinstance(code, bool):
                 return True
     return False

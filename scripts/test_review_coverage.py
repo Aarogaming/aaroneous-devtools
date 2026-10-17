@@ -569,6 +569,10 @@ class EvidenceSupersession(unittest.TestCase):
             ["cargo -> exit -1"],
             [{"cmd": "cargo audit --file foundation/Cargo.lock", "rc": 0}],  # the shape one seat already signs
             [{"garbage": True}, "git diff --check -> exit 0"],  # one real entry among noise still counts
+            ["cargo test -> exit0,54 integration tests"],  # real records write the code with no space
+            [{"command": "python -m unittest discover -s scripts", "exit_code": 0}],  # PLATFORM_SPEC section 3
+            [{"command": "cargo test", "exit_code": 101, "passed": 5, "failed": 1, "count": 6, "log_ref": "tmp/x.log",
+              "log_sha256": "0" * 64, "log": "tail"}],
         ]
         for commands in good:
             self.assertTrue(rc.usable_evidence(commands), commands)
@@ -580,6 +584,10 @@ class EvidenceSupersession(unittest.TestCase):
             [{"cmd": "x", "rc": True}], [{"cmd": "x", "rc": "0"}], [{"cmd": "x", "rc": 0.5}],  # rc must be an integer
             [{"cmd": "", "rc": 0}], [{"cmd": "  ", "rc": 0}], [{"cmd": 1, "rc": 0}],  # cmd must be text
             [{"cmd": "x", "rc": 0, "extra": 1}], [{"cmd": "x"}], [{"rc": 0}],  # exactly those two keys
+            [{"command": "x"}], [{"exit_code": 0}], [{"command": "x", "exit_code": True}],  # the spec shape needs both, real ints
+            [{"command": "x", "exit_code": "0"}], [{"command": " ", "exit_code": 0}], [{"command": 1, "exit_code": 0}],
+            [{"command": "x", "exit_code": 0, "surprise": 1}],  # only the documented extras are allowed
+            ["x -> exited 0"], ["x preexit0"],
         ]
         for commands in bad:
             self.assertFalse(rc.usable_evidence(commands), commands)
