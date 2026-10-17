@@ -139,6 +139,66 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn replacement_objects_cannot_change_pinned_suite() {
+    use std::io::Write;
+    use std::process::Stdio;
+    let fixture = Fixture::new(&["git", "--version"], 5);
+    let output = Command::new(&fixture.git)
+        .arg("-C")
+        .arg(&fixture.repo)
+        .args([
+            "rev-parse",
+            &format!("{}:ci/suites/test-suite.toml", fixture.request.base_sha),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let original = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+    let mut child = Command::new(&fixture.git)
+        .arg("-C")
+        .arg(&fixture.repo)
+        .args(["hash-object", "-w", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"not a suite\n")
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    let replacement = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+    assert!(
+        Command::new(&fixture.git)
+            .arg("-C")
+            .arg(&fixture.repo)
+            .args(["replace", &original, &replacement])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert_eq!(
+        local::pinned_suite(&fixture.git, &fixture.repo, &fixture.request).unwrap(),
+        fixture.manifest
+    );
+    assert_eq!(
+        local::issue(
+            &fixture.git,
+            &fixture.repo,
+            "test/devtools",
+            &fixture.request.head,
+            &fixture.request.base_sha,
+            "test-suite"
+        )
+        .unwrap(),
+        vec![fixture.request.clone()]
+    );
+}
+
+#[test]
 fn real_execution_pins_base_and_hashes_logs() {
     let fixture = Fixture::new(&["git", "--version"], 5);
     let requests = local::issue(
