@@ -9,6 +9,159 @@ COVERED = {"covered": True}
 UNCOVERED = {"covered": False}
 
 
+LOCK_BEFORE = '''version = 4
+
+[[package]]
+name = "demo"
+version = "0.1.0"
+dependencies = ["rustls"]
+
+[[package]]
+name = "rustls"
+version = "0.23.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+dependencies = ["ring"]
+'''
+LOCK_AFTER = LOCK_BEFORE.replace('"0.23.45"', '"0.23.46"').replace('"' + 'a' * 64 + '"', '"' + 'b' * 64 + '"')
+
+
+class LockfileRevertibility(unittest.TestCase):
+    def test_only_registry_version_and_checksum_changes_are_qualified(self):
+        self.assertTrue(mg.registry_version_checksum_update(LOCK_BEFORE, LOCK_AFTER))
+        self.assertTrue(mg.registry_version_checksum_update(LOCK_AFTER, LOCK_BEFORE))
+
+    def test_unknown_lockfile_shapes_stay_unclassified(self):
+        bad_versions = [
+            LOCK_AFTER.replace('dependencies = ["ring"]', 'dependencies = ["other"]'),
+            LOCK_AFTER.replace('name = "rustls"', 'name = "other"'),
+            LOCK_AFTER.replace('registry+https://github.com/rust-lang/crates.io-index', 'git+https://example.invalid/repo'),
+            LOCK_AFTER.replace('registry+https://github.com/rust-lang/crates.io-index', 'registry+https://example.invalid/index'),
+            LOCK_AFTER.replace('version = 4', 'version = 3'),
+            LOCK_AFTER.replace('version = 4', 'version = 5'),
+            LOCK_AFTER.replace('version = 4', 'version = true'),
+            LOCK_AFTER.replace('"0.23.46"', '"invalid"'),
+            LOCK_AFTER.replace('"' + 'b' * 64 + '"', '"not-a-checksum"'),
+            LOCK_AFTER.replace('"' + 'b' * 64 + '"', '"' + 'a' * 64 + '"'),
+            LOCK_AFTER.replace('"0.23.46"', '"0.23.45"'),
+            LOCK_AFTER.replace('[[package]]\nname = "demo"\nversion = "0.1.0"\ndependencies = ["rustls"]\n\n', ''),
+            LOCK_AFTER + '\n[[package]]\nname = "extra"\nversion = "1.0.0"\n',
+            LOCK_AFTER + '\n[metadata]\nnew = "unqualified"\n',
+            'version = 4\npackage = "not a package list"',
+            'malformed = [',
+            LOCK_BEFORE,
+        ]
+        for candidate in bad_versions:
+            with self.subTest(candidate=candidate):
+                self.assertFalse(mg.registry_version_checksum_update(LOCK_BEFORE, candidate))
+
+    def test_no_changed_local_or_git_package_is_qualified(self):
+        for source in ('', 'source = "git+https://example.invalid/repo"\n'):
+            old = LOCK_BEFORE.replace('source = "registry+https://github.com/rust-lang/crates.io-index"\n', source)
+            new = LOCK_AFTER.replace('source = "registry+https://github.com/rust-lang/crates.io-index"\n', source)
+            self.assertFalse(mg.registry_version_checksum_update(old, new))
+
+    def test_input_bound_and_incomplete_documents_fail_closed(self):
+        for old, new in (("#" * (2 * 1024 * 1024 + 1), LOCK_AFTER), ("", ""), ('version = 4', 'version = 4')):
+            self.assertFalse(mg.registry_version_checksum_update(old, new))
+
+
+class RevertibilityFromGit(unittest.TestCase):
+    def setUp(self):
+        import subprocess
+        import tempfile
+        import shutil
+        self.directory = tempfile.mkdtemp(prefix="merge-lock-revert-")
+        self.addCleanup(shutil.rmtree, self.directory, True)
+
+        def git(*args):
+            result = subprocess.run([
+                "git", "-C", self.directory, "-c", "user.name=test", "-c", "user.email=test@example.com",
+                "-c", "commit.gpgsign=false", *args,
+            ], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout.strip()
+
+        self.git = git
+        git("init", "-q", "-b", "main")
+        os.makedirs(os.path.join(self.directory, "foundation"))
+        self.write_lock(LOCK_BEFORE)
+        git("add", ".")
+        git("commit", "-q", "-m", "before")
+        self.base = git("rev-parse", "HEAD")
+        self.write_lock(LOCK_AFTER)
+        git("add", ".")
+        git("commit", "-q", "-m", "after")
+        self.head = git("rev-parse", "HEAD")
+
+    def write_lock(self, text):
+        with open(os.path.join(self.directory, "foundation", "Cargo.lock"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+
+    def classify(self, paths=None, base=None, head=None):
+        return mg.repository_revertibility(self.directory, base or self.base, head or self.head,
+                                            paths if paths is not None else ["foundation/Cargo.lock"])
+
+    def test_pinned_blob_comparison_ignores_dirty_checkout(self):
+        self.write_lock('broken = [')
+        self.assertTrue(self.classify())
+        self.assertTrue(self.classify(["foundation/Cargo.lock", "governance/COORDINATION_QUEUE.md"]))
+
+    def test_unrelated_paths_cannot_piggyback_on_a_lock_update(self):
+        for path in ("foundation/Cargo.toml", "foundation/src/lib.rs", ".github/workflows/ci.yml", "other/Cargo.lock"):
+            self.assertIsNone(self.classify(["foundation/Cargo.lock", path]))
+        self.assertIsNone(self.classify([]))
+
+    def test_missing_and_symbolic_objects_stay_unknown(self):
+        self.assertIsNone(self.classify(head="0" * 40))
+        self.assertIsNone(self.classify(head="HEAD"))
+        self.assertIsNone(self.classify(base="missing-ref"))
+
+    def test_git_replacement_cannot_disguise_a_dependency_change(self):
+        self.write_lock(LOCK_AFTER.replace('dependencies = ["ring"]', 'dependencies = ["other"]'))
+        self.git("add", "foundation/Cargo.lock")
+        self.git("commit", "-q", "-m", "unqualified dependency")
+        bad = self.git("rev-parse", "HEAD")
+        self.git("replace", bad, self.head)
+        self.assertIsNone(self.classify(head=bad))
+        self.assertTrue(self.classify(head=self.head))
+
+    def test_symlink_mode_and_dependency_changes_stay_unknown(self):
+        blob = self.git("hash-object", "-w", "--", "foundation/Cargo.lock")
+        self.git("update-index", "--cacheinfo", f"120000,{blob},foundation/Cargo.lock")
+        self.git("commit", "-q", "-m", "symlink")
+        self.assertIsNone(self.classify(head=self.git("rev-parse", "HEAD")))
+        self.write_lock(LOCK_AFTER.replace('dependencies = ["ring"]', 'dependencies = ["other"]'))
+        self.git("add", "foundation/Cargo.lock")
+        self.git("commit", "-q", "-m", "dependency change")
+        self.assertIsNone(self.classify(head=self.git("rev-parse", "HEAD")))
+
+    def test_checklist_still_requires_every_other_gate(self):
+        reversible = self.classify()
+        self.assertTrue(reversible)
+        for change in ({"ci": {"state": "failure", "detail": "failed"}}, {"accept_seats": ["gemini"]},
+                       {"verdicts_missing_evidence": [3]}, {"breaker_tripped": True}, {"threads_open": 1}):
+            lines, eligible, first = mg.checklist(good_facts(revertible=reversible, **change))
+            self.assertFalse(eligible, lines)
+            self.assertIsNotNone(first)
+
+    def test_live_fact_collection_uses_the_proof_without_filling_other_boxes(self):
+        from unittest import mock
+        self.git("update-ref", "refs/remotes/origin/main", self.base)
+        pr = {"number": 222, "head": self.head, "base": "main", "draft": False}
+        row = {"covered": True, "accept_seats": ["claude", "gemini"], "counted_verdicts": 2,
+               "verdicts_missing_evidence": [3], "reasons": []}
+        with mock.patch.object(mg.rc, "gh_json", return_value={}):
+            facts = mg.gather_facts("owner/repo", self.directory, pr, row,
+                                    ["foundation/Cargo.lock", "governance/COORDINATION_QUEUE.md"], True, "main")
+        self.assertIs(facts["revertible"], True)
+        self.assertEqual(facts["verdicts_missing_evidence"], [3])
+        self.assertEqual(facts["ci"]["state"], "missing")
+        self.assertIsNone(facts["threads_open"])
+        self.assertIsNone(facts["breaker_tripped"])
+        self.assertFalse(mg.checklist(facts)[1])
+
+
 class DiffCheckCommand(unittest.TestCase):
     """The plan's whitespace check must see a committed error; the no-revision form never could."""
 
@@ -122,6 +275,140 @@ class ChangedPaths(unittest.TestCase):
         self.assertEqual(paths, ["governance/notes.md"])
 
 
+class AdditiveIdentityRegistration(unittest.TestCase):
+    """The owner-decision 2026-10-11 exemption: a seat filling in its own already-provisioned login/key
+    is paperwork, not a trust decision, and bypasses condition 3 — but only for exactly that shape."""
+
+    BASE_DOC = ('{"owner": ["Aarogaming"], "seats": {'
+                '"claude": {"logins": [], "keys": ["key-claude"]}, '
+                '"mimo": {"logins": [], "keys": []}'
+                '}}\n')
+
+    def make_repo(self, base_doc=None):
+        import subprocess
+        import tempfile
+        directory = tempfile.mkdtemp(prefix="merge-gate-identity-test-")
+        self.addCleanup(__import__("shutil").rmtree, directory, True)
+
+        def git(*args):
+            result = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", directory, *args],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout.strip()
+
+        git("init", "-q", "-b", "main")
+        os.makedirs(os.path.join(directory, "governance"))
+        with open(os.path.join(directory, "governance", "identities.json"), "w", encoding="utf-8",
+                  newline="\n") as handle:
+            handle.write(base_doc if base_doc is not None else self.BASE_DOC)
+        git("add", ".")
+        git("commit", "-q", "-m", "base")
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        git("checkout", "-q", "-b", "pr")
+        return directory, git
+
+    def write_and_commit(self, directory, git, doc):
+        with open(os.path.join(directory, "governance", "identities.json"), "w", encoding="utf-8",
+                  newline="\n") as handle:
+            handle.write(doc)
+        git("add", ".")
+        git("commit", "-q", "-m", "identities update")
+        return git("rev-parse", "HEAD")
+
+    def test_appending_a_login_to_an_existing_seat_is_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming"], "seats": {'
+            '"claude": {"logins": ["aaroneous-claude-seat[bot]"], "keys": ["key-claude"]}, '
+            '"mimo": {"logins": [], "keys": []}'
+            '}}\n'))
+        self.assertTrue(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_appending_a_key_to_a_previously_empty_seat_is_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming"], "seats": {'
+            '"claude": {"logins": [], "keys": ["key-claude"]}, '
+            '"mimo": {"logins": [], "keys": ["key-mimo"]}'
+            '}}\n'))
+        self.assertTrue(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_a_second_file_in_the_diff_is_not_exempt(self):
+        directory, git = self.make_repo()
+        with open(os.path.join(directory, "governance", "identities.json"), "w", encoding="utf-8",
+                  newline="\n") as handle:
+            handle.write('{"owner": ["Aarogaming"], "seats": {'
+                         '"claude": {"logins": ["x"], "keys": ["key-claude"]}, "mimo": {"logins": [], "keys": []}}}\n')
+        with open(os.path.join(directory, "governance", "notes.md"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("notes\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "two files")
+        head = git("rev-parse", "HEAD")
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH, "governance/notes.md"]))
+
+    def test_adding_a_brand_new_seat_is_not_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming"], "seats": {'
+            '"claude": {"logins": [], "keys": ["key-claude"]}, "mimo": {"logins": [], "keys": []}, '
+            '"antigravity": {"logins": [], "keys": ["key-new"]}'
+            '}}\n'))
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_removing_a_seat_is_not_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git,
+            '{"owner": ["Aarogaming"], "seats": {"claude": {"logins": [], "keys": ["key-claude"]}}}\n')
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_removing_an_existing_key_is_not_exempt(self):
+        # A rotation (drop the old key, add a new one) is a credential change, not a job application.
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming"], "seats": {'
+            '"claude": {"logins": [], "keys": ["key-claude-NEW"]}, "mimo": {"logins": [], "keys": []}'
+            '}}\n'))
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_changing_the_owner_list_is_not_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"owner": ["Aarogaming", "someone-else"], "seats": {'
+            '"claude": {"logins": [], "keys": ["key-claude"]}, "mimo": {"logins": [], "keys": []}'
+            '}}\n'))
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_malformed_json_on_either_side_is_not_exempt(self):
+        directory, git = self.make_repo(base_doc="not json\n")
+        head = self.write_and_commit(directory, git, '{"owner": ["Aarogaming"], "seats": {}}\n')
+        self.assertFalse(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_a_no_op_rewrite_is_still_exempt(self):
+        # Reordering or re-serialising without removing anything is vacuously additive.
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git, (
+            '{"seats": {"mimo": {"keys": [], "logins": []}, '
+            '"claude": {"keys": ["key-claude"], "logins": []}}, "owner": ["Aarogaming"]}\n'))
+        self.assertTrue(mg.additive_identity_registration(
+            directory, "main", head, [mg.IDENTITIES_PATH]))
+
+    def test_wrong_path_is_not_exempt(self):
+        directory, git = self.make_repo()
+        head = self.write_and_commit(directory, git,
+            '{"owner": ["Aarogaming"], "seats": {"claude": {"logins": ["x"], "keys": ["key-claude"]}, '
+            '"mimo": {"logins": [], "keys": []}}}\n')
+        self.assertFalse(mg.additive_identity_registration(directory, "main", head, ["governance/other.json"]))
+        self.assertFalse(mg.additive_identity_registration(directory, "main", head, []))
+
+
 class Plan(unittest.TestCase):
     def test_docs_only_changes_get_the_light_gate(self):
         self.assertEqual(mg.gate_plan(["governance/PLATFORM_SPEC.md", "governance/identities.json"])["level"], "light")
@@ -175,7 +462,7 @@ def good_facts(**kw):
         "accept_seats": ["mimo", "codex"], "covered": True, "threads_open": 0,
         "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
         "breaker_tripped": False, "category": "governance/*.md", "is_draft": False,
-        "standing_changes_requested": False,
+        "standing_changes_requested": False, "identity_registration_exempt": False,
     }
     facts.update(kw)
     return facts
@@ -260,6 +547,39 @@ class Checklist(unittest.TestCase):
     def test_standing_changes_requested_fails_the_threads_box(self):
         lines, ok, first = mg.checklist(good_facts(standing_changes_requested=True))
         self.assertEqual(first, "4")
+
+    def test_identity_exemption_bypasses_boxes_3_and_5_with_zero_verdicts(self):
+        lines, ok, first = mg.checklist(good_facts(
+            identity_registration_exempt=True, accept_seats=[], covered=False,
+            counted_verdicts=0, verdicts_missing_evidence=[]))
+        self.assertTrue(ok)
+        self.assertIsNone(first)
+        box3 = [line for line in lines if " 3. " in line][0]
+        box5 = [line for line in lines if " 5. " in line][0]
+        self.assertTrue(box3.startswith("[x]"), box3)
+        self.assertIn("exempt", box3)
+        self.assertTrue(box5.startswith("[x]"), box5)
+        self.assertIn("exempt", box5)
+
+    def test_identity_exemption_does_not_bypass_other_boxes(self):
+        lines, ok, first = mg.checklist(good_facts(
+            identity_registration_exempt=True, accept_seats=[], covered=False, threads_open=2))
+        self.assertFalse(ok)
+        self.assertEqual(first, "4")
+
+    def test_identity_exemption_must_be_exactly_true(self):
+        for value in (False, None, 1, "true"):
+            lines, ok, first = mg.checklist(good_facts(
+                identity_registration_exempt=value, accept_seats=["mimo"], covered=True))
+            self.assertFalse(ok, value)
+            self.assertEqual(first, "3", value)
+
+    def test_identity_exemption_absent_falls_through_to_the_ordinary_bar(self):
+        facts = good_facts(accept_seats=["mimo"], covered=True)
+        del facts["identity_registration_exempt"]
+        lines, ok, first = mg.checklist(facts)
+        self.assertFalse(ok)
+        self.assertEqual(first, "3")
 
 
 class Reconcile(unittest.TestCase):

@@ -163,3 +163,44 @@ fn test_guild_tampered_log_fails() {
     let stderr = String::from_utf8_lossy(&verify_out.stderr);
     assert!(stderr.contains("chain broken"));
 }
+
+#[test]
+fn test_guild_tick_refuses_non_clone_repo_dir() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let log_path = temp.path().join("steward-events.jsonl");
+
+    // Init a dummy git repo with a different origin remote
+    Command::new("git")
+        .args(["init", temp.path().to_str().unwrap()])
+        .output()
+        .expect("git init");
+    Command::new("git")
+        .args([
+            "-C",
+            temp.path().to_str().unwrap(),
+            "remote",
+            "add",
+            "origin",
+            "git@github.com:OtherOrg/unrelated-repo.git",
+        ])
+        .output()
+        .expect("git remote add");
+
+    let out = cli(&[
+        "guild",
+        "tick",
+        "--repo-dir",
+        temp.path().to_str().unwrap(),
+        "--repo",
+        "Aarogaming/aaroneous-devtools",
+        "--log",
+        log_path.to_str().unwrap(),
+    ]);
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("is not a clone of Aarogaming/aaroneous-devtools"),
+        "unexpected stderr: {stderr}"
+    );
+}

@@ -1,10 +1,12 @@
 mod agentic_registrar;
 mod component_inventory;
 mod conformance;
+pub mod contribution;
 mod dependency_review;
 mod dogfood;
 mod feeder;
 pub mod guild;
+pub mod guild_collector;
 mod intake;
 mod intake_generator;
 mod local_proposal;
@@ -243,6 +245,18 @@ enum Command {
         disposition: String,
         #[arg(long, default_value = "")]
         rationale: String,
+    },
+    /// Verify cryptographic integrity, revision pins, and reviewer independence of a contribution envelope
+    VerifyContribution {
+        #[arg(long)]
+        envelope: PathBuf,
+        #[arg(long)]
+        checkout: Option<PathBuf>,
+    },
+    /// Inspect metadata, commands, and git trailers of a contribution envelope
+    InspectContribution {
+        #[arg(long)]
+        envelope: PathBuf,
     },
 }
 
@@ -585,6 +599,57 @@ fn main() -> Result<()> {
                 println!("Modified: {:?}", res.files_modified);
             }
             println!("\n--- Unified Diff ---\n{}", res.unified_diff);
+            Ok(())
+        }
+        Command::VerifyContribution { envelope, checkout } => {
+            let data = fs::read_to_string(&envelope)
+                .with_context(|| format!("failed to read envelope: {}", envelope.display()))?;
+            let env: contribution::ContributionEnvelope = serde_json::from_str(&data)
+                .with_context(|| {
+                    format!(
+                        "failed to parse contribution envelope JSON in {}",
+                        envelope.display()
+                    )
+                })?;
+            env.validate(checkout.as_deref()).with_context(|| {
+                format!(
+                    "contribution envelope '{}' failed validation",
+                    envelope.display()
+                )
+            })?;
+            if checkout.is_none() {
+                eprintln!(
+                    "warning: --checkout not provided; origin_revision '{}' was not verified \
+                     against a git repository",
+                    env.origin_revision
+                );
+            }
+            println!("Contribution envelope '{}' is valid:", env.contribution_id);
+            println!("  Artifact Kind:     {}", env.artifact_kind);
+            println!("  Origin Revision:   {}", env.origin_revision);
+            println!("  Evidence Key:      {}", env.evidence_key);
+            println!("  Verification Cmds: {}", env.verification_commands.len());
+            println!("  Trailers:          {}", env.trailers.join(" | "));
+            if let Some(rev) = &env.independent_review {
+                println!(
+                    "  Reviewer:          {} (independent of {})",
+                    rev.actor, rev.independent_of
+                );
+                println!("  Verdict:           {}", rev.verdict);
+            }
+            Ok(())
+        }
+        Command::InspectContribution { envelope } => {
+            let data = fs::read_to_string(&envelope)
+                .with_context(|| format!("failed to read envelope: {}", envelope.display()))?;
+            let env: contribution::ContributionEnvelope = serde_json::from_str(&data)
+                .with_context(|| {
+                    format!(
+                        "failed to parse contribution envelope JSON in {}",
+                        envelope.display()
+                    )
+                })?;
+            println!("{}", serde_json::to_string_pretty(&env)?);
             Ok(())
         }
     }
