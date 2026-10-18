@@ -164,7 +164,13 @@ pub fn resolve_seat(label: &str, registered: &BTreeSet<String>) -> Option<String
         })
         .collect();
     match hits.as_slice() {
-        [] => canonical_reviewer_seat(label),
+        [] => match canonical_reviewer_seat(label) {
+            // A hyphenated registered seat is named by its whole name only. Reaching it here means the label matched through
+            // the bare-prefix alias (`ubuntu`), so `ubuntu`, `ubuntu-worker` and `ubuntu-worker-011` are near misses of
+            // `ubuntu-worker-01`, not that seat: keep the label's own first token, as before the alias existed.
+            Some(seat) if seat.contains('-') && registered.contains(&seat) => first_token(label),
+            other => other,
+        },
         [seat] => {
             let rest = flat.replacen(&format!("-{}-", hyphenated(seat)), "-", 1);
             let mut others = named_seats(&rest);
@@ -173,6 +179,15 @@ pub fn resolve_seat(label: &str, registered: &BTreeSet<String>) -> Option<String
         }
         _ => None,
     }
+}
+
+/// The first lower-case alphanumeric run of a label, the seat name an unknown label keeps for itself.
+fn first_token(label: &str) -> Option<String> {
+    strip(label)
+        .to_lowercase()
+        .split(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit()))
+        .find(|run| !run.is_empty())
+        .map(str::to_owned)
 }
 
 /// The registered `profile.family` of a seat, if it declares a well-formed one.
@@ -333,6 +348,23 @@ mod tests {
         assert_eq!(
             resolve_seat("ubuntu-worker-01 and ubuntu-worker-02", &registered),
             None
+        );
+        // A near miss keeps its own first token and is never a registered seat.
+        assert_eq!(
+            resolve_seat("ubuntu", &registered).as_deref(),
+            Some("ubuntu")
+        );
+        assert_eq!(
+            resolve_seat("ubuntu-worker-011", &registered).as_deref(),
+            Some("ubuntu")
+        );
+        assert_eq!(
+            resolve_seat("ubuntu-worker-03", &registered).as_deref(),
+            Some("ubuntu")
+        );
+        assert_eq!(
+            resolve_seat("ubuntu-worker-02", &registered).as_deref(),
+            Some("ubuntu-worker-02")
         );
     }
 
