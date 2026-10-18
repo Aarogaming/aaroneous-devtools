@@ -88,39 +88,93 @@ impl PipelineRouterConfig {
     }
 }
 
-/// Validates that a job identifier is bounded and free of path traversal sequences.
+/// Validates that a job identifier is bounded, free of path traversal sequences, and not a Windows reserved device name.
 pub fn is_valid_job_id(job_id: &str) -> bool {
-    !job_id.is_empty()
-        && job_id.len() <= 128
-        && !job_id.contains("..")
-        && job_id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+    if job_id.is_empty() || job_id.len() > 128 || job_id.contains("..") {
+        return false;
+    }
+    if !job_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+    {
+        return false;
+    }
+    // Reject Windows reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    let base = job_id.split('.').next().unwrap_or(job_id);
+    let upper = base.to_ascii_uppercase();
+    let is_reserved = matches!(
+        upper.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    );
+    !is_reserved
 }
 
-/// Copies a file using create_new semantics to prevent overwriting existing staged artifacts.
-fn copy_create_new(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+/// Copies a file using create_new semantics. Returns Ok(true) if copied, Ok(false) if destination already exists.
+fn copy_create_new(src: &std::path::Path, dst: &std::path::Path) -> Result<bool> {
     let mut reader =
         fs::File::open(src).with_context(|| format!("Opening source file: {}", src.display()))?;
-    let mut writer = fs::OpenOptions::new()
+    match fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(dst)
-        .with_context(|| format!("Creating new staged file: {}", dst.display()))?;
-    std::io::copy(&mut reader, &mut writer)?;
-    Ok(())
+    {
+        Ok(mut writer) => {
+            std::io::copy(&mut reader, &mut writer)?;
+            Ok(true)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            eprintln!(
+                "Warning: destination already exists, skipping copy to {}",
+                dst.display()
+            );
+            Ok(false)
+        }
+        Err(e) => Err(e).with_context(|| format!("Creating new staged file: {}", dst.display())),
+    }
 }
 
-/// Writes content to a file using create_new semantics.
-fn write_create_new(dst: &std::path::Path, content: &str) -> Result<()> {
+/// Writes content to a file using create_new semantics. Returns Ok(true) if written, Ok(false) if destination already exists.
+fn write_create_new(dst: &std::path::Path, content: &str) -> Result<bool> {
     use std::io::Write;
-    let mut writer = fs::OpenOptions::new()
+    match fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(dst)
-        .with_context(|| format!("Creating new manifest file: {}", dst.display()))?;
-    writer.write_all(content.as_bytes())?;
-    Ok(())
+    {
+        Ok(mut writer) => {
+            writer.write_all(content.as_bytes())?;
+            Ok(true)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            eprintln!(
+                "Warning: manifest destination already exists, skipping write to {}",
+                dst.display()
+            );
+            Ok(false)
+        }
+        Err(e) => Err(e).with_context(|| format!("Creating new manifest file: {}", dst.display())),
+    }
 }
 
 /// Extracts declared evidence files from the raw job input text, falling back to a default.
@@ -233,7 +287,9 @@ pub fn route_all_pending_results(config: &PipelineRouterConfig) -> Result<Vec<Ro
         match &action {
             RoutingAction::StageForIntegration { job_id, .. } => {
                 let dest = config.staged_dir.join(format!("{}.staged.json", job_id));
-                copy_create_new(&path, &dest)?;
+                if !copy_create_new(&path, &dest)? {
+                    continue;
+                }
                 fs::remove_file(&path)?;
             }
             RoutingAction::FeedbackForRefinement {
@@ -251,6 +307,16 @@ pub fn route_all_pending_results(config: &PipelineRouterConfig) -> Result<Vec<Ro
                     continue;
                 }
 
+                // Stage the result record FIRST with create_new semantics
+                let dest = config
+                    .staged_dir
+                    .join(format!("{}.needs-refinement.json", job_id));
+                if !copy_create_new(&path, &dest)? {
+                    // Staged record already exists: skip this result to avoid orphaning manifests or aborting
+                    continue;
+                }
+
+                // Write the feedback manifest SECOND
                 let manifest = FeedbackJobManifest {
                     schema_version: 1,
                     id: manifest_id.clone(),
@@ -267,18 +333,16 @@ pub fn route_all_pending_results(config: &PipelineRouterConfig) -> Result<Vec<Ro
                 let manifest_path = config
                     .feedback_jobs_dir
                     .join(format!("{}.toml", manifest_id));
-                write_create_new(&manifest_path, &feedback_manifest)?;
+                let _ = write_create_new(&manifest_path, &feedback_manifest);
 
-                // Move consumed result into staged feedback record with create_new semantics
-                let dest = config
-                    .staged_dir
-                    .join(format!("{}.needs-refinement.json", job_id));
-                copy_create_new(&path, &dest)?;
+                // Remove source result after successful staging
                 fs::remove_file(&path)?;
             }
             RoutingAction::RecordTelemetry { job_id } => {
                 let dest = config.staged_dir.join(format!("{}.telemetry.json", job_id));
-                copy_create_new(&path, &dest)?;
+                if !copy_create_new(&path, &dest)? {
+                    continue;
+                }
                 fs::remove_file(&path)?;
             }
         }
@@ -372,8 +436,12 @@ mod tests {
         let config = PipelineRouterConfig::new(&results_dir, &staged_dir, &feedback_dir);
         let res = route_all_pending_results(&config);
         assert!(
-            res.is_err(),
-            "create_new must error on existing destination"
+            res.is_ok(),
+            "route_all_pending_results must not error or wedge on existing destination"
+        );
+        assert!(
+            res.unwrap().is_empty(),
+            "No new files should have been staged"
         );
         // Verify original file is unchanged
         assert_eq!(
@@ -546,5 +614,116 @@ mod tests {
         let toml_str = fs::read_to_string(feedback_dir.join("REFINE-JOB-REFINE.toml")).unwrap();
         let parsed: FeedbackJobManifest = toml::from_str(&toml_str).unwrap();
         assert_eq!(parsed.id, "REFINE-JOB-REFINE");
+    }
+
+    #[test]
+    fn test_windows_reserved_names_rejected() {
+        assert!(!is_valid_job_id("CON"));
+        assert!(!is_valid_job_id("con"));
+        assert!(!is_valid_job_id("PRN"));
+        assert!(!is_valid_job_id("aux"));
+        assert!(!is_valid_job_id("NUL"));
+        assert!(!is_valid_job_id("COM1"));
+        assert!(!is_valid_job_id("lpt9"));
+        assert!(!is_valid_job_id("NUL.txt"));
+
+        // Valid IDs still pass
+        assert!(is_valid_job_id("JOB-1"));
+        assert!(is_valid_job_id("REFINE-JOB-1"));
+        assert!(is_valid_job_id("FIX-concurrency"));
+    }
+
+    #[test]
+    fn test_collision_on_one_result_does_not_wedge_batch_and_processes_subsequent_results() {
+        let temp = tempfile::tempdir().unwrap();
+        let results_dir = temp.path().join("results");
+        let staged_dir = temp.path().join("staged");
+        let feedback_dir = temp.path().join("feedback");
+        fs::create_dir_all(&results_dir).unwrap();
+        fs::create_dir_all(&staged_dir).unwrap();
+        fs::create_dir_all(&feedback_dir).unwrap();
+
+        // Pre-create staged artifact for JOB-1 (collision scenario)
+        fs::write(
+            staged_dir.join("JOB-1.needs-refinement.json"),
+            b"{\"staged\":\"already_present\"}",
+        )
+        .unwrap();
+
+        // Create two result files in results_dir: JOB-1 and JOB-2
+        let payload_job1 = WorkerResultPayload {
+            schema_version: 1,
+            artifact_kind: "foundation.local-worker-result".into(),
+            job_id: "JOB-1".into(),
+            submitted_at_secs: 1000,
+            outcome: "pending-owner-review".into(),
+            input: "test".into(),
+            proposal: Some(WorkerProposal {
+                task: "Audit".into(),
+                observations: vec!["Obs 1".into()],
+                risks: vec![],
+                test_plan: vec![],
+                recommended_next_step: "Fix".into(),
+                rust_draft: None,
+            }),
+            error: None,
+            conformance_flags: vec!["observation 1: unanchored".into()],
+        };
+        fs::write(
+            results_dir.join("JOB-1.json"),
+            serde_json::to_vec(&payload_job1).unwrap(),
+        )
+        .unwrap();
+
+        let payload_job2 = WorkerResultPayload {
+            schema_version: 1,
+            artifact_kind: "foundation.local-worker-result".into(),
+            job_id: "JOB-2".into(),
+            submitted_at_secs: 1001,
+            outcome: "pending-owner-review".into(),
+            input: "test".into(),
+            proposal: Some(WorkerProposal {
+                task: "Audit 2".into(),
+                observations: vec!["Obs 2".into()],
+                risks: vec![],
+                test_plan: vec![],
+                recommended_next_step: "Fix".into(),
+                rust_draft: None,
+            }),
+            error: None,
+            conformance_flags: vec!["observation 2: unanchored".into()],
+        };
+        fs::write(
+            results_dir.join("JOB-2.json"),
+            serde_json::to_vec(&payload_job2).unwrap(),
+        )
+        .unwrap();
+
+        let config = PipelineRouterConfig::new(&results_dir, &staged_dir, &feedback_dir);
+
+        // First routing pass: JOB-1 destination collides, but JOB-2 must proceed and be routed
+        let actions = route_all_pending_results(&config).unwrap();
+        assert_eq!(
+            actions.len(),
+            1,
+            "Only JOB-2 should be successfully routed in this cycle"
+        );
+
+        // JOB-1 remains in results/ because its destination collided
+        assert!(results_dir.join("JOB-1.json").exists());
+        // JOB-2 was consumed and removed
+        assert!(!results_dir.join("JOB-2.json").exists());
+
+        // JOB-2 was successfully staged and feedback manifest created
+        assert!(staged_dir.join("JOB-2.needs-refinement.json").exists());
+        assert!(feedback_dir.join("REFINE-JOB-2.toml").exists());
+
+        // Manifest for JOB-1 was NOT orphaned
+        assert!(!feedback_dir.join("REFINE-JOB-1.toml").exists());
+
+        // A second cycle should execute cleanly without error
+        let actions_cycle_2 = route_all_pending_results(&config).unwrap();
+        assert_eq!(actions_cycle_2.len(), 0);
+        assert!(results_dir.join("JOB-1.json").exists());
     }
 }

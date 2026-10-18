@@ -314,7 +314,6 @@ dependencies = [
  "anyhow",
  "serde",
  "serde_json",
- "steward",
  "tempfile",
  "toml",
 ]
