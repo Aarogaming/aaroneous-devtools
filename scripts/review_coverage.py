@@ -34,8 +34,11 @@ import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import attest_sig  # noqa: E402
+import markdown_fences  # noqa: E402
 
-FENCE = re.compile(r"```attestation\s*\n(.*?)\n```", re.DOTALL)
+# Where a record could be written, however it is nested or indented: used to name a complete record that
+# markdown_fences does not show as a posted block (inside an example, an HTML comment or indented code).
+FENCE = re.compile(r"```attestation\s*\n(.*?)\n[ \t]*```", re.DOTALL)
 FULL_SHA = re.compile(r"\b[0-9a-f]{40}\b")
 # Any fenced block, with its info string. Only a fence labelled ``attestation`` is read; a complete attestation record in
 # a differently labelled fence (```json is what seats reach for) is reported by name instead of vanishing.
@@ -136,8 +139,9 @@ def parse_attestations(comments):
             record["_sig"] = signature
             record["comment"] = index
             structured.append(record)
-        for label, raw in ANY_FENCE.findall(body):
-            if label.rstrip() == "attestation":  # exactly what FENCE reads; any other spelling is reported below
+        visible = markdown_fences.blocks(body)
+        for label, raw, _ in visible:
+            if label == "attestation":  # exactly what attest_sig.pairs reads; any other spelling is reported below
                 continue
             record = looks_like_attestation(raw)
             if record is not None:
@@ -145,6 +149,19 @@ def parse_attestations(comments):
                 problems.append({"comment": index, "problem": (
                     f"fence labelled {label.strip() or 'plain'!r} holds a complete attestation record for head "
                     f"{record['head']}, but only a fence labelled attestation is read; nothing was counted")})
+        # A record a reader never sees as a posted verdict (inside an HTML comment, or inside an outer example fence)
+        # is not counted either, but it is named instead of vanishing.
+        shown = [raw.strip() for label, raw, _ in visible if label == "attestation"]
+        for raw in FENCE.findall(body.replace("\r\n", "\n").replace("\r", "\n")):
+            if raw.strip() in shown:
+                shown.remove(raw.strip())  # one posted block accounts for one match, so an identical example is still named
+                continue
+            record = looks_like_attestation(raw)
+            if record is not None:
+                found = True
+                problems.append({"comment": index, "problem": (
+                    f"a complete attestation record for head {record['head']} sits inside an HTML comment or an outer "
+                    "code block, so it is not a posted verdict; nothing was counted")})
         if not found and PROSE_VERDICT.search(body):
             legacy.append(
                 {
