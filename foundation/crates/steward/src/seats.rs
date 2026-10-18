@@ -3,7 +3,15 @@
 use std::collections::BTreeSet;
 
 /// A seat is recognised by a token that STARTS with its name ("claude-sonnet-5-5", "gemini-3.8-flash").
-const KNOWN_SEATS: [&str; 6] = ["claude", "codex", "gemini", "antigravity", "mimo", "qwen"];
+const KNOWN_SEATS: [&str; 7] = [
+    "claude",
+    "codex",
+    "gemini",
+    "antigravity",
+    "mimo",
+    "qwen",
+    "ubuntu",
+];
 
 /// A model family named without its seat word still names the seat that runs it ("Opus 5.5" is Claude, "gpt-5.5" is
 /// Codex); otherwise a Claude session labelling itself "Opus" would be independent of an implementer "claude".
@@ -18,7 +26,11 @@ const MODEL_FAMILY_SEATS: [(&str, &str); 7] = [
 ];
 
 /// Seats that are another seat under a different name.
-const ALIASES: [(&str, &str); 2] = [("antigravity", "gemini"), ("qwen", "mimo")];
+const ALIASES: [(&str, &str); 3] = [
+    ("antigravity", "gemini"),
+    ("qwen", "mimo"),
+    ("ubuntu", "ubuntu-worker-01"),
+];
 
 fn canonical(seat: &str) -> &str {
     ALIASES
@@ -73,6 +85,9 @@ mod tests {
         assert_eq!(names("Antigravity"), ["gemini"]);
         assert_eq!(names("claude-sonnet-5-5"), ["claude"]);
         assert_eq!(names("Local Qwen"), ["mimo"]);
+        assert_eq!(names("ubuntu-worker-01"), ["ubuntu-worker-01"]);
+        assert_eq!(names("Ubuntu"), ["ubuntu-worker-01"]);
+        assert_eq!(names("ubuntu-worker-01-seat[bot]"), ["ubuntu-worker-01"]);
     }
 
     #[test]
