@@ -238,13 +238,14 @@ pub fn validate_contribution(payload: &ContributionPayload) -> Result<(), &'stat
 /// Builds, validates bounds, serializes, and hashes an appended entry.
 ///
 /// Matches `board.py` append rules:
+/// - Fails if `validate_contribution(&payload)` fails (actor, kind, text length, evidence bound).
 /// - Fails if `now` is non-finite (`NaN` / `Inf`).
 /// - Checks serialized payload length against `LIMIT * 2 = 32768` bytes ("entry byte bound exceeded").
 /// - Checks `used_bytes + len > max_storage_bytes` ("storage budget reached; history retained, no automatic eviction").
 /// - Produces identical SHA-256 contribution hashes to `board.py`.
 ///
 /// # Errors
-/// Returns `Err` if time is non-finite, serialized bytes exceed bounds, or storage budget is exceeded.
+/// Returns `Err` if contribution is invalid, time is non-finite, serialized bytes exceed bounds, or storage budget is exceeded.
 pub fn build_appended_entry(
     payload: ContributionPayload,
     id: u64,
@@ -252,6 +253,8 @@ pub fn build_appended_entry(
     used_bytes: u64,
     max_storage_bytes: u64,
 ) -> Result<(BoardEntry, Vec<u8>, AppendReceipt), &'static str> {
+    validate_contribution(&payload)?;
+
     if !now.is_finite() {
         return Err("invalid received_at_epoch: must be finite");
     }
@@ -549,6 +552,30 @@ mod tests {
         assert_eq!(
             paginate_entries(&entries, Some(0), 10).unwrap_err(),
             "pagination out of bounds"
+        );
+    }
+
+    #[test]
+    fn test_build_appended_entry_validates_contribution_payload() {
+        let bad_actor = ContributionPayload {
+            actor: "UnregisteredAttacker".into(),
+            kind: "idea".into(),
+            text: "Hello".into(),
+            evidence: "".into(),
+        };
+        let res = build_appended_entry(bad_actor, 1, 1000.0, 0, 32768);
+        assert_eq!(res.unwrap_err(), "unknown participant");
+
+        let empty_text = ContributionPayload {
+            actor: "Gemini".into(),
+            kind: "idea".into(),
+            text: "   ".into(),
+            evidence: "".into(),
+        };
+        let res_empty = build_appended_entry(empty_text, 1, 1000.0, 0, 32768);
+        assert_eq!(
+            res_empty.unwrap_err(),
+            "contribution requires 1-10000 characters"
         );
     }
 }
