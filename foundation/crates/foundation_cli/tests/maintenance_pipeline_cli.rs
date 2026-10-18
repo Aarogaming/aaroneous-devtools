@@ -316,7 +316,11 @@ fn test_maintenance_advance_accepts_model_independent_decision() {
     let mut hasher = sha2::Sha256::default();
     use sha2::Digest;
     hasher.update(b"independent review passed");
-    let review_sha256 = format!("{:x}", hasher.finalize());
+    let review_sha256: String = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
 
     let state = serde_json::json!({
         "schema_version": 1,
@@ -440,7 +444,11 @@ fn test_maintenance_advance_rejects_self_review() {
     use sha2::Digest;
     let mut hasher = sha2::Sha256::default();
     hasher.update(b"self review attempt");
-    let review_sha256 = format!("{:x}", hasher.finalize());
+    let review_sha256: String = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
 
     let state = serde_json::json!({
         "schema_version": 1,
@@ -560,7 +568,11 @@ fn test_maintenance_advance_rejects_unregistered_seats() {
     use sha2::Digest;
     let mut hasher = sha2::Sha256::default();
     hasher.update(b"unregistered seat review attempt");
-    let review_sha256 = format!("{:x}", hasher.finalize());
+    let review_sha256: String = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
 
     let state = serde_json::json!({
         "schema_version": 1,

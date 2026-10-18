@@ -5,6 +5,8 @@
 //! - Deterministic snapshot creation, reverse cursor pagination, and storage budget calculation.
 //! - Atomic append ledger modeling and SHA-256 contribution verification.
 
+use std::fmt::Write;
+
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -285,7 +287,10 @@ pub fn build_appended_entry(
 
     let mut hasher = Sha256::new();
     hasher.update(&serialized);
-    let hash_hex = format!("{:x}", hasher.finalize());
+    let mut hash_hex = String::with_capacity(64);
+    for byte in hasher.finalize() {
+        let _ = write!(hash_hex, "{byte:02x}");
+    }
 
     let receipt = AppendReceipt {
         id,
