@@ -9,9 +9,10 @@ description = "Rust port of the devtools steward, proven against the committed g
 [dependencies]
 # Admission: pure, no ambient authority, no unsafe in its API; features pinned to what the ported patterns need
 # (std, Unicode \b \w \s and case folding). Patterns are compiled by the caller and injected, not held in a static.
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 # sha2: already used by maintenance_ui (the log chain is SHA-256).
-sha2 = "0.10"
-# toml: already used by foundation_cli; only the parser is needed (the circuit-breaker file).
-toml = { version = "1.1", default-features = false, features = ["parse"] }
+sha2 = "0.11"
+# toml: already used by foundation_cli. The parser and the serde feature (which exposes `toml::Table` and `toml::Value`, used by the
+# circuit-breaker, suite and release-policy readers) are needed; without serde `cargo build -p steward` alone fails to compile.
+toml = { version = "1.1", default-features = false, features = ["parse", "serde"] }
 regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case", "unicode-gencat"] }
