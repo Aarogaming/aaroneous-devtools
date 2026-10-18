@@ -290,8 +290,33 @@ def ci_state(rollup):
     return {"state": "success" if ok else "failure", "detail": f"{len(states)} checks: {', '.join(sorted(set(states)))}"}
 
 
-def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks):
+REFRESH_REFSPECS = ("+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/origin-pr/*")
+
+
+def refresh_refs(repo_dir, run=None):
+    """Bring the clone's view of the remote up to date: every branch and every pull request head, pruning what is gone.
+    GitHub supplies the current head SHA, but the merge base, changed paths, trial merge, base tip and circuit-breaker
+    contents are all read from the clone's own refs; a stale clone gave facts for a different base, or no head at all
+    (Codex P2 on #99). Pull heads live under refs/remotes/origin-pr/* so they never collide with a remote branch named 'pr'.
+    Returns (ok, message)."""
+    run = run or rc.git
+    result = run(repo_dir, "fetch", "--prune", "origin", *REFRESH_REFSPECS)
+    return result.returncode == 0, (result.stderr or "").strip()
+
+
+def missing_heads(repo_dir, prs, run=None):
+    """PR numbers whose head commit is not in the clone, which no fact about them can be trusted."""
+    run = run or rc.git
+    return [pr["number"] for pr in prs if run(repo_dir, "cat-file", "-e", pr["head"] + "^{commit}").returncode != 0]
+
+
+def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks, fetch=False):
+    if fetch:
+        ok, message = refresh_refs(repo_dir)
+        if not ok:
+            raise SystemExit(f"--fetch failed, so no gate fact can be trusted: {message}")
     snapshot = rc.live_snapshot(repo, repo_dir)
+    absent = set(missing_heads(repo_dir, snapshot["prs"]))
     keys = rc.load_keys(identities_path)
     rows = {r["pr"]: r for r in rc.report_snapshot(
         snapshot, rc.live_ancestry(repo_dir), rc.load_identities(identities_path), keys, True)}
@@ -312,6 +337,9 @@ def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks):
         if first is not None:
             decision["reasons"].append(f"blocked on checklist box {first}")
         decision.update({"pr": pr["number"], "head": pr["head"], "paths": paths})
+        if pr["number"] in absent:
+            decision["eligible"] = False
+            decision["reasons"].append("refs: the PR head is not in this clone; run with --fetch")
         if do_checks and decision["eligible"]:
             decision["checks"] = run_checks(repo_dir, pr["head"], pr["base"], decision["plan"])
             if any(c["rc"] != 0 for c in decision["checks"]):
@@ -322,6 +350,10 @@ def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks):
 
 
 def print_checklists(args):
+    if args.fetch:
+        ok, message = refresh_refs(args.repo_dir)
+        if not ok:
+            raise SystemExit(f"--fetch failed, so no gate fact can be trusted: {message}")
     snapshot = rc.live_snapshot(args.repo, args.repo_dir)
     keys = rc.load_keys(args.identities)
     rows = {r["pr"]: r for r in rc.report_snapshot(
@@ -490,6 +522,8 @@ def main(argv):
     parser.add_argument("--identities", required=True)
     parser.add_argument("--pr", type=int)
     parser.add_argument("--run-checks", action="store_true")
+    parser.add_argument("--fetch", action="store_true",
+                        help="fetch every branch and PR head from origin first; fail closed if the fetch fails")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--checklist", action="store_true",
                         help="print the policy's literal checklist per PR (report-only 'would merge')")
@@ -499,7 +533,7 @@ def main(argv):
         raise SystemExit(f"--repo-dir {args.repo_dir!r} is not a clone of {args.repo}")
     if args.checklist:
         return print_checklists(args)
-    decisions = evaluate_all(args.repo, args.repo_dir, args.identities, args.pr, args.run_checks)
+    decisions = evaluate_all(args.repo, args.repo_dir, args.identities, args.pr, args.run_checks, args.fetch)
     if args.json:
         print(json.dumps(decisions, indent=2))
     else:
