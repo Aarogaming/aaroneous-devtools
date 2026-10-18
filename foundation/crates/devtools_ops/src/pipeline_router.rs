@@ -132,6 +132,9 @@ pub fn is_valid_job_id(job_id: &str) -> bool {
 
 /// Copies a file using create_new semantics. Returns Ok(true) if copied, Ok(false) if destination already exists.
 fn copy_create_new(src: &std::path::Path, dst: &std::path::Path) -> Result<bool> {
+    if dst.is_dir() {
+        anyhow::bail!("Destination is a directory, not a file: {}", dst.display());
+    }
     let mut reader =
         fs::File::open(src).with_context(|| format!("Opening source file: {}", src.display()))?;
     match fs::OpenOptions::new()
@@ -157,6 +160,9 @@ fn copy_create_new(src: &std::path::Path, dst: &std::path::Path) -> Result<bool>
 /// Writes content to a file using create_new semantics. Returns Ok(true) if written, Ok(false) if destination already exists.
 fn write_create_new(dst: &std::path::Path, content: &str) -> Result<bool> {
     use std::io::Write;
+    if dst.is_dir() {
+        anyhow::bail!("Destination is a directory, not a file: {}", dst.display());
+    }
     match fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -333,7 +339,23 @@ pub fn route_all_pending_results(config: &PipelineRouterConfig) -> Result<Vec<Ro
                 let manifest_path = config
                     .feedback_jobs_dir
                     .join(format!("{}.toml", manifest_id));
-                let _ = write_create_new(&manifest_path, &feedback_manifest);
+                match write_create_new(&manifest_path, &feedback_manifest) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        eprintln!(
+                            "Warning: feedback manifest {} already exists, keeping the earlier manifest",
+                            manifest_path.display()
+                        );
+                    }
+                    Err(e) => {
+                        let _ = fs::remove_file(&dest);
+                        return Err(e).context(format!(
+                            "Failed to write feedback manifest {} for result {}",
+                            manifest_path.display(),
+                            path.display()
+                        ));
+                    }
+                }
 
                 // Remove source result after successful staging
                 fs::remove_file(&path)?;
@@ -725,5 +747,63 @@ mod tests {
         let actions_cycle_2 = route_all_pending_results(&config).unwrap();
         assert_eq!(actions_cycle_2.len(), 0);
         assert!(results_dir.join("JOB-1.json").exists());
+    }
+
+    #[test]
+    fn test_manifest_write_failure_propagates_and_preserves_source_result() {
+        let temp = tempfile::tempdir().unwrap();
+        let results_dir = temp.path().join("results");
+        let staged_dir = temp.path().join("staged");
+        let feedback_dir = temp.path().join("feedback");
+        fs::create_dir_all(&results_dir).unwrap();
+        fs::create_dir_all(&staged_dir).unwrap();
+        fs::create_dir_all(&feedback_dir).unwrap();
+
+        // Make the target manifest path a directory so writing to it fails with an I/O error
+        let blocked_manifest = feedback_dir.join("REFINE-JOB-7.toml");
+        fs::create_dir(&blocked_manifest).unwrap();
+
+        let payload = WorkerResultPayload {
+            schema_version: 1,
+            artifact_kind: "foundation.local-worker-result".into(),
+            job_id: "JOB-7".into(),
+            submitted_at_secs: 1000,
+            outcome: "pending-owner-review".into(),
+            input: "test".into(),
+            proposal: Some(WorkerProposal {
+                task: "Audit".into(),
+                observations: vec!["Obs 7".into()],
+                risks: vec![],
+                test_plan: vec![],
+                recommended_next_step: "Fix".into(),
+                rust_draft: None,
+            }),
+            error: None,
+            conformance_flags: vec!["observation 7: unanchored".into()],
+        };
+        let result_file = results_dir.join("JOB-7.json");
+        fs::write(&result_file, serde_json::to_vec(&payload).unwrap()).unwrap();
+
+        let config = PipelineRouterConfig::new(&results_dir, &staged_dir, &feedback_dir);
+
+        // Routing must fail with Err
+        let res = route_all_pending_results(&config);
+        assert!(
+            res.is_err(),
+            "Real I/O errors when writing manifests must propagate"
+        );
+
+        // The source result must NOT have been deleted
+        assert!(
+            result_file.exists(),
+            "Source result must be preserved on manifest write failure"
+        );
+
+        // The staged file must NOT be left orphaned
+        let staged_file = staged_dir.join("JOB-7.needs-refinement.json");
+        assert!(
+            !staged_file.exists(),
+            "Staged record must be cleaned up if manifest write fails"
+        );
     }
 }
