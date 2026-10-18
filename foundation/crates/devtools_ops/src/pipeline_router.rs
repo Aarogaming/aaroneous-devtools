@@ -57,6 +57,16 @@ pub struct WorkerProposal {
     pub rust_draft: Option<String>,
 }
 
+/// Representation of a generated feedback refinement job manifest.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FeedbackJobManifest {
+    pub schema_version: u32,
+    pub id: String,
+    pub mode: String,
+    pub evidence: Vec<String>,
+    pub instruction: String,
+}
+
 /// Configuration for active pipeline routing.
 pub struct PipelineRouterConfig {
     pub results_dir: PathBuf,
@@ -76,6 +86,41 @@ impl PipelineRouterConfig {
             feedback_jobs_dir: feedback_jobs_dir.into(),
         }
     }
+}
+
+/// Validates that a job identifier is bounded and free of path traversal sequences.
+pub fn is_valid_job_id(job_id: &str) -> bool {
+    !job_id.is_empty()
+        && job_id.len() <= 128
+        && !job_id.contains("..")
+        && job_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+}
+
+/// Copies a file using create_new semantics to prevent overwriting existing staged artifacts.
+fn copy_create_new(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+    let mut reader =
+        fs::File::open(src).with_context(|| format!("Opening source file: {}", src.display()))?;
+    let mut writer = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dst)
+        .with_context(|| format!("Creating new staged file: {}", dst.display()))?;
+    std::io::copy(&mut reader, &mut writer)?;
+    Ok(())
+}
+
+/// Writes content to a file using create_new semantics.
+fn write_create_new(dst: &std::path::Path, content: &str) -> Result<()> {
+    use std::io::Write;
+    let mut writer = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dst)
+        .with_context(|| format!("Creating new manifest file: {}", dst.display()))?;
+    writer.write_all(content.as_bytes())?;
+    Ok(())
 }
 
 /// Extracts declared evidence files from the raw job input text, falling back to a default.
@@ -174,12 +219,21 @@ pub fn route_all_pending_results(config: &PipelineRouterConfig) -> Result<Vec<Ro
             }
         };
 
+        if !is_valid_job_id(&payload.job_id) {
+            eprintln!(
+                "Warning: skipping result {} with invalid or traversal job_id {:?}",
+                path.display(),
+                payload.job_id
+            );
+            continue;
+        }
+
         let action = evaluate_result(&payload);
 
         match &action {
             RoutingAction::StageForIntegration { job_id, .. } => {
                 let dest = config.staged_dir.join(format!("{}.staged.json", job_id));
-                fs::copy(&path, &dest)?;
+                copy_create_new(&path, &dest)?;
                 fs::remove_file(&path)?;
             }
             RoutingAction::FeedbackForRefinement {
@@ -187,30 +241,44 @@ pub fn route_all_pending_results(config: &PipelineRouterConfig) -> Result<Vec<Ro
                 evidence,
                 issues,
             } => {
-                // Generate a feedback job manifest matching strict Job schema
-                let ev_str = serde_json::to_string(evidence)
-                    .unwrap_or_else(|_| "[\"AGENTS.md\"]".to_string());
-                let feedback_manifest = format!(
-                    "schema_version = 1\nid = \"REFINE-{}\"\nmode = \"code-draft\"\nevidence = {}\ninstruction = \"Refine previous proposal to address reported conformance issues: {}\"\n",
-                    job_id.replace("FEED-", ""),
-                    ev_str,
-                    issues.join("; ")
-                );
+                let clean_id = job_id.strip_prefix("FEED-").unwrap_or(job_id);
+                let manifest_id = format!("REFINE-{}", clean_id);
+                if !is_valid_job_id(&manifest_id) {
+                    eprintln!(
+                        "Warning: skipping feedback manifest with invalid id {:?}",
+                        manifest_id
+                    );
+                    continue;
+                }
+
+                let manifest = FeedbackJobManifest {
+                    schema_version: 1,
+                    id: manifest_id.clone(),
+                    mode: "code-draft".to_string(),
+                    evidence: evidence.clone(),
+                    instruction: format!(
+                        "Refine previous proposal to address reported conformance issues: {}",
+                        issues.join("; ")
+                    ),
+                };
+
+                let feedback_manifest =
+                    toml::to_string(&manifest).context("Serializing feedback manifest to TOML")?;
                 let manifest_path = config
                     .feedback_jobs_dir
-                    .join(format!("REFINE-{}.toml", job_id.replace("FEED-", "")));
-                fs::write(&manifest_path, feedback_manifest)?;
+                    .join(format!("{}.toml", manifest_id));
+                write_create_new(&manifest_path, &feedback_manifest)?;
 
-                // Move consumed result into staged feedback record
+                // Move consumed result into staged feedback record with create_new semantics
                 let dest = config
                     .staged_dir
                     .join(format!("{}.needs-refinement.json", job_id));
-                fs::copy(&path, &dest)?;
+                copy_create_new(&path, &dest)?;
                 fs::remove_file(&path)?;
             }
             RoutingAction::RecordTelemetry { job_id } => {
                 let dest = config.staged_dir.join(format!("{}.telemetry.json", job_id));
-                fs::copy(&path, &dest)?;
+                copy_create_new(&path, &dest)?;
                 fs::remove_file(&path)?;
             }
         }
@@ -224,6 +292,110 @@ pub fn route_all_pending_results(config: &PipelineRouterConfig) -> Result<Vec<Ro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_is_valid_job_id() {
+        assert!(is_valid_job_id("JOB-123.abc_456"));
+        assert!(is_valid_job_id("REFINE-FIX-01"));
+        assert!(!is_valid_job_id(""));
+        assert!(!is_valid_job_id("../../traversal"));
+        assert!(!is_valid_job_id("job/with/slashes"));
+        assert!(!is_valid_job_id("job with spaces"));
+        assert!(!is_valid_job_id("job\nwith\nnewlines"));
+        let long_id = "a".repeat(129);
+        assert!(!is_valid_job_id(&long_id));
+    }
+
+    #[test]
+    fn test_invalid_job_id_skipped_during_routing() {
+        let temp = tempfile::tempdir().unwrap();
+        let results_dir = temp.path().join("results");
+        let staged_dir = temp.path().join("staged");
+        let feedback_dir = temp.path().join("feedback");
+        fs::create_dir_all(&results_dir).unwrap();
+
+        let malicious_payload = WorkerResultPayload {
+            schema_version: 1,
+            artifact_kind: "foundation.local-worker-result".into(),
+            job_id: "../../escape".into(),
+            submitted_at_secs: 1000,
+            outcome: "pending-owner-review".into(),
+            input: "test".into(),
+            proposal: None,
+            error: None,
+            conformance_flags: vec![],
+        };
+        fs::write(
+            results_dir.join("bad.json"),
+            serde_json::to_vec(&malicious_payload).unwrap(),
+        )
+        .unwrap();
+
+        let config = PipelineRouterConfig::new(&results_dir, &staged_dir, &feedback_dir);
+        let actions = route_all_pending_results(&config).unwrap();
+        assert_eq!(actions.len(), 0);
+        // The bad result remains unprocessed in results_dir
+        assert!(results_dir.join("bad.json").exists());
+        // Nothing escaped outside staged_dir
+        assert!(!temp.path().join("escape.telemetry.json").exists());
+    }
+
+    #[test]
+    fn test_staged_create_new_refuses_clobber() {
+        let temp = tempfile::tempdir().unwrap();
+        let results_dir = temp.path().join("results");
+        let staged_dir = temp.path().join("staged");
+        let feedback_dir = temp.path().join("feedback");
+        fs::create_dir_all(&results_dir).unwrap();
+        fs::create_dir_all(&staged_dir).unwrap();
+
+        // Pre-create an existing staged file
+        fs::write(staged_dir.join("JOB-1.telemetry.json"), b"existing").unwrap();
+
+        let payload = WorkerResultPayload {
+            schema_version: 1,
+            artifact_kind: "foundation.local-worker-result".into(),
+            job_id: "JOB-1".into(),
+            submitted_at_secs: 1000,
+            outcome: "pending-owner-review".into(),
+            input: "test".into(),
+            proposal: None,
+            error: None,
+            conformance_flags: vec![],
+        };
+        fs::write(
+            results_dir.join("job1.json"),
+            serde_json::to_vec(&payload).unwrap(),
+        )
+        .unwrap();
+
+        let config = PipelineRouterConfig::new(&results_dir, &staged_dir, &feedback_dir);
+        let res = route_all_pending_results(&config);
+        assert!(
+            res.is_err(),
+            "create_new must error on existing destination"
+        );
+        // Verify original file is unchanged
+        assert_eq!(
+            fs::read(staged_dir.join("JOB-1.telemetry.json")).unwrap(),
+            b"existing"
+        );
+    }
+
+    #[test]
+    fn test_feedback_manifest_toml_serialization() {
+        let manifest = FeedbackJobManifest {
+            schema_version: 1,
+            id: "REFINE-TEST".into(),
+            mode: "code-draft".into(),
+            evidence: vec!["AGENTS.md".into(), "crates/lib.rs".into()],
+            instruction: "Fix \"unescaped quote\" and [brackets] with\nnewlines".into(),
+        };
+
+        let serialized = toml::to_string(&manifest).unwrap();
+        let parsed: FeedbackJobManifest = toml::from_str(&serialized).unwrap();
+        assert_eq!(manifest, parsed);
+    }
 
     #[test]
     fn test_evaluate_clean_proposal() {
@@ -371,5 +543,8 @@ mod tests {
 
         // Feedback manifest was generated for next loop pass
         assert!(feedback_dir.join("REFINE-JOB-REFINE.toml").exists());
+        let toml_str = fs::read_to_string(feedback_dir.join("REFINE-JOB-REFINE.toml")).unwrap();
+        let parsed: FeedbackJobManifest = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.id, "REFINE-JOB-REFINE");
     }
 }

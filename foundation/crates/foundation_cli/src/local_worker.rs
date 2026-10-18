@@ -786,12 +786,17 @@ pub(crate) fn serve(config_path: &Path) -> Result<()> {
             &staged_dir,
             &config.jobs_directory,
         );
-        if let Ok(actions) = devtools_ops::route_all_pending_results(&router_config) {
-            if !actions.is_empty() {
-                println!(
-                    "local-worker-serve: routed {} result(s) into active pipeline",
-                    actions.len()
-                );
+        match devtools_ops::route_all_pending_results(&router_config) {
+            Ok(actions) => {
+                if !actions.is_empty() {
+                    println!(
+                        "local-worker-serve: routed {} result(s) into active pipeline",
+                        actions.len()
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("local-worker-serve: pipeline routing error: {}", e);
             }
         }
         delay = if tick_was_quiet(&status_path, mtime_before) {

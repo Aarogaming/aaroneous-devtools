@@ -316,6 +316,7 @@ dependencies = [
  "serde_json",
  "steward",
  "tempfile",
+ "toml",
 ]
 
 [[package]]
