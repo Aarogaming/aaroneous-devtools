@@ -10,6 +10,7 @@ struct Request<'a> {
     model: &'a str,
     stream: bool,
     think: bool,
+    format: &'static str,
     options: Options,
     messages: [Message<'a>; 2],
 }
@@ -88,6 +89,7 @@ pub(crate) fn run(
         model,
         stream: false,
         think: false,
+        format: "json",
         options: Options {
             temperature: 0.0,
             num_predict,
@@ -116,8 +118,24 @@ pub(crate) fn run(
         .context("local Ollama status")?
         .json()
         .context("local Ollama response")?;
-    let proposal: Proposal = serde_json::from_str(&response.message.content)
-        .context("model response is not proposal JSON")?;
+    let content = response.message.content.trim();
+    let unquoted = if content.starts_with("```json") {
+        content
+            .strip_prefix("```json")
+            .and_then(|s| s.strip_suffix("```"))
+            .unwrap_or(content)
+            .trim()
+    } else if content.starts_with("```") {
+        content
+            .strip_prefix("```")
+            .and_then(|s| s.strip_suffix("```"))
+            .unwrap_or(content)
+            .trim()
+    } else {
+        content
+    };
+    let proposal: Proposal =
+        serde_json::from_str(unquoted).context("model response is not proposal JSON")?;
     let report = Report {
         schema_version: 1,
         artifact_kind: KIND.to_owned(),

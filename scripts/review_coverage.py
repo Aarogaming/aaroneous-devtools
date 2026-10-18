@@ -137,13 +137,13 @@ def parse_attestations(comments):
 # One seat is one seat however its name is spelled: "Gemini", "gemini" and "Antigravity" are the same reviewer. The merge gate's
 # "at least two independent seats" box counts len(accept_seats), so two comments from one seat spelled differently (live on
 # #96: ['Gemini', 'gemini']) looked like two seats.
-SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
+SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo", "ubuntu": "ubuntu-worker-01"}
 
 
 # A seat is recognised by a word that STARTS with its name: "claude-sonnet-5-5", "gemini-3.8-flash", "mimo-v2.6-flash-free",
 # "Claude\u200b" and "CLAUDE." all name a seat. Taking only the first space-separated word missed every model-id and
 # punctuation form (skeptic probe on #99: reviewer "Claude" with implementers ["claude-sonnet-5-5"] was independent).
-KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen")
+KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen", "ubuntu")
 
 # A model family named without its seat word still names the seat that runs it: "Opus 5.5" is Claude, "gpt-5.5" is Codex.
 # Without this the string kept its own first token as an "unknown seat", so a Claude session labelling itself "Opus"
@@ -212,7 +212,7 @@ def unattributed_commits(commit_log, branch):
                if not any(known_seat_names(t) for t in TRAILER.findall(chunk)))
 
 
-STAND_IN = re.compile(r"\b(?:in lieu of|on behalf of|acting for|operating for|standing in for)\s+(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+STAND_IN = re.compile(r"\b(?:in lieu of|on behalf of|acting for|operating for|standing in for)\s+(Claude|Codex|Gemini|Mimo|Antigravity|ubuntu-worker-01|Ubuntu)\b",
                       re.I)
 
 
