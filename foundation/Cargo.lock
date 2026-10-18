@@ -304,6 +304,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "devtools_ops"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "digest"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -401,6 +412,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "devtools_ops",
  "regex",
  "reqwest",
  "serde",
