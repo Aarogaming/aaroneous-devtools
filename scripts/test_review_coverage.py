@@ -672,6 +672,13 @@ class RegisteredSeatsResolveExactly(unittest.TestCase):
         for label in ("xubuntu-worker-01", "ubuntu-worker-011", "ubuntu-worker", "worker-01", "ubuntu"):
             self.assertNotEqual(rc.resolve_seat(label, REGISTERED), "ubuntu-worker-01", label)
 
+    def test_a_sibling_seat_name_is_never_read_as_the_registered_seat(self):
+        registered = REGISTERED | {"ubuntu-worker-02"}
+        for label in ("ubuntu-worker-02", "Ubuntu Worker 02"):
+            self.assertEqual(rc.resolve_seat(label, registered), "ubuntu-worker-02", label)
+        self.assertNotEqual(rc.resolve_seat("ubuntu-worker-03", registered), "ubuntu-worker-01")
+        self.assertNotEqual(rc.resolve_seat("ubuntu-worker-03", registered), "ubuntu-worker-02")
+
     def test_two_registered_seats_in_one_label_are_ambiguous_and_fail_closed(self):
         registered = REGISTERED | {"ubuntu-worker-02"}
         self.assertIsNone(rc.resolve_seat("ubuntu-worker-01 and ubuntu-worker-02", registered))

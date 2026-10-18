@@ -318,7 +318,15 @@ def resolve_seat(label, registered=None):
     flat = "-" + _hyphenated(label) + "-"
     hits = sorted(seat for seat in (registered or ()) if _hyphenated(seat) and "-" + _hyphenated(seat) + "-" in flat)
     if not hits:
-        return canonical_reviewer_seat(label)
+        seat = canonical_reviewer_seat(label)
+        if registered and seat in registered and "-" in seat:
+            # A hyphenated registered seat is named by its whole name only. Reaching it here means the label matched through
+            # the bare-prefix alias ("ubuntu"), so `ubuntu`, `ubuntu-worker` and `ubuntu-worker-011` are near misses of
+            # `ubuntu-worker-01`, not that seat (and a later `ubuntu-worker-02` must never read as `-01`). Keep the label's own
+            # first token, as before the alias existed.
+            tokens = [t for t in re.split(r"[^a-z0-9]+", str(label).strip().lower()) if t]
+            return tokens[0] if tokens else None
+        return seat
     if len(hits) > 1:
         return None
     rest = flat.replace("-" + _hyphenated(hits[0]) + "-", "-", 1)
