@@ -189,6 +189,9 @@ class Coverage(unittest.TestCase):
         self.assertEqual(rc.seat_names("Gemini/Antigravity"), {"gemini"})
         self.assertEqual(rc.seat_names("Claude, Mimo"), {"claude", "mimo"})
         self.assertEqual(rc.seat_names("Local Qwen"), {"mimo"})
+        self.assertEqual(rc.seat_names("ubuntu-worker-01"), {"ubuntu-worker-01"})
+        self.assertEqual(rc.seat_names("Ubuntu"), {"ubuntu-worker-01"})
+        self.assertEqual(rc.seat_names("ubuntu-worker-01-seat[bot]"), {"ubuntu-worker-01"})
         self.assertEqual(rc.seat_names("someone else"), {"someone"})
         self.assertEqual(rc.seat_names("!!!"), set())
 
