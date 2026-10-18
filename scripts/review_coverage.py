@@ -63,6 +63,11 @@ def validate(record):
         return "implementers must be a non-empty list"
     if record["scope"] not in ("whole", "delta"):
         return f"unknown scope: {record['scope']!r}"
+    for key in ("head", "base_sha") + (("from",) if record["scope"] == "delta" else ()):
+        value = record[key]
+        if not isinstance(value, str) or not FULL_SHA.fullmatch(value):
+            return (f"{key} must be a full 40-character lowercase SHA, got {str(value)[:50]!r}; "
+                    "nothing was counted")
     if not isinstance(record["verdict"], str) or record["verdict"] not in ACCEPT | REJECT:
         return (f"unknown verdict {record['verdict']!r}: use accept, needs_revision or changes_requested "
                 "(lower case); nothing was counted")
@@ -80,6 +85,17 @@ def looks_like_attestation(raw):
         return None
     head = record["head"]
     return record if isinstance(head, str) and FULL_SHA.fullmatch(head) else None
+
+
+def fold_sha_case(record):
+    """A SHA is case-insensitive: ``head`` / ``base_sha`` / ``from`` written in upper case are the same commit, and
+    comparing them as strings made a correct block silently never match. Only a well-formed 40-hex value is folded; a
+    placeholder or a short SHA is left alone for `validate` to report."""
+    if isinstance(record, dict):
+        for key in ("head", "base_sha", "from"):
+            value = record.get(key)
+            if isinstance(value, str) and re.fullmatch(r"[0-9a-fA-F]{40}", value.strip()):
+                record[key] = value.strip().lower()
 
 
 def fold_rejection(record):
@@ -106,6 +122,7 @@ def parse_attestations(comments):
                 problems.append({"comment": index, "problem": f"invalid JSON: {error}"})
                 continue
             fold_rejection(record)
+            fold_sha_case(record)
             problem = validate(record)
             if problem:
                 problems.append({"comment": index, "problem": problem})
@@ -635,6 +652,9 @@ def live_ancestry(repo_dir):
     return lambda a, b: a == b or git(repo_dir, "merge-base", "--is-ancestor", a, b).returncode == 0
 
 
+MAX_PROBLEM_LINES = 5
+
+
 def render(rows):
     lines = ["PR    head      covered  structured  auth  legacy(not counted)  reasons"]
     for r in rows:
@@ -643,6 +663,18 @@ def render(rows):
             f"#{r['pr']:<4} {r['head'][:8]}  {str(r['covered']):<7}  {r['structured_attestations']:<10}"
             f"  {r.get('authenticated_reviews', 0):<4}  {r['legacy_packets_not_counted']:<19}  {reasons}"
         )
+    # A rejected attestation used to appear only in --json, so the default report said "no accept at the current head" and
+    # nothing about the block that was dropped and why (Codex P2 on #95). The table above is unchanged.
+    for r in rows:
+        problems = r.get("malformed") or []
+        if not problems:
+            continue
+        lines.append(f"#{r['pr']}: {len(problems)} attestation block(s) not counted")
+        for problem in problems[:MAX_PROBLEM_LINES]:
+            where = problem.get("comment", problem.get("review"))
+            lines.append(f"    comment {where}: {problem['problem']}")
+        if len(problems) > MAX_PROBLEM_LINES:
+            lines.append(f"    ... and {len(problems) - MAX_PROBLEM_LINES} more (see --json)")
     return "\n".join(lines)
 
 
