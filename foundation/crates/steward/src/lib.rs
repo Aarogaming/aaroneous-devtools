@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 pub mod attribution;
+pub mod board;
 pub mod cards;
 pub mod chain;
 pub mod checklist;
@@ -23,9 +24,11 @@ pub mod coverage;
 pub mod engagement;
 pub mod gate;
 pub mod heads;
+pub mod independence;
 pub mod model_hub;
 pub mod receipts;
 pub mod rejected;
+pub mod release;
 pub mod seats;
 pub mod suite;
 pub mod text;

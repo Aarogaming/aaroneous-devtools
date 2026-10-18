@@ -71,6 +71,19 @@ pub fn evaluate(
     records: &[Record],
     is_ancestor: &dyn Fn(&str, &str) -> bool,
 ) -> Decision {
+    evaluate_in(head, merge_base, records, is_ancestor, &BTreeSet::new())
+}
+
+/// [`evaluate`] against an identity registry. A reviewer label must name exactly one seat, resolved the way the
+/// registry spells it (`ubuntu-worker-01`, not `ubuntu`); a label naming two seats is not a valid accept.
+#[must_use]
+pub fn evaluate_in(
+    head: &str,
+    merge_base: Option<&str>,
+    records: &[Record],
+    is_ancestor: &dyn Fn(&str, &str) -> bool,
+    registered: &BTreeSet<String>,
+) -> Decision {
     let merge_base = match merge_base {
         None | Some("" | "unknown") => {
             return Decision {
@@ -113,10 +126,22 @@ pub fn evaluate(
             ACCEPT.contains(&r.verdict.as_str())
                 && independent(r)
                 && r.base_sha == merge_base
-                && canonical_reviewer_seat(&r.reviewer).is_some()
+                && crate::independence::resolve_seat(&r.reviewer, registered).is_some()
         })
         .map(|(i, _)| i)
         .collect();
+    for r in records {
+        if ACCEPT.contains(&r.verdict.as_str())
+            && independent(r)
+            && r.base_sha == merge_base
+            && crate::independence::resolve_seat(&r.reviewer, registered).is_none()
+        {
+            reasons.push(format!(
+                "reviewer {} does not name exactly one seat, so its accept counts for no one; name your seat alone and put the model in the record's `model` field",
+                crate::gate::py_repr_str(&r.reviewer)
+            ));
+        }
+    }
     let mut covered: BTreeSet<&str> = valid
         .iter()
         .map(|&i| &records[i])
@@ -185,7 +210,7 @@ pub fn evaluate(
         .collect();
     let seats: BTreeSet<String> = counted
         .iter()
-        .filter_map(|&i| canonical_reviewer_seat(&records[i].reviewer))
+        .filter_map(|&i| crate::independence::resolve_seat(&records[i].reviewer, registered))
         .collect();
     Decision {
         covered: ok,

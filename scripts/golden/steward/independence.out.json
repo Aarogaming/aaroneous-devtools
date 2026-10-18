@@ -1,0 +1,284 @@
+[
+  {
+    "entries": [
+      {
+        "family": "mimo",
+        "model": null,
+        "seat": "opencode",
+        "source": "registered"
+      },
+      {
+        "family": "qwen",
+        "model": null,
+        "seat": "ubuntu-worker-01",
+        "source": "registered"
+      }
+    ],
+    "families": [
+      "mimo",
+      "qwen"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "mimo",
+        "model": "mimo-v2.6",
+        "seat": "opencode",
+        "source": "declared"
+      },
+      {
+        "family": "mimo",
+        "model": "MiMo-V2.6-Flash",
+        "seat": "ubuntu-worker-01",
+        "source": "declared"
+      }
+    ],
+    "families": [
+      "mimo"
+    ],
+    "notes": [
+      "ubuntu-worker-01 is registered as qwen but ran 'MiMo-V2.6-Flash' (mimo): the declared model is used",
+      "opencode, ubuntu-worker-01 are the same model family (mimo): counted as one judge"
+    ]
+  },
+  {
+    "entries": [
+      {
+        "family": "mimo",
+        "model": "mimo-v2.6",
+        "seat": "ubuntu-worker-01",
+        "source": "declared"
+      }
+    ],
+    "families": [
+      "mimo"
+    ],
+    "notes": [
+      "ubuntu-worker-01 is registered as qwen but ran 'mimo-v2.6' (mimo): the declared model is used"
+    ]
+  },
+  {
+    "entries": [
+      {
+        "family": "qwen",
+        "model": "Qwen/Qwen3.8-Coder-14B",
+        "seat": "ubuntu-worker-01",
+        "source": "declared"
+      }
+    ],
+    "families": [
+      "qwen"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "qwen",
+        "model": "qwenish",
+        "seat": "ubuntu-worker-01",
+        "source": "registered"
+      }
+    ],
+    "families": [
+      "qwen"
+    ],
+    "notes": [
+      "ubuntu-worker-01 declared model 'qwenish', which model_families does not classify; counted as qwen (registered)"
+    ]
+  },
+  {
+    "entries": [
+      {
+        "family": "qwen",
+        "model": "brandnew-9",
+        "seat": "ubuntu-worker-01",
+        "source": "registered"
+      }
+    ],
+    "families": [
+      "qwen"
+    ],
+    "notes": [
+      "ubuntu-worker-01 declared model 'brandnew-9', which model_families does not classify; counted as qwen (registered)"
+    ]
+  },
+  {
+    "entries": [
+      {
+        "family": "seat:codex",
+        "model": null,
+        "seat": "codex",
+        "source": "seat"
+      }
+    ],
+    "families": [
+      "seat:codex"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "seat:gemini",
+        "model": null,
+        "seat": "gemini",
+        "source": "seat"
+      }
+    ],
+    "families": [
+      "seat:gemini"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "qwen",
+        "model": null,
+        "seat": "ubuntu-worker-01",
+        "source": "registered"
+      }
+    ],
+    "families": [
+      "qwen"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "mimo",
+        "model": "mimo-v2.6",
+        "seat": "opencode",
+        "source": "declared"
+      },
+      {
+        "family": "qwen",
+        "model": "qwen3.8",
+        "seat": "opencode",
+        "source": "declared"
+      }
+    ],
+    "families": [
+      "mimo",
+      "qwen"
+    ],
+    "notes": [
+      "opencode is registered as mimo but ran 'qwen3.8' (qwen): the declared model is used"
+    ]
+  },
+  {
+    "entries": [
+      {
+        "family": "mimo",
+        "model": "mimo-v2.6",
+        "seat": "opencode",
+        "source": "declared"
+      }
+    ],
+    "families": [
+      "mimo"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "qwen",
+        "model": null,
+        "seat": "ubuntu-worker-01",
+        "source": "registered"
+      }
+    ],
+    "families": [
+      "qwen"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "seat:xubuntu",
+        "model": null,
+        "seat": "xubuntu",
+        "source": "seat"
+      },
+      {
+        "family": "seat:ubuntu",
+        "model": null,
+        "seat": "ubuntu",
+        "source": "seat"
+      }
+    ],
+    "families": [
+      "seat:ubuntu",
+      "seat:xubuntu"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [],
+    "families": [],
+    "notes": []
+  },
+  {
+    "entries": [],
+    "families": [],
+    "notes": []
+  },
+  {
+    "entries": [],
+    "families": [],
+    "notes": []
+  },
+  {
+    "entries": [],
+    "families": [],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "seat:claude",
+        "model": null,
+        "seat": "claude",
+        "source": "seat"
+      }
+    ],
+    "families": [
+      "seat:claude"
+    ],
+    "notes": []
+  },
+  {
+    "entries": [
+      {
+        "family": "seat:codex",
+        "model": "Bad-1",
+        "seat": "codex",
+        "source": "seat"
+      },
+      {
+        "family": "seat:codex",
+        "model": "okstem-1",
+        "seat": "codex",
+        "source": "seat"
+      }
+    ],
+    "families": [
+      "seat:codex"
+    ],
+    "notes": [
+      "codex declared model 'Bad-1', which model_families does not classify; counted as seat:codex (seat)",
+      "codex declared model 'okstem-1', which model_families does not classify; counted as seat:codex (seat)"
+    ]
+  },
+  {
+    "entries": [],
+    "families": [],
+    "notes": []
+  }
+]
