@@ -304,5 +304,106 @@
     ],
     "covered": true,
     "reasons": []
+  },
+  {
+    "accept_seats": [
+      "codex",
+      "ubuntu-worker-01"
+    ],
+    "accepts_at_head": 2,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "ubuntu-worker-01",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 1,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "reviewer 'ubuntu-worker-01 and codex' does not name exactly one seat, so its accept counts for no one; name your seat alone and put the model in the record's `model` field",
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  },
+  {
+    "accept_seats": [],
+    "accepts_at_head": 1,
+    "counted": [],
+    "covered": false,
+    "reasons": [
+      "reviewer 'ubuntu-worker-01 / Opus 5.5' does not name exactly one seat, so its accept counts for no one; name your seat alone and put the model in the record's `model` field",
+      "accept at head exists but is not chained to a whole accept at this base"
+    ]
+  },
+  {
+    "accept_seats": [
+      "codex"
+    ],
+    "accepts_at_head": 2,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": [
+      "reviewer 'Gemini / ubuntu-worker-01' does not name exactly one seat, so its accept counts for no one; name your seat alone and put the model in the record's `model` field"
+    ]
+  },
+  {
+    "accept_seats": [
+      "codex"
+    ],
+    "accepts_at_head": 1,
+    "counted": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "covered": true,
+    "reasons": []
   }
 ]

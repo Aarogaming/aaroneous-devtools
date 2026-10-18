@@ -58,6 +58,9 @@ def plain_login(value):
     return isinstance(value, str) and bool(value) and value == value.strip() and not any(c.isspace() for c in value)
 
 
+FAMILY_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
+
+
 def validate_identities(data):
     """Problems with an identities file, as sentences; an empty list means it is usable. The file decides who counts as
     an independent reviewer, so a malformed entry must stop the tool rather than be read charitably. Probes on the old
@@ -98,6 +101,27 @@ def validate_identities(data):
         for key in keys:
             if not valid_key(key):
                 problems.append(f"{seat}: key {str(key)[:40]!r} is not '<known key type> <base64>'")
+        profile = entry.get("profile") if isinstance(entry, dict) else None
+        if profile is not None:
+            if not isinstance(profile, dict):
+                problems.append(f"{seat}: profile must be an object, not {type(profile).__name__}")
+            else:
+                for field, value in profile.items():
+                    if not isinstance(value, str) or not value.strip() or len(value) > 80 or not value.isprintable():
+                        problems.append(f"{seat}: profile.{field} must be a short printable string")
+                family = profile.get("family")
+                if isinstance(family, str) and FAMILY_NAME.fullmatch(family) is None:
+                    problems.append(f"{seat}: profile.family {family!r} must be lower-case letters, digits or '-', starting with a letter (at most 32)")
+    table = data.get("model_families") if isinstance(data, dict) else None
+    if table is not None:
+        if not isinstance(table, dict):
+            problems.append("model_families must be an object of model-name stem -> family")
+        else:
+            for stem, family in table.items():
+                if not isinstance(stem, str) or re.fullmatch(r"[a-z][a-z0-9.-]{0,31}", stem) is None:
+                    problems.append(f"model_families: stem {str(stem)[:40]!r} must be lower-case letters, digits, '.' or '-'")
+                if not isinstance(family, str) or FAMILY_NAME.fullmatch(family) is None:
+                    problems.append(f"model_families: family for {str(stem)[:40]!r} must be a plain lower-case label")
     return problems
 
 

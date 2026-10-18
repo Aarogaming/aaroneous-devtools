@@ -150,6 +150,7 @@ class RevertibilityFromGit(unittest.TestCase):
         self.git("update-ref", "refs/remotes/origin/main", self.base)
         pr = {"number": 222, "head": self.head, "base": "main", "draft": False}
         row = {"covered": True, "accept_seats": ["claude", "gemini"], "counted_verdicts": 2,
+               "accept_families": ["anthropic", "google"],
                "verdicts_missing_evidence": [3], "reasons": []}
         with mock.patch.object(mg.rc, "gh_json", return_value={}):
             facts = mg.gather_facts("owner/repo", self.directory, pr, row,
@@ -536,7 +537,7 @@ def good_facts(**kw):
     facts = {
         "head": "a" * 40, "base_ref": "main", "base_tip": "b" * 40, "default_branch": "main",
         "ci": {"state": "success", "detail": "2 checks: SUCCESS"}, "trial_merge_ok": True,
-        "accept_seats": ["mimo", "codex"], "covered": True, "threads_open": 0,
+        "accept_seats": ["mimo", "codex"], "accept_families": ["mimo", "openai"], "covered": True, "threads_open": 0,
         "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
         "breaker_tripped": False, "category": "governance/*.md", "is_draft": False,
         "standing_changes_requested": False, "identity_registration_exempt": False,
@@ -746,7 +747,7 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
 
     def test_a_missing_fact_blocks(self):
         for key in ("standing_changes_requested", "verdicts_missing_evidence", "counted_verdicts", "threads_open",
-                    "breaker_tripped", "covered", "accept_seats", "revertible"):
+                    "breaker_tripped", "covered", "accept_seats", "accept_families", "revertible"):
             self.assertFalse(self.merges(**{key: MISSING}), key)
 
     def test_a_value_of_the_wrong_type_blocks(self):
@@ -770,9 +771,16 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
             self.assertFalse(self.merges(accept_seats=seats), seats)
         self.assertTrue(self.merges(accept_seats=["claude", "codex"]))
 
+    def test_two_seats_of_one_model_family_are_not_independent(self):
+        # mimo (Windows OpenCode) and ubuntu-worker-01 (Ubuntu OpenCode) run the same model: custody differs, the judgement does not.
+        for families in (["mimo"], [], ["mimo", " mimo "], ["", ""], ["mimo", None], "mimo"):
+            self.assertFalse(self.merges(accept_seats=["mimo", "ubuntu-worker-01"], accept_families=families), families)
+        self.assertTrue(self.merges(accept_seats=["mimo", "claude"], accept_families=["mimo", "anthropic"]))
+
     def test_malformed_box_3_facts_render_as_blocked_not_as_an_unchecked_box(self):
         # Codex P2 on #122: "unavailable" must be distinguishable from a valid fact reporting too few verdicts.
-        for override in ({"accept_seats": "ab"}, {"accept_seats": MISSING}, {"covered": MISSING}, {"covered": 1}):
+        for override in ({"accept_seats": "ab"}, {"accept_seats": MISSING}, {"covered": MISSING}, {"covered": 1},
+                         {"accept_families": MISSING}, {"accept_families": "ab"}):
             facts = good_facts()
             for key, value in override.items():
                 if value is MISSING:
@@ -781,7 +789,7 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
                     facts[key] = value
             lines = mg.checklist(facts)[0]
             box3 = [line for line in lines if " 3. " in line][0]
-            self.assertTrue(box3.startswith("[blocked: accepting seats or coverage unavailable]"), (override, box3))
+            self.assertTrue(box3.startswith("[blocked: accepting seats, model families or coverage unavailable]"), (override, box3))
         facts = good_facts(accept_seats=["claude"])
         box3 = [line for line in mg.checklist(facts)[0] if " 3. " in line][0]
         self.assertTrue(box3.startswith("[ ]"), "a valid fact reporting one seat is an unchecked box, not blocked")
