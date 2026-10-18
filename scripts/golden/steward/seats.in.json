@@ -21,5 +21,7 @@
   "sonnet-5.5",
   "Anthropic",
   "gpt-5.5",
-  "OpenAI Codex"
+  "OpenAI Codex",
+  "ubuntu-worker-01",
+  "Ubuntu"
 ]
