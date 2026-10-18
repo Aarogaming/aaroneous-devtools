@@ -99,6 +99,10 @@ pub fn clean(config: &WorkerConfig) -> Result<bool> {
     }
     Ok(output.stdout.is_empty())
 }
+fn lowercase_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn source_digest(config: &WorkerConfig, evidence: &[String]) -> Result<String> {
     let mut hasher = Sha256::new();
     for file in evidence {
@@ -110,7 +114,7 @@ fn source_digest(config: &WorkerConfig, evidence: &[String]) -> Result<String> {
         hasher.update((text.len() as u64).to_le_bytes());
         hasher.update(text.as_bytes());
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(lowercase_hex(&hasher.finalize()))
 }
 fn blueprint_path(runtime: &Path) -> PathBuf {
     runtime.join("blueprint.json")
@@ -253,16 +257,13 @@ fn job_spec(blueprint: &Blueprint) -> crate::NewJob {
         Depth::Brief=>"Develop a bounded information packet for wire boundary hardening using only the declared source. Return up to three concrete observations, risks or unresolved assumptions, and testable acceptance criteria. Compare existing approaches where supported by evidence. No implementation, command execution or verification claims. rust_draft must be null.",
         Depth::Thorough=>"Develop a thorough blueprint research packet for wire boundary hardening using only the declared source. Prioritize up to three source-grounded findings. For each, distinguish observations from assumptions, explain existing standard approaches, outline dependencies and propose acceptance tests that can disprove the claim. Expose unresolved questions and evidence needed to resolve them. Do not implement anything, execute commands or claim verification. rust_draft must be null.",
     }.to_owned();
-    let digest = format!(
-        "{:x}",
-        Sha256::digest(
-            format!(
-                "wire-research-v1\n{}\n{}",
-                blueprint.source_digest, instruction
-            )
-            .as_bytes()
+    let digest = lowercase_hex(&Sha256::digest(
+        format!(
+            "wire-research-v1\n{}\n{}",
+            blueprint.source_digest, instruction
         )
-    );
+        .as_bytes(),
+    ));
     crate::NewJob {
         id: format!("JOB-WIRE-{}", &digest[..12]),
         mode: "analysis".into(),
@@ -286,6 +287,15 @@ pub fn refine(config: &WorkerConfig, runtime: &Path, now: u64) -> Result<Bluepri
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn digest_encoding_preserves_lowercase_width_and_sha256_values() {
+        assert_eq!(super::lowercase_hex(&[0, 1, 15, 16, 255]), "00010f10ff");
+        assert_eq!(
+            super::lowercase_hex(&<sha2::Sha256 as sha2::Digest>::digest(b"")),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
     use super::*;
     fn fixture() -> (tempfile::TempDir, WorkerConfig, PathBuf) {
         let temp = tempfile::tempdir().expect("temp");
