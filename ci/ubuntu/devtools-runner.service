@@ -7,11 +7,18 @@ Wants=network-online.target
 User=devtools-%KIND%
 Group=devtools-%KIND%
 WorkingDirectory=/var/lib/devtools-%KIND%/runner
-Environment=HOME=/var/lib/devtools-%KIND%
+Environment=HOME=/var/lib/devtools-%KIND%/cargo-home
+# A runner that could not prove it was clean (job-completed.sh) leaves this marker and stops; it takes no more jobs until an
+# administrator has looked at it and removed the marker. Exit status 1 from the check is not retried.
+ExecStartPre=/usr/bin/test ! -e /var/lib/devtools-%KIND%/runner/_diag/QUARANTINE
 ExecStart=/var/lib/devtools-%KIND%/runner/run.sh
 Restart=always
 RestartSec=10
-KillMode=process
+RestartPreventExitStatus=1
+StartLimitIntervalSec=120
+StartLimitBurst=4
+# Stopping the service ends every process the jobs started, not just the runner.
+KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=5min
 
@@ -20,7 +27,8 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/var/lib/devtools-%KIND%
+# Only these are writable. The runner's program, configuration and credentials are root-owned and read-only to the jobs.
+ReadWritePaths=/var/lib/devtools-%KIND%/runner/_work /var/lib/devtools-%KIND%/runner/_diag /var/lib/devtools-%KIND%/cargo-home
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

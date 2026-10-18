@@ -150,6 +150,7 @@ class RevertibilityFromGit(unittest.TestCase):
         self.git("update-ref", "refs/remotes/origin/main", self.base)
         pr = {"number": 222, "head": self.head, "base": "main", "draft": False}
         row = {"covered": True, "accept_seats": ["claude", "gemini"], "counted_verdicts": 2,
+               "accept_families": ["anthropic", "google"],
                "verdicts_missing_evidence": [3], "reasons": []}
         with mock.patch.object(mg.rc, "gh_json", return_value={}):
             facts = mg.gather_facts("owner/repo", self.directory, pr, row,
@@ -201,6 +202,83 @@ class DiffCheckCommand(unittest.TestCase):
         # The bug being fixed, kept as the control: this is what the plan used to run.
         returncode, _ = self.run_plan_check([["git", "diff", "--check"]])
         self.assertEqual(returncode, 0)
+
+
+class RefreshRefs(unittest.TestCase):
+    """refresh_refs against real throwaway repositories: a stale clone gets the branches and PR heads it was missing."""
+
+    def setUp(self):
+        import shutil
+        import subprocess
+        import tempfile
+        self.root = tempfile.mkdtemp(prefix="merge-gate-fetch-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.subprocess = subprocess
+        self.remote = os.path.join(self.root, "remote.git")
+        self.work = os.path.join(self.root, "work")
+        self.clone = os.path.join(self.root, "clone")
+        self.git(self.root, "init", "-q", "--bare", "-b", "main", self.remote)
+        self.git(self.root, "init", "-q", "-b", "main", self.work)
+        self.commit(self.work, "base.txt", "base\n", "base")
+        self.git(self.work, "remote", "add", "origin", self.remote)
+        self.git(self.work, "push", "-q", "origin", "main")
+        self.git(self.root, "clone", "-q", self.remote, self.clone)
+
+    def git(self, directory, *args):
+        result = self.subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", directory, *args],
+                                     capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def commit(self, directory, name, text, message):
+        with open(os.path.join(directory, name), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        self.git(directory, "add", ".")
+        self.git(directory, "commit", "-q", "-m", message)
+        return self.git(directory, "rev-parse", "HEAD")
+
+    def test_a_stale_clone_gets_the_new_base_tip_and_the_pr_head(self):
+        new_main = self.commit(self.work, "later.txt", "later\n", "main moves")
+        self.git(self.work, "push", "-q", "origin", "main")
+        self.git(self.work, "checkout", "-q", "-b", "feature")
+        head = self.commit(self.work, "pr.txt", "pr\n", "the PR")
+        self.git(self.work, "push", "-q", "origin", "feature:refs/pull/7/head")
+        self.assertEqual(mg.missing_heads(self.clone, [{"number": 7, "head": head}]), [7], "stale: the head is absent")
+        self.assertNotEqual(self.git(self.clone, "rev-parse", "origin/main"), new_main)
+        ok, message = mg.refresh_refs(self.clone)
+        self.assertTrue(ok, message)
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin/main"), new_main)
+        self.assertEqual(mg.missing_heads(self.clone, [{"number": 7, "head": head}]), [])
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin-pr/7"), head)
+
+    def test_a_remote_branch_named_pr_does_not_collide_with_pull_refs(self):
+        # Codex P2 on #109: if a remote branch is named 'pr', refs/remotes/origin/pr and refs/remotes/origin/pr/<N> collide.
+        self.git(self.work, "checkout", "-q", "-b", "pr")
+        self.commit(self.work, "pr_branch.txt", "pr\n", "branch named pr")
+        self.git(self.work, "push", "-q", "origin", "pr")
+        self.git(self.work, "checkout", "-q", "-b", "feature")
+        head = self.commit(self.work, "pr.txt", "pr\n", "the PR")
+        self.git(self.work, "push", "-q", "origin", "feature:refs/pull/7/head")
+        ok, message = mg.refresh_refs(self.clone)
+        self.assertTrue(ok, message)
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin-pr/7"), head)
+        self.assertEqual(self.git(self.clone, "rev-parse", "origin/pr"), self.git(self.work, "rev-parse", "pr"))
+
+    def test_a_deleted_remote_branch_is_pruned(self):
+        self.git(self.work, "push", "-q", "origin", "main:refs/heads/gone")
+        ok, _ = mg.refresh_refs(self.clone)
+        self.assertTrue(ok)
+        self.assertNotEqual(self.git(self.clone, "branch", "-r", "--list", "origin/gone"), "")
+        self.git(self.work, "push", "-q", "origin", ":gone")
+        ok, _ = mg.refresh_refs(self.clone)
+        self.assertTrue(ok)
+        self.assertEqual(self.git(self.clone, "branch", "-r", "--list", "origin/gone"), "")
+
+    def test_a_failed_fetch_is_reported_not_swallowed(self):
+        self.git(self.clone, "remote", "set-url", "origin", os.path.join(self.root, "does-not-exist.git"))
+        ok, message = mg.refresh_refs(self.clone)
+        self.assertFalse(ok)
+        self.assertTrue(message)
 
 
 class ChangedPaths(unittest.TestCase):
@@ -459,7 +537,7 @@ def good_facts(**kw):
     facts = {
         "head": "a" * 40, "base_ref": "main", "base_tip": "b" * 40, "default_branch": "main",
         "ci": {"state": "success", "detail": "2 checks: SUCCESS"}, "trial_merge_ok": True,
-        "accept_seats": ["mimo", "codex"], "covered": True, "threads_open": 0,
+        "accept_seats": ["mimo", "codex"], "accept_families": ["mimo", "openai"], "covered": True, "threads_open": 0,
         "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
         "breaker_tripped": False, "category": "governance/*.md", "is_draft": False,
         "standing_changes_requested": False, "identity_registration_exempt": False,
@@ -538,6 +616,45 @@ class Checklist(unittest.TestCase):
         self.assertEqual(mg.ci_state([{"status": "COMPLETED", "conclusion": "SUCCESS"}])["state"], "success")
         self.assertEqual(mg.ci_state([{"status": "COMPLETED", "conclusion": "SUCCESS"},
                                       {"status": "COMPLETED", "conclusion": "FAILURE"}])["state"], "failure")
+
+    def test_only_the_newest_run_of_each_check_counts(self):
+        def run(name, started, status, conclusion, workflow="CI"):
+            return {"name": name, "workflowName": workflow, "startedAt": started, "status": status, "conclusion": conclusion}
+        old_fail = run("advisories", "2026-10-14T19:09:00Z", "COMPLETED", "FAILURE")
+        new_pass = run("advisories", "2026-10-17T02:45:00Z", "COMPLETED", "SUCCESS")
+        # A failure that was re-run successfully no longer blocks, whatever order GitHub lists the runs in.
+        self.assertEqual(mg.ci_state([old_fail, new_pass])["state"], "success")
+        self.assertEqual(mg.ci_state([new_pass, old_fail])["state"], "success")
+        # The newest run decides: a later failure, a later unfinished run or a worse tie still blocks.
+        self.assertEqual(mg.ci_state([new_pass, run("advisories", "2026-10-18T00:00:00Z", "COMPLETED", "FAILURE")])["state"], "failure")
+        self.assertEqual(mg.ci_state([old_fail, run("advisories", "2026-10-18T00:00:00Z", "IN_PROGRESS", "")])["state"], "pending")
+        self.assertEqual(mg.ci_state([new_pass, run("advisories", "2026-10-17T02:45:00Z", "COMPLETED", "FAILURE")])["state"], "failure")
+        # Another workflow's check of the same name, another name, or an unnamed entry is never replaced.
+        self.assertEqual(mg.ci_state([new_pass, run("advisories", "2026-10-01T00:00:00Z", "COMPLETED", "FAILURE", "Other")])["state"], "failure")
+        self.assertEqual(mg.ci_state([new_pass, run("lint", "2026-10-01T00:00:00Z", "COMPLETED", "FAILURE")])["state"], "failure")
+        self.assertEqual(mg.ci_state([new_pass, {"status": "COMPLETED", "conclusion": "FAILURE"}])["state"], "failure")
+        # Runs without startedAt are ordered by completedAt; a legacy context is matched by its context name.
+        self.assertEqual(mg.ci_state([
+            {"name": "x", "completedAt": "2026-10-14T00:00:00Z", "status": "COMPLETED", "conclusion": "FAILURE"},
+            {"name": "x", "completedAt": "2026-10-17T00:00:00Z", "status": "COMPLETED", "conclusion": "SUCCESS"}])["state"], "success")
+        self.assertEqual(mg.ci_state([
+            {"context": "ci/legacy", "startedAt": "2026-10-14T00:00:00Z", "status": "COMPLETED", "conclusion": "FAILURE"},
+            {"context": "ci/legacy", "startedAt": "2026-10-17T00:00:00Z", "status": "COMPLETED", "conclusion": "SUCCESS"}])["state"], "success")
+
+    def test_a_run_that_cannot_be_ordered_is_never_discarded(self):
+        done = {"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                "status": "COMPLETED", "conclusion": "SUCCESS"}
+        queued = {"name": "Foundation", "workflowName": "CI", "startedAt": None, "completedAt": None,
+                  "status": "QUEUED", "conclusion": ""}
+        # Codex's counterexample on #227, in both orders: a queued re-run has no timestamps yet.
+        self.assertEqual(mg.ci_state([done, queued])["state"], "pending")
+        self.assertEqual(mg.ci_state([queued, done])["state"], "pending")
+        failed = dict(done, startedAt="2026-10-14T19:00:00Z", conclusion="FAILURE")
+        self.assertEqual(mg.ci_state([failed, queued])["state"], "pending")
+        # A failure whose time is unknown is not hidden behind a later success either.
+        unplaced_failure = {"name": "Foundation", "workflowName": "CI", "status": "COMPLETED", "conclusion": "FAILURE"}
+        self.assertEqual(mg.ci_state([unplaced_failure, done])["state"], "failure")
+        self.assertEqual(mg.ci_state([done, unplaced_failure])["state"], "failure")
 
     def test_two_seats_must_also_be_covered(self):
         lines, ok, first = mg.checklist(good_facts(covered=False))
@@ -630,7 +747,7 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
 
     def test_a_missing_fact_blocks(self):
         for key in ("standing_changes_requested", "verdicts_missing_evidence", "counted_verdicts", "threads_open",
-                    "breaker_tripped", "covered", "accept_seats", "revertible"):
+                    "breaker_tripped", "covered", "accept_seats", "accept_families", "revertible"):
             self.assertFalse(self.merges(**{key: MISSING}), key)
 
     def test_a_value_of_the_wrong_type_blocks(self):
@@ -654,9 +771,16 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
             self.assertFalse(self.merges(accept_seats=seats), seats)
         self.assertTrue(self.merges(accept_seats=["claude", "codex"]))
 
+    def test_two_seats_of_one_model_family_are_not_independent(self):
+        # mimo (Windows OpenCode) and ubuntu-worker-01 (Ubuntu OpenCode) run the same model: custody differs, the judgement does not.
+        for families in (["mimo"], [], ["mimo", " mimo "], ["", ""], ["mimo", None], "mimo"):
+            self.assertFalse(self.merges(accept_seats=["mimo", "ubuntu-worker-01"], accept_families=families), families)
+        self.assertTrue(self.merges(accept_seats=["mimo", "claude"], accept_families=["mimo", "anthropic"]))
+
     def test_malformed_box_3_facts_render_as_blocked_not_as_an_unchecked_box(self):
         # Codex P2 on #122: "unavailable" must be distinguishable from a valid fact reporting too few verdicts.
-        for override in ({"accept_seats": "ab"}, {"accept_seats": MISSING}, {"covered": MISSING}, {"covered": 1}):
+        for override in ({"accept_seats": "ab"}, {"accept_seats": MISSING}, {"covered": MISSING}, {"covered": 1},
+                         {"accept_families": MISSING}, {"accept_families": "ab"}):
             facts = good_facts()
             for key, value in override.items():
                 if value is MISSING:
@@ -665,7 +789,7 @@ class ChecklistReadsFactsStrictly(unittest.TestCase):
                     facts[key] = value
             lines = mg.checklist(facts)[0]
             box3 = [line for line in lines if " 3. " in line][0]
-            self.assertTrue(box3.startswith("[blocked: accepting seats or coverage unavailable]"), (override, box3))
+            self.assertTrue(box3.startswith("[blocked: accepting seats, model families or coverage unavailable]"), (override, box3))
         facts = good_facts(accept_seats=["claude"])
         box3 = [line for line in mg.checklist(facts)[0] if " 3. " in line][0]
         self.assertTrue(box3.startswith("[ ]"), "a valid fact reporting one seat is an unchecked box, not blocked")

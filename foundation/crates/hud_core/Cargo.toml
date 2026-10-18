@@ -13,4 +13,4 @@ profile = "control"
 # Admission: serde and toml are already used by maintenance_ui and foundation_cli. The crate reads no files, no
 # environment and no clock; callers pass each settings layer in as text.
 serde = { version = "1.0", features = ["derive"] }
-toml = "0.8"
+toml = "1.1"

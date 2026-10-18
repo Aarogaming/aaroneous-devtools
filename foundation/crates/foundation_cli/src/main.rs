@@ -66,6 +66,15 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Route pending worker results into the active development pipeline and refinement feedback
+    PipelineRoute {
+        #[arg(long)]
+        results_dir: PathBuf,
+        #[arg(long)]
+        staged_dir: PathBuf,
+        #[arg(long)]
+        feedback_dir: PathBuf,
+    },
     /// Register Windows Scheduled Task for foundation passive engine
     RegisterScheduledTask {
         #[arg(long)]
@@ -450,6 +459,42 @@ fn main() -> Result<()> {
             agentic_registrar::git_discover_repository(&checkout).map(|_| ())
         }
         Command::Pipeline { config } => agentic_registrar::run_pipeline(&config),
+        Command::PipelineRoute {
+            results_dir,
+            staged_dir,
+            feedback_dir,
+        } => {
+            let config =
+                devtools_ops::PipelineRouterConfig::new(results_dir, staged_dir, feedback_dir);
+            let actions = devtools_ops::route_all_pending_results(&config)?;
+            println!(
+                "Pipeline route complete: {} results processed",
+                actions.len()
+            );
+            for action in actions {
+                match action {
+                    devtools_ops::RoutingAction::StageForIntegration {
+                        job_id,
+                        target_path,
+                        has_code_draft,
+                    } => {
+                        println!("  [STAGED] {job_id} -> {target_path} (code: {has_code_draft})");
+                    }
+                    devtools_ops::RoutingAction::FeedbackForRefinement {
+                        job_id, issues, ..
+                    } => {
+                        println!(
+                            "  [FEEDBACK] {job_id} -> generated refinement job (issues: {})",
+                            issues.join(", ")
+                        );
+                    }
+                    devtools_ops::RoutingAction::RecordTelemetry { job_id } => {
+                        println!("  [TELEMETRY] {job_id} recorded");
+                    }
+                }
+            }
+            Ok(())
+        }
         Command::RegisterScheduledTask {
             binary_path,
             task_name,
