@@ -177,6 +177,24 @@ pub fn checklist(facts: &Value) -> Result<Checklist, String> {
                 .len()
         })
         .unwrap_or(0);
+    let families_value = facts.get("accept_families");
+    let families: Option<Vec<String>> =
+        families_value.and_then(Value::as_array).and_then(|items| {
+            items
+                .iter()
+                .map(|s| s.as_str().map(str::to_owned))
+                .collect::<Option<Vec<_>>>()
+        });
+    let distinct_families = families
+        .as_ref()
+        .map(|list| {
+            list.iter()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+        })
+        .unwrap_or(0);
     let covered = json_mark(facts.get("covered"));
     let missing_evidence = facts
         .get("verdicts_missing_evidence")
@@ -248,19 +266,25 @@ pub fn checklist(facts: &Value) -> Result<Checklist, String> {
         Some(list) if !list.is_empty() => list.join(", "),
         _ => "none".to_owned(),
     };
+    let family_label = match &families {
+        Some(list) if !list.is_empty() => list.join(", "),
+        _ => "none".to_owned(),
+    };
     checks.push((
         "3",
         if identity_exempt {
             Some(true)
         } else {
-            match (&seats, covered) {
-                (Some(_), Some(c)) => Some(distinct >= 2 && c),
+            match (&seats, &families, covered) {
+                (Some(_), Some(_), Some(c)) => Some(distinct >= 2 && distinct_families >= 2 && c),
                 _ => None,
             }
         },
-        format!(">=2 independent accept verdicts at {head}, seats: {seat_label}{exempt_suffix}"),
+        format!(
+            ">=2 independent accept verdicts from >=2 model families at {head}, seats: {seat_label}, families: {family_label}{exempt_suffix}"
+        ),
         String::new(),
-        "accepting seats or coverage unavailable".to_owned(),
+        "accepting seats, model families or coverage unavailable".to_owned(),
     ));
     checks.push((
         "4",
@@ -407,7 +431,7 @@ mod tests {
     use serde_json::json;
 
     fn green() -> serde_json::Value {
-        json!({"accept_seats": ["codex", "gemini"], "base_ref": "main", "base_tip": "t".repeat(40), "breaker_tripped": false,
+        json!({"accept_seats": ["codex", "gemini"], "accept_families": ["openai", "google"], "base_ref": "main", "base_tip": "t".repeat(40), "breaker_tripped": false,
                "category": "scripts/*.py", "ci": {"detail": "3 checks: SUCCESS", "state": "success"}, "counted_verdicts": 2,
                "covered": true, "default_branch": "main", "head": "h".repeat(40), "revertible": true,
                "is_draft": false, "standing_changes_requested": false, "threads_open": 0, "trial_merge_ok": true,
@@ -432,6 +456,7 @@ mod tests {
             ("threads_open", json!(false)),
             ("breaker_tripped", json!(0)),
             ("accept_seats", json!("ab")),
+            ("accept_families", json!("ab")),
             ("counted_verdicts", json!(true)),
             ("covered", json!(1)),
         ] {
@@ -444,6 +469,28 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    #[test]
+    fn two_seats_of_one_model_family_are_not_independent() {
+        for families in [
+            json!(["mimo"]),
+            json!([]),
+            json!(["mimo", " mimo "]),
+            json!(["", ""]),
+        ] {
+            let mut facts = green();
+            facts["accept_seats"] = json!(["mimo", "ubuntu-worker-01"]);
+            facts["accept_families"] = families.clone();
+            let result = checklist(&facts).unwrap_or_else(|e| panic!("{e}"));
+            assert!(!result.would_merge, "{families}");
+            assert_eq!(result.first_blocker.as_deref(), Some("3"), "{families}");
+        }
+        let mut missing = green();
+        missing.as_object_mut().map(|m| m.remove("accept_families"));
+        let result = checklist(&missing).unwrap_or_else(|e| panic!("{e}"));
+        assert!(!result.would_merge);
+        assert_eq!(result.first_blocker.as_deref(), Some("3"));
     }
 
     #[test]
