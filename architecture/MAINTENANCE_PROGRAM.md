@@ -4,6 +4,15 @@
 
 Devtools becomes a guided maintenance application backed by the existing Rust Foundation. It explains repository practices, runs deterministic checks, schedules bounded local work, and offers budgeted cloud escalation for difficult or urgent jobs. Aaroneous remains independently buildable and runnable. This document is the delivery map; the coordination queue records active ownership.
 
+Owner-directed extension: the [constellation operations architecture](CONSTELLATION_OPERATIONS.md)
+defines devtools as a proving ground and operator layer over stable Aaroneous
+capabilities, not a competing product runtime. Brainstorm, guild/steward and
+maintenance share explicit evidence/ownership boundaries. Topic expansion,
+refinement, scheduled consent, recycling and parked-item review are specified in
+the [proposed lifecycle v1](../contracts/constellation-lifecycle-v1.md); they are
+not deployed features or replacements for current claim/review gates. Stabilize
+and tune in devtools before considering product graduation.
+
 ## Brief repository review, 2026-09-16
 
 - Aaroneous is the Rust component framework, version 0.3.2. Its canonical verification is `cargo xtask gate`. Existing dirty product files belong to concurrent contributors and were not changed by this review.

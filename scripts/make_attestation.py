@@ -15,11 +15,18 @@ block is printed with it: the merge gate drops every attestation without a verif
 counts in the steward's report. The block is checked with the same `validate` the coverage tool uses, and it refuses (exit 2) to build a
 verdict for a reviewer whose seat is among the implementers: that verdict would never count, so it should not be
 posted. Paste the file's contents as a PR comment; the verdict counts only at this head.
+
+Evidence: the merge gate's checklist box 5 ("each counted verdict cites command + exit code") reads a `commands` list from
+inside the signed record, not from the comment prose, so a block without it can never satisfy that box. Pass each command you
+ran with `--command` (repeatable), written as `<command> -> exit <code> (<result>)`; every entry must state an exit code, and
+the list is part of what is signed. An accept built without `--command` still counts for the other boxes, and a reminder is
+printed.
 """
 
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -29,9 +36,28 @@ import collect_state as cs  # noqa: E402
 import review_coverage as rc  # noqa: E402
 
 VERDICTS = ("accept", "needs_revision", "changes_requested")
+EXIT_CODE = re.compile(r"\bexit(?:\s+code)?\s*[:=]?\s*-?\d+", re.IGNORECASE)
+MAX_COMMANDS = 30
+MAX_COMMAND_LENGTH = 600
 
 
-def build_record(repo, pr, head, base_sha, reviewer, implementers, verdict, scope="whole", frm=None):
+def check_commands(commands):
+    """An error sentence, or None. Each entry names a command and states its exit code, so the signed list is real evidence."""
+    if not isinstance(commands, list) or not commands:
+        return "commands must be a non-empty list of '<command> -> exit <code> (<result>)' strings"
+    if len(commands) > MAX_COMMANDS:
+        return f"at most {MAX_COMMANDS} commands fit in a record, got {len(commands)}"
+    for entry in commands:
+        if not isinstance(entry, str) or not entry.strip():
+            return "every command must be a non-empty string"
+        if len(entry) > MAX_COMMAND_LENGTH:
+            return f"a command entry is {len(entry)} characters; keep each under {MAX_COMMAND_LENGTH} and put long output in a log you cite"
+        if not EXIT_CODE.search(entry):
+            return f"command entry {entry[:60]!r} does not state an exit code; write '<command> -> exit <code> (<result>)'"
+    return None
+
+
+def build_record(repo, pr, head, base_sha, reviewer, implementers, verdict, scope="whole", frm=None, model=None, commands=None):
     """(record, error). The error is a sentence, never a traceback; the record is built only when it would be counted."""
     if verdict not in VERDICTS:
         return None, f"verdict must be one of {VERDICTS}, got {verdict!r}"
@@ -45,6 +71,16 @@ def build_record(repo, pr, head, base_sha, reviewer, implementers, verdict, scop
         if len(frm) != 40 or any(c not in "0123456789abcdef" for c in frm):
             return None, f"--from must be the full 40-character lower-case SHA, got {frm!r}"
         record["from"] = frm
+    if model is not None:
+        cleaned = rc.clean_model(model)
+        if cleaned is None:
+            return None, f"--model must be a short printable model id (at most {rc.MODEL_MAX} characters), got {model!r}"
+        record["model"] = cleaned
+    if commands is not None:
+        problem = check_commands(commands)
+        if problem:
+            return None, problem
+        record["commands"] = [entry.strip() for entry in commands]
     problem = rc.validate(record)
     if problem:
         return None, problem
@@ -94,11 +130,16 @@ def main(argv):
     parser.add_argument("--repo", required=True)
     parser.add_argument("--repo-dir", required=True)
     parser.add_argument("--pr", required=True, type=int)
-    parser.add_argument("--reviewer", required=True, help="your seat: claude, codex, gemini or mimo")
+    parser.add_argument("--reviewer", required=True, help="your seat: claude, codex, gemini or opencode")
+    parser.add_argument("--model", help="the model you actually ran for this review (e.g. claude-sonnet-5-5, qwen3.8); signed with the "
+                                        "record so the gate counts model families truthfully. Optional: without it your seat's registered profile is used")
     parser.add_argument("--verdict", required=True, choices=VERDICTS)
     parser.add_argument("--scope", default="whole", choices=("whole", "delta"))
     parser.add_argument("--from", dest="frm", help="for --scope delta: the head you already reviewed")
     parser.add_argument("--implementer", action="append", default=[], help="a seat that pushed without a trailer")
+    parser.add_argument("--command", action="append", default=None, dest="commands",
+                        help="a command you ran and its exit code, '<command> -> exit <code> (<result>)'; repeatable; signed into the record "
+                             "(the merge gate's evidence box reads it)")
     parser.add_argument("--key", help="SSH private key of the reviewer seat: also print the signature block the merge gate needs")
     parser.add_argument("--out", help="write the block to this file instead of stdout")
     args = parser.parse_args(argv)
@@ -107,10 +148,16 @@ def main(argv):
         print(error, file=sys.stderr)
         return 3
     record, error = build_record(args.repo, args.pr, head, base_sha, args.reviewer, implementers, args.verdict,
-                                 args.scope, args.frm)
+                                 args.scope, args.frm, args.model, args.commands)
     if error:
         print(error, file=sys.stderr)
         return 2
+    if not args.model:
+        print("no --model: the gate will use your seat's registered profile for the model family; say which model you ran "
+              "if it differs from what you registered", file=sys.stderr)
+    if args.verdict == "accept" and not args.commands:
+        print("note: no --command given; the merge gate's box 5 needs a `commands` list inside the signed record, so this "
+              "accept cannot satisfy it", file=sys.stderr)
     if args.key:
         try:
             block = attest_sig.blocks(record, attest_sig.sign(attest_sig.canonical(record), args.key))

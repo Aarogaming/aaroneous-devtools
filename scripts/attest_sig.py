@@ -20,11 +20,10 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import markdown_fences  # noqa: E402
+
 NAMESPACE = "aaroneous-attestation"
-PAIR = re.compile(
-    r"```attestation[ \t]*\n(.*?)\n```(?:[ \t]*\n+```attestation-sig[ \t]*\n(.*?)\n```)?",
-    re.DOTALL,
-)
 
 
 def canonical(record):
@@ -34,11 +33,16 @@ def canonical(record):
 def pairs(body):
     """Yield (raw_json_text, signature_text_or_None) for each attestation block in a comment.
 
-    Comments written on Windows arrive with CRLF line endings; normalise them first, otherwise the fence
-    patterns (which expect a bare newline) silently skip the block and the verdict never counts."""
-    body = body.replace("\r\n", "\n").replace("\r", "\n")
-    for raw, signature in PAIR.findall(body):
-        yield raw, (signature or "").strip() or None
+    Only a block a reader sees counts (see markdown_fences): an attestation inside an example fence or an HTML comment is
+    not a posted verdict. CRLF line endings, which comments written on Windows arrive with, are normalised there."""
+    found = markdown_fences.blocks(body)
+    for index, (label, raw, _) in enumerate(found):
+        if label != "attestation":
+            continue
+        signature = None
+        if index + 1 < len(found) and found[index + 1][0] == "attestation-sig" and found[index + 1][2]:
+            signature = found[index + 1][1].strip() or None
+        yield raw, signature
 
 
 SEAT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
@@ -56,6 +60,9 @@ def valid_key(key):
 def plain_login(value):
     """A GitHub login as written in the file: a non-empty string with no surrounding or inner whitespace."""
     return isinstance(value, str) and bool(value) and value == value.strip() and not any(c.isspace() for c in value)
+
+
+FAMILY_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
 
 
 def validate_identities(data):
@@ -98,6 +105,27 @@ def validate_identities(data):
         for key in keys:
             if not valid_key(key):
                 problems.append(f"{seat}: key {str(key)[:40]!r} is not '<known key type> <base64>'")
+        profile = entry.get("profile") if isinstance(entry, dict) else None
+        if profile is not None:
+            if not isinstance(profile, dict):
+                problems.append(f"{seat}: profile must be an object, not {type(profile).__name__}")
+            else:
+                for field, value in profile.items():
+                    if not isinstance(value, str) or not value.strip() or len(value) > 80 or not value.isprintable():
+                        problems.append(f"{seat}: profile.{field} must be a short printable string")
+                family = profile.get("family")
+                if isinstance(family, str) and FAMILY_NAME.fullmatch(family) is None:
+                    problems.append(f"{seat}: profile.family {family!r} must be lower-case letters, digits or '-', starting with a letter (at most 32)")
+    table = data.get("model_families") if isinstance(data, dict) else None
+    if table is not None:
+        if not isinstance(table, dict):
+            problems.append("model_families must be an object of model-name stem -> family")
+        else:
+            for stem, family in table.items():
+                if not isinstance(stem, str) or re.fullmatch(r"[a-z][a-z0-9.-]{0,31}", stem) is None:
+                    problems.append(f"model_families: stem {str(stem)[:40]!r} must be lower-case letters, digits, '.' or '-'")
+                if not isinstance(family, str) or FAMILY_NAME.fullmatch(family) is None:
+                    problems.append(f"model_families: family for {str(stem)[:40]!r} must be a plain lower-case label")
     return problems
 
 

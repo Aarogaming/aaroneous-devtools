@@ -474,5 +474,149 @@
         "verdict": "accept"
       }
     ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a registered multi-word seat is counted under its registered name",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "ubuntu-worker-01",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "registered": [
+      "claude",
+      "codex",
+      "ubuntu-worker-01"
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a label naming a registered seat and another seat is not a valid accept",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "ubuntu-worker-01 and codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "registered": [
+      "claude",
+      "codex",
+      "ubuntu-worker-01"
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "a registered seat beside an unregistered model family is not a valid accept",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "gemini"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "ubuntu-worker-01 / Opus 5.5",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "registered": [
+      "ubuntu-worker-01"
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "an ambiguous label does not count beside a valid one",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Gemini / ubuntu-worker-01",
+        "scope": "whole",
+        "verdict": "accept"
+      },
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "registered": [
+      "claude",
+      "codex",
+      "gemini",
+      "ubuntu-worker-01"
+    ]
+  },
+  {
+    "ancestry": [],
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merge_base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "an empty registry changes nothing",
+    "records": [
+      {
+        "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementers": [
+          "claude"
+        ],
+        "pr": 1,
+        "repo": "o/r",
+        "reviewer": "Codex",
+        "scope": "whole",
+        "verdict": "accept"
+      }
+    ],
+    "registered": []
   }
 ]
