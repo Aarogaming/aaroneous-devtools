@@ -1,0 +1,872 @@
+//! The model hub's pure boundary (lane C133; design in `governance/proposals/DEVTOOLS_MODEL_HUB.md`): does a model fit the
+//! machine it is configured for, is an endpoint one we may talk to, is a config value a reference and not a secret, and what
+//! did the model that answered actually say it was.
+//!
+//! Pure functions: no I/O, no clock, no environment. The program's entry point reads the secrets file and the host's real
+//! figures and passes them in; nothing here ever sees a key.
+//!
+//! The memory figures are inputs, not constants: weights, key/value bytes per token and runtime overhead differ by model,
+//! quantisation and server, so the config states them (measured on the host) and this module only does the arithmetic and
+//! refuses what cannot work.
+
+use crate::chain::digest;
+
+const MB: u128 = 1024 * 1024;
+
+/// One machine, in megabytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Host {
+    pub name: String,
+    pub vram_mb: u64,
+    pub ram_mb: u64,
+    /// Held back for the desktop, the display and everything else that is not the model (VRAM).
+    pub reserved_vram_mb: u64,
+    /// Held back for the operating system, the other seats and the build slot (RAM).
+    pub reserved_ram_mb: u64,
+}
+
+/// One model as the config declares it, measured on the host or taken from the server's own report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Model {
+    pub name: String,
+    pub weights_mb: u64,
+    /// Key/value cache bytes for one token of context (2 x layers x kv heads x head dim x bytes per value).
+    pub kv_bytes_per_token: u64,
+    pub context_tokens: u64,
+    /// The server's own overhead (CUDA context, graphs, buffers).
+    pub overhead_mb: u64,
+}
+
+impl Model {
+    #[must_use]
+    pub fn kv_mb(&self) -> u128 {
+        (u128::from(self.kv_bytes_per_token) * u128::from(self.context_tokens)).div_ceil(MB)
+    }
+
+    /// Everything the model wants resident while it runs. Exact: the inputs are 64-bit, so the products and sums fit in 128 bits
+    /// and nothing saturates or wraps. A model whose true need exceeds any real host is `TooBig` because the comparison is
+    /// exact, not because the arithmetic gave up (an earlier saturating version understated the need, which could report a
+    /// false GPU fit on a host that declared an absurd amount of memory).
+    #[must_use]
+    pub fn needed_mb(&self) -> u128 {
+        u128::from(self.weights_mb) + self.kv_mb() + u128::from(self.overhead_mb)
+    }
+}
+
+/// Three quarters of `n`.
+fn three_quarters(n: u128) -> u128 {
+    n * 3 / 4
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Fit {
+    /// Fits in VRAM with room to spare.
+    Gpu { needed_mb: u128, headroom_mb: u128 },
+    /// Fits in VRAM, but with less than a tenth of it left: a longer prompt or a second job will not.
+    Tight { needed_mb: u128, headroom_mb: u128 },
+    /// Does not fit in VRAM; the server would have to spill `spill_mb` into system RAM, which is far slower.
+    Offload { needed_mb: u128, spill_mb: u128 },
+    /// Cannot run here at all.
+    TooBig {
+        needed_mb: u128,
+        available_mb: u128,
+        reason: String,
+    },
+}
+
+impl Fit {
+    /// True when the model runs fully on the GPU.
+    #[must_use]
+    pub fn on_gpu(&self) -> bool {
+        matches!(self, Fit::Gpu { .. } | Fit::Tight { .. })
+    }
+}
+
+/// Whether `model` can run on `host`. Offloading to RAM is a choice, not a default: without `allow_offload` a model that
+/// does not fit in VRAM is `TooBig`. Offload also needs the spill to fit in the RAM left after the reservation, with a
+/// quarter of that kept free.
+#[must_use]
+pub fn fit(host: &Host, model: &Model, allow_offload: bool) -> Fit {
+    let needed = model.needed_mb();
+    let vram = u128::from(host.vram_mb.saturating_sub(host.reserved_vram_mb));
+    if needed <= vram {
+        let headroom = vram - needed;
+        return if headroom * 10 < vram {
+            Fit::Tight {
+                needed_mb: needed,
+                headroom_mb: headroom,
+            }
+        } else {
+            Fit::Gpu {
+                needed_mb: needed,
+                headroom_mb: headroom,
+            }
+        };
+    }
+    let spill = needed - vram;
+    let ram = u128::from(host.ram_mb.saturating_sub(host.reserved_ram_mb));
+    if !allow_offload {
+        return Fit::TooBig {
+            needed_mb: needed,
+            available_mb: vram,
+            reason: format!(
+                "needs {needed} MB, {} has {vram} MB of VRAM free of its reservation and offload is off",
+                host.name
+            ),
+        };
+    }
+    if spill * 4 > ram * 3 {
+        return Fit::TooBig {
+            needed_mb: needed,
+            available_mb: vram + three_quarters(ram),
+            reason: format!(
+                "needs {spill} MB beyond VRAM, more than the {} MB of RAM it may use",
+                three_quarters(ram)
+            ),
+        };
+    }
+    Fit::Offload {
+        needed_mb: needed,
+        spill_mb: spill,
+    }
+}
+
+/// The largest candidate that runs fully on the GPU; ties by name so the same inputs always choose the same model.
+/// `None` when none does: the caller then falls back to a smaller class or a remote provider, never to an offloaded giant.
+#[must_use]
+pub fn choose<'a>(host: &Host, candidates: &'a [Model]) -> Option<&'a Model> {
+    candidates
+        .iter()
+        .filter(|m| fit(host, m, false).on_gpu())
+        .max_by(|a, b| {
+            a.weights_mb
+                .cmp(&b.weights_mb)
+                .then_with(|| b.name.cmp(&a.name))
+        })
+}
+
+/// Which hosts a model endpoint may name. Loopback is always allowed; anything else must be listed, and plain `http` off
+/// loopback must be listed separately (an encrypted overlay or a trusted segment), so a typo cannot send prompts and keys
+/// in the clear to an arbitrary address.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EndpointPolicy {
+    pub allowed_hosts: Vec<String>,
+    pub plain_http_hosts: Vec<String>,
+}
+
+/// Split `host[:port]` or `[ipv6][:port]` into the host (without brackets), the port text, and whether it was bracketed.
+fn split_authority(authority: &str) -> Result<(&str, Option<&str>, bool), String> {
+    if let Some(rest) = authority.strip_prefix('[') {
+        let Some((inner, after)) = rest.split_once(']') else {
+            return Err("endpoint has an unterminated [ in its host".to_owned());
+        };
+        let port = match after {
+            "" => None,
+            other => Some(
+                other
+                    .strip_prefix(':')
+                    .ok_or_else(|| "endpoint has text after the closing ]".to_owned())?,
+            ),
+        };
+        return Ok((inner, port, true));
+    }
+    if authority.contains(['[', ']']) {
+        return Err("brackets are only valid around an IPv6 address".to_owned());
+    }
+    match authority.matches(':').count() {
+        0 => Ok((authority, None, false)),
+        1 => {
+            let (host, port) = authority.split_once(':').unwrap_or((authority, ""));
+            Ok((host, Some(port), false))
+        }
+        _ => Err("an IPv6 address must be written in brackets".to_owned()),
+    }
+}
+
+/// Loopback means a parsed IP address in the loopback range (127.0.0.0/8, ::1) or the literal name `localhost`. Never a
+/// hostname that merely looks like one: `127.attacker.example.com` is a DNS name, not an address.
+fn is_loopback_host(host: &str, bracketed: bool) -> bool {
+    if bracketed {
+        return host
+            .parse::<std::net::Ipv6Addr>()
+            .is_ok_and(|a| a.is_loopback());
+    }
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|a| a.is_loopback())
+}
+
+/// Why `url` may not be used as a model endpoint, or `None`.
+#[must_use]
+pub fn endpoint_problem(url: &str, policy: &EndpointPolicy) -> Option<String> {
+    if url.is_empty() || url.len() > 300 || url.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return Some(
+            "endpoint must be a short URL with no spaces or control characters".to_owned(),
+        );
+    }
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return Some("endpoint must start with http:// or https://".to_owned());
+    };
+    if scheme != "http" && scheme != "https" {
+        return Some(format!("endpoint scheme {scheme:?} must be http or https"));
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.contains('@') {
+        return Some("endpoint must not embed credentials (user@host)".to_owned());
+    }
+    let (host, port, bracketed) = match split_authority(authority) {
+        Ok(parts) => parts,
+        Err(problem) => return Some(problem),
+    };
+    if host.is_empty() {
+        return Some("endpoint has no host".to_owned());
+    }
+    if let Some(port) = port {
+        if !port.chars().all(|c| c.is_ascii_digit())
+            || port.parse::<u32>().map_or(true, |p| p == 0 || p > 65535)
+        {
+            return Some(format!("endpoint port {port:?} must be 1-65535"));
+        }
+    }
+    if is_loopback_host(host, bracketed) {
+        return None;
+    }
+    if !policy
+        .allowed_hosts
+        .iter()
+        .any(|h| h.eq_ignore_ascii_case(host))
+    {
+        return Some(format!(
+            "endpoint host {host:?} is not loopback and is not in the allowed hosts"
+        ));
+    }
+    if scheme == "http"
+        && !policy
+            .plain_http_hosts
+            .iter()
+            .any(|h| h.eq_ignore_ascii_case(host))
+    {
+        return Some(format!(
+            "endpoint {host:?} is reachable only over plain http; use https or list it as a trusted plain-http host"
+        ));
+    }
+    None
+}
+
+fn is_ref(text: &str) -> bool {
+    let mut chars = text.chars();
+    matches!(chars.next(), Some('a'..='z'))
+        && text.len() <= 48
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_'))
+}
+
+/// Why a config field's value is not acceptable, or `None`. A field whose name suggests a secret (`key`, `token`,
+/// `secret`, `password`) must hold a *reference name* that the entry point resolves from the secrets file, never the
+/// secret; a value shaped like a key is refused wherever it appears.
+#[must_use]
+pub fn config_value_problem(field: &str, value: &str) -> Option<String> {
+    let name = field.to_ascii_lowercase();
+    let secret_field = ["key", "token", "secret", "password"]
+        .iter()
+        .any(|w| name.contains(w));
+    if secret_field && !is_ref(value) {
+        return Some(format!(
+            "{field} must be a reference name such as \"provider-openai\", not a secret value"
+        ));
+    }
+    if looks_like_key(value) {
+        return Some(format!(
+            "{field} holds something shaped like a credential; keep it in the secrets file and refer to it by name"
+        ));
+    }
+    None
+}
+
+fn looks_like_key(value: &str) -> bool {
+    let v = value.trim();
+    if v.starts_with("sk-")
+        || v.starts_with("ghp_")
+        || v.starts_with("gho_")
+        || v.starts_with("github_pat_")
+        || v.starts_with("AIza")
+        || v.to_ascii_lowercase().starts_with("bearer ")
+    {
+        return true;
+    }
+    let run = v
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '+' | '/' | '='))
+        .count();
+    v.len() >= 32
+        && run == v.chars().count()
+        && v.chars().any(|c| c.is_ascii_digit())
+        && v.chars().any(|c| c.is_ascii_alphabetic())
+        && !v.contains(['/', '.'])
+        && !v.contains("--")
+}
+
+/// What the hub records for one model call: which model was asked for, which one the server said answered, and digests of
+/// the request and the response. The digests prove what was exchanged without keeping the text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Receipt {
+    pub node: String,
+    pub provider: String,
+    pub model_requested: String,
+    pub model_reported: String,
+    pub request_digest: String,
+    pub response_digest: String,
+    pub tick: u64,
+}
+
+impl Receipt {
+    /// Identity of the receipt: any field changing changes it, and no two different receipts share one. Every text
+    /// field is written as its byte length, a colon and the bytes, so no value, whatever it contains (newlines
+    /// included), can move a boundary between two fields; the layout is parsed from the front.
+    #[must_use]
+    pub fn id(&self) -> String {
+        let mut text = String::from("receipt-v2\n");
+        for field in [
+            &self.node,
+            &self.provider,
+            &self.model_requested,
+            &self.model_reported,
+            &self.request_digest,
+            &self.response_digest,
+        ] {
+            text.push_str(&format!("{}:{field}\n", field.len()));
+        }
+        text.push_str(&format!("{}\n", self.tick));
+        digest(&text)
+    }
+
+    /// Set when the server answered with a different model than the one asked for (a silent fallback, a mislabelled
+    /// alias). The independence rule counts the model that ran, so this is recorded, never smoothed over.
+    #[must_use]
+    pub fn mismatch(&self) -> Option<String> {
+        (self.model_requested != self.model_reported).then(|| {
+            format!(
+                "asked for {:?} but {:?} answered ({}): the receipt records the model that ran",
+                self.model_requested, self.model_reported, self.provider
+            )
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn host_4060() -> Host {
+        Host {
+            name: "aaroneoushome".into(),
+            vram_mb: 8192,
+            ram_mb: 16384,
+            reserved_vram_mb: 600,
+            reserved_ram_mb: 4096,
+        }
+    }
+
+    /// Qwen2.5-Coder-14B-Instruct AWQ, 8k context: published architecture is 48 layers, 8 kv heads, head dim 128, fp16 cache
+    /// (2 x 48 x 8 x 128 x 2 = 196,608 bytes per token); the AWQ files are about 9.4 GB. Estimates, not measurements.
+    fn qwen_14b_awq() -> Model {
+        Model {
+            name: "qwen2.5-coder-14b-awq".into(),
+            weights_mb: 9400,
+            kv_bytes_per_token: 196_608,
+            context_tokens: 8192,
+            overhead_mb: 1000,
+        }
+    }
+
+    /// A 7B-class Q4 GGUF: 28 layers, 4 kv heads, head dim 128 gives 57,344 bytes per token; the file is about 4.7 GB.
+    fn qwen_7b_q4() -> Model {
+        Model {
+            name: "qwen2.5-coder-7b-q4".into(),
+            weights_mb: 4700,
+            kv_bytes_per_token: 57_344,
+            context_tokens: 8192,
+            overhead_mb: 500,
+        }
+    }
+
+    #[test]
+    fn kv_cache_is_bytes_per_token_times_context() {
+        assert_eq!(qwen_14b_awq().kv_mb(), 1536);
+        assert_eq!(qwen_7b_q4().kv_mb(), 448);
+        assert_eq!(qwen_7b_q4().needed_mb(), 4700 + 448 + 500);
+    }
+
+    #[test]
+    fn a_14b_awq_does_not_fit_an_8gb_4060_and_says_so() {
+        let result = fit(&host_4060(), &qwen_14b_awq(), false);
+        assert!(matches!(result, Fit::TooBig { .. }), "{result:?}");
+        assert!(!result.on_gpu());
+    }
+
+    #[test]
+    fn offloading_is_a_choice_and_is_reported_as_slow_not_as_a_fit() {
+        let result = fit(&host_4060(), &qwen_14b_awq(), true);
+        match result {
+            Fit::Offload { spill_mb, .. } => {
+                assert_eq!(spill_mb, 9400 + 1536 + 1000 - (8192 - 600))
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(!result.on_gpu());
+    }
+
+    #[test]
+    fn offload_that_would_exhaust_ram_is_refused() {
+        let small_ram = Host {
+            ram_mb: 8192,
+            ..host_4060()
+        };
+        assert!(matches!(
+            fit(&small_ram, &qwen_14b_awq(), true),
+            Fit::TooBig { .. }
+        ));
+    }
+
+    #[test]
+    fn a_7b_q4_fits_with_room() {
+        let result = fit(&host_4060(), &qwen_7b_q4(), false);
+        assert!(matches!(result, Fit::Gpu { .. }), "{result:?}");
+    }
+
+    #[test]
+    fn a_model_with_under_a_tenth_left_is_tight() {
+        let nearly = Model {
+            weights_mb: 6300,
+            ..qwen_7b_q4()
+        };
+        assert!(matches!(
+            fit(&host_4060(), &nearly, false),
+            Fit::Tight { .. }
+        ));
+        assert!(fit(&host_4060(), &nearly, false).on_gpu());
+    }
+
+    #[test]
+    fn the_hub_picks_the_largest_model_that_runs_on_the_gpu_and_never_an_offloaded_one() {
+        let candidates = [
+            qwen_14b_awq(),
+            qwen_7b_q4(),
+            Model {
+                name: "tiny".into(),
+                weights_mb: 1200,
+                ..qwen_7b_q4()
+            },
+        ];
+        assert_eq!(
+            choose(&host_4060(), &candidates).map(|m| m.name.as_str()),
+            Some("qwen2.5-coder-7b-q4")
+        );
+        let none_fit = [qwen_14b_awq()];
+        assert_eq!(choose(&host_4060(), &none_fit), None);
+        let big_host = Host {
+            vram_mb: 24576,
+            ..host_4060()
+        };
+        assert_eq!(
+            choose(&big_host, &candidates).map(|m| m.name.as_str()),
+            Some("qwen2.5-coder-14b-awq")
+        );
+    }
+
+    #[test]
+    fn choice_is_deterministic_when_sizes_tie() {
+        let a = Model {
+            name: "a".into(),
+            ..qwen_7b_q4()
+        };
+        let b = Model {
+            name: "b".into(),
+            ..qwen_7b_q4()
+        };
+        assert_eq!(
+            choose(&host_4060(), &[b.clone(), a.clone()]).map(|m| m.name.clone()),
+            Some("a".into())
+        );
+        assert_eq!(
+            choose(&host_4060(), &[a, b]).map(|m| m.name.clone()),
+            Some("a".into())
+        );
+    }
+
+    #[test]
+    fn a_reservation_larger_than_the_card_leaves_nothing_not_an_underflow() {
+        let starved = Host {
+            reserved_vram_mb: 99_999,
+            ..host_4060()
+        };
+        assert!(matches!(
+            fit(&starved, &qwen_7b_q4(), false),
+            Fit::TooBig { .. }
+        ));
+    }
+
+    fn policy() -> EndpointPolicy {
+        EndpointPolicy {
+            allowed_hosts: vec!["100.109.8.12".into()],
+            plain_http_hosts: vec![],
+        }
+    }
+
+    #[test]
+    fn loopback_endpoints_are_allowed_and_everything_else_must_be_listed() {
+        for ok in [
+            "http://localhost:8000/v1",
+            "http://127.0.0.1:8000/v1",
+            "http://[::1]:11434",
+            "https://100.109.8.12:8443/v1",
+        ] {
+            assert_eq!(endpoint_problem(ok, &policy()), None, "{ok}");
+        }
+        for bad in [
+            "http://203.0.113.9:8000/v1",
+            "https://203.0.113.9:8443/v1",
+            "https://evil.example/v1",
+            "http://100.109.8.12:8000/v1",
+            "ftp://localhost/",
+            "localhost:8000",
+            "http://user:pass@localhost:8000/",
+            "http://localhost:0/",
+            "http://localhost:99999/",
+            "http://localhost:80a/",
+            "http://",
+            "http://local host/",
+            "http://127.0.0.1.evil.example/v1",
+        ] {
+            assert!(endpoint_problem(bad, &policy()).is_some(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_hostname_that_merely_starts_with_127_is_not_loopback() {
+        // Codex review: "127.attacker.example.com" has four dot-separated segments and was admitted as loopback.
+        for host in [
+            "127.attacker.example.com",
+            "127.0.0.1.evil.example",
+            "127.a.b.c",
+            "127.0.0.256",
+            "127.0.0",
+            "127.1",
+            "127.0.0.1.",
+            "localhost.evil.example",
+            "xlocalhost",
+            "0.0.0.0",
+            "[::ffff:127.0.0.1]",
+            "[::2]",
+            "[::1",
+            "::1]",
+        ] {
+            let url = format!("http://{host}:8000/v1");
+            assert!(
+                endpoint_problem(&url, &EndpointPolicy::default()).is_some(),
+                "{url} must not be loopback"
+            );
+        }
+        for host in [
+            "127.0.0.1",
+            "127.255.255.254",
+            "LOCALHOST",
+            "localhost",
+            "[::1]",
+        ] {
+            let url = format!("http://{host}:8000/v1");
+            assert_eq!(
+                endpoint_problem(&url, &EndpointPolicy::default()),
+                None,
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn sizing_arithmetic_cannot_wrap_into_a_fit() {
+        // Codex review: kv_bytes_per_token = 2^63 with context 2 wrapped to 0 in a release build and reported Gpu { needed_mb: 1 }.
+        let hostile = [
+            Model {
+                kv_bytes_per_token: 1 << 63,
+                context_tokens: 2,
+                weights_mb: 1,
+                overhead_mb: 0,
+                ..qwen_7b_q4()
+            },
+            Model {
+                kv_bytes_per_token: u64::MAX,
+                context_tokens: u64::MAX,
+                weights_mb: 0,
+                overhead_mb: 0,
+                ..qwen_7b_q4()
+            },
+            Model {
+                weights_mb: u64::MAX,
+                kv_bytes_per_token: 1,
+                context_tokens: 1,
+                overhead_mb: 1,
+                ..qwen_7b_q4()
+            },
+            Model {
+                weights_mb: u64::MAX / 2 + 1,
+                overhead_mb: u64::MAX / 2 + 1,
+                kv_bytes_per_token: 0,
+                ..qwen_7b_q4()
+            },
+        ];
+        for model in &hostile {
+            for allow_offload in [false, true] {
+                let result = fit(&host_4060(), model, allow_offload);
+                assert!(
+                    matches!(result, Fit::TooBig { .. }),
+                    "{model:?} offload={allow_offload} gave {result:?}"
+                );
+            }
+            assert_eq!(
+                choose(&host_4060(), std::slice::from_ref(model)),
+                None,
+                "{model:?}"
+            );
+        }
+        // absurd host figures must not wrap either
+        let huge_host = Host {
+            vram_mb: u64::MAX,
+            ram_mb: u64::MAX,
+            reserved_vram_mb: 0,
+            reserved_ram_mb: 0,
+            name: "h".into(),
+        };
+        let _ = fit(&huge_host, &qwen_14b_awq(), true);
+        assert!(matches!(
+            fit(&huge_host, &qwen_7b_q4(), false),
+            Fit::Gpu { .. }
+        ));
+        assert_eq!(
+            qwen_7b_q4().needed_mb(),
+            4700 + 448 + 500,
+            "ordinary figures are unchanged"
+        );
+    }
+
+    #[test]
+    fn a_product_that_would_overflow_64_bits_is_measured_exactly_not_understated() {
+        // Codex's counterexample: kv 2^63 bytes/token x 8 tokens is exactly 2^66 bytes = 2^46 MB. A saturating u64 product
+        // reported 2^44 MB and called it a GPU fit on a host that declared 2^45 MB. The exact need is above that host.
+        let model = Model {
+            name: "hostile".into(),
+            weights_mb: 0,
+            kv_bytes_per_token: 1 << 63,
+            context_tokens: 8,
+            overhead_mb: 0,
+        };
+        assert_eq!(model.kv_mb(), 1u128 << 46);
+        assert_eq!(model.needed_mb(), 1u128 << 46);
+        let host = Host {
+            name: "declares-a-lot".into(),
+            vram_mb: 1 << 45,
+            ram_mb: 1 << 45,
+            reserved_vram_mb: 0,
+            reserved_ram_mb: 0,
+        };
+        for allow_offload in [false, true] {
+            let result = fit(&host, &model, allow_offload);
+            assert!(
+                matches!(result, Fit::TooBig { .. }),
+                "offload={allow_offload}: {result:?}"
+            );
+        }
+        assert_eq!(choose(&host, std::slice::from_ref(&model)), None);
+        // and a host that really has the memory fits it, so the answer follows the numbers
+        let enough = Host {
+            vram_mb: 1 << 47,
+            ..host
+        };
+        assert!(matches!(
+            fit(&enough, &model, false),
+            Fit::Gpu { .. } | Fit::Tight { .. }
+        ));
+        // the largest representable inputs are still exact
+        let widest = Model {
+            kv_bytes_per_token: u64::MAX,
+            context_tokens: u64::MAX,
+            weights_mb: u64::MAX,
+            overhead_mb: u64::MAX,
+            ..model
+        };
+        let expected = (u128::from(u64::MAX) * u128::from(u64::MAX)).div_ceil(1 << 20)
+            + 2 * u128::from(u64::MAX);
+        assert_eq!(widest.needed_mb(), expected);
+    }
+
+    #[test]
+    fn plain_http_off_loopback_needs_its_own_listing() {
+        let trusted = EndpointPolicy {
+            plain_http_hosts: vec!["100.109.8.12".into()],
+            ..policy()
+        };
+        assert_eq!(
+            endpoint_problem("http://100.109.8.12:8000/v1", &trusted),
+            None
+        );
+    }
+
+    #[test]
+    fn secret_fields_hold_a_reference_never_the_value() {
+        assert_eq!(config_value_problem("api_key_ref", "provider-openai"), None);
+        assert_eq!(
+            config_value_problem("endpoint", "http://localhost:8000/v1"),
+            None
+        );
+        assert_eq!(
+            config_value_problem("model", "qwen2.5-coder-7b-instruct-q4_k_m"),
+            None
+        );
+        // Credential-shaped fixtures are assembled at run time: a literal would be a secret-scanner finding in a public repository.
+        let tail = "abcdefghijklmnopqrstuvwxyz0123456789";
+        for (field, value) in [
+            ("api_key", ["sk-proj", "-", tail].concat()),
+            ("token", ["ghp", "_", tail].concat()),
+            ("api_key", "Provider OpenAI".to_owned()),
+            ("password", String::new()),
+            ("notes", "Bearer abcdefghijklmnop".to_owned()),
+            ("anything", ["AIza", "SyA-", &tail[..32]].concat()),
+            (
+                "anything",
+                "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dF3gH5".to_owned(),
+            ),
+        ] {
+            assert!(
+                config_value_problem(field, &value).is_some(),
+                "{field}={value}"
+            );
+        }
+    }
+
+    fn receipt() -> Receipt {
+        Receipt {
+            node: "ubuntu-1".into(),
+            provider: "local-vllm".into(),
+            model_requested: "qwen2.5-coder-7b".into(),
+            model_reported: "qwen2.5-coder-7b".into(),
+            request_digest: "a".repeat(64),
+            response_digest: "b".repeat(64),
+            tick: 7,
+        }
+    }
+
+    #[test]
+    fn a_receipt_id_changes_with_every_field_and_a_substituted_model_is_flagged() {
+        let base = receipt();
+        assert_eq!(base.id(), receipt().id());
+        for variant in [
+            Receipt {
+                node: "x".into(),
+                ..receipt()
+            },
+            Receipt {
+                provider: "x".into(),
+                ..receipt()
+            },
+            Receipt {
+                model_requested: "x".into(),
+                ..receipt()
+            },
+            Receipt {
+                model_reported: "x".into(),
+                ..receipt()
+            },
+            Receipt {
+                request_digest: "c".repeat(64),
+                ..receipt()
+            },
+            Receipt {
+                response_digest: "c".repeat(64),
+                ..receipt()
+            },
+            Receipt {
+                tick: 8,
+                ..receipt()
+            },
+        ] {
+            assert_ne!(base.id(), variant.id());
+        }
+        assert_eq!(base.mismatch(), None);
+        let swapped = Receipt {
+            model_reported: "qwen3.5-9b".into(),
+            ..receipt()
+        };
+        assert!(swapped.mismatch().is_some_and(|m| m.contains("answered")));
+    }
+
+    #[test]
+    fn separators_inside_a_field_cannot_move_a_boundary_between_fields() {
+        // Codex's collision on #198: the same bytes split differently across two adjacent fields.
+        let a = Receipt {
+            node: "node\nprovider-a".into(),
+            provider: "provider-b".into(),
+            ..receipt()
+        };
+        let b = Receipt {
+            node: "node".into(),
+            provider: "provider-a\nprovider-b".into(),
+            ..receipt()
+        };
+        assert_ne!(a, b);
+        assert_ne!(a.id(), b.id());
+        // The same property for every adjacent pair of text fields and for the separators a length prefix could be
+        // confused with: a newline, a colon, a digit run, and a value that looks like the next field's prefix.
+        for glue in ["\n", ":", "5:", "\n3:abc\n", ""] {
+            for pair in 0..5 {
+                let make = |split: usize| {
+                    let mut fields = [
+                        "alpha".to_owned(),
+                        "beta".to_owned(),
+                        "gamma".to_owned(),
+                        "delta".to_owned(),
+                        "epsilon".to_owned(),
+                        "zeta".to_owned(),
+                    ];
+                    let joined = format!("{}{glue}{}", fields[pair], fields[pair + 1]);
+                    let (left, right) = joined.split_at(split);
+                    fields[pair] = left.to_owned();
+                    fields[pair + 1] = right.to_owned();
+                    let [
+                        node,
+                        provider,
+                        model_requested,
+                        model_reported,
+                        request_digest,
+                        response_digest,
+                    ] = fields;
+                    Receipt {
+                        node,
+                        provider,
+                        model_requested,
+                        model_reported,
+                        request_digest,
+                        response_digest,
+                        tick: 7,
+                    }
+                };
+                let first = make(5);
+                let second = make(5 + glue.len().max(1));
+                assert_ne!(first, second);
+                assert_ne!(first.id(), second.id(), "glue {glue:?} pair {pair}");
+            }
+        }
+        // A tick can never be confused with the end of a text field.
+        let t = Receipt {
+            response_digest: "z\n8".into(),
+            tick: 9,
+            ..receipt()
+        };
+        let u = Receipt {
+            response_digest: "z".into(),
+            tick: 89,
+            ..receipt()
+        };
+        assert_ne!(t.id(), u.id());
+    }
+}

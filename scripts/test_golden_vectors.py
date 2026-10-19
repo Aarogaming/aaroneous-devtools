@@ -17,7 +17,7 @@ import review_coverage as rc  # noqa: E402
 import steward_run as sr  # noqa: E402
 
 DIR = gv.DIR
-RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "pushes", "seats", "coverage", "audit",
+RULE_FAMILIES = ("attribution", "heads", "receipts", "rejected", "stalls", "pushes", "seats", "coverage", "independence", "audit",
                  "gate_plan", "gate_ci", "gate_breaker", "gate_threads", "gate_checklist", "gate_decide")
 
 
@@ -62,7 +62,8 @@ class Golden(unittest.TestCase):
         results = []
         for c in coverage:
             pairs = {(a, b) for a, b in c["ancestry"]}
-            results.append(rc.evaluate(c["head"], c["merge_base"], c["records"], lambda a, b: a == b or (a, b) in pairs))
+            registered = set(c["registered"]) if "registered" in c else None
+            results.append(rc.evaluate(c["head"], c["merge_base"], c["records"], lambda a, b: a == b or (a, b) in pairs, registered))
         self.assertEqual(results, load("coverage.out.json"))
         audit = load("audit.in.json")
         self.assertEqual(

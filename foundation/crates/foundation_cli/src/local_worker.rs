@@ -776,6 +776,29 @@ pub(crate) fn serve(config_path: &Path) -> Result<()> {
         if let Err(e) = tick(config_path, ((now / 60) % 60) as u32, now) {
             eprintln!("local-worker-serve: tick failed: {e:#}");
         }
+        let staged_dir = config
+            .results_directory
+            .parent()
+            .map(|p| p.join("staged"))
+            .unwrap_or_else(|| config.results_directory.join("staged"));
+        let router_config = devtools_ops::PipelineRouterConfig::new(
+            &config.results_directory,
+            &staged_dir,
+            &config.jobs_directory,
+        );
+        match devtools_ops::route_all_pending_results(&router_config) {
+            Ok(actions) => {
+                if !actions.is_empty() {
+                    println!(
+                        "local-worker-serve: routed {} result(s) into active pipeline",
+                        actions.len()
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("local-worker-serve: pipeline routing error: {}", e);
+            }
+        }
         delay = if tick_was_quiet(&status_path, mtime_before) {
             (delay * 2).min(SERVE_MAX_DELAY)
         } else {
