@@ -3,7 +3,7 @@
 //! families `gate_plan`, `gate_ci`, `gate_breaker`, `gate_threads`). The owner-only path tiers were removed in #134.
 
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const DOCS_ALLOWLIST: [&str; 3] = ["governance/", "docs/", "architecture/"];
 /// Unicode `Cf` (format) code points, as of the Unicode 15.0 that Python 3.12 ships; `char` has no category API.
@@ -138,6 +138,84 @@ pub fn category_of(paths: &[String]) -> String {
 pub struct CiCheck {
     pub conclusion: Option<String>,
     pub status: Option<String>,
+    /// Check name, else the legacy status context; an entry with neither is never replaced by a later run.
+    pub name: Option<String>,
+    pub workflow: Option<String>,
+    pub started: Option<String>,
+    pub completed: Option<String>,
+}
+
+/// A check identity: its workflow and its name.
+type CheckKey = (String, String);
+/// A run's order: its timestamp, then 0 for a clean success and 1 for anything else (so a tie keeps the worse one).
+type CheckRank = (String, u8);
+
+impl CiCheck {
+    /// Read one `statusCheckRollup` entry the way the Python oracle does: an empty `name` falls back to `context`, and an
+    /// empty `startedAt` falls back to `completedAt` (see `latest_checks`). Missing or non-string fields are `None`.
+    #[must_use]
+    pub fn from_json(entry: &serde_json::Value) -> Self {
+        let text = |key: &str| entry[key].as_str().map(str::to_owned);
+        let non_empty = |key: &str| text(key).filter(|s| !s.is_empty());
+        Self {
+            conclusion: text("conclusion"),
+            status: text("status"),
+            name: non_empty("name").or_else(|| non_empty("context")),
+            workflow: text("workflowName"),
+            started: text("startedAt"),
+            completed: text("completedAt"),
+        }
+    }
+}
+
+/// The newest run of each check. GitHub keeps every run on a commit in the rollup, so a failure that was later re-run
+/// successfully stays listed beside its replacement; only the newest run of a given workflow and name counts. Runs are
+/// ordered by `started` (else `completed`); on a tie the worse result is kept. An entry with no name, or with no timestamp
+/// at all (a queued re-run has not started), cannot be placed in that order, so it is never discarded as older and
+/// always counts (fail closed).
+fn latest_checks(rollup: &[CiCheck]) -> Vec<&CiCheck> {
+    let mut newest: BTreeMap<CheckKey, (CheckRank, &CiCheck)> = BTreeMap::new();
+    let mut order: Vec<CheckKey> = Vec::new();
+    let mut unplaced: Vec<&CiCheck> = Vec::new();
+    for item in rollup {
+        let name = item.name.clone().unwrap_or_default();
+        let stamp = match item.started.as_deref() {
+            Some(started) if !started.is_empty() => started.to_owned(),
+            _ => item.completed.clone().unwrap_or_default(),
+        };
+        if name.is_empty() || stamp.is_empty() {
+            unplaced.push(item);
+            continue;
+        }
+        let key = (item.workflow.clone().unwrap_or_default(), name);
+        let good = item
+            .conclusion
+            .as_deref()
+            .unwrap_or_default()
+            .eq_ignore_ascii_case("SUCCESS")
+            && item
+                .status
+                .as_deref()
+                .unwrap_or_default()
+                .eq_ignore_ascii_case("COMPLETED");
+        let rank = (stamp, u8::from(!good));
+        match newest.get(&key) {
+            Some((current, _)) if *current >= rank => {}
+            Some(_) => {
+                newest.insert(key, (rank, item));
+            }
+            None => {
+                order.push(key.clone());
+                newest.insert(key, (rank, item));
+            }
+        }
+    }
+    let mut kept: Vec<&CiCheck> = order
+        .iter()
+        .filter_map(|key| newest.get(key).map(|(_, item)| *item))
+        .collect();
+    kept.extend(unplaced);
+    kept
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,8 +233,8 @@ pub fn ci_state(rollup: &[CiCheck]) -> CiState {
             detail: "no CI status found".to_owned(),
         };
     }
-    let states: Vec<String> = rollup
-        .iter()
+    let states: Vec<String> = latest_checks(rollup)
+        .into_iter()
         .map(|item| {
             let conclusion = item.conclusion.clone().unwrap_or_default().to_uppercase();
             let status = item.status.clone().unwrap_or_default().to_uppercase();
@@ -318,6 +396,7 @@ mod tests {
         let done = |c: &str| CiCheck {
             conclusion: Some(c.into()),
             status: Some("COMPLETED".into()),
+            ..CiCheck::default()
         };
         assert_eq!(ci_state(&[]).state, "missing");
         assert_eq!(
@@ -328,11 +407,124 @@ mod tests {
         assert_eq!(
             ci_state(&[CiCheck {
                 conclusion: None,
-                status: Some("QUEUED".into())
+                status: Some("QUEUED".into()),
+                ..CiCheck::default()
             }])
             .state,
             "pending"
         );
+    }
+
+    fn run(name: &str, workflow: &str, started: &str, status: &str, conclusion: &str) -> CiCheck {
+        CiCheck {
+            name: Some(name.into()),
+            workflow: Some(workflow.into()),
+            started: Some(started.into()),
+            status: Some(status.into()),
+            conclusion: Some(conclusion.into()),
+            ..CiCheck::default()
+        }
+    }
+
+    #[test]
+    fn only_the_newest_run_of_each_check_counts() {
+        let old_fail = run(
+            "advisories",
+            "Security",
+            "2026-10-14T19:09:00Z",
+            "COMPLETED",
+            "FAILURE",
+        );
+        let new_pass = run(
+            "advisories",
+            "Security",
+            "2026-10-17T02:45:00Z",
+            "COMPLETED",
+            "SUCCESS",
+        );
+        assert_eq!(
+            ci_state(&[old_fail.clone(), new_pass.clone()]).state,
+            "success"
+        );
+        assert_eq!(
+            ci_state(&[new_pass.clone(), old_fail.clone()]).state,
+            "success"
+        );
+        // A later failure, a later unfinished run and a worse tie all win over an earlier success.
+        let late_fail = run(
+            "advisories",
+            "Security",
+            "2026-10-18T00:00:00Z",
+            "COMPLETED",
+            "FAILURE",
+        );
+        assert_eq!(ci_state(&[new_pass.clone(), late_fail]).state, "failure");
+        let running = run(
+            "advisories",
+            "Security",
+            "2026-10-18T00:00:00Z",
+            "IN_PROGRESS",
+            "",
+        );
+        assert_eq!(ci_state(&[old_fail, running]).state, "pending");
+        let tie_fail = run(
+            "advisories",
+            "Security",
+            "2026-10-17T02:45:00Z",
+            "COMPLETED",
+            "FAILURE",
+        );
+        assert_eq!(ci_state(&[new_pass.clone(), tie_fail]).state, "failure");
+        // The same name in another workflow is a different check; an unnamed entry is never replaced.
+        let other = run(
+            "advisories",
+            "Other",
+            "2026-10-01T00:00:00Z",
+            "COMPLETED",
+            "FAILURE",
+        );
+        assert_eq!(ci_state(&[new_pass.clone(), other]).state, "failure");
+        let unnamed = CiCheck {
+            status: Some("COMPLETED".into()),
+            conclusion: Some("FAILURE".into()),
+            ..CiCheck::default()
+        };
+        assert_eq!(ci_state(&[new_pass.clone(), unnamed]).state, "failure");
+        // A queued re-run has no timestamps: it cannot be ordered, so it is never discarded as older (Codex on #227).
+        let queued = CiCheck {
+            name: Some("advisories".into()),
+            workflow: Some("Security".into()),
+            status: Some("QUEUED".into()),
+            ..CiCheck::default()
+        };
+        assert_eq!(
+            ci_state(&[new_pass.clone(), queued.clone()]).state,
+            "pending"
+        );
+        assert_eq!(
+            ci_state(&[queued.clone(), new_pass.clone()]).state,
+            "pending"
+        );
+        let failed = run(
+            "advisories",
+            "Security",
+            "2026-10-14T19:09:00Z",
+            "COMPLETED",
+            "FAILURE",
+        );
+        assert_eq!(ci_state(&[failed, queued]).state, "pending");
+        let unplaced_failure = CiCheck {
+            name: Some("advisories".into()),
+            workflow: Some("Security".into()),
+            status: Some("COMPLETED".into()),
+            conclusion: Some("FAILURE".into()),
+            ..CiCheck::default()
+        };
+        assert_eq!(
+            ci_state(&[unplaced_failure.clone(), new_pass.clone()]).state,
+            "failure"
+        );
+        assert_eq!(ci_state(&[new_pass, unplaced_failure]).state, "failure");
     }
 
     #[test]
