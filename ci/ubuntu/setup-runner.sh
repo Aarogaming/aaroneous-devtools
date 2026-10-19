@@ -54,6 +54,7 @@ if ! id "$user" >/dev/null 2>&1; then
 fi
 chmod 0700 "$home"
 install -d -o "$user" -g "$user" -m 0700 "$dir"
+install -d -o "$user" -g "$user" -m 0700 "$home/cargo-home"
 
 echo "== runner ${RUNNER_VERSION}"
 tmp="$(mktemp -d)"
@@ -65,32 +66,62 @@ if [[ ! -x "$dir/run.sh" ]]; then
   chown -R "$user:$user" "$dir"
 fi
 
-echo "== job-completed hook (wipes the workspace after every job)"
+echo "== job-completed hook (wipes _work after every job; a runner that cannot prove it is clean quarantines itself)"
 install -d -m 0755 /opt/devtools-ci
 install -m 0755 "$here/job-completed.sh" /opt/devtools-ci/job-completed.sh
-printf 'ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/opt/devtools-ci/job-completed.sh\n' > "$dir/.env"
-chown "$user:$user" "$dir/.env"
 
-echo "== register ${name} (labels: devtools-ubuntu, devtools-${kind})"
+echo "== register ${name} (labels: devtools-ubuntu, devtools-${kind}; self-update off)"
 if [[ ! -f "$dir/.runner" ]]; then
-  sudo -u "$user" -H bash -c "cd '$dir' && ./config.sh --unattended --replace --url 'https://github.com/${repo}' \
+  # config.sh needs to write its own files, so the account owns the directory only for this step.
+  chown -R "$user:$user" "$dir"
+  sudo -u "$user" -H bash -c "cd '$dir' && ./config.sh --unattended --replace --disableupdate --url 'https://github.com/${repo}' \
     --token '${token}' --name '${name}' --labels 'devtools-ubuntu,devtools-${kind}' --work _work"
 fi
 
 if [[ "$kind" == "ci" ]]; then
-  echo "== Rust toolchain for ${user} (same components the workflow asks for)"
-  if [[ ! -x "$home/.cargo/bin/cargo" ]]; then
-    sudo -u "$user" -H bash -c "curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal -c rustfmt,clippy"
+  echo "== Rust toolchain, installed by root where a job cannot change it (same components the workflow asks for)"
+  if [[ ! -x /opt/devtools-toolchain/cargo/bin/cargo ]]; then
+    install -d -m 0755 /opt/devtools-toolchain
+    RUSTUP_HOME=/opt/devtools-toolchain/rustup CARGO_HOME=/opt/devtools-toolchain/cargo \
+      bash -c "curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path -c rustfmt,clippy"
   fi
+  chown -R root:root /opt/devtools-toolchain
+  chmod -R go-w /opt/devtools-toolchain
 fi
+
+echo "== lock the runner: its program, configuration and credentials belong to root; the job account gets only _work, _diag and a cache"
+{
+  echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/opt/devtools-ci/job-completed.sh"
+  echo "HOME=$home/cargo-home"
+  if [[ "$kind" == "ci" ]]; then
+    echo "RUSTUP_HOME=/opt/devtools-toolchain/rustup"
+    echo "CARGO_HOME=$home/cargo-home"
+    echo "PATH=/opt/devtools-toolchain/cargo/bin:/usr/local/bin:/usr/bin:/bin"
+  fi
+} > "$dir/.env"
+chown -R root:root "$dir"
+chmod -R go-w "$dir"
+# the listener must read its own configuration and credentials; it must not be able to change them
+for f in .runner .credentials .credentials_rsaparams .path .env; do
+  [[ -e "$dir/$f" ]] && chgrp "$user" "$dir/$f" && chmod 0640 "$dir/$f"
+done
+install -d -o "$user" -g "$user" -m 0700 "$dir/_work" "$dir/_diag"
+rm -f "$dir/_diag/QUARANTINE"
 
 echo "== service"
 sed "s/%KIND%/${kind}/g" "$here/devtools-runner.service" > "/etc/systemd/system/devtools-runner-${kind}.service"
 systemctl daemon-reload
 systemctl enable --now "devtools-runner-${kind}.service"
 
-echo "== isolation check: ${user} must not be able to read any other account's files"
+echo "== isolation check: ${user} must not read other accounts' files, and must not change the runner or its toolchain"
 bad=0
+for path in "$dir/run.sh" "$dir/config.sh" "$dir/.env" "$dir/.runner" "$dir/bin" /opt/devtools-ci/job-completed.sh /opt/devtools-toolchain/cargo/bin/cargo; do
+  [[ -e "$path" ]] || continue
+  if sudo -u "$user" test -w "$path"; then
+    echo "FAIL: ${user} can write ${path}" >&2
+    bad=1
+  fi
+done
 for path in /home/*/.steward /home/*/.ssh /root /etc/shadow; do
   [[ -e "$path" ]] || continue
   if sudo -u "$user" test -r "$path"; then

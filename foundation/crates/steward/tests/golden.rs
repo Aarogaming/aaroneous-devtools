@@ -27,7 +27,7 @@ const SCENARIO_MARKER: &str = "(scenario)";
 /// Not ported yet. Remove an entry when its family is ported and listed in `check`.
 const PENDING: [&str; 0] = [];
 /// The rule families that have a dedicated function in the Python steward (everything else is a scenario file).
-const RULE_FAMILIES: [&str; 15] = [
+const RULE_FAMILIES: [&str; 16] = [
     "attribution",
     "heads",
     "receipts",
@@ -36,6 +36,7 @@ const RULE_FAMILIES: [&str; 15] = [
     "pushes",
     "seats",
     "coverage",
+    "independence",
     "audit",
     "gate_plan",
     "gate_ci",
@@ -54,6 +55,7 @@ fn check(family: &str) -> Option<Result<(), String>> {
         "receipts" => Some(check_receipts()),
         "stalls" => Some(check_stalls()),
         "coverage" => Some(check_coverage()),
+        "independence" => Some(check_independence()),
         "chain" => Some(check_chain()),
         "gate_checklist" => Some(check_gate_checklist()),
         "gate_decide" => Some(check_gate_decide()),
@@ -264,14 +266,7 @@ fn check_gate_ci() -> Result<(), String> {
     for case in load("gate_ci.in.json").as_array().ok_or("not a list")? {
         let rollup: Vec<CiCheck> = case["rollup"]
             .as_array()
-            .map(|list| {
-                list.iter()
-                    .map(|c| CiCheck {
-                        conclusion: c["conclusion"].as_str().map(str::to_owned),
-                        status: c["status"].as_str().map(str::to_owned),
-                    })
-                    .collect()
-            })
+            .map(|list| list.iter().map(CiCheck::from_json).collect())
             .unwrap_or_default();
         let state = ci_state(&rollup);
         actual.push(json!({"state": state.state, "detail": state.detail}));
@@ -305,9 +300,21 @@ fn check_gate_threads() -> Result<(), String> {
     compare(&Value::Array(actual), &load("gate_threads.out.json"))
 }
 
+fn check_independence() -> Result<(), String> {
+    let mut actual = Vec::new();
+    for case in load("independence.in.json")
+        .as_array()
+        .ok_or("independence.in.json is not a list")?
+    {
+        let counted = case["counted"].as_array().cloned().unwrap_or_default();
+        actual.push(steward::independence::independence(&counted, &case["identities"]).to_value());
+    }
+    compare(&Value::Array(actual), &load("independence.out.json"))
+}
+
 fn check_coverage() -> Result<(), String> {
     use std::collections::BTreeSet;
-    use steward::coverage::{Record, evaluate};
+    use steward::coverage::Record;
     let mut actual = Vec::new();
     for case in load("coverage.in.json")
         .as_array()
@@ -344,11 +351,13 @@ fn check_coverage() -> Result<(), String> {
             .unwrap_or_default();
         let is_ancestor =
             |a: &str, b: &str| a == b || pairs.contains(&(a.to_owned(), b.to_owned()));
-        let decision = evaluate(
+        let registered: BTreeSet<String> = string_list(&case["registered"]).into_iter().collect();
+        let decision = steward::coverage::evaluate_in(
             case["head"].as_str().unwrap_or_default(),
             case["merge_base"].as_str(),
             &records,
             &is_ancestor,
+            &registered,
         );
         actual.push(json!({
             "covered": decision.covered,
@@ -551,7 +560,7 @@ fn family_key(stem: &str) -> String {
 /// truncating a family's vectors (input and output together) used to leave this test green (skeptic probe: seats,
 /// coverage and chain all emptied, 3 tests passed). The floors only rise: add a family here when you port it, and raise
 /// a number when vectors are added.
-const MIN_CASES: [(&str, usize); 16] = [
+const MIN_CASES: [(&str, usize); 17] = [
     ("seats", 23),
     ("heads", 12),
     ("attribution", 34),
@@ -559,7 +568,8 @@ const MIN_CASES: [(&str, usize); 16] = [
     ("receipts", 19),
     ("stalls", 9),
     ("pushes", 7),
-    ("coverage", 16),
+    ("coverage", 21),
+    ("independence", 20),
     ("gate_plan", 13),
     ("gate_ci", 7),
     ("gate_breaker", 7),

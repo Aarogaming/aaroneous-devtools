@@ -135,6 +135,7 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
         }
     }
     coverage_cases(all, bad);
+    independence_cases(all, bad);
     gate_cases(all, bad);
     checklist_cases(all, bad);
     chain_cases(all, bad);
@@ -173,7 +174,7 @@ fn state_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
 
 fn coverage_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
     use std::collections::BTreeSet;
-    use steward::coverage::{Record, evaluate};
+    use steward::coverage::Record;
     let strings = |v: &Value| -> Vec<String> {
         v.as_array()
             .map(|l| {
@@ -210,11 +211,20 @@ fn coverage_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             .collect();
         let is_ancestor =
             |a: &str, b: &str| a == b || pairs.contains(&(a.to_owned(), b.to_owned()));
-        let d = evaluate(
+        let registered: std::collections::BTreeSet<String> = case["registered"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|s| s.as_str().unwrap().to_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let d = steward::coverage::evaluate_in(
             case["head"].as_str().unwrap(),
             case["merge_base"].as_str(),
             &records,
             &is_ancestor,
+            &registered,
         );
         let want = &case["out"];
         let counted: Vec<Value> = d.counted.iter().map(|&i| originals[i].clone()).collect();
@@ -227,6 +237,19 @@ fn coverage_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             bad.entry("coverage")
                 .or_default()
                 .push(format!("{case} rust={d:?}"));
+        }
+    }
+}
+
+fn independence_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
+    for case in all["independence"].as_array().unwrap() {
+        let counted = case["counted"].as_array().unwrap();
+        let got = steward::independence::independence(counted, &case["keys"]).to_value();
+        if got != case["out"] {
+            bad.entry("independence").or_default().push(format!(
+                "keys={} counted={} rust={got} py={}",
+                case["keys"], case["counted"], case["out"]
+            ));
         }
     }
 }
@@ -262,10 +285,7 @@ fn gate_cases(all: &Value, bad: &mut BTreeMap<&'static str, Vec<String>>) {
             .as_array()
             .unwrap()
             .iter()
-            .map(|c| CiCheck {
-                conclusion: c["conclusion"].as_str().map(str::to_owned),
-                status: c["status"].as_str().map(str::to_owned),
-            })
+            .map(CiCheck::from_json)
             .collect();
         let state = ci_state(&rollup);
         if state.state != case["out"]["state"].as_str().unwrap()

@@ -64,6 +64,24 @@
       }
     },
     {
+      "name": "two seats of one model family are not independent",
+      "override": {
+        "accept_families": [
+          "mimo"
+        ],
+        "accept_seats": [
+          "mimo",
+          "ubuntu-worker-01"
+        ]
+      }
+    },
+    {
+      "name": "an unknown family list is blocked, not green",
+      "override": {
+        "accept_families": null
+      }
+    },
+    {
       "name": "two seats but not covered",
       "override": {
         "covered": false
@@ -140,6 +158,10 @@
     }
   ],
   "green": {
+    "accept_families": [
+      "google",
+      "openai"
+    ],
     "accept_seats": [
       "codex",
       "gemini"

@@ -64,7 +64,7 @@ for _ in range(int(sys.argv[1]) // 5):
     heads, credited = sr.pushes(prs, previous)
     push_cases.append({"prs": prs, "previous": previous, "out": {"heads": heads, "credited": credited}})
 HEADS = ["a" * 40, "b" * 40, "c" * 40, "d" * 40]
-NAMES = ["claude", "Claude", "claude-sonnet-5-5", "codex", "Gemini", "Antigravity", "mimo", "Qwen", "Claude, Mimo", "someone else", "gemini/antigravity", "Opus 5.5", "sonnet", "gpt-5.5", "Opus/gpt-5.5", "OpenAI Codex"]
+NAMES = ["claude", "Claude", "claude-sonnet-5-5", "codex", "Gemini", "Antigravity", "mimo", "Qwen", "Claude, Mimo", "ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu-worker-01 and codex", "codex, ubuntu-worker-01", "someone else", "gemini/antigravity", "Opus 5.5", "sonnet", "gpt-5.5", "Opus/gpt-5.5", "OpenAI Codex"]
 coverage = []
 for _ in range(int(sys.argv[1]) // 5):
     records = []
@@ -81,8 +81,26 @@ for _ in range(int(sys.argv[1]) // 5):
     merge_base = random.choice(["m" * 40, "m" * 40, "n" * 40, "", "unknown", None])
     head = random.choice(HEADS)
     known = {(a, b) for a, b in pairs}
-    out = rc.evaluate(head, merge_base, records, lambda a, b: a == b or (a, b) in known)
-    coverage.append({"head": head, "merge_base": merge_base, "records": records, "ancestry": pairs, "out": out})
+    registered = random.choice([None, [], ["claude", "codex", "gemini", "ubuntu-worker-01"], ["claude", "mimo", "codex", "ubuntu-worker-01", "ubuntu-worker-02"]])
+    out = rc.evaluate(head, merge_base, records, lambda a, b: a == b or (a, b) in known, set(registered) if registered is not None else None)
+    coverage.append({"head": head, "merge_base": merge_base, "records": records, "ancestry": pairs, "registered": registered, "out": out})
+SEAT_LABELS = ["claude", "Claude", "opencode", "mimo", "ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu_worker_01", "xubuntu-worker-01", "ubuntu-worker-011", "ubuntu-worker-01 and ubuntu-worker-02", "codex", "gpt-5.5", "Opus/gpt-5.5", "Gemini", "", " ", "Qwen", "café", "İ-worker-01", "ubuntu​-worker-01"]
+MODELS = [None, "qwen3.8", "Qwen/Qwen3.8-Coder", "qwenish", "MiMo-V2.6", "mimo", "claude-sonnet-5-5", "gpt-5.5", "gemini-3.8-flash", "brandnew-9", "", "  ", " qwen3.8 ", 7, ["qwen"], "x" * 81, "x" * 80, "a\nb", "café", "org/sub/qwen2", "QWEN-7", "qwen.", "qwen-", "qwen\x00", "Kimi", "mimo ", "mimo\x1f", "\x1cmimo", " qwen3 "]
+REGISTRIES = [
+    {"seats": {"opencode": {"profile": {"family": "mimo"}}, "ubuntu-worker-01": {"profile": {"family": "qwen"}}, "claude": {"profile": {"family": "anthropic"}}, "codex": {}, "ubuntu-worker-02": {}}, "model_families": {"qwen": "qwen", "mimo": "mimo", "claude": "anthropic", "gpt": "openai", "gemini": "google"}},
+    {"seats": {"claude": {}, "ubuntu-worker-01": {"profile": {"family": "Bad"}}, "a-b": {}}, "model_families": {"q": "qwen", "qwen": "", "Qwen": "x", "mi mo": "m"}},
+    {"seats": {}}, {"seats": []}, {"model_families": {"qwen": "qwen"}}, [], None,
+    {"seats": {"opencode": {"profile": {"family": " mimo "}}, "mimo": {"profile": "x"}}, "model_families": {"qwen": "qwen", "qwen3": "qwen3"}},
+]
+independence_cases = []
+for _ in range(int(sys.argv[1]) // 5):
+    keys = random.choice(REGISTRIES)
+    counted = [{"reviewer": random.choice(SEAT_LABELS), **({} if random.random() < 0.2 else {"model": random.choice(MODELS)})} for _ in range(random.randint(0, 4))]
+    registered = set(keys["seats"]) if isinstance(keys, dict) and isinstance(keys.get("seats"), dict) else None
+    profiles = rc.seat_profiles(keys) if isinstance(keys, dict) else {}
+    table = rc.model_table(keys) if isinstance(keys, dict) else []
+    families, entries, notes = rc.independence(json.loads(json.dumps(counted)), registered, profiles, table)
+    independence_cases.append({"keys": keys, "counted": counted, "out": {"families": families, "entries": entries, "notes": notes}})
 DIRS = ["", "governance/", "docs/", "architecture/", "scripts/", "inventories/", "contracts/", ".github/workflows/", "foundation/crates/x/src/", "notes/", "a/b/", "governance//", "docs/."]
 NAMES2 = ["a.md", "b.json", "c.py", "d.toml", "e.txt", "f.sh", "g.ps1", "h.rs", "AGENTS.md", "AGENTS.md.bak", "SECURITY.md", "CONTRIBUTING.md", "AUTOMATED_MERGE_POLICY.md", "identities.json", ".gitignore", "..hidden", "x.tar.gz", "noext", "trail.", "A.MD", "caf\u00e9.md", "ci.yml", "a b.md"]
 def random_path():
@@ -100,6 +118,11 @@ for _ in range(int(sys.argv[1]) // 5):
         item = {}
         if random.random() < 0.85: item["conclusion"] = random.choice(["SUCCESS", "success", "FAILURE", "SKIPPED", "", None, "NEUTRAL", "stale"])
         if random.random() < 0.85: item["status"] = random.choice(["COMPLETED", "completed", "IN_PROGRESS", "QUEUED", "", None, "WAITING"])
+        if random.random() < 0.6: item["name"] = random.choice(["a", "b", "c", "", None])
+        if random.random() < 0.15: item["context"] = random.choice(["a", "b", ""])
+        if random.random() < 0.5: item["workflowName"] = random.choice(["W1", "W2", ""])
+        if random.random() < 0.6: item["startedAt"] = random.choice(["2026-10-14T00:00:00Z", "2026-10-15T00:00:00Z", "2026-10-17T00:00:00Z", "", None])
+        if random.random() < 0.3: item["completedAt"] = random.choice(["2026-10-14T00:00:00Z", "2026-10-16T00:00:00Z", "", None])
         rollup.append(item)
     gate_ci.append({"rollup": rollup, "out": mg.ci_state(rollup)})
 TOKENS = ["tripped", " ", "=", "true", "false", "True", "1", '"', "'", "#", "\n", "[", "]", "[a]", ".", "a", "tripped = true\n", "tripped = false\n", "tripped=false", "x = 1\n", "\t", "{", "}", ",", "0x1", "1e3", "inf", "nan", "\"false\"", "tripped.sub = true\n", "[t]\ntripped = true\n", "\r\n", "\u00e9", "'" "'" "'", '\"\"\"']
@@ -140,6 +163,7 @@ ODD = {
     "base_tip": ["t" * 40, "", None, 12, "short"],
     "head": ["h" * 40, "abc", ""],
     "accept_seats": [["a", "b"], ["a", "a"], ["", ""], [], "ab", None, ["a", None], ["claude", "codex", "x"], [" a ", "a"]],
+    "accept_families": [["a", "b"], ["a", "a"], ["", ""], [], "ab", None, ["a", None], [" a ", "a"], ["google", "openai"]],
     "covered": [True, False, None, 1, "yes"],
     "threads_open": [0, 1, 3, None, False, True, 0.0, "0", -1],
     "standing_changes_requested": [True, False, None, 0, "no"],
@@ -266,5 +290,5 @@ for _ in range(int(sys.argv[1]) // 5):
     except Exception:
         out = {"error": True}
     card_cases.append({"state": state, "tick": tick, "out": out})
-json.dump({"cards": card_cases, "work": work_cases, "chain": chain_cases, "text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_plan": gate_plan, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
+json.dump({"cards": card_cases, "work": work_cases, "chain": chain_cases, "text": cases, "stalls": stalls, "pushes": push_cases, "coverage": coverage, "independence": independence_cases, "gate_checklist": checklist_cases, "gate_decide": decide_cases, "gate_plan": gate_plan, "gate_ci": gate_ci, "gate_breaker": gate_breaker, "gate_threads": gate_threads}, open(sys.argv[3], "w", encoding="utf-8"), ensure_ascii=False)
 print(len(cases), len(stalls), len(push_cases))
