@@ -30,11 +30,15 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import attest_sig  # noqa: E402
+import markdown_fences  # noqa: E402
 
-FENCE = re.compile(r"```attestation\s*\n(.*?)\n```", re.DOTALL)
+# Where a record could be written, however it is nested or indented: used to name a complete record that
+# markdown_fences does not show as a posted block (inside an example, an HTML comment or indented code).
+FENCE = re.compile(r"```attestation\s*\n(.*?)\n[ \t]*```", re.DOTALL)
 FULL_SHA = re.compile(r"\b[0-9a-f]{40}\b")
 # Any fenced block, with its info string. Only a fence labelled ``attestation`` is read; a complete attestation record in
 # a differently labelled fence (```json is what seats reach for) is reported by name instead of vanishing.
@@ -63,9 +67,18 @@ def validate(record):
         return "implementers must be a non-empty list"
     if record["scope"] not in ("whole", "delta"):
         return f"unknown scope: {record['scope']!r}"
+    for key in ("head", "base_sha") + (("from",) if record["scope"] == "delta" else ()):
+        value = record[key]
+        if not isinstance(value, str) or not FULL_SHA.fullmatch(value):
+            return (f"{key} must be a full 40-character lowercase SHA, got {str(value)[:50]!r}; "
+                    "nothing was counted")
     if not isinstance(record["verdict"], str) or record["verdict"] not in ACCEPT | REJECT:
         return (f"unknown verdict {record['verdict']!r}: use accept, needs_revision or changes_requested "
                 "(lower case); nothing was counted")
+    lookalikes = non_ascii_seat_names(record)
+    if lookalikes:
+        return (f"seat name(s) {lookalikes!r} contain non-ASCII characters that no spelling comparison can match to a "
+                "seat; use the plain ASCII seat name; nothing was counted")
     return None
 
 
@@ -80,6 +93,17 @@ def looks_like_attestation(raw):
         return None
     head = record["head"]
     return record if isinstance(head, str) and FULL_SHA.fullmatch(head) else None
+
+
+def fold_sha_case(record):
+    """A SHA is case-insensitive: ``head`` / ``base_sha`` / ``from`` written in upper case are the same commit, and
+    comparing them as strings made a correct block silently never match. Only a well-formed 40-hex value is folded; a
+    placeholder or a short SHA is left alone for `validate` to report."""
+    if isinstance(record, dict):
+        for key in ("head", "base_sha", "from"):
+            value = record.get(key)
+            if isinstance(value, str) and re.fullmatch(r"[0-9a-fA-F]{40}", value.strip()):
+                record[key] = value.strip().lower()
 
 
 def fold_rejection(record):
@@ -106,6 +130,7 @@ def parse_attestations(comments):
                 problems.append({"comment": index, "problem": f"invalid JSON: {error}"})
                 continue
             fold_rejection(record)
+            fold_sha_case(record)
             problem = validate(record)
             if problem:
                 problems.append({"comment": index, "problem": problem})
@@ -114,8 +139,9 @@ def parse_attestations(comments):
             record["_sig"] = signature
             record["comment"] = index
             structured.append(record)
-        for label, raw in ANY_FENCE.findall(body):
-            if label.rstrip() == "attestation":  # exactly what FENCE reads; any other spelling is reported below
+        visible = markdown_fences.blocks(body)
+        for label, raw, _ in visible:
+            if label == "attestation":  # exactly what attest_sig.pairs reads; any other spelling is reported below
                 continue
             record = looks_like_attestation(raw)
             if record is not None:
@@ -123,6 +149,19 @@ def parse_attestations(comments):
                 problems.append({"comment": index, "problem": (
                     f"fence labelled {label.strip() or 'plain'!r} holds a complete attestation record for head "
                     f"{record['head']}, but only a fence labelled attestation is read; nothing was counted")})
+        # A record a reader never sees as a posted verdict (inside an HTML comment, or inside an outer example fence)
+        # is not counted either, but it is named instead of vanishing.
+        shown = [raw.strip() for label, raw, _ in visible if label == "attestation"]
+        for raw in FENCE.findall(body.replace("\r\n", "\n").replace("\r", "\n")):
+            if raw.strip() in shown:
+                shown.remove(raw.strip())  # one posted block accounts for one match, so an identical example is still named
+                continue
+            record = looks_like_attestation(raw)
+            if record is not None:
+                found = True
+                problems.append({"comment": index, "problem": (
+                    f"a complete attestation record for head {record['head']} sits inside an HTML comment or an outer "
+                    "code block, so it is not a posted verdict; nothing was counted")})
         if not found and PROSE_VERDICT.search(body):
             legacy.append(
                 {
@@ -137,13 +176,13 @@ def parse_attestations(comments):
 # One seat is one seat however its name is spelled: "Gemini", "gemini" and "Antigravity" are the same reviewer. The merge gate's
 # "at least two independent seats" box counts len(accept_seats), so two comments from one seat spelled differently (live on
 # #96: ['Gemini', 'gemini']) looked like two seats.
-SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo"}
+SEAT_NAME_ALIASES = {"antigravity": "gemini", "qwen": "mimo", "ubuntu": "ubuntu-worker-01"}
 
 
 # A seat is recognised by a word that STARTS with its name: "claude-sonnet-5-5", "gemini-3.8-flash", "mimo-v2.6-flash-free",
 # "Claude\u200b" and "CLAUDE." all name a seat. Taking only the first space-separated word missed every model-id and
 # punctuation form (skeptic probe on #99: reviewer "Claude" with implementers ["claude-sonnet-5-5"] was independent).
-KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen")
+KNOWN_SEATS = ("claude", "codex", "gemini", "antigravity", "mimo", "qwen", "ubuntu")
 
 # A model family named without its seat word still names the seat that runs it: "Opus 5.5" is Claude, "gpt-5.5" is Codex.
 # Without this the string kept its own first token as an "unknown seat", so a Claude session labelling itself "Opus"
@@ -157,7 +196,9 @@ def seat_names(name):
     """The set of seats a reviewer or implementer string names. A string may name several ("Claude, Mimo",
     "claude+mimo", "Gemini/Antigravity"); a string that names none keeps its first alphanumeric token, so an unknown
     seat still compares with itself."""
-    tokens = [t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t]
+    # NFKC first: a full-width "\uff23laude" is the seat "claude". Lookalikes from another script (Cyrillic "\u0421laude")
+    # survive NFKC and would split into "laude", an unknown seat, so `non_ascii_seat_names` rejects those names outright.
+    tokens = [t for t in re.split(r"[^a-z0-9]+", unicodedata.normalize("NFKC", str(name)).strip().lower()) if t]
     found = set()
     for token in tokens:
         for seat in KNOWN_SEATS:
@@ -212,7 +253,7 @@ def unattributed_commits(commit_log, branch):
                if not any(known_seat_names(t) for t in TRAILER.findall(chunk)))
 
 
-STAND_IN = re.compile(r"\b(?:in lieu of|on behalf of|acting for|operating for|standing in for)\s+(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+STAND_IN = re.compile(r"\b(?:in lieu of|on behalf of|acting for|operating for|standing in for)\s+(Claude|Codex|Gemini|Mimo|Antigravity|ubuntu-worker-01|Ubuntu)\b",
                       re.I)
 
 
@@ -236,12 +277,155 @@ def seat_name(name):
     return seats[0] if seats else ""
 
 
+def non_ascii_seat_names(record):
+    """The reviewer and implementer strings that still hold a non-ASCII character after NFKC. Such a name cannot be
+    matched to a seat by spelling ("\u0421laude" with a Cyrillic capital is not "Claude" to a string comparison), so a
+    record carrying one is rejected and, if it reaches `independent` another way, is never independent."""
+    names = [record.get("reviewer")] + list(record.get("implementers") or [])
+    return [n for n in names if not unicodedata.normalize("NFKC", str(n)).isascii()]
+
+
 def canonical_reviewer_seat(name):
     """The single canonical seat an attestation reviewer resolves to.
     Fails closed (returns None) if the reviewer is ambiguous (names multiple distinct seats) or empty
     (Codex P2 on #111: an ambiguous reviewer like 'Opus/gpt-5.5' cannot contribute multiple seats to accept_seats)."""
     seats = seat_names(name)
     return next(iter(seats)) if len(seats) == 1 else None
+
+
+def _hyphenated(text):
+    """Lower-case alphanumeric runs joined by hyphens: 'Ubuntu Worker 01', 'ubuntu_worker_01' and 'ubuntu-worker-01' agree."""
+    return "-".join(t for t in re.split(r"[^a-z0-9]+", str(text).strip().lower()) if t)
+
+
+def named_seats(name):
+    """The known seats a string names (seat word, alias or model family), with no fallback: `seat_names` plus nothing."""
+    found = set()
+    for token in (t for t in re.split(r"[^a-z0-9]+", str(name).strip().lower()) if t):
+        for seat in KNOWN_SEATS:
+            if token.startswith(seat):
+                found.add(SEAT_NAME_ALIASES.get(seat, seat))
+        for family, seat in MODEL_FAMILY_SEATS.items():
+            if token.startswith(family):
+                found.add(seat)
+    return found
+
+
+def resolve_seat(label, registered=None):
+    """The seat a reviewer label names, or None when it names none or more than one. A registered seat is matched by its
+    whole hyphen-delimited name; every other seat the label names (a second registered seat, or a known seat or model family
+    such as `codex` or `Opus`) makes it ambiguous, so `ubuntu-worker-01 and codex` is not read as `ubuntu-worker-01`."""
+    flat = "-" + _hyphenated(label) + "-"
+    hits = sorted(seat for seat in (registered or ()) if _hyphenated(seat) and "-" + _hyphenated(seat) + "-" in flat)
+    if not hits:
+        seat = canonical_reviewer_seat(label)
+        if registered and seat in registered and "-" in seat:
+            # A hyphenated registered seat is named by its whole name only. Reaching it here means the label matched through
+            # the bare-prefix alias ("ubuntu"), so `ubuntu`, `ubuntu-worker` and `ubuntu-worker-011` are near misses of
+            # `ubuntu-worker-01`, not that seat (and a later `ubuntu-worker-02` must never read as `-01`). Keep the label's own
+            # first token, as before the alias existed.
+            tokens = [t for t in re.split(r"[^a-z0-9]+", str(label).strip().lower()) if t]
+            return tokens[0] if tokens else None
+        return seat
+    if len(hits) > 1:
+        return None
+    rest = flat.replace("-" + _hyphenated(hits[0]) + "-", "-", 1)
+    others = named_seats(rest) - {SEAT_NAME_ALIASES.get(hits[0], hits[0])}
+    return None if others else hits[0]
+
+
+FAMILY_LABEL = re.compile(r"[a-z][a-z0-9-]{0,31}")
+STEM = re.compile(r"[a-z][a-z0-9.-]{0,31}")
+MODEL_MAX = 80
+
+
+def clean_model(value):
+    """The model id a record declares, or None. Declaring is optional and never refused: a missing, non-string, over-long or
+    non-printable value is simply not used (the family falls back to the seat's registered profile). Printable means ASCII space to
+    '~': model ids are ASCII, and the Rust port then agrees without a Unicode table."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value or len(value) > MODEL_MAX or any(not " " <= c <= "~" for c in value):
+        return None
+    return value
+
+
+def seat_profiles(identities_data):
+    """{seat: {model, family, runtime, ...}} from the optional `profile` each registered seat may carry: what the seat last
+    reported about itself at registration. Gathered, never required, never a reason to refuse anyone."""
+    seats = identities_data.get("seats") if isinstance(identities_data, dict) else None
+    out = {}
+    if isinstance(seats, dict):
+        for seat, entry in seats.items():
+            profile = entry.get("profile") if isinstance(entry, dict) else None
+            if isinstance(profile, dict):
+                clean = {k: v.strip() for k, v in profile.items() if isinstance(v, str) and v.strip()}
+                if "family" in clean and not FAMILY_LABEL.fullmatch(clean["family"]):
+                    del clean["family"]
+                out[seat] = clean
+    return out
+
+
+def model_table(identities_data):
+    """[(stem, family)] longest stem first, from the registry's `model_families` table."""
+    table = identities_data.get("model_families") if isinstance(identities_data, dict) else None
+    pairs = []
+    if isinstance(table, dict):
+        for key, family in table.items():
+            if isinstance(key, str) and STEM.fullmatch(key) and isinstance(family, str) and FAMILY_LABEL.fullmatch(family):
+                pairs.append((key, family))
+    return sorted(pairs, key=lambda kv: (-len(kv[0]), kv[0]))
+
+
+def model_family(model, table):
+    """The family a model id belongs to per `table`, or None for a model the table does not know. The id's last path segment
+    is matched against each stem: equal, or followed by a non-letter ('qwen3.8', 'claude-sonnet-5-5', 'Qwen/Qwen3.8-Coder',
+    'gpt-5.5'), never by a letter ('qwenish' is not qwen)."""
+    model = clean_model(model)
+    if model is None:
+        return None
+    name = model.lower().rsplit("/", 1)[-1]
+    for key, family in table:
+        if name.startswith(key) and (len(name) == len(key) or not name[len(key)].isalpha()):
+            return family
+    return None
+
+
+def independence(counted, registered, profiles, table):
+    """What the accepting verdicts say about who judged: (families, entries, notes). One entry per accepting seat and declared
+    model: the family comes from the model the signed record declares, else the seat's registered profile, else the seat
+    stands alone. The notes are the self-report: an unclassified model, a model that differs from the registered profile,
+    and accepts that share a family. Nothing here refuses anyone; the gate only counts distinct families."""
+    entries, notes, seen = [], [], set()
+    for record in counted:
+        seat = resolve_seat(record["reviewer"], registered)
+        if not seat:
+            continue
+        model = clean_model(record.get("model"))
+        registered_family = (profiles.get(seat) or {}).get("family")
+        declared = model_family(model, table) if model else None
+        if declared:
+            family, source = declared, "declared"
+        elif registered_family:
+            family, source = registered_family, "registered"
+        else:
+            family, source = f"seat:{seat}", "seat"
+        key = (seat, model, family)
+        if key in seen:
+            continue
+        seen.add(key)
+        if model and not declared:
+            notes.append(f"{seat} declared model {model!r}, which model_families does not classify; counted as {family} ({source})")
+        elif declared and registered_family and declared != registered_family:
+            notes.append(f"{seat} is registered as {registered_family} but ran {model!r} ({declared}): the declared model is used")
+        entries.append({"seat": seat, "model": model, "family": family, "source": source})
+    families = sorted({e["family"] for e in entries})
+    for family in families:
+        sharing = sorted({e["seat"] for e in entries if e["family"] == family})
+        if len(sharing) > 1:
+            notes.append(f"{', '.join(sharing)} are the same model family ({family}): counted as one judge")
+    return families, entries, notes
 
 
 # An exit code is stated as a separator (`->`, `=>`, `:`, `=`, `(`, `,` or `;`) then `exit` then a whole integer: `cargo test -> exit 0
@@ -305,11 +489,13 @@ def independent(record):
     """The reviewer is not among the implementers, comparing seats (see `seat_name`): reviewer "gemini" with implementers
     ["Gemini"], or "Gemini/Antigravity" with ["gemini"], is the same seat and never independent (Codex P1 on #98: the
     raw comparison let an implementer's own verdict count under a spelling variant)."""
+    if non_ascii_seat_names(record):
+        return False
     implementers = set().union(*(seat_names(i) for i in record["implementers"])) if record["implementers"] else set()
     return not (seat_names(record["reviewer"]) & implementers)
 
 
-def evaluate(head, merge_base, records, is_ancestor):
+def evaluate(head, merge_base, records, is_ancestor, registered=None):
     """Pure coverage decision for one PR head.
 
     ``is_ancestor(a, b)`` says whether commit a is an ancestor of commit b. A delta accept extends
@@ -338,8 +524,12 @@ def evaluate(head, merge_base, records, is_ancestor):
         r
         for r in records
         if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base
-        and canonical_reviewer_seat(r["reviewer"]) is not None
+        and resolve_seat(r["reviewer"], registered) is not None
     ]
+    for r in records:
+        if r["verdict"] in ACCEPT and independent(r) and r["base_sha"] == merge_base and resolve_seat(r["reviewer"], registered) is None:
+            reasons.append(f"reviewer {r['reviewer']!r} does not name exactly one seat, so its accept counts for no one; "
+                           "name your seat alone and put the model in the record's `model` field")
     # Only a `whole` accept seeds coverage (governance/PLATFORM_SPEC.md section 3: "Delta accepts compose only when
     # chained from a whole-diff accept"). A delta that starts at the merge base reviewed the whole PR diff, but its
     # author must say so by labelling it `whole`; the tool tells them (see the reason below) and does not guess.
@@ -381,7 +571,7 @@ def evaluate(head, merge_base, records, is_ancestor):
         "reasons": reasons,
         "accepts_at_head": len(at_head),
         "counted": counted,
-        "accept_seats": sorted({canonical_reviewer_seat(r["reviewer"]) for r in counted if canonical_reviewer_seat(r["reviewer"])}),
+        "accept_seats": sorted({resolve_seat(r["reviewer"], registered) for r in counted if resolve_seat(r["reviewer"], registered)}),
     }
 
 
@@ -480,11 +670,14 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
     if not repo:
         raise ValueError("snapshot needs a top-level 'repo' (OWNER/NAME) naming the subject repository")
     rows = []
+    registered = set(keys["seats"]) if isinstance(keys, dict) and isinstance(keys.get("seats"), dict) else None
+    profiles = seat_profiles(keys) if isinstance(keys, dict) else {}
+    table = model_table(keys) if isinstance(keys, dict) else []
     for pr in snapshot["prs"]:
         parsed, problems, legacy = parse_attestations(pr.get("comments", []))
         allowed = attest_sig.allowed_signers(keys) if keys else ""
         for record in parsed:
-            canon = canonical_reviewer_seat(record["reviewer"])
+            canon = resolve_seat(record["reviewer"], registered)
             principal = canon or record["reviewer"]
             record["verified"] = bool(record.get("_sig") and canon) and attest_sig.verify(
                 record["_canon"], record["_sig"], principal, allowed
@@ -521,7 +714,8 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                     f"{sorted(seat_names(record['reviewer']) & implied)} as an implementer (branch prefix or "
                     "commit trailer) and the attestation's implementers list does not")
             records.append(dict(record, implementers=list(record["implementers"]) + extra) if extra else record)
-        decision = evaluate(pr["head"], pr["merge_base"], records, ancestry)
+        decision = evaluate(pr["head"], pr["merge_base"], records, ancestry, registered)
+        families, family_entries, family_notes = independence(decision["counted"], registered, profiles, table)
         decision["reasons"] = decision["reasons"] + conflicts
         loose = unattributed_commits(pr.get("commit_log"), pr.get("branch"))
         if loose:
@@ -541,6 +735,8 @@ def report_snapshot(snapshot, is_ancestor=None, identities=None, keys=None, requ
                 "covered": decision["covered"],
                 "reasons": decision["reasons"],
                 "accept_seats": decision["accept_seats"],
+                "accept_families": families,
+                "independence": {"entries": family_entries, "notes": family_notes},
                 "counted_verdicts": len(decision["counted"]),
                 "verdicts_missing_evidence": unevidenced_verdicts(decision["counted"]),
                 "structured_attestations": len(structured),
@@ -635,6 +831,9 @@ def live_ancestry(repo_dir):
     return lambda a, b: a == b or git(repo_dir, "merge-base", "--is-ancestor", a, b).returncode == 0
 
 
+MAX_PROBLEM_LINES = 5
+
+
 def render(rows):
     lines = ["PR    head      covered  structured  auth  legacy(not counted)  reasons"]
     for r in rows:
@@ -643,6 +842,18 @@ def render(rows):
             f"#{r['pr']:<4} {r['head'][:8]}  {str(r['covered']):<7}  {r['structured_attestations']:<10}"
             f"  {r.get('authenticated_reviews', 0):<4}  {r['legacy_packets_not_counted']:<19}  {reasons}"
         )
+    # A rejected attestation used to appear only in --json, so the default report said "no accept at the current head" and
+    # nothing about the block that was dropped and why (Codex P2 on #95). The table above is unchanged.
+    for r in rows:
+        problems = r.get("malformed") or []
+        if not problems:
+            continue
+        lines.append(f"#{r['pr']}: {len(problems)} attestation block(s) not counted")
+        for problem in problems[:MAX_PROBLEM_LINES]:
+            where = problem.get("comment", problem.get("review"))
+            lines.append(f"    comment {where}: {problem['problem']}")
+        if len(problems) > MAX_PROBLEM_LINES:
+            lines.append(f"    ... and {len(problems) - MAX_PROBLEM_LINES} more (see --json)")
     return "\n".join(lines)
 
 

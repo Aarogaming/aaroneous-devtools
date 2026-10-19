@@ -1,0 +1,897 @@
+[
+  {
+    "counted": [
+      {
+        "reviewer": "opencode"
+      },
+      {
+        "reviewer": "ubuntu-worker-01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "no declared model: the registered profiles decide"
+  },
+  {
+    "counted": [
+      {
+        "model": "mimo-v2.6",
+        "reviewer": "opencode"
+      },
+      {
+        "model": "MiMo-V2.6-Flash",
+        "reviewer": "ubuntu-worker-01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "the same hardware on one model is one judge"
+  },
+  {
+    "counted": [
+      {
+        "model": "mimo-v2.6",
+        "reviewer": "ubuntu-worker-01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a declared model beats the registered profile and says so"
+  },
+  {
+    "counted": [
+      {
+        "model": "Qwen/Qwen3.8-Coder-14B",
+        "reviewer": "ubuntu-worker-01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "an org path and a version suffix still classify"
+  },
+  {
+    "counted": [
+      {
+        "model": "qwenish",
+        "reviewer": "ubuntu-worker-01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a stem followed by a letter is not that model"
+  },
+  {
+    "counted": [
+      {
+        "model": "brandnew-9",
+        "reviewer": "ubuntu-worker-01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "an unclassified model is reported and buys no new family"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "codex"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a seat with neither model nor profile stands alone"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "gemini"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a malformed profile family is not used"
+  },
+  {
+    "counted": [
+      {
+        "model": 7,
+        "reviewer": "ubuntu-worker-01"
+      },
+      {
+        "model": [
+          "qwen"
+        ],
+        "reviewer": "ubuntu-worker-01"
+      },
+      {
+        "model": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "reviewer": "ubuntu-worker-01"
+      },
+      {
+        "model": "a\nb",
+        "reviewer": "ubuntu-worker-01"
+      },
+      {
+        "model": "   ",
+        "reviewer": "ubuntu-worker-01"
+      },
+      {
+        "model": "café",
+        "reviewer": "ubuntu-worker-01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "malformed models are ignored not refused"
+  },
+  {
+    "counted": [
+      {
+        "model": "mimo-v2.6",
+        "reviewer": "opencode"
+      },
+      {
+        "model": "qwen3.8",
+        "reviewer": "opencode"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "one seat on two models counts both families"
+  },
+  {
+    "counted": [
+      {
+        "model": "mimo-v2.6",
+        "reviewer": "opencode"
+      },
+      {
+        "model": " mimo-v2.6 ",
+        "reviewer": "OpenCode"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "the same seat and model twice is one entry"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "Ubuntu Worker 01"
+      },
+      {
+        "reviewer": "ubuntu_worker_01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a registered multi-word seat resolves by its whole name"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "xubuntu-worker-01"
+      },
+      {
+        "reviewer": "ubuntu-worker-011"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "near misses of a registered seat name resolve to nothing registered"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "ubuntu-worker-01 and codex"
+      },
+      {
+        "reviewer": "Gemini / ubuntu-worker-01"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a label naming a registered seat and another registered seat contributes nothing"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "ubuntu-worker-01 / Opus 5.5"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a label naming a registered seat and an unregistered model family contributes nothing"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "ubuntu-worker-01 (qwen3.8)"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a model name beside a registered seat is a second seat, not metadata"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "a-b and c-d"
+      }
+    ],
+    "identities": {
+      "seats": {
+        "a-b": {},
+        "c-d": {}
+      }
+    },
+    "name": "a label naming two registered seats is ambiguous"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": "claude"
+      }
+    ],
+    "identities": [],
+    "name": "a malformed registry yields seats standing alone"
+  },
+  {
+    "counted": [
+      {
+        "model": "Bad-1",
+        "reviewer": "codex"
+      },
+      {
+        "model": "okstem-1",
+        "reviewer": "codex"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "a model-name table entry with an unusable stem or family is ignored"
+  },
+  {
+    "counted": [
+      {
+        "reviewer": ""
+      },
+      {
+        "reviewer": "Opus/gpt-5.5"
+      }
+    ],
+    "identities": {
+      "model_families": {
+        "Bad": "x",
+        "bad stem": "x",
+        "claude": "anthropic",
+        "gemini": "google",
+        "gpt": "openai",
+        "mimo": "mimo",
+        "okstem": "Bad Family",
+        "qwen": "qwen"
+      },
+      "seats": {
+        "claude": {
+          "profile": {
+            "family": "anthropic"
+          }
+        },
+        "codex": {},
+        "gemini": {
+          "profile": {
+            "family": "Not A Label"
+          }
+        },
+        "opencode": {
+          "profile": {
+            "family": "mimo",
+            "model": "mimo-v2.6"
+          }
+        },
+        "ubuntu-worker-01": {
+          "profile": {
+            "family": "qwen",
+            "model": "qwen3.8"
+          }
+        }
+      }
+    },
+    "name": "an unnamed or empty reviewer contributes nothing"
+  }
+]

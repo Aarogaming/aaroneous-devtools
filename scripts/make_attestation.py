@@ -57,7 +57,7 @@ def check_commands(commands):
     return None
 
 
-def build_record(repo, pr, head, base_sha, reviewer, implementers, verdict, scope="whole", frm=None, commands=None):
+def build_record(repo, pr, head, base_sha, reviewer, implementers, verdict, scope="whole", frm=None, model=None, commands=None):
     """(record, error). The error is a sentence, never a traceback; the record is built only when it would be counted."""
     if verdict not in VERDICTS:
         return None, f"verdict must be one of {VERDICTS}, got {verdict!r}"
@@ -71,6 +71,11 @@ def build_record(repo, pr, head, base_sha, reviewer, implementers, verdict, scop
         if len(frm) != 40 or any(c not in "0123456789abcdef" for c in frm):
             return None, f"--from must be the full 40-character lower-case SHA, got {frm!r}"
         record["from"] = frm
+    if model is not None:
+        cleaned = rc.clean_model(model)
+        if cleaned is None:
+            return None, f"--model must be a short printable model id (at most {rc.MODEL_MAX} characters), got {model!r}"
+        record["model"] = cleaned
     if commands is not None:
         problem = check_commands(commands)
         if problem:
@@ -125,7 +130,9 @@ def main(argv):
     parser.add_argument("--repo", required=True)
     parser.add_argument("--repo-dir", required=True)
     parser.add_argument("--pr", required=True, type=int)
-    parser.add_argument("--reviewer", required=True, help="your seat: claude, codex, gemini or mimo")
+    parser.add_argument("--reviewer", required=True, help="your seat: claude, codex, gemini or opencode")
+    parser.add_argument("--model", help="the model you actually ran for this review (e.g. claude-sonnet-5-5, qwen3.8); signed with the "
+                                        "record so the gate counts model families truthfully. Optional: without it your seat's registered profile is used")
     parser.add_argument("--verdict", required=True, choices=VERDICTS)
     parser.add_argument("--scope", default="whole", choices=("whole", "delta"))
     parser.add_argument("--from", dest="frm", help="for --scope delta: the head you already reviewed")
@@ -141,10 +148,13 @@ def main(argv):
         print(error, file=sys.stderr)
         return 3
     record, error = build_record(args.repo, args.pr, head, base_sha, args.reviewer, implementers, args.verdict,
-                                 args.scope, args.frm, args.commands)
+                                 args.scope, args.frm, args.model, args.commands)
     if error:
         print(error, file=sys.stderr)
         return 2
+    if not args.model:
+        print("no --model: the gate will use your seat's registered profile for the model family; say which model you ran "
+              "if it differs from what you registered", file=sys.stderr)
     if args.verdict == "accept" and not args.commands:
         print("note: no --command given; the merge gate's box 5 needs a `commands` list inside the signed record, so this "
               "accept cannot satisfy it", file=sys.stderr)
