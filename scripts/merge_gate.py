@@ -42,6 +42,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -98,6 +99,10 @@ def checklist(facts):
     seats_known = isinstance(raw_seats, list) and all(isinstance(s, str) for s in raw_seats)
     seats = raw_seats if seats_known else []
     distinct_seats = {s.strip() for s in seats if s.strip()}
+    raw_families = facts.get("accept_families")
+    families_known = isinstance(raw_families, list) and all(isinstance(f, str) for f in raw_families)
+    families = raw_families if families_known else []
+    distinct_families = {f.strip() for f in families if f.strip()}
     covered_fact = facts.get("covered")
     missing_evidence = facts.get("verdicts_missing_evidence")
     counted = facts.get("counted_verdicts")
@@ -123,10 +128,12 @@ def checklist(facts):
         ("2b", None if facts.get("is_draft") is None else not facts["is_draft"], "PR is not a draft", "",
          "draft status unavailable (fail closed)"),
         ("3", True if identity_exempt else
-         (None if not seats_known or not isinstance(covered_fact, bool) else len(distinct_seats) >= 2 and covered_fact),
-         f">=2 independent accept verdicts at {head}, seats: {', '.join(seats) or 'none'}"
+         (None if not seats_known or not families_known or not isinstance(covered_fact, bool)
+          else len(distinct_seats) >= 2 and len(distinct_families) >= 2 and covered_fact),
+         f">=2 independent accept verdicts from >=2 model families at {head}, seats: {', '.join(seats) or 'none'}, "
+         f"families: {', '.join(families) or 'none'}"
          + (exempt_suffix if identity_exempt else ""), "",
-         "accepting seats or coverage unavailable"),
+         "accepting seats, model families or coverage unavailable"),
         ("4", None if not is_count(threads_open) or not isinstance(standing, bool) else threads_open == 0 and not standing,
          "Zero open blocking threads", f"count checked: {threads_open}",
          "thread count unavailable" if not is_count(threads_open) else "standing-rejection status unavailable"),
@@ -246,12 +253,34 @@ def run_checks(repo_dir, head, base_ref, plan):
     return results
 
 
+def latest_checks(rollup):
+    """The newest run of each check. GitHub keeps every run on a commit in the rollup, so a failure that was later re-run
+    successfully (a re-run, a close and reopen, a flaky job) stays listed beside its replacement; only the newest run of a
+    given workflow and name counts. Runs are ordered by `startedAt` (else `completedAt`); on a tie the worse result is
+    kept (a failed or unfinished run outranks a successful one). An entry with no name, or with no timestamp at all (a
+    queued re-run has not started), cannot be placed in that order, so it can never be discarded as older and always counts
+    (fail closed)."""
+    newest, unplaced = {}, []
+    for item in rollup:
+        name = item.get("name") or item.get("context") or ""
+        stamp = item.get("startedAt") or item.get("completedAt") or ""
+        if not name or not stamp:
+            unplaced.append(item)
+            continue
+        key = (item.get("workflowName") or "", name)
+        good = (item.get("conclusion") or "").upper() == "SUCCESS" and (item.get("status") or "").upper() == "COMPLETED"
+        rank = (stamp, 0 if good else 1)
+        if key not in newest or rank > newest[key][0]:
+            newest[key] = (rank, item)
+    return [entry[1] for entry in newest.values()] + unplaced
+
+
 def ci_state(rollup):
     """Fail-closed CI state from a statusCheckRollup list; pending or absent is never success."""
     if not rollup:
         return {"state": "missing", "detail": "no CI status found"}
     states = []
-    for item in rollup:
+    for item in latest_checks(rollup):
         conclusion = (item.get("conclusion") or "").upper()
         status = (item.get("status") or "").upper()
         states.append(conclusion if status == "COMPLETED" or conclusion else "PENDING")
@@ -261,8 +290,33 @@ def ci_state(rollup):
     return {"state": "success" if ok else "failure", "detail": f"{len(states)} checks: {', '.join(sorted(set(states)))}"}
 
 
-def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks):
+REFRESH_REFSPECS = ("+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/origin-pr/*")
+
+
+def refresh_refs(repo_dir, run=None):
+    """Bring the clone's view of the remote up to date: every branch and every pull request head, pruning what is gone.
+    GitHub supplies the current head SHA, but the merge base, changed paths, trial merge, base tip and circuit-breaker
+    contents are all read from the clone's own refs; a stale clone gave facts for a different base, or no head at all
+    (Codex P2 on #99). Pull heads live under refs/remotes/origin-pr/* so they never collide with a remote branch named 'pr'.
+    Returns (ok, message)."""
+    run = run or rc.git
+    result = run(repo_dir, "fetch", "--prune", "origin", *REFRESH_REFSPECS)
+    return result.returncode == 0, (result.stderr or "").strip()
+
+
+def missing_heads(repo_dir, prs, run=None):
+    """PR numbers whose head commit is not in the clone, which no fact about them can be trusted."""
+    run = run or rc.git
+    return [pr["number"] for pr in prs if run(repo_dir, "cat-file", "-e", pr["head"] + "^{commit}").returncode != 0]
+
+
+def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks, fetch=False):
+    if fetch:
+        ok, message = refresh_refs(repo_dir)
+        if not ok:
+            raise SystemExit(f"--fetch failed, so no gate fact can be trusted: {message}")
     snapshot = rc.live_snapshot(repo, repo_dir)
+    absent = set(missing_heads(repo_dir, snapshot["prs"]))
     keys = rc.load_keys(identities_path)
     rows = {r["pr"]: r for r in rc.report_snapshot(
         snapshot, rc.live_ancestry(repo_dir), rc.load_identities(identities_path), keys, True)}
@@ -283,6 +337,9 @@ def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks):
         if first is not None:
             decision["reasons"].append(f"blocked on checklist box {first}")
         decision.update({"pr": pr["number"], "head": pr["head"], "paths": paths})
+        if pr["number"] in absent:
+            decision["eligible"] = False
+            decision["reasons"].append("refs: the PR head is not in this clone; run with --fetch")
         if do_checks and decision["eligible"]:
             decision["checks"] = run_checks(repo_dir, pr["head"], pr["base"], decision["plan"])
             if any(c["rc"] != 0 for c in decision["checks"]):
@@ -293,6 +350,10 @@ def evaluate_all(repo, repo_dir, identities_path, only_pr, do_checks):
 
 
 def print_checklists(args):
+    if args.fetch:
+        ok, message = refresh_refs(args.repo_dir)
+        if not ok:
+            raise SystemExit(f"--fetch failed, so no gate fact can be trusted: {message}")
     snapshot = rc.live_snapshot(args.repo, args.repo_dir)
     keys = rc.load_keys(args.identities)
     rows = {r["pr"]: r for r in rc.report_snapshot(
@@ -346,11 +407,84 @@ def open_threads(data):
         return None
 
 
+def registry_version_checksum_update(before_text, after_text):
+    """Prove the narrow lockfile shape; this says nothing about dependency safety or CI."""
+    if max(len(before_text), len(after_text)) > 2 * 1024 * 1024:
+        return False
+    try:
+        before, after = tomllib.loads(before_text), tomllib.loads(after_text)
+    except (tomllib.TOMLDecodeError, TypeError):
+        return False
+    before_packages = before.pop("package", None)
+    after_packages = after.pop("package", None)
+    if (before != after or type(before.get("version")) is not int or before["version"] not in (3, 4)
+            or not isinstance(before_packages, list) or not isinstance(after_packages, list)
+            or not before_packages or len(before_packages) != len(after_packages)):
+        return False
+    changed = False
+    for old, new in zip(before_packages, after_packages):
+        if not isinstance(old, dict) or not isinstance(new, dict):
+            return False
+        if old == new:
+            continue
+        # Preserve package identity, provenance, dependencies and every other field.
+        if ({k: v for k, v in old.items() if k not in ("version", "checksum")}
+                != {k: v for k, v in new.items() if k not in ("version", "checksum")}):
+            return False
+        if old.get("source") != "registry+https://github.com/rust-lang/crates.io-index":
+            return False
+        if not isinstance(old.get("name"), str) or not old["name"]:
+            return False
+        for record in (old, new):
+            if (not isinstance(record.get("version"), str)
+                    or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?", record["version"])
+                    or not isinstance(record.get("checksum"), str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", record["checksum"])):
+                return False
+        if old["version"] == new["version"] or old["checksum"] == new["checksum"]:
+            return False
+        changed = True
+    return changed
+
+
+def repository_revertibility(repo_dir, base, head, paths):
+    """Classify tracked content only. Unknown shapes remain blocked by checklist box 6."""
+    def documentation(path):
+        return path.endswith((".md", ".json")) and path.startswith(DOCS_ALLOWLIST)
+
+    if paths and all(documentation(path) for path in paths):
+        return True  # Preserve the existing documentation classification.
+    lock = "foundation/Cargo.lock"
+    if not paths or lock not in paths or any(p != lock and not documentation(p) for p in paths):
+        return None
+    # Resolve immutable commits and the actual diff base, not the caller's worktree files.
+    try:
+        common = rc.git(repo_dir, "--no-replace-objects", "merge-base", base, head)
+        if common.returncode or not re.fullmatch(r"[0-9a-f]{40}", common.stdout.strip()):
+            return None
+        revisions = (common.stdout.strip(), head)
+        texts = []
+        for revision in revisions:
+            if not re.fullmatch(r"[0-9a-f]{40}", revision):
+                return None
+            entry = rc.git(repo_dir, "--no-replace-objects", "ls-tree", revision, "--", lock)
+            if entry.returncode or not re.fullmatch(r"100644 blob [0-9a-f]{40}\tfoundation/Cargo.lock\n?", entry.stdout):
+                return None
+            contents = rc.git(repo_dir, "--no-replace-objects", "show", f"{revision}:{lock}")
+            if contents.returncode:
+                return None
+            texts.append(contents.stdout)
+        return True if registry_version_checksum_update(*texts) else None
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
     """Live facts for one PR, read-only. Anything that cannot be read stays None (blocked, fail closed)."""
     facts = {
         "head": pr["head"], "base_ref": pr["base"], "default_branch": default_branch,
         "trial_merge_ok": trial_ok, "covered": row["covered"], "accept_seats": row["accept_seats"],
+        "accept_families": row["accept_families"],
         "counted_verdicts": row["counted_verdicts"], "verdicts_missing_evidence": row["verdicts_missing_evidence"],
         "standing_changes_requested": any("changes_requested" in r or "needs_revision" in r for r in row["reasons"]),
         "category": category_of(paths), "is_draft": pr.get("draft"),
@@ -358,8 +492,7 @@ def gather_facts(repo, repo_dir, pr, row, paths, trial_ok, default_branch):
     }
     tip = rc.git(repo_dir, "rev-parse", f"origin/{pr['base']}").stdout.strip()
     facts["base_tip"] = tip or "?"
-    docs = bool(paths) and all(p.endswith((".md", ".json")) and p.startswith(DOCS_ALLOWLIST) for p in paths)
-    facts["revertible"] = True if docs else None
+    facts["revertible"] = repository_revertibility(repo_dir, tip, pr["head"], paths)
     try:
         facts["identity_registration_exempt"] = additive_identity_registration(repo_dir, pr["base"], pr["head"], paths)
     except Exception:
@@ -389,6 +522,8 @@ def main(argv):
     parser.add_argument("--identities", required=True)
     parser.add_argument("--pr", type=int)
     parser.add_argument("--run-checks", action="store_true")
+    parser.add_argument("--fetch", action="store_true",
+                        help="fetch every branch and PR head from origin first; fail closed if the fetch fails")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--checklist", action="store_true",
                         help="print the policy's literal checklist per PR (report-only 'would merge')")
@@ -398,7 +533,7 @@ def main(argv):
         raise SystemExit(f"--repo-dir {args.repo_dir!r} is not a clone of {args.repo}")
     if args.checklist:
         return print_checklists(args)
-    decisions = evaluate_all(args.repo, args.repo_dir, args.identities, args.pr, args.run_checks)
+    decisions = evaluate_all(args.repo, args.repo_dir, args.identities, args.pr, args.run_checks, args.fetch)
     if args.json:
         print(json.dumps(decisions, indent=2))
     else:

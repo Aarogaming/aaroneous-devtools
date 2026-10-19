@@ -8,6 +8,10 @@ Read [the companion operating model](governance/OPERATING_MODEL.md). Devtools pe
 
 ## Before selecting work
 
+Start with the [shared master playbook](governance/MASTER_PLAYBOOK.md) for navigation,
+then satisfy every mandatory read below. It links the owner-directed constellation
+architecture and proposed lifecycle; neither a topic nor a vote grants a work claim.
+
 1. Read `FOUNDATION_BOUNDARY.md`, `governance/AARONEOUS_COMPONENT_FRAMEWORK_PRIMER.md`, `governance/MAINTENANCE_SYSTEM.md`, and `governance/MULTITHREAD_PROGRAM.md`.
 2. Read `governance/COORDINATION_QUEUE.md`. Do not edit a path owned by an active claim.
 3. Review the task's cited evidence, current branch, and repository-local `AGENTS.md`.
