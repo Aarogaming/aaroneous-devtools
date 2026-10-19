@@ -1,3 +1,6 @@
+# BRIDGE VERSION (hosted runner, fewest minutes): no issue_comment trigger (every PR comment used to start a run), an hourly
+# floor instead of every 20 minutes, and a check_suite trigger so a merge is evaluated when CI finishes. Attestation comments are
+# picked up by the next hourly run. Replace with ci/proposed-workflows/ once the self-hosted runners exist.
 name: Auto-merge (devtools)
 
 # Tier B auto-merge pipeline (lane C103). scripts/auto_merge.py is the one place that actually
@@ -9,19 +12,19 @@ name: Auto-merge (devtools)
 # same policy) -- changes to this file always need a human merge, on purpose.
 
 on:
-  pull_request:
+  # pull_request_target, not pull_request: the workflow definition that runs is main's, never the one a pull request brings.
+  # This hosted job holds the token that can merge, so it must not be possible for
+  # a pull request to rewrite it. Nothing here checks out or executes the pull request's code (see the checkout step).
+  # A formal GitHub review does not fire this workflow; the hourly schedule catches it.
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
-  pull_request_review:
-    types: [submitted]
-  issue_comment:
-    types: [created]
   check_suite:
     types: [completed]
   schedule:
     # Fixed-channel safety net: a review, attestation comment, or CI result can land without
     # firing an event this workflow listens to (e.g. a check re-run GitHub doesn't report as a
-    # new check_suite). This floor catches it within 20 minutes either way.
-    - cron: "*/20 * * * *"
+    # new check_suite). This floor catches it within an hour either way.
+    - cron: "7 * * * *"
   workflow_dispatch:
     inputs:
       pr:
@@ -49,18 +52,21 @@ jobs:
     # agree before anything merges.
     if: github.repository == 'Aarogaming/aaroneous-devtools'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Fetch every open PR's head
         # actions/checkout with fetch-depth 0 brings every branch tip, but not refs/pull/*/head
         # (which also covers PRs from forks). merge_gate reads each PR's head commit by SHA via
         # git plumbing, so it has to exist locally first.
-        run: git fetch origin '+refs/pull/*/head:refs/pull/*'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh auth setup-git && git fetch origin '+refs/pull/*/head:refs/pull/*'
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
 

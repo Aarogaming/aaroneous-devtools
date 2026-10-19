@@ -64,6 +64,24 @@
       }
     },
     {
+      "name": "two seats of one model family are not independent",
+      "override": {
+        "accept_families": [
+          "mimo"
+        ],
+        "accept_seats": [
+          "mimo",
+          "ubuntu-worker-01"
+        ]
+      }
+    },
+    {
+      "name": "an unknown family list is blocked, not green",
+      "override": {
+        "accept_families": null
+      }
+    },
+    {
       "name": "two seats but not covered",
       "override": {
         "covered": false
@@ -118,9 +136,32 @@
       "override": {
         "breaker_tripped": null
       }
+    },
+    {
+      "name": "additive identity registration is exempt from the accept bar (owner decision 2026-10-11)",
+      "override": {
+        "accept_seats": [],
+        "counted_verdicts": 0,
+        "covered": false,
+        "identity_registration_exempt": true,
+        "verdicts_missing_evidence": []
+      }
+    },
+    {
+      "name": "the identity-registration exemption does not bypass other boxes",
+      "override": {
+        "accept_seats": [],
+        "covered": false,
+        "identity_registration_exempt": true,
+        "threads_open": 1
+      }
     }
   ],
   "green": {
+    "accept_families": [
+      "google",
+      "openai"
+    ],
     "accept_seats": [
       "codex",
       "gemini"

@@ -8,7 +8,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(__file__))
 import review_coverage as rc  # noqa: E402
 
-MB = "m" * 40
+MB = "d" * 40
 H1, H2, H3 = "a" * 40, "b" * 40, "c" * 40
 
 
@@ -67,9 +67,9 @@ class Coverage(unittest.TestCase):
         self.assertTrue(ev(H1, [rec(H1), rec(H2, reviewer="codex", verdict="needs_revision", base="w" * 40)])["covered"])
 
     def test_an_accept_that_does_not_count_says_why(self):
-        wrong = ev(H1, [rec(H1, reviewer="gemini", base="d" * 40)])
+        wrong = ev(H1, [rec(H1, reviewer="gemini", base="e" * 40)])
         self.assertFalse(wrong["covered"])
-        self.assertIn("names base_sha dddddddddddd, but the merge base is mmmmmmmmmmmm", wrong["reasons"][-1])
+        self.assertIn("names base_sha eeeeeeeeeeee, but the merge base is dddddddddddd", wrong["reasons"][-1])
         own = ev(H1, [rec(H1, reviewer="claude")])
         self.assertIn("the accept by claude is not independent of its implementers ['claude']", own["reasons"][-1])
         # new wording must not trip merge_gate's substring test for a standing rejection
@@ -141,6 +141,59 @@ class Coverage(unittest.TestCase):
         two = ev(H1, records + [rec(H1, reviewer="Codex", impl=("Claude",))])
         self.assertEqual(two["accept_seats"], ["codex", "gemini"])
 
+    def test_lookalike_characters_cannot_hide_an_implementer(self):
+        # Probe: reviewer "Claude" with implementer "\u0421laude" (Cyrillic capital) was independent and covered, because
+        # the lookalike split the name into the unknown seat "laude". Full-width forms are folded by NFKC instead.
+        self.assertEqual(rc.seat_names("\uff23laude"), {"claude"})
+        self.assertEqual(rc.seat_names("\uff27\uff45\uff4d\uff49\uff4e\uff49"), {"gemini"})
+        for reviewer, implementers in (("Claude", ("\u0421laude",)), ("Gemini", ("G\u0435mini",)),
+                                       ("Codex", ("C\u043ddex",)), ("Claude", ("Cl\u0430ude",)),
+                                       ("Claude", ("\uff23laude",)), ("Cl\u0430ude", ("Claude",))):
+            self.assertFalse(rc.independent(rec(H1, reviewer=reviewer, impl=implementers)), (reviewer, implementers))
+        genuine = rec(H1, reviewer="Codex", impl=("Claude",))
+        self.assertTrue(rc.independent(genuine))
+
+    def test_a_record_with_a_non_ascii_seat_name_is_reported_and_never_counted(self):
+        for reviewer, implementers in (("Gemini", ["\u0421laude"]), ("G\u0435mini", ["Claude"])):
+            structured, problems, _ = rc.parse_attestations([block(rec(H1, reviewer=reviewer, impl=tuple(implementers)))])
+            self.assertEqual(structured, [], (reviewer, implementers))
+            self.assertEqual(len(problems), 1)
+            self.assertIn("non-ASCII", problems[0]["problem"])
+
+
+    def test_a_model_family_name_without_the_seat_word_names_that_seat(self):
+        # Probe: reviewers "Opus" and "Sonnet" against implementer "claude" were two independent seats and covered.
+        self.assertEqual(rc.seat_names("Opus 5.5"), {"claude"})
+        self.assertEqual(rc.seat_names("claude-opus-4"), {"claude"})
+        self.assertEqual(rc.seat_names("gpt-5.5"), {"codex"})
+        self.assertEqual(rc.seat_names("OpenAI Codex"), {"codex"})
+        for reviewer in ("Opus", "Sonnet 5.5", "Fable 5.1", "Haiku", "Anthropic"):
+            self.assertFalse(ev(H1, [rec(H1, reviewer=reviewer, impl=("claude",))])["covered"], reviewer)
+        self.assertFalse(ev(H1, [rec(H1, reviewer="gpt-5.5", impl=("Codex",))])["covered"])
+        self.assertFalse(ev(H1, [rec(H1, reviewer="Codex", impl=("GPT-5.5",))])["covered"])
+        self.assertFalse(ev(H1, [rec(H1, reviewer="Claude", impl=("Opus 5.5",))])["covered"])
+        self.assertTrue(ev(H1, [rec(H1, reviewer="Gemini", impl=("Opus 5.5",))])["covered"])
+
+    def test_two_labels_for_one_model_family_are_one_accepting_seat(self):
+        two = ev(H1, [rec(H1, reviewer="Opus", impl=("codex",)), rec(H1, reviewer="Sonnet", impl=("codex",))])
+        self.assertEqual(two["accept_seats"], ["claude"])
+
+    def test_an_ambiguous_reviewer_naming_multiple_seats_fails_closed_and_contributes_no_accept_seats(self):
+        # Codex P2 on #111: an attestation claiming multiple seats cannot satisfy independence or contribute multiple seats.
+        self.assertIsNone(rc.canonical_reviewer_seat("Opus/gpt-5.5"))
+        self.assertIsNone(rc.canonical_reviewer_seat("Claude, Mimo"))
+        self.assertEqual(rc.canonical_reviewer_seat("Opus 5.5"), "claude")
+        self.assertEqual(rc.canonical_reviewer_seat("gpt-5.5"), "codex")
+        self.assertEqual(rc.canonical_reviewer_seat("Gemini/Antigravity"), "gemini")
+
+        decision = ev(H1, [rec(H1, reviewer="Opus/gpt-5.5", impl=("mimo",))])
+        self.assertFalse(decision["covered"])
+        self.assertEqual(decision["accept_seats"], [])
+
+        decision2 = ev(H1, [rec(H1, reviewer="Claude, Mimo", impl=("gemini",))])
+        self.assertFalse(decision2["covered"])
+        self.assertEqual(decision2["accept_seats"], [])
+
     def test_model_ids_and_punctuation_forms_name_the_same_seat(self):
         # Skeptic probe on #99: all of these were independent of the reviewer they name, because only the first
         # space-separated word was compared.
@@ -156,6 +209,9 @@ class Coverage(unittest.TestCase):
         self.assertEqual(rc.seat_names("Gemini/Antigravity"), {"gemini"})
         self.assertEqual(rc.seat_names("Claude, Mimo"), {"claude", "mimo"})
         self.assertEqual(rc.seat_names("Local Qwen"), {"mimo"})
+        self.assertEqual(rc.seat_names("ubuntu-worker-01"), {"ubuntu-worker-01"})
+        self.assertEqual(rc.seat_names("Ubuntu"), {"ubuntu-worker-01"})
+        self.assertEqual(rc.seat_names("ubuntu-worker-01-seat[bot]"), {"ubuntu-worker-01"})
         self.assertEqual(rc.seat_names("someone else"), {"someone"})
         self.assertEqual(rc.seat_names("!!!"), set())
 
@@ -253,6 +309,47 @@ class Parsing(unittest.TestCase):
         self.assertFalse(row["covered"])
         self.assertEqual(len(row["malformed"]), 1)
 
+    def test_the_default_report_names_every_rejected_block_not_only_json(self):
+        placeholder = dict(rec(H1), head="<full 40-char head SHA>")
+        snapshot = {"repo": "o/r", "prs": [
+            {"number": 1, "head": H1, "merge_base": MB, "implementers": ["claude"],
+             "comments": [block(placeholder), {"body": "```attestation\nreviewer: Gemini\nverdict: ACCEPT\n```"}]},
+            {"number": 2, "head": H2, "merge_base": MB, "implementers": ["claude"], "comments": [block(rec(H2, pr=2))]}]}
+        text = rc.render(rc.report_snapshot(snapshot, is_ancestor=always))
+        self.assertIn("#1: 2 attestation block(s) not counted", text)
+        self.assertIn("head must be a full 40-character lowercase SHA", text)
+        self.assertIn("invalid JSON", text)
+        self.assertNotIn("#2: ", text.replace("#2    ", ""))
+        self.assertTrue(text.startswith("PR    head      covered  structured  auth  legacy(not counted)  reasons"))
+
+    def test_the_default_report_caps_the_lines_per_pr(self):
+        comments = [block(dict(rec(H1), head="x")) for _ in range(rc.MAX_PROBLEM_LINES + 3)]
+        snapshot = {"repo": "o/r", "prs": [{"number": 1, "head": H1, "merge_base": MB, "implementers": ["claude"],
+                                            "comments": comments}]}
+        text = rc.render(rc.report_snapshot(snapshot, is_ancestor=always))
+        self.assertIn("... and 3 more (see --json)", text)
+        self.assertEqual(text.count("    comment "), rc.MAX_PROBLEM_LINES)
+
+    def test_a_placeholder_or_short_sha_is_reported_never_counted(self):
+        # The template comment on #46 (5981785915) is an attestation-labelled block whose head and base_sha are
+        # "<full 40-char head SHA>" and "<full merge-base SHA>"; it parsed as a structured record.
+        for field in ("head", "base_sha"):
+            for bad in ("<full 40-char head SHA>", "abcdef12", "a" * 39, "a" * 41, "", None, 7):
+                structured, problems, _ = rc.parse_attestations([block(dict(rec(H1), **{field: bad}))])
+                self.assertEqual(structured, [], (field, bad))
+                self.assertEqual(len(problems), 1, (field, bad))
+                self.assertIn(field + " must be a full 40-character lowercase SHA", problems[0]["problem"])
+        structured, problems, _ = rc.parse_attestations([block(rec(H2, "delta", frm="<covered head>"))])
+        self.assertEqual((structured, len(problems)), ([], 1))
+        self.assertIn("from must be", problems[0]["problem"])
+
+    def test_an_upper_case_sha_is_the_same_commit_and_now_matches(self):
+        upper = dict(rec(H1), head=H1.upper(), base_sha=MB.upper())
+        structured, problems, _ = rc.parse_attestations([block(upper)])
+        self.assertEqual(problems, [])
+        self.assertEqual((structured[0]["head"], structured[0]["base_sha"]), (H1, MB))
+        self.assertTrue(ev(H1, structured)["covered"])
+
     def test_an_accept_in_the_wrong_case_is_reported_and_never_covers(self):
         # Gemini's blocks on #62 and #64 used ACCEPT. It parsed, matched nothing and produced no problem: the PR kept
         # reading "no accept at the current head" with nothing saying why.
@@ -303,6 +400,69 @@ class Parsing(unittest.TestCase):
         self.assertEqual(structured, [])
         self.assertEqual(len(problems), 4)
         self.assertIn("not a JSON object", problems[0]["problem"])
+
+
+class NestedAttestations(unittest.TestCase):
+    """A verdict counts only when a reader sees it as posted. Scout sample of 790 real comments: none nested one, but a
+    complete record inside an example fence or an HTML comment (invisible when rendered) was counted as an accept."""
+
+    RECORD = json.dumps(rec(H1, reviewer="gemini"))
+
+    def parse(self, body):
+        return rc.parse_attestations([{"body": body}])
+
+    def test_a_record_inside_an_example_fence_is_not_counted_but_is_named(self):
+        for opener, closer in (("````markdown", "````"), ("~~~", "~~~"), ("```text", "```")):
+            body = "The format:\n" + opener + "\n```attestation\n" + self.RECORD + "\n```\n" + closer + "\n"
+            structured, problems, _ = self.parse(body)
+            self.assertEqual(structured, [], opener)
+            self.assertEqual(len(problems), 1, (opener, problems))
+            self.assertIn("not a posted verdict", problems[0]["problem"])
+
+    def test_a_record_inside_an_html_comment_is_not_counted_but_is_named(self):
+        for body in ("<!--\n```attestation\n" + self.RECORD + "\n```\n-->\n",
+                     "intro\n<!-- hidden\n```attestation\n" + self.RECORD + "\n```\n-->\nvisible"):
+            structured, problems, _ = self.parse(body)
+            self.assertEqual(structured, [], body)
+            self.assertEqual(len(problems), 1, body)
+            self.assertIn(H1, problems[0]["problem"])
+
+    def test_a_posted_record_still_counts_beside_an_example_and_after_a_closed_comment(self):
+        body = ("<!-- note -->\n````markdown\n```attestation\n" + self.RECORD + "\n```\n````\n"
+                "```attestation\n" + self.RECORD + "\n```\n")
+        structured, problems, _ = self.parse(body)
+        self.assertEqual([r["head"] for r in structured], [H1])
+        self.assertEqual(len(problems), 1, "the example is named, the posted block counts")
+        closed = "<!--\nbefore\n-->\n```attestation\n" + self.RECORD + "\n```"
+        self.assertEqual(len(self.parse(closed)[0]), 1)
+
+    def test_ordinary_blocks_are_unchanged(self):
+        for body in ("```attestation\n" + self.RECORD + "\n```",
+                     "```attestation\r\n" + self.RECORD + "\r\n```\r\n",
+                     "text mentioning ` ```attestation ` inline\n```attestation\n" + self.RECORD + "\n```"):
+            structured, problems, _ = self.parse(body)
+            self.assertEqual((len(structured), problems), (1, []), body)
+
+    def test_an_indented_code_example_is_not_counted_even_with_a_signature_block_after_it(self):
+        # Codex P1 on #125: a four-space-indented fence renders as literal code; with a real top-level signature block
+        # next to it, the hidden example must not pair with it and satisfy the signature-required gate.
+        sig = "```attestation-sig\n-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n```"
+        body = "Example:\n\n    ```attestation\n    " + self.RECORD + "\n    ```\n\n" + sig
+        structured, problems, _ = self.parse(body)
+        self.assertEqual(structured, [])
+        self.assertEqual(len(problems), 1)
+        self.assertIn("not a posted verdict", problems[0]["problem"])
+
+    def test_a_block_indented_inside_a_list_item_counts(self):
+        # The old pattern needed the closing fence at the start of a line, so a verdict whose fence sat inside a list
+        # item (closer indented with the opener) was dropped with no count and no problem.
+        body = "- list item\n   ```attestation\n" + self.RECORD + "\n   ```\n"
+        structured, problems, _ = self.parse(body)
+        self.assertEqual((len(structured), problems), (1, []))
+
+    def test_a_template_with_placeholders_inside_an_example_raises_nothing(self):
+        body = '````markdown\n```attestation\n{"head": "<40-hex>", "verdict": "accept"}\n```\n````'
+        self.assertEqual(self.parse(body)[:2], ([], []))
 
 
 class Plumbing(unittest.TestCase):
@@ -489,6 +649,211 @@ class GitSaysWhoImplemented(unittest.TestCase):
         self.assertEqual(rc.git_implementers(log, "proposal/x"), {"claude", "mimo"})
         self.assertEqual(rc.unattributed_commits(log, "proposal/x"), 1)
         self.assertEqual(rc.unattributed_commits(log, "codex/x"), 0)
+
+
+REGISTERED = {"claude", "codex", "gemini", "mimo", "ubuntu-worker-01"}
+
+
+class RegisteredSeatsResolveExactly(unittest.TestCase):
+    """Rule 2: 'ubuntu-worker-01' used to resolve by its first word to the unregistered seat 'ubuntu', so its signed accepts never
+    verified; and two seats running one model counted as two independent judges."""
+
+    def test_a_registered_multi_word_seat_resolves_to_itself(self):
+        for label in ("ubuntu-worker-01", "Ubuntu Worker 01", "ubuntu_worker_01", "UBUNTU-WORKER-01"):
+            self.assertEqual(rc.resolve_seat(label, REGISTERED), "ubuntu-worker-01", label)
+
+    def test_a_registered_seat_named_together_with_any_other_seat_is_ambiguous(self):
+        # Codex review of #186: 'ubuntu-worker-01 and codex' resolved to ubuntu-worker-01 and dropped codex.
+        for label in ("ubuntu-worker-01 and codex", "codex, ubuntu-worker-01", "Ubuntu Worker 01 + Gemini",
+                      "ubuntu-worker-01 / Opus 5.5", "ubuntu-worker-01 (MiMo)", "ubuntu-worker-01-codex"):
+            self.assertIsNone(rc.resolve_seat(label, REGISTERED), label)
+
+    def test_near_misses_are_not_the_registered_seat(self):
+        for label in ("xubuntu-worker-01", "ubuntu-worker-011", "ubuntu-worker", "worker-01", "ubuntu"):
+            self.assertNotEqual(rc.resolve_seat(label, REGISTERED), "ubuntu-worker-01", label)
+
+    def test_a_sibling_seat_name_is_never_read_as_the_registered_seat(self):
+        registered = REGISTERED | {"ubuntu-worker-02"}
+        for label in ("ubuntu-worker-02", "Ubuntu Worker 02"):
+            self.assertEqual(rc.resolve_seat(label, registered), "ubuntu-worker-02", label)
+        self.assertNotEqual(rc.resolve_seat("ubuntu-worker-03", registered), "ubuntu-worker-01")
+        self.assertNotEqual(rc.resolve_seat("ubuntu-worker-03", registered), "ubuntu-worker-02")
+
+    def test_two_registered_seats_in_one_label_are_ambiguous_and_fail_closed(self):
+        registered = REGISTERED | {"ubuntu-worker-02"}
+        self.assertIsNone(rc.resolve_seat("ubuntu-worker-01 and ubuntu-worker-02", registered))
+
+    def test_without_a_registry_the_legacy_resolution_is_unchanged(self):
+        self.assertEqual(rc.resolve_seat("Claude Sonnet 5.5"), "claude")
+        self.assertEqual(rc.resolve_seat("ubuntu-worker-01"), rc.canonical_reviewer_seat("ubuntu-worker-01"))
+
+    def test_evaluate_counts_a_registered_seat_under_its_registered_name(self):
+        decision = rc.evaluate(H1, MB, [rec(H1, reviewer="ubuntu-worker-01"), rec(H1, reviewer="codex")], always, REGISTERED)
+        self.assertEqual(decision["accept_seats"], ["codex", "ubuntu-worker-01"])
+
+TABLE = rc.model_table({"model_families": {"qwen": "qwen", "mimo": "mimo", "claude": "anthropic", "gpt": "openai", "gemini": "google"}})
+PROFILES = {"opencode": {"family": "mimo", "model": "mimo-v2.6"}, "ubuntu-worker-01": {"family": "qwen"},
+            "claude": {"family": "anthropic"}}
+REG = {"claude", "codex", "gemini", "opencode", "ubuntu-worker-01"}
+
+
+def accepted(reviewer, model=None):
+    record = rec(H1, reviewer=reviewer)
+    if model is not None:
+        record["model"] = model
+    return record
+
+
+class FamilyComesFromTheModelThatRan(unittest.TestCase):
+    """A seat is a place and a key; the model behind it changes. The signed record says which model ran, the registry only
+    remembers the last answer, and nobody is turned away for either."""
+
+    def test_the_model_table_matches_a_stem_not_a_prefix_of_a_word(self):
+        for model, family in (("qwen3.8", "qwen"), ("Qwen/Qwen3.8-Coder-14B", "qwen"), ("claude-sonnet-5-5", "anthropic"),
+                              ("gpt-5.5", "openai"), ("MiMo-V2.6-Flash", "mimo"), ("gemini-3.8-flash", "google"), ("qwen", "qwen")):
+            self.assertEqual(rc.model_family(model, TABLE), family, model)
+        for model in ("qwenish", "claudette", "llama-4", "", None, 7, "x" * 81, "qwen\x00"):
+            self.assertIsNone(rc.model_family(model, TABLE), model)
+
+    def test_a_declared_model_beats_the_registered_profile(self):
+        families, entries, notes = rc.independence([accepted("ubuntu-worker-01", "mimo-v2.6")], REG, PROFILES, TABLE)
+        self.assertEqual(families, ["mimo"])
+        self.assertEqual(entries[0]["source"], "declared")
+        self.assertTrue(any("registered as qwen but ran" in n for n in notes), notes)
+
+    def test_without_a_declared_model_the_registered_profile_is_used(self):
+        families, entries, notes = rc.independence([accepted("ubuntu-worker-01")], REG, PROFILES, TABLE)
+        self.assertEqual((families, entries[0]["source"], notes), (["qwen"], "registered", []))
+
+    def test_with_neither_the_seat_stands_alone(self):
+        families, entries, _ = rc.independence([accepted("codex")], REG, PROFILES, TABLE)
+        self.assertEqual((families, entries[0]["source"]), (["seat:codex"], "seat"))
+
+    def test_an_unclassified_model_is_reported_and_does_not_buy_a_new_family(self):
+        families, _, notes = rc.independence([accepted("ubuntu-worker-01", "brandnew-9")], REG, PROFILES, TABLE)
+        self.assertEqual(families, ["qwen"])
+        self.assertTrue(any("does not classify" in n for n in notes), notes)
+
+    def test_a_malformed_model_is_ignored_not_refused(self):
+        for bad in (7, ["qwen"], "x" * 200, "a\nb"):
+            families, _, _ = rc.independence([accepted("ubuntu-worker-01", bad)], REG, PROFILES, TABLE)
+            self.assertEqual(families, ["qwen"], bad)
+
+    def test_two_seats_running_one_model_are_one_judge_and_say_so(self):
+        families, _, notes = rc.independence(
+            [accepted("opencode", "mimo-v2.6"), accepted("ubuntu-worker-01", "mimo-v2.6-flash")], REG, PROFILES, TABLE)
+        self.assertEqual(families, ["mimo"])
+        self.assertTrue(any("same model family (mimo)" in n for n in notes), notes)
+
+    def test_the_same_hardware_on_a_different_model_is_two_judges(self):
+        # the Windows and Ubuntu OpenCode seats, today: MiMo and Qwen
+        families, _, notes = rc.independence([accepted("opencode"), accepted("ubuntu-worker-01")], REG, PROFILES, TABLE)
+        self.assertEqual((families, notes), (["mimo", "qwen"], []))
+
+    def test_one_seat_on_two_models_counts_both_families_but_is_still_one_seat(self):
+        families, entries, _ = rc.independence([accepted("opencode", "mimo-v2.6"), accepted("opencode", "qwen3.8")], REG, PROFILES, TABLE)
+        self.assertEqual((families, len(entries)), (["mimo", "qwen"], 2))
+
+    def test_profiles_and_the_table_tolerate_a_malformed_registry(self):
+        for data in (None, [], {"seats": []}, {"seats": {"x": "y"}}, {"seats": {"x": {"profile": "p"}}}, {"model_families": []}):
+            self.assertEqual(rc.seat_profiles(data), {}, data)
+            self.assertEqual(rc.model_table(data), [], data)
+        self.assertEqual(rc.seat_profiles({"seats": {"a": {"profile": {"family": "Bad Family", "model": "m"}}}}), {"a": {"model": "m"}})
+
+
+class EvidenceSupersession(unittest.TestCase):
+    """Merge-gate box 5: a seat's later record with commands covers its own earlier record without them."""
+
+    @staticmethod
+    def counted(*specs):
+        out = []
+        for comment, reviewer, commands in specs:
+            record = rec(H1, reviewer=reviewer)
+            record["comment"] = comment
+            if commands:
+                record["commands"] = ["cargo test -> exit 0"]
+            out.append(record)
+        return out
+
+    def test_a_later_record_with_commands_covers_the_same_seats_earlier_record(self):
+        counted = self.counted((3, "claude", False), (7, "claude", True), (6, "gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [])
+
+    def test_a_seat_that_never_cited_a_command_still_blocks(self):
+        counted = self.counted((3, "claude", False), (6, "gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_another_seats_commands_do_not_cover_this_seat(self):
+        counted = self.counted((3, "claude", False), (6, "gemini", True), (7, "gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_spelling_variants_of_one_seat_are_one_seat(self):
+        counted = self.counted((3, "Claude", False), (7, "claude", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [])
+
+    def test_an_ambiguous_reviewer_is_never_covered_by_anyone_elses_commands(self):
+        counted = self.counted((3, "claude/gemini", False), (6, "gemini", True), (7, "claude", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_two_unresolvable_reviewers_do_not_cover_each_other(self):
+        counted = self.counted((3, "claude/gemini", False), (7, "claude/gemini", True))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3])
+
+    def test_usable_evidence_is_a_command_with_an_exit_code_not_anything_truthy(self):
+        good = [
+            ["cargo test -> exit 0 (all ok)"],
+            ["git diff --check -> exit 0", "cargo clippy -> exit 101 (failed)"],
+            ["cargo -> exit -1"],
+            ["x (exit 0)"], ["cargo test: exit 2"], ["cargo test -> exit 0."], ["cargo test, exit 1"],  # other separators in use
+            ["cargo test -> exit 0failed -> exit 1"], ["cargo test -> exit 0" + chr(10)], ["cargo test -> exit0"],  # a later complete code, a newline, `exit0`
+            [{"cmd": "cargo audit --file foundation/Cargo.lock", "rc": 0}],  # the shape one seat already signs
+            [{"garbage": True}, "git diff --check -> exit 0"],  # one real entry among noise still counts
+            ["cargo test -> exit0,54 integration tests"],  # real records write the code with no space
+            [{"command": "python -m unittest discover -s scripts", "exit_code": 0}],  # PLATFORM_SPEC section 3
+            [{"command": "cargo test", "exit_code": 101, "passed": 5, "failed": 1, "count": 6, "log_ref": "tmp/x.log",
+              "log_sha256": "0" * 64, "log": "tail"}],
+        ]
+        for commands in good:
+            self.assertTrue(rc.usable_evidence(commands), commands)
+        bad = [
+            None, [], {}, "", "cargo test -> exit 0",  # not a list
+            {"garbage": True}, [{"garbage": True}], [123], [None], [["cargo test -> exit 0"]],  # Codex's counterexample and kin
+            {"cargo test -> exit 0": True},  # a dict iterates as its keys, which must not be read as entries
+            ["cargo test"], ["cargo test -> exited 0"], ["exit 0"], [" -> exit 0"], ["cargo preexit 0"],  # no command or no exit code
+            [{"cmd": "x", "rc": True}], [{"cmd": "x", "rc": "0"}], [{"cmd": "x", "rc": 0.5}],  # rc must be an integer
+            [{"cmd": "", "rc": 0}], [{"cmd": "  ", "rc": 0}], [{"cmd": 1, "rc": 0}],  # cmd must be text
+            [{"cmd": "x", "rc": 0, "extra": 1}], [{"cmd": "x"}], [{"rc": 0}],  # exactly those two keys
+            [{"command": "x"}], [{"exit_code": 0}], [{"command": "x", "exit_code": True}],  # the spec shape needs both, real ints
+            [{"command": "x", "exit_code": "0"}], [{"command": " ", "exit_code": 0}], [{"command": 1, "exit_code": 0}],
+            [{"command": "x", "exit_code": 0, "surprise": 1}],  # only the documented extras are allowed
+            ["x -> exited 0"], ["x preexit0"],
+            ["cargo test -> exit 0failed"], ["cargo test -> exit 0_"], ["cargo test -> exit 12abc"], ["cargo test -> exit -1x"],  # Codex on #226
+            ["cargo test -> exit 0.5"], ["the test might exit 0"], ["cargo test exit 0"], ["cargo test -> exit 1.25 seconds"],  # Codex on #226
+            ["cargo test -> exit 0failed", "x -> exit"],  # a malformed entry does not become usable next to another bad one
+        ]
+        for commands in bad:
+            self.assertFalse(rc.usable_evidence(commands), commands)
+
+    def test_a_malformed_record_neither_satisfies_box_5_nor_covers_another(self):
+        for garbage in ({"garbage": True}, [{"garbage": True}], "cargo test -> exit 0", ["cargo test"], [{"cmd": "x", "rc": True}]):
+            bare = rec(H1, reviewer="codex")
+            bare["comment"] = 1
+            covering = rec(H1, reviewer="codex")
+            covering["comment"] = 2
+            covering["commands"] = garbage
+            # Codex's counterexample on #226: the malformed record used to clear the bare one and pass box 5 itself.
+            self.assertEqual(rc.unevidenced_verdicts([bare, covering]), [1, 2], garbage)
+        real = rec(H1, reviewer="codex")
+        real["comment"] = 3
+        real["commands"] = ["cargo test -> exit 0"]
+        bare = rec(H1, reviewer="codex")
+        bare["comment"] = 1
+        self.assertEqual(rc.unevidenced_verdicts([bare, real]), [])
+
+    def test_nothing_counted_means_nothing_missing_and_all_bare_means_all_missing(self):
+        self.assertEqual(rc.unevidenced_verdicts([]), [])
+        counted = self.counted((3, "claude", False), (6, "gemini", False))
+        self.assertEqual(rc.unevidenced_verdicts(counted), [3, 6])
 
 
 if __name__ == "__main__":

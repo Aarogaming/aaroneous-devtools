@@ -132,6 +132,37 @@ ATTRIBUTION = [
     {"body": "### Codex bounded independent review: verification incomplete", "strict": True},
     {"body": "Independent review by Codex", "strict": True},
     {"body": "### Independent review", "strict": True},
+    {"body": "\r\n\r\nCodex whole-diff packet\r\nmore", "strict": True},
+    {"body": "   \n\u2028\n  \t Gemini packet\n", "strict": True},
+    {"body": "\x1f\x1f\nMimo packet", "strict": True},
+    {"body": "first line names nobody\u2028Claude seat: done", "strict": True},
+    {"body": "Reviewer: CODEX (gpt)", "strict": False},
+    {"body": "Reviewer seat - Gemini", "strict": False},
+    {"body": "Reviewer / Seat \u2014 Antigravity", "strict": False},
+    {"body": "see the note\nSeat/agent:Claude", "strict": True},
+    {"body": "SEAT / AGENT: mimo", "strict": False},
+    {"body": "Claude Seat finished", "strict": True},
+    {"body": "####### Claude over-long heading", "strict": True},
+    {"body": "## Independent  Mimo review", "strict": False},
+    {"body": "xGemini packet", "strict": True},
+    {"body": "Geminis packet", "strict": True},
+    # Found by a differential run of the Rust port against this oracle (110,000 generated bodies): Python's \\s counts
+    # U+001C..U+001F, and its \\w does not count combining marks, joiners or connector punctuation but does count
+    # superscript digits.
+    {"body": "\r\x1fClaude)", "strict": False},
+    {"body": "\x1f\x1fSeat\x1f/\x1fagent: Codex", "strict": False},
+    {"body": "Claude\u0301\u200dCODEX", "strict": False},
+    {"body": "\u0345Gemini packet", "strict": True},
+    {"body": "\u00b2Gemini packet", "strict": True},
+    {"body": "\u24b6Mimo packet", "strict": True},
+    # Found by a differential run on the merged tree (20,000 bodies, 581 disagreements): a completion receipt that opens
+    # a comment is not prose, so in strict mode the seat name right after it opens the comment.
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] Gemini whole-diff packet", "strict": True},
+    {"body": "  [done:fix_threads:7:" + "c" * 40 + "] - Codex", "strict": True},
+    {"body": "[done:fix_threads:7:" + "c" * 40 + "]: Mimo reviewed this", "strict": True},
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] Gemini whole-diff packet", "strict": False},
+    {"body": "[done:needs_review:7:" + "c" * 40 + "] all threads answered\nGemini whole-diff packet", "strict": True},
+    {"body": "[done:needs_review:7:" + "c" * 39 + "] Gemini whole-diff packet", "strict": True},
 ]
 
 HEADS = [
@@ -142,6 +173,11 @@ HEADS = [
     {"body": "head " + "C" * 40, "head": H},
     {"body": "no hash here", "head": H},
     {"body": f"head {H}", "head": ""},
+    {"body": "head cccccccc\u0301", "head": H},
+    {"body": "head cccccccc\u0e31", "head": H},
+    {"body": "head cccccccc\u203f", "head": H},
+    {"body": "head cccccccc\u00b2", "head": H},
+    {"body": "head \u00b2cccccccc", "head": H},
 ]
 
 
@@ -170,6 +206,9 @@ RECEIPTS = [
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "a receipt naming another PR does not count",
      "snapshot": snapshot_for(7, [receipt("fix_threads", 8, H, "Claude seat: ok")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a receipt whose PR number is written in non-ASCII digits does not count",
+     "snapshot": snapshot_for(7, [receipt("fix_threads", "\u0667", H, "Claude seat: ok")]),
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "only the author completes thread fixes",
      "snapshot": snapshot_for(7, [receipt("fix_threads", 7, H, "Codex seat: ok")]),
@@ -201,6 +240,15 @@ RECEIPTS = [
     {"name": "a receipt for a not_mergeable card is not read: the conflict is observable on GitHub",
      "snapshot": snapshot_for(7, [receipt("not_mergeable", 7, H, "Gemini seat: fixed"),
                                   receipt("not_mergeable", 7, H, "Claude seat: fixed")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a combining mark inside the attribution does not hide the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "x\u0301Gemini seat: ok")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a seat name that opens the text after the receipt prefix names the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini whole-diff packet")]),
+     "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
+    {"name": "a dash after the receipt prefix does not hide the seat",
+     "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "- Codex whole-diff packet")]),
      "repair_owners": {}, "implementers_by_pr": {"7": ["claude"]}},
     {"name": "the first eligible receipt names the seat",
      "snapshot": snapshot_for(7, [receipt("needs_review", 7, H, "Gemini seat: first"),
@@ -336,17 +384,34 @@ COVERAGE = [
      "records": [rec(A, reviewer="Codex", implementers=("Claude, Mimo",))], "ancestry": []},
     {"name": "one seat spelled three ways is one accepting seat", "head": A, "merge_base": MB,
      "records": [rec(A, reviewer="Gemini"), rec(A, reviewer="gemini"), rec(A, reviewer="Antigravity")], "ancestry": []},
+    {"name": "a registered multi-word seat is counted under its registered name", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="ubuntu-worker-01"), rec(A, reviewer="Codex")], "ancestry": [],
+     "registered": ["claude", "codex", "ubuntu-worker-01"]},
+    {"name": "a label naming a registered seat and another seat is not a valid accept", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="ubuntu-worker-01 and codex")], "ancestry": [],
+     "registered": ["claude", "codex", "ubuntu-worker-01"]},
+    {"name": "a registered seat beside an unregistered model family is not a valid accept", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="ubuntu-worker-01 / Opus 5.5", implementers=("gemini",))], "ancestry": [],
+     "registered": ["ubuntu-worker-01"]},
+    {"name": "an ambiguous label does not count beside a valid one", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="Gemini / ubuntu-worker-01"), rec(A, reviewer="Codex")], "ancestry": [],
+     "registered": ["claude", "codex", "gemini", "ubuntu-worker-01"]},
+    {"name": "an empty registry changes nothing", "head": A, "merge_base": MB,
+     "records": [rec(A, reviewer="Codex")], "ancestry": [], "registered": []},
 ]
 
 SEATS = ["Gemini", "gemini", "Gemini/Antigravity", "Antigravity", "Claude Sonnet 5.5", "Claude (steward)",
          "Mimo (OpenCode)", "Local Qwen", "gemini-3.8-flash", "claude-sonnet-5-5", "Claude, Mimo", "claude+mimo",
-         "codex:session-01a1", "CLAUDE.", "someone else", "!!!", ""]
+         "codex:session-01a1", "CLAUDE.", "someone else", "!!!", "",
+         "Opus 5.5", "Fable", "sonnet-5.5", "Anthropic", "gpt-5.5", "OpenAI Codex",
+         "ubuntu-worker-01", "Ubuntu"]
 
 
 def evaluate_case(case):
     pairs = {(a, b) for a, b in case["ancestry"]}
+    registered = set(case["registered"]) if "registered" in case else None
     return rc.evaluate(case["head"], case["merge_base"], json.loads(json.dumps(case["records"])),
-                       lambda a, b: a == b or (a, b) in pairs)
+                       lambda a, b: a == b or (a, b) in pairs, registered)
 
 
 AUDIT_TICKS = list(range(0, 14))
@@ -385,6 +450,62 @@ GATE_CI = [
     {"name": "a queued check is pending", "rollup": [{"status": "QUEUED"}]},
     {"name": "skipped is not success", "rollup": [{"status": "COMPLETED", "conclusion": "SKIPPED"}]},
     {"name": "lower-case conclusions are read", "rollup": [{"status": "completed", "conclusion": "success"}]},
+    {"name": "a failed run later re-run successfully counts as success",
+     "rollup": [{"name": "Dependency advisories", "workflowName": "Security checks", "startedAt": "2026-10-14T19:09:00Z",
+                 "status": "COMPLETED", "conclusion": "FAILURE"},
+                {"name": "Dependency advisories", "workflowName": "Security checks", "startedAt": "2026-10-17T02:45:00Z",
+                 "status": "COMPLETED", "conclusion": "SUCCESS"}]},
+    {"name": "a successful run later followed by a failure fails",
+     "rollup": [{"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-14T19:00:00Z",
+                 "status": "COMPLETED", "conclusion": "SUCCESS"},
+                {"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                 "status": "COMPLETED", "conclusion": "FAILURE"}]},
+    {"name": "a re-run in progress is pending, not the old failure",
+     "rollup": [{"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-14T19:00:00Z",
+                 "status": "COMPLETED", "conclusion": "FAILURE"},
+                {"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                 "status": "IN_PROGRESS", "conclusion": ""}]},
+    {"name": "the same name in another workflow is a different check",
+     "rollup": [{"name": "build", "workflowName": "A", "startedAt": "2026-10-17T02:00:00Z",
+                 "status": "COMPLETED", "conclusion": "SUCCESS"},
+                {"name": "build", "workflowName": "B", "startedAt": "2026-10-14T02:00:00Z",
+                 "status": "COMPLETED", "conclusion": "FAILURE"}]},
+    {"name": "a tie keeps the worse result",
+     "rollup": [{"name": "lint", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                 "status": "COMPLETED", "conclusion": "SUCCESS"},
+                {"name": "lint", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                 "status": "COMPLETED", "conclusion": "FAILURE"}]},
+    {"name": "an unnamed failure is never replaced",
+     "rollup": [{"status": "COMPLETED", "conclusion": "FAILURE"},
+                {"name": "lint", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                 "status": "COMPLETED", "conclusion": "SUCCESS"}]},
+    {"name": "completedAt orders runs that have no startedAt",
+     "rollup": [{"name": "lint", "completedAt": "2026-10-14T02:00:00Z", "status": "COMPLETED", "conclusion": "FAILURE"},
+                {"name": "lint", "completedAt": "2026-10-17T02:00:00Z", "status": "COMPLETED", "conclusion": "SUCCESS"}]},
+    {"name": "an empty name falls back to the context (found by the differential harness)",
+     "rollup": [{"name": "", "context": "ci/legacy", "startedAt": "2026-10-14T02:00:00Z", "status": "COMPLETED", "conclusion": "FAILURE"},
+                {"name": "", "context": "ci/legacy", "startedAt": "2026-10-17T02:00:00Z", "status": "COMPLETED", "conclusion": "SUCCESS"}]},
+    {"name": "a queued re-run with no timestamps is pending, not discarded as older (Codex on #227)",
+     "rollup": [{"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                 "status": "COMPLETED", "conclusion": "SUCCESS"},
+                {"name": "Foundation", "workflowName": "CI", "startedAt": None, "completedAt": None,
+                 "status": "QUEUED", "conclusion": ""}]},
+    {"name": "the same queued re-run listed first is still pending",
+     "rollup": [{"name": "Foundation", "workflowName": "CI", "startedAt": None, "completedAt": None,
+                 "status": "QUEUED", "conclusion": ""},
+                {"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                 "status": "COMPLETED", "conclusion": "SUCCESS"}]},
+    {"name": "a queued re-run after a failure is pending",
+     "rollup": [{"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-14T19:00:00Z",
+                 "status": "COMPLETED", "conclusion": "FAILURE"},
+                {"name": "Foundation", "workflowName": "CI", "status": "QUEUED"}]},
+    {"name": "a failure with no timestamps is never replaced by a timestamped success",
+     "rollup": [{"name": "Foundation", "workflowName": "CI", "status": "COMPLETED", "conclusion": "FAILURE"},
+                {"name": "Foundation", "workflowName": "CI", "startedAt": "2026-10-17T02:00:00Z",
+                 "status": "COMPLETED", "conclusion": "SUCCESS"}]},
+    {"name": "a legacy status context is matched by its context name",
+     "rollup": [{"context": "ci/legacy", "startedAt": "2026-10-14T02:00:00Z", "status": "COMPLETED", "conclusion": "FAILURE"},
+                {"context": "ci/legacy", "startedAt": "2026-10-17T02:00:00Z", "status": "COMPLETED", "conclusion": "SUCCESS"}]},
 ]
 
 GATE_BREAKER = [
@@ -414,9 +535,74 @@ GATE_THREADS = [
     {"name": "a malformed response is unknown", "data": {"data": {}}},
 ]
 
+IDENTITIES = {
+    "seats": {
+        "opencode": {"profile": {"family": "mimo", "model": "mimo-v2.6"}},
+        "ubuntu-worker-01": {"profile": {"family": "qwen", "model": "qwen3.8"}},
+        "claude": {"profile": {"family": "anthropic"}},
+        "codex": {},
+        "gemini": {"profile": {"family": "Not A Label"}},
+    },
+    "model_families": {"qwen": "qwen", "mimo": "mimo", "claude": "anthropic", "gpt": "openai", "gemini": "google",
+                       "Bad": "x", "bad stem": "x", "okstem": "Bad Family"},
+}
+INDEPENDENCE = [
+    {"name": "no declared model: the registered profiles decide", "identities": IDENTITIES,
+     "counted": [{"reviewer": "opencode"}, {"reviewer": "ubuntu-worker-01"}]},
+    {"name": "the same hardware on one model is one judge", "identities": IDENTITIES,
+     "counted": [{"reviewer": "opencode", "model": "mimo-v2.6"}, {"reviewer": "ubuntu-worker-01", "model": "MiMo-V2.6-Flash"}]},
+    {"name": "a declared model beats the registered profile and says so", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": "mimo-v2.6"}]},
+    {"name": "an org path and a version suffix still classify", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": "Qwen/Qwen3.8-Coder-14B"}]},
+    {"name": "a stem followed by a letter is not that model", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": "qwenish"}]},
+    {"name": "an unclassified model is reported and buys no new family", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": "brandnew-9"}]},
+    {"name": "a seat with neither model nor profile stands alone", "identities": IDENTITIES,
+     "counted": [{"reviewer": "codex"}]},
+    {"name": "a malformed profile family is not used", "identities": IDENTITIES, "counted": [{"reviewer": "gemini"}]},
+    {"name": "malformed models are ignored not refused", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01", "model": 7}, {"reviewer": "ubuntu-worker-01", "model": ["qwen"]},
+                 {"reviewer": "ubuntu-worker-01", "model": "x" * 81}, {"reviewer": "ubuntu-worker-01", "model": "a\nb"},
+                 {"reviewer": "ubuntu-worker-01", "model": "   "}, {"reviewer": "ubuntu-worker-01", "model": "caf\u00e9"}]},
+    {"name": "one seat on two models counts both families", "identities": IDENTITIES,
+     "counted": [{"reviewer": "opencode", "model": "mimo-v2.6"}, {"reviewer": "opencode", "model": "qwen3.8"}]},
+    {"name": "the same seat and model twice is one entry", "identities": IDENTITIES,
+     "counted": [{"reviewer": "opencode", "model": "mimo-v2.6"}, {"reviewer": "OpenCode", "model": " mimo-v2.6 "}]},
+    {"name": "a registered multi-word seat resolves by its whole name", "identities": IDENTITIES,
+     "counted": [{"reviewer": "Ubuntu Worker 01"}, {"reviewer": "ubuntu_worker_01"}]},
+    {"name": "near misses of a registered seat name resolve to nothing registered", "identities": IDENTITIES,
+     "counted": [{"reviewer": "xubuntu-worker-01"}, {"reviewer": "ubuntu-worker-011"}]},
+    {"name": "a label naming a registered seat and another registered seat contributes nothing", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01 and codex"}, {"reviewer": "Gemini / ubuntu-worker-01"}]},
+    {"name": "a label naming a registered seat and an unregistered model family contributes nothing", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01 / Opus 5.5"}]},
+    {"name": "a model name beside a registered seat is a second seat, not metadata", "identities": IDENTITIES,
+     "counted": [{"reviewer": "ubuntu-worker-01 (qwen3.8)"}]},
+    {"name": "a label naming two registered seats is ambiguous", "identities": {"seats": {"a-b": {}, "c-d": {}}},
+     "counted": [{"reviewer": "a-b and c-d"}]},
+    {"name": "a malformed registry yields seats standing alone", "identities": [], "counted": [{"reviewer": "claude"}]},
+    {"name": "a model-name table entry with an unusable stem or family is ignored", "identities": IDENTITIES,
+     "counted": [{"reviewer": "codex", "model": "Bad-1"}, {"reviewer": "codex", "model": "okstem-1"}]},
+    {"name": "an unnamed or empty reviewer contributes nothing", "identities": IDENTITIES,
+     "counted": [{"reviewer": ""}, {"reviewer": "Opus/gpt-5.5"}]},
+]
+
+
+def independence_case(case):
+    keys = case["identities"]
+    registered = set(keys["seats"]) if isinstance(keys, dict) and isinstance(keys.get("seats"), dict) else None
+    profiles = rc.seat_profiles(keys) if isinstance(keys, dict) else {}
+    table = rc.model_table(keys) if isinstance(keys, dict) else []
+    families, entries, notes = rc.independence(json.loads(json.dumps(case["counted"])), registered, profiles, table)
+    return {"families": families, "entries": entries, "notes": notes}
+
+
 GATE_GREEN = {
     "head": "h" * 40, "ci": {"state": "success", "detail": "3 checks: SUCCESS"}, "trial_merge_ok": True, "base_ref": "main",
-    "default_branch": "main", "base_tip": "t" * 40, "accept_seats": ["codex", "gemini"], "covered": True, "threads_open": 0,
+    "default_branch": "main", "base_tip": "t" * 40, "accept_seats": ["codex", "gemini"], "accept_families": ["google", "openai"],
+    "covered": True, "threads_open": 0,
     "standing_changes_requested": False, "counted_verdicts": 2, "verdicts_missing_evidence": [], "revertible": True,
     "breaker_tripped": False, "category": "scripts/*.py", "is_draft": False,
 }
@@ -430,6 +616,9 @@ GATE_CHECKLIST = [
     {"name": "a draft PR blocks", "override": {"is_draft": True}},
     {"name": "an unknown draft status is blocked", "override": {"is_draft": None}},
     {"name": "one accept seat is not enough", "override": {"accept_seats": ["codex"]}},
+    {"name": "two seats of one model family are not independent",
+     "override": {"accept_seats": ["mimo", "ubuntu-worker-01"], "accept_families": ["mimo"]}},
+    {"name": "an unknown family list is blocked, not green", "override": {"accept_families": None}},
     {"name": "two seats but not covered", "override": {"covered": False}},
     {"name": "an open thread blocks", "override": {"threads_open": 1}},
     {"name": "an unknown thread count is blocked", "override": {"threads_open": None}},
@@ -439,6 +628,11 @@ GATE_CHECKLIST = [
     {"name": "an unclassified revertibility is blocked", "override": {"revertible": None}},
     {"name": "a tripped breaker blocks", "override": {"breaker_tripped": True}},
     {"name": "an unreadable breaker is blocked", "override": {"breaker_tripped": None}},
+    {"name": "additive identity registration is exempt from the accept bar (owner decision 2026-10-11)",
+     "override": {"identity_registration_exempt": True, "accept_seats": [], "covered": False,
+                  "counted_verdicts": 0, "verdicts_missing_evidence": []}},
+    {"name": "the identity-registration exemption does not bypass other boxes",
+     "override": {"identity_registration_exempt": True, "accept_seats": [], "covered": False, "threads_open": 1}},
 ]
 
 GATE_DECIDE = [
@@ -511,6 +705,8 @@ def build_rule_vectors():
     out["pushes.out.json"] = [dict(zip(("heads", "credited"), sr.pushes(c["prs"], c["previous"]))) for c in PUSHES]
     out["seats.in.json"] = SEATS
     out["seats.out.json"] = [sorted(rc.seat_names(s)) for s in SEATS]
+    out["independence.in.json"] = INDEPENDENCE
+    out["independence.out.json"] = [independence_case(c) for c in INDEPENDENCE]
     out["coverage.in.json"] = COVERAGE
     out["coverage.out.json"] = [evaluate_case(c) for c in COVERAGE]
     out["audit.in.json"] = {"ticks": AUDIT_TICKS, "state": audit_scenario(0)[0]}

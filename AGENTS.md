@@ -8,6 +8,10 @@ Read [the companion operating model](governance/OPERATING_MODEL.md). Devtools pe
 
 ## Before selecting work
 
+Start with the [shared master playbook](governance/MASTER_PLAYBOOK.md) for navigation,
+then satisfy every mandatory read below. It links the owner-directed constellation
+architecture and proposed lifecycle; neither a topic nor a vote grants a work claim.
+
 1. Read `FOUNDATION_BOUNDARY.md`, `governance/AARONEOUS_COMPONENT_FRAMEWORK_PRIMER.md`, `governance/MAINTENANCE_SYSTEM.md`, and `governance/MULTITHREAD_PROGRAM.md`.
 2. Read `governance/COORDINATION_QUEUE.md`. Do not edit a path owned by an active claim.
 3. Review the task's cited evidence, current branch, and repository-local `AGENTS.md`.
@@ -16,6 +20,10 @@ Read [the companion operating model](governance/OPERATING_MODEL.md). Devtools pe
 ## Claiming a lane
 
 Claim only a `Ready` item. Record the owner, branch, UTC start time, exact files, intended evidence, and verification gate in the queue before editing. One primary agent owns a file scope at a time. Claims expire after 24 hours without an update; a successor records a handoff before taking over.
+
+### Seat-status self-refresh exception (owner-authorized 2026-10-09, C112)
+
+After an ordinary exact-path claim has created `governance/seat-status/<seat-id>.md`, that seat may refresh **only its own existing file** without another queue claim. A refresh must run `python3 scripts/check_seat_status.py governance/seat-status` and cite its exit in the commit or PR. It may not create, rename, delete, or edit another seat's status file; edit `governance/seat-status/README.md`; change the validator or its tests; claim work; grant authority; or include any unrelated path in the refresh. Initial creation, protocol/schema changes, and removal remain ordinary claimed work.
 
 Choose an independent task. Do not open overlapping inventory, terminology, interface, or package work merely because a second model is available. Keep the default to three primary lanes and one review lane.
 

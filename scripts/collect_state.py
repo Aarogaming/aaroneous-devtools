@@ -25,24 +25,26 @@ import review_coverage as rc  # noqa: E402
 # is only a reference to the task and never completes it. A receipt quoted further down a comment, one for another
 # PR or head, one whose first line says the work was not done, or one in a comment that also names a different
 # full head with the same first eight characters (contradictory provenance) completes nothing.
-RECEIPT_START = re.compile(r"\A\s*\[done:([a-z_]+):(\d+):([0-9a-f]{40})\]", re.I)
+# The PR number is ASCII digits: `\d` also matched Arabic-Indic and other Unicode digits, and `int()` read them, so a receipt
+# for PR "\u0667" completed PR 7 (scout probe while porting this rule to Rust).
+RECEIPT_START = re.compile(r"\A\s*\[done:([a-z_]+):([0-9]+):([0-9a-f]{40})\]", re.I)
 NEGATIVE = re.compile(r"\b(not done|not complete[d]?|blocked|could not|cannot|unable|failed)\b", re.I)
 HEX40 = re.compile(r"\b[0-9a-f]{40}\b")
 RECEIPT_PREFIX = re.compile(r"\A\s*\[done:[a-z_]+:\d+:[0-9a-f]{40}\]\s*[:\u2013\u2014-]?\s*", re.I)
-SEAT_WORD = re.compile(r"\b(Claude|Mimo|Codex|Gemini|Antigravity)\s+seat\b", re.I)
-KNOWN_SEATS = ("claude", "codex", "gemini", "mimo", "qwen")
+SEAT_WORD = re.compile(r"\b(Claude|Mimo|Codex|Gemini|Antigravity|ubuntu-worker-01|Ubuntu)\s+seat\b", re.I)
+KNOWN_SEATS = ("claude", "codex", "gemini", "mimo", "qwen", "ubuntu-worker-01", "ubuntu")
 SEAT_PATTERN = re.compile(r"\b(" + "|".join(KNOWN_SEATS) + r")\b", re.I)
 
 
 SEAT_IN_TEXT = re.compile(
-    r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)"
+    r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity|ubuntu-worker-01|Ubuntu)"
     # A seat name that opens a line, optionally after a markdown heading mark and the word "Independent" ("### Codex
     # bounded review", "Independent Codex verdict: ACCEPT"), which is how the seats title their reviews.
-    r"|^\s*(?:#{1,6}\s*)?(?:Independent\s+)?(Claude|Codex|Gemini|Mimo|Antigravity)\b",
+    r"|^\s*(?:#{1,6}\s*)?(?:Independent\s+)?(Claude|Codex|Gemini|Mimo|Antigravity|ubuntu-worker-01|Ubuntu)\b",
     re.I | re.M,
 )
-SEAT_DECLARED = re.compile(r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)", re.I)
-ALIASES = {"antigravity": "gemini"}
+SEAT_DECLARED = re.compile(r"(?:Seat\s*/\s*agent|Reviewer(?:\s*/\s*Seat|\s+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity|ubuntu-worker-01|Ubuntu)", re.I)
+ALIASES = {"antigravity": "gemini", "qwen": "mimo", "ubuntu": "ubuntu-worker-01"}
 MAX_REJECTED_PER_SEAT = 2
 
 
@@ -185,7 +187,7 @@ def seats_from_trailers(text, branch=""):
     seats = []
 
     def add(name):
-        name = name.lower()
+        name = ALIASES.get(name.lower(), name.lower())
         if name not in seats:
             seats.append(name)
 

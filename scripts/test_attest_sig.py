@@ -11,7 +11,7 @@ import attest_sig as at  # noqa: E402
 import review_coverage as rc  # noqa: E402
 
 HAVE_KEYGEN = shutil.which("ssh-keygen") is not None
-MB = "m" * 40
+MB = "d" * 40
 H1 = "a" * 40
 
 
@@ -96,6 +96,25 @@ class Signatures(unittest.TestCase):
         row = rc.report_snapshot(self.snapshot([comment(rec, forged)]), None, None, self.identities, True)[0]
         self.assertFalse(row["covered"])
 
+    def test_model_family_aliases_verify_under_canonical_seat(self):
+        # Codex P2 on #111: model-family reviewer labels verify under their canonical seat in allowed_signers.
+        rec_qwen = record(reviewer="Local Qwen")
+        sig_qwen = at.sign(at.canonical(rec_qwen), self.mimo_key)
+        row = rc.report_snapshot(self.snapshot([comment(rec_qwen, sig_qwen)]), None, None, self.identities, True)[0]
+        self.assertTrue(row["covered"])
+        self.assertEqual(row["signed_attestations"], 1)
+
+        rec_gpt = record(reviewer="gpt-5.5")
+        sig_gpt = at.sign(at.canonical(rec_gpt), self.codex_key)
+        row_gpt = rc.report_snapshot(self.snapshot([comment(rec_gpt, sig_gpt)]), None, None, self.identities, True)[0]
+        self.assertTrue(row_gpt["covered"])
+        self.assertEqual(row_gpt["signed_attestations"], 1)
+
+        rec_ambig = record(reviewer="Opus/gpt-5.5")
+        sig_ambig = at.sign(at.canonical(rec_ambig), self.codex_key)
+        row_ambig = rc.report_snapshot(self.snapshot([comment(rec_ambig, sig_ambig)]), None, None, self.identities, True)[0]
+        self.assertFalse(row_ambig["covered"])
+
     def test_cli_sign_then_verify_round_trip(self):
         rec_path = os.path.join(self.tmp, "rec.json")
         with open(rec_path, "w", encoding="utf-8") as handle:
@@ -152,6 +171,20 @@ class IdentitiesFileIsValidated(unittest.TestCase):
         found = self.problems({"owner": ["Aarogaming"], "seats": {"claude": {"logins": ["aarogaming"]}}})
         self.assertTrue(any("shared owner login" in p for p in found), found)
 
+    def test_a_profile_is_optional_and_a_malformed_one_is_a_problem(self):
+        self.assertEqual(self.problems({"seats": {"claude": {"profile": {"family": "anthropic", "model": "claude-sonnet-5-5"}}}}), [])
+        self.assertEqual(self.problems({"seats": {"claude": {}}}), [])
+        for bad in ("anthropic", ["x"], {"family": "Anthropic"}, {"family": "1x"}, {"model": 7}, {"model": ""}, {"model": "x" * 81},
+                    {"runtime": "a" + chr(10) + "b"}):
+            found = self.problems({"seats": {"claude": {"profile": bad}}})
+            self.assertTrue(any("profile" in p for p in found), (bad, found))
+
+    def test_the_model_table_is_validated(self):
+        self.assertEqual(self.problems({"seats": {}, "model_families": {"qwen": "qwen", "gpt": "openai"}}), [])
+        for bad in ([], {"Qwen": "qwen"}, {"qwen": "Qwen"}, {"qwen": 3}, {"": "x"}):
+            found = self.problems({"seats": {}, "model_families": bad})
+            self.assertTrue(any("model_families" in p for p in found), (bad, found))
+
     def test_seat_names_and_keys_must_be_plain(self):
         self.assertTrue(self.problems({"seats": {"claude\nmimo": {"keys": []}}}))
         self.assertTrue(self.problems({"seats": {"Claude": {"keys": []}}}))
@@ -206,6 +239,65 @@ class IdentitiesFileIsValidated(unittest.TestCase):
                 with self.assertRaises(SystemExit) as raised:
                     loader(path)
                 self.assertIn("shared owner login", str(raised.exception))
+
+
+@unittest.skipUnless(HAVE_KEYGEN, "ssh-keygen not available")
+class FamilyIndependenceEndToEnd(unittest.TestCase):
+    """Rule 2 end to end, with real signatures: a multi-word seat's accept verifies, and the family is the model the signed record
+    declares, falling back to what the seat registered."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.keys = {name: make_key(cls.tmp, name) for name in ("mimo", "ubuntu-worker-01", "codex")}
+        cls.identities = {
+            "seats": {
+                "mimo": {"logins": [], "keys": [cls.keys["mimo"][1]], "profile": {"family": "mimo"}},
+                "ubuntu-worker-01": {"logins": [], "keys": [cls.keys["ubuntu-worker-01"][1]], "profile": {"family": "qwen"}},
+                "codex": {"logins": [], "keys": [cls.keys["codex"][1]]},
+            },
+            "model_families": {"qwen": "qwen", "mimo": "mimo", "gpt": "openai"},
+        }
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def row(self, *reviewers):
+        comments = []
+        for item in reviewers:
+            reviewer, model = item if isinstance(item, tuple) else (item, None)
+            rec = record(reviewer=reviewer)
+            if model:
+                rec["model"] = model
+            seat = rc.resolve_seat(reviewer, set(self.identities["seats"]))
+            comments.append(comment(rec, at.sign(at.canonical(rec), self.keys[seat][0])))
+        snapshot = {"repo": "o/r", "prs": [{"number": 7, "head": H1, "merge_base": MB, "comments": comments}]}
+        return rc.report_snapshot(snapshot, None, None, self.identities, True)[0]
+
+    def test_a_signed_accept_from_a_multi_word_seat_verifies_and_counts_under_its_registered_name(self):
+        row = self.row("ubuntu-worker-01")
+        self.assertEqual((row["signed_attestations"], row["accept_seats"]), (1, ["ubuntu-worker-01"]))
+
+    def test_two_seats_on_different_models_are_two_families(self):
+        row = self.row("mimo", "ubuntu-worker-01")
+        self.assertEqual(row["accept_families"], ["mimo", "qwen"])
+        self.assertEqual(row["independence"]["notes"], [])
+
+    def test_the_model_a_seat_declares_in_its_signed_record_is_the_one_counted(self):
+        row = self.row("mimo", ("ubuntu-worker-01", "mimo-v2.6"))
+        self.assertEqual(row["accept_families"], ["mimo"])
+        self.assertTrue(any("same model family" in n for n in row["independence"]["notes"]), row["independence"])
+        self.assertTrue(any("registered as qwen but ran" in n for n in row["independence"]["notes"]), row["independence"])
+
+    def test_changing_the_declared_model_after_signing_breaks_the_signature(self):
+        rec = record(reviewer="ubuntu-worker-01")
+        rec["model"] = "qwen3.8"
+        sig = at.sign(at.canonical(rec), self.keys["ubuntu-worker-01"][0])
+        rec["model"] = "gpt-5.5"
+        snapshot = {"repo": "o/r", "prs": [{"number": 7, "head": H1, "merge_base": MB, "comments": [comment(rec, sig)]}]}
+        row = rc.report_snapshot(snapshot, None, None, self.identities, True)[0]
+        self.assertFalse(row["covered"])
 
 
 if __name__ == "__main__":

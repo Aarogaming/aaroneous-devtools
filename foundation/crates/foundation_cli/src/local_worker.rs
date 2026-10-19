@@ -34,6 +34,8 @@ struct Job {
     mode: Mode,
     evidence: Vec<String>,
     instruction: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    contribution_id: Option<String>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -65,6 +67,8 @@ struct Record {
     /// Shadow-mode claim-check flags (C93): recorded, never used to reject a draft yet.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     conformance_flags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    contribution_id: Option<String>,
 }
 struct Reservation(PathBuf);
 impl Drop for Reservation {
@@ -387,6 +391,7 @@ where
             proposal: None,
             error: None,
             conformance_flags: Vec::new(),
+            contribution_id: job.contribution_id.clone(),
         };
         match delegate(&c.endpoint, &record.input) {
             Ok(proposal) => {
@@ -771,6 +776,29 @@ pub(crate) fn serve(config_path: &Path) -> Result<()> {
         if let Err(e) = tick(config_path, ((now / 60) % 60) as u32, now) {
             eprintln!("local-worker-serve: tick failed: {e:#}");
         }
+        let staged_dir = config
+            .results_directory
+            .parent()
+            .map(|p| p.join("staged"))
+            .unwrap_or_else(|| config.results_directory.join("staged"));
+        let router_config = devtools_ops::PipelineRouterConfig::new(
+            &config.results_directory,
+            &staged_dir,
+            &config.jobs_directory,
+        );
+        match devtools_ops::route_all_pending_results(&router_config) {
+            Ok(actions) => {
+                if !actions.is_empty() {
+                    println!(
+                        "local-worker-serve: routed {} result(s) into active pipeline",
+                        actions.len()
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("local-worker-serve: pipeline routing error: {}", e);
+            }
+        }
         delay = if tick_was_quiet(&status_path, mtime_before) {
             (delay * 2).min(SERVE_MAX_DELAY)
         } else {
@@ -860,6 +888,7 @@ mod tests {
             mode: Mode::Analysis,
             evidence: vec!["lib.rs".into()],
             instruction: "review reducer".into(),
+            contribution_id: None,
         };
         fs::write(
             c.jobs_directory.join("job.toml"),
@@ -1093,6 +1122,7 @@ instruction = \"x\"
             mode: Mode::Analysis,
             evidence: vec!["a.rs".into()],
             instruction: "x".repeat(8193),
+            contribution_id: None,
         };
         assert_eq!(
             job_problem(&job),
@@ -1111,6 +1141,7 @@ instruction = \"x\"
             mode: Mode::Analysis,
             evidence: vec!["a.rs".into()],
             instruction: "do".into(),
+            contribution_id: None,
         };
         assert_eq!(job_problem(&job), None);
         job.id = "no spaces".into();
@@ -1351,6 +1382,7 @@ instruction = \"x\"
             mode: Mode::Analysis,
             evidence: vec!["a.rs".into()],
             instruction: "recurring audit, content changes every cycle".into(),
+            contribution_id: None,
         };
         let job_b = Job {
             schema_version: 1,
@@ -1358,6 +1390,7 @@ instruction = \"x\"
             mode: Mode::Analysis,
             evidence: vec!["b.rs".into()],
             instruction: "ordinary job, never gets a turn under pure alphabetical order".into(),
+            contribution_id: None,
         };
         fs::write(
             c.jobs_directory.join("a.toml"),
