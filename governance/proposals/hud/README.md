@@ -56,24 +56,26 @@ files that fails when the filter is switched off. **What I cannot yet say is saf
 
 ## The documents
 
+The sixteen documents are not in this tree: each lives on the branch of its own pull request, and those pull requests are closed. The links below are therefore **commit permalinks** to the exact head each document had when its pull request was closed (the source hash is in the URL), so they keep resolving without relying on a relative path that does not exist here.
+
 | # | Proposal | Pull request |
 |---|---|---|
-| 01 | [Settings layers and the permission engine](01-settings-and-permissions.md) | [#163](https://github.com/Aarogaming/aaroneous-devtools/pull/163) |
-| 02 | [Agent door and MCP adapter](02-agent-door-and-mcp.md) | [#164](https://github.com/Aarogaming/aaroneous-devtools/pull/164) |
-| 03 | [LAN roster, wire and domains](03-lan-roster-and-domains.md) | [#165](https://github.com/Aarogaming/aaroneous-devtools/pull/165) |
-| 04 | [Token optimization](04-token-optimization.md) | [#166](https://github.com/Aarogaming/aaroneous-devtools/pull/166) |
-| 05 | [Model profiles and prompt adaptation](05-model-profiles-and-prompt-adaptation.md) | [#167](https://github.com/Aarogaming/aaroneous-devtools/pull/167) |
-| 06 | [Brief compiler and packets](06-brief-compiler-and-packets.md) | [#168](https://github.com/Aarogaming/aaroneous-devtools/pull/168) |
-| 07 | [Guild workers, staff roles and inspection](07-guild-workers-staff-and-inspection.md) | [#169](https://github.com/Aarogaming/aaroneous-devtools/pull/169) |
-| 08 | [Roles, skill gating and earned trust](08-roles-skills-and-trust.md) | [#170](https://github.com/Aarogaming/aaroneous-devtools/pull/170) |
-| 09 | [Visualizer, exploration and digital twin](09-visualizer-exploration-and-twin.md) | [#171](https://github.com/Aarogaming/aaroneous-devtools/pull/171) |
-| 10 | [Native application, operations panel and reuse](10-native-app-operations-and-reuse.md) | [#172](https://github.com/Aarogaming/aaroneous-devtools/pull/172) |
-| 11 | [Hall host election and handoff](11-hall-host-election-and-handoff.md) | [#173](https://github.com/Aarogaming/aaroneous-devtools/pull/173) |
-| 12 | [Compliance with Aaroneous, thin base and thick frontier](12-compliance-and-graduation.md) | [#174](https://github.com/Aarogaming/aaroneous-devtools/pull/174) |
-| 13 | [Job-card schema, retrieval and plan graphs](13-card-schema-retrieval-and-plan-graphs.md) | [#176](https://github.com/Aarogaming/aaroneous-devtools/pull/176) |
-| 14 | [Operating review: gaps and bottlenecks](14-operating-review-gaps-and-bottlenecks.md) | [#177](https://github.com/Aarogaming/aaroneous-devtools/pull/177) |
-| 15 | [Red-team review](15-red-team-review.md) | [#181](https://github.com/Aarogaming/aaroneous-devtools/pull/181) |
-| 16 | [Rolling-window pipeline: critique, coverage and boundaries](16-rolling-window-critique-and-boundaries.md) | [#182](https://github.com/Aarogaming/aaroneous-devtools/pull/182) |
+| 01 | [Settings layers and the permission engine](https://github.com/Aarogaming/aaroneous-devtools/blob/8b2135e31d4dffea8bd3f5417320016ea04dccae/governance/proposals/hud/01-settings-and-permissions.md) | [#163](https://github.com/Aarogaming/aaroneous-devtools/pull/163) |
+| 02 | [Agent door and MCP adapter](https://github.com/Aarogaming/aaroneous-devtools/blob/4f2a0560a90be700025d92cced3243dc21863037/governance/proposals/hud/02-agent-door-and-mcp.md) | [#164](https://github.com/Aarogaming/aaroneous-devtools/pull/164) |
+| 03 | [LAN roster, wire and domains](https://github.com/Aarogaming/aaroneous-devtools/blob/713c9d9b938ba9e82070c147f202ad79d7f07cf4/governance/proposals/hud/03-lan-roster-and-domains.md) | [#165](https://github.com/Aarogaming/aaroneous-devtools/pull/165) |
+| 04 | [Token optimization](https://github.com/Aarogaming/aaroneous-devtools/blob/7d6cee08ad161622b933f2831f0b77bdf3801a79/governance/proposals/hud/04-token-optimization.md) | [#166](https://github.com/Aarogaming/aaroneous-devtools/pull/166) |
+| 05 | [Model profiles and prompt adaptation](https://github.com/Aarogaming/aaroneous-devtools/blob/72536d4302f7242aa6cdd339b96e33f6f15a0a34/governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md) | [#167](https://github.com/Aarogaming/aaroneous-devtools/pull/167) |
+| 06 | [Brief compiler and packets](https://github.com/Aarogaming/aaroneous-devtools/blob/13de7ae02c5f2128bf2b97845ad56395c5310150/governance/proposals/hud/06-brief-compiler-and-packets.md) | [#168](https://github.com/Aarogaming/aaroneous-devtools/pull/168) |
+| 07 | [Guild workers, staff roles and inspection](https://github.com/Aarogaming/aaroneous-devtools/blob/87454c9f8d6e819edcb7e17f94296f9e655a1940/governance/proposals/hud/07-guild-workers-staff-and-inspection.md) | [#169](https://github.com/Aarogaming/aaroneous-devtools/pull/169) |
+| 08 | [Roles, skill gating and earned trust](https://github.com/Aarogaming/aaroneous-devtools/blob/31eeffc031f9f6851be88a304e95eda958e91309/governance/proposals/hud/08-roles-skills-and-trust.md) | [#170](https://github.com/Aarogaming/aaroneous-devtools/pull/170) |
+| 09 | [Visualizer, exploration and digital twin](https://github.com/Aarogaming/aaroneous-devtools/blob/91c06b65bfb0753f4eea599ab08b4c464e2446ea/governance/proposals/hud/09-visualizer-exploration-and-twin.md) | [#171](https://github.com/Aarogaming/aaroneous-devtools/pull/171) |
+| 10 | [Native application, operations panel and reuse](https://github.com/Aarogaming/aaroneous-devtools/blob/d2746de804cda910f4aee3e11053b3cfe1da4f21/governance/proposals/hud/10-native-app-operations-and-reuse.md) | [#172](https://github.com/Aarogaming/aaroneous-devtools/pull/172) |
+| 11 | [Hall host election and handoff](https://github.com/Aarogaming/aaroneous-devtools/blob/588e4d655606d37a35977fbce29b9e7fb04037f7/governance/proposals/hud/11-hall-host-election-and-handoff.md) | [#173](https://github.com/Aarogaming/aaroneous-devtools/pull/173) |
+| 12 | [Compliance with Aaroneous, thin base and thick frontier](https://github.com/Aarogaming/aaroneous-devtools/blob/c322498185746a1273b33195f07acebe9bb6b9cf/governance/proposals/hud/12-compliance-and-graduation.md) | [#174](https://github.com/Aarogaming/aaroneous-devtools/pull/174) |
+| 13 | [Job-card schema, retrieval and plan graphs](https://github.com/Aarogaming/aaroneous-devtools/blob/28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161/governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md) | [#176](https://github.com/Aarogaming/aaroneous-devtools/pull/176) |
+| 14 | [Operating review: gaps and bottlenecks](https://github.com/Aarogaming/aaroneous-devtools/blob/2db5570dc924d396c94f3d6d83c5cd6099fa6880/governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md) | [#177](https://github.com/Aarogaming/aaroneous-devtools/pull/177) |
+| 15 | [Red-team review](https://github.com/Aarogaming/aaroneous-devtools/blob/1bbc65401f0a82241b71a5b58bc4836d43cb9f6e/governance/proposals/hud/15-red-team-review.md) | [#181](https://github.com/Aarogaming/aaroneous-devtools/pull/181) |
+| 16 | [Rolling-window pipeline: critique, coverage and boundaries](https://github.com/Aarogaming/aaroneous-devtools/blob/7ebb4f6fbf0366af9141b95ca8d16cbe5bea9c95/governance/proposals/hud/16-rolling-window-critique-and-boundaries.md) | [#182](https://github.com/Aarogaming/aaroneous-devtools/pull/182) |
 
 **Suggested review order:** 14 (where the system hurts today), 15 (what an attacker or a careless operator would do), 01, 02, 03 (foundations), 12 (how everything is built), then
 11 (hosting), 13 (cards, retrieval, plans), 06, 07, 08 (behaviour), 04, 05 (economy), and last 10, 09 (interface). Each document ends with a "Review focus" list, its own decisions and its own "Not verified" list.
@@ -109,7 +111,7 @@ on top, and the **machine-dependent models** we host tied to their machine as lo
 | Hosted models | the local model on each machine, served by Ollama, vLLM or LM Studio | bound to its machine and its sponsor seat; low permission |
 
 The user is the **guild manager**. The local model is the **staff** (secretary, organiser, bookkeeper, auditor, cleaner),
-taking work as job cards at its own level (see [07](07-guild-workers-staff-and-inspection.md)).
+taking work as job cards at its own level (see [07](https://github.com/Aarogaming/aaroneous-devtools/blob/87454c9f8d6e819edcb7e17f94296f9e655a1940/governance/proposals/hud/07-guild-workers-staff-and-inspection.md)).
 
 ## Design principles
 
@@ -123,10 +125,10 @@ taking work as job cards at its own level (see [07](07-guild-workers-staff-and-i
    from the product repo to the HUD.
 4. **Same authority rules for models and people.** A model pinging the HUD gets cards and may report results; it does not
    gain merge or review authority. Reviews and merges stay with the steward gate and signed attestations.
-5. **Silence on unchanged state.** Responses say "nothing new" in a few bytes (see [04](04-token-optimization.md)). Quiet is the cheapest answer.
+5. **Silence on unchanged state.** Responses say "nothing new" in a few bytes (see [04](https://github.com/Aarogaming/aaroneous-devtools/blob/7d6cee08ad161622b933f2831f0b77bdf3801a79/governance/proposals/hud/04-token-optimization.md)). Quiet is the cheapest answer.
 6. **Model reliance only ratchets down.** This is the Aaroneous ratchet applied to model use. Every step that calls a model names the programmatic
    step that comes first (a rule, a parser, a lookup, a compiler or type check, an audit), and the share of calls that reach the model is measured per task
-   type ([04](04-token-optimization.md)). A model step may be added only with its programmatic predecessor and a metric, and its share may fall but not rise
+   type ([04](https://github.com/Aarogaming/aaroneous-devtools/blob/7d6cee08ad161622b933f2831f0b77bdf3801a79/governance/proposals/hud/04-token-optimization.md)). A model step may be added only with its programmatic predecessor and a metric, and its share may fall but not rise
    without a recorded reason. A conversational survey is for what no repository, diff or metadata can answer, the person's goal, intent and taste, and never
    asks for what software can read. When something can be proven by a compiler or enforced by a type or an auditor rule, no model is asked.
 
@@ -187,7 +189,7 @@ address is in its invitation) and its topic-case workflow (`contracts/topic-case
   records dissent as dissent, turns the best falsifying experiments into proposals through the existing intake, and revises the
   document. Receipts of what the experiments found go back under the same topic.
 - **The refactoring plan runs beside this set.** The Codex seat's `rebasing-and-refactoring` family (board entries 83 to 92, with its consolidated plan in a comment on PR #177) moves devtools
-  onto a pinned Aaroneous base in stages S0 to S7 and prefers interchangeable micro crates. The HUD set is its devtools-side design; [12](12-compliance-and-graduation.md) maps the two, with measured
+  onto a pinned Aaroneous base in stages S0 to S7 and prefers interchangeable micro crates. The HUD set is its devtools-side design; [12](https://github.com/Aarogaming/aaroneous-devtools/blob/c322498185746a1273b33195f07acebe9bb6b9cf/governance/proposals/hud/12-compliance-and-graduation.md) maps the two, with measured
   duplication and a first-consumer probe, and the seat responses are on the board under that family's topic ids.
 - **No rebuild before synthesis.** The only code in flight is lane C120 (the settings engine, PRs #160 and #175). I propose
   no further code lane for this set until the topic it depends on has a synthesis; the owner can overrule.
