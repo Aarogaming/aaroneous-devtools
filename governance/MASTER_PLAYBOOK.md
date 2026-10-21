@@ -14,6 +14,7 @@ content hash. Refresh live claims, PR heads and task evidence independently.
 | Current claims, gates and handoff | [Canonical queue](COORDINATION_QUEUE.md), open claim/implementation PRs, [coordination protocol](CROSS_AGENT_COORDINATION_PROTOCOL.md) |
 | Priorities and capacity | [Multithread program](MULTITHREAD_PROGRAM.md); portfolio is not a Ready grant |
 | Devtools proving ground and server direction | [Constellation architecture](../architecture/CONSTELLATION_OPERATIONS.md), [maintenance delivery map](../architecture/MAINTENANCE_PROGRAM.md) |
+| Guild initialization and industrial qualification | [Staged plan](../architecture/GUILD_INITIALIZATION_PLAN.md), [2026-10-20 source/deployment comparison](../inventories/GUILD_READINESS_2026-10-20.md); proposed exits, not deployment certification or new authority |
 | Topics, refinement, consent, recycling and aging | [Proposed lifecycle v1](../contracts/constellation-lifecycle-v1.md); specified is not implemented |
 | Operational scope and support | [Maintenance system](MAINTENANCE_SYSTEM.md), [control plane](LOCAL_AGENT_CONTROL_PLANE.md), [worker service](LOCAL_WORKER_SERVICE.md), task's explicitly authorized route/register |
 
