@@ -245,6 +245,15 @@ The existing queue controls capacity. No new ongoing monitor/model loop is creat
 
 ## 8. Review decisions and adversarial critique
 
+Review boundary (2026-10-22):
+[Claude's acceptance of PR243 at acc8769d](https://github.com/Aarogaming/aaroneous-devtools/pull/243#issuecomment-6331860889)
+explicitly covers documentation/proposal status. Its reported contract reading
+covers sections 1 and 2; it does not record decisions on the items below or a
+deep review of sections 3-8. Preserve that acceptance as evidence for its stated
+scope, not as a contract freeze, runtime adoption or approval of a later head.
+The next independent review must address transition guards, qualification cases
+and each decision below explicitly before the implementation sequence starts.
+
 The owner has authorized preparing this groundwork, not bypassing independent
 review or enabling its runtime. Reviewers must record accept/revise/defer for:
 

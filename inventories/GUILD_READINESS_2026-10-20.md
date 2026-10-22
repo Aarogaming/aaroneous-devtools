@@ -141,11 +141,30 @@ claiming a defect fixed or changing production policy.
 | --- | --- | --- |
 | O01 | `foundation_cli/src/guild.rs::append_event_line` | Uses append, `flush`, then separate `fs::write` for tip sidecar; comment says atomic and caller says durable. Crash ordering, torn writes, disk-full behavior and recovery need explicit tests. Full log is read into memory; retention/backpressure bounds need assessment |
 | O02 | Same file: `run_tick`, `run_daemon` | Daemon takes a create-new lock file, direct tick does not use that lock. Verify concurrent entrypoints, stale lock recovery and single-writer fencing before unattended activation |
-| O03 | Same file: `run_tick`; `guild_collector.rs::run_git/run_gh_json` | Local `.guild_snapshot.json` is implicitly preferred; collector has Python fallback and subprocess `output()` calls. Qualify snapshot freshness/provenance, explicit dependency selection, deadlines, child cleanup and bounded output; do not call the entire adapter deterministic or Rust-only |
+| O03 | Same file: `run_tick`; `guild_collector.rs::run_git/run_gh_json` | `guild.rs::run_tick` implicitly prefers local `.guild_snapshot.json` and falls back to `scripts/collect_state.py` after native collector failure; `guild_collector.rs::run_git/run_gh_json` uses subprocess `output()` calls. Qualify snapshot freshness/provenance, explicit dependency selection, deadlines, child cleanup and bounded output; do not call the entire adapter deterministic or Rust-only |
 | O04 | `.github/workflows/foundation-ci.yml` / `foundation-ci-windows.yml` | Bridge runs Linux on PRs, Windows on main; platform policy requires Windows for Foundation changes. Do not present current pre-merge checks as paired native worker verification. Close the enforcement/deployment gap without weakening policy |
 | O05 | Local canonical queue versus main queue | Same short IDs have different contributions (for example C155/C156); stale Claimed rows coexist with merged implementations. Use full Contribution-ID plus repository/head, reconcile through owners, preserve original history. Do not renumber others silently |
 | O06 | Current governance navigation | `DEVTOOLS_STATUS.md`, `PERSISTENT_OPERATIONS.md`, maturity/application docs describe different dated schedules and prototype states. `PLATFORM_SPEC.md` remains a proposal while describing some desired enforcement in present tense. Label evidence dates and acceptance status; installed state is separate |
 | O07 | Product `docs/roadmap.md` versus product `AGENTS.md` | Roadmap still describes 11 gates and Clippy without `--all-targets`; current constitution lists expanded checks including security/semver and ratchets. Propose a product-owned documentation correction that links the canonical gate rather than maintaining another copied command list. This assessment does not edit product files |
+
+### Review follow-up - 2026-10-22
+
+O01 remains a historical observation at the devtools baseline pinned above.
+[PR242](https://github.com/Aarogaming/aaroneous-devtools/pull/242), inspected at
+`823ab2a53acc4554cfba186e6cc9344418e5787c` and still open at this follow-up,
+changes the append comment to state that the writes are not an atomic transaction
+and adds retained-checkpoint validation. That proposed correction addresses
+log loss against a retained checkpoint and checkpoint corruption/mismatch
+detection, not atomic commit, power-loss durability,
+single-writer fencing or bounded retention. Those qualification gaps remain;
+neither this annotation nor PR242's tests certify them closed. Refresh its merge
+and deployment state before using this dated assessment for a rollout decision.
+
+O03's location wording was corrected following
+[Claude's review of PR243](https://github.com/Aarogaming/aaroneous-devtools/pull/243#issuecomment-6331860889).
+The fallback belongs to `guild.rs::run_tick`, not the native collector module.
+This correction does not change the pinned behavior observation or qualify its
+subprocess lifecycle.
 
 ## Governing documents compared and disposition
 
