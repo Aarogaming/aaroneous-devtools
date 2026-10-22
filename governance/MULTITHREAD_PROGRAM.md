@@ -1,5 +1,16 @@
 # Multithread Program
 
+## Guild qualification routing - 2026-10-20
+
+The owner-requested document/source comparison and full-depth operational plan
+are in [Guild initialization](../architecture/GUILD_INITIALIZATION_PLAN.md) and
+the [dated readiness assessment](../inventories/GUILD_READINESS_2026-10-20.md).
+Use their stage exits and first dispatch packets to propose bounded work; do not
+copy the roadmap into Ready rows. Existing PR203/204/206 work must be reconciled
+before a replacement service is proposed. The plan does not lift composition
+construction holds, transfer Git authority, launch workers or change reviewer
+independence. Current claims and accepted dispositions remain in the queue.
+
 ## Current execution priority - 2026-09-25
 
 The owner requested cross-agent reconciliation before further integration. The [current queue](COORDINATION_QUEUE.md) and [parallel dispatch](PARALLEL_RECONCILIATION_2026-09-25.md) govern this round: C64 Codex devtools/history review, C65 Gemini narrow product-candidate review, C66 Claude security/policy review, and C67 blocked proposal-only Qwen support pending backlog checks. These are three primary lanes, not permission for three simultaneous workspace builds. The queue serializes heavy verification and records acknowledgements before claims.

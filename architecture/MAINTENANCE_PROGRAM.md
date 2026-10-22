@@ -13,6 +13,19 @@ the [proposed lifecycle v1](../contracts/constellation-lifecycle-v1.md); they ar
 not deployed features or replacements for current claim/review gates. Stabilize
 and tune in devtools before considering product graduation.
 
+## Guild qualification routing - 2026-10-20
+
+For the owner-requested full-depth Guild work, use the proposed
+[initialization and qualification sequence](GUILD_INITIALIZATION_PLAN.md) and its
+[dated evidence comparison](../inventories/GUILD_READINESS_2026-10-20.md).
+They map the milestones below into authority/contract reconciliation, durable
+coordination, Ubuntu-primary and Windows-native qualification, then a bounded
+end-to-end workflow. Later ingestion, GUI operation and product-backed presets
+depend on those exits. This is planning precedence for that program, not an
+accepted policy change, deployment claim or permission to skip existing review.
+The September observations below remain historical; live ownership stays in the
+queue and installed state requires a current deployment receipt.
+
 ## Brief repository review, 2026-09-16
 
 - Aaroneous is the Rust component framework, version 0.3.2. Its canonical verification is `cargo xtask gate`. Existing dirty product files belong to concurrent contributors and were not changed by this review.
