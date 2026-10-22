@@ -201,6 +201,10 @@ Rollback: documentation changes only; no service migration occurs in this stage.
 
 ### S1 — Freeze minimum operation, authority and failure contracts
 
+The [operation contract reconciliation proposal](../contracts/guild-operation-v1.md)
+maps existing records to missing operation-level rules, state ownership and
+22 qualification cases. It is specified only, not adopted or behavior-verified.
+
 Deliverables:
 
 - Map existing job authoring, queue claims, runtime leases, review and publication

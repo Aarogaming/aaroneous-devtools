@@ -5,3 +5,4 @@ A contract must describe its version, producer inputs, output fields, compatibil
 consumer expectations before a tool relies on it.
 
 - [Foundation Input Report v1](INPUT_REPORT_V1.md)
+- [Guild operation v1 reconciliation proposal](guild-operation-v1.md) - proposed ownership, lifecycle and acceptance cases; not an implemented wire format or authority grant.
