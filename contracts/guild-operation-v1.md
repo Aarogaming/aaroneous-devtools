@@ -276,3 +276,40 @@ cancellation could be dishonest, so it requires containment evidence; a shadow
 feature could silently take authority, so live effects stay disabled until a
 separate reviewed cutover. If the association adds no demonstrated value to the
 report-only pilot, revise or drop it rather than retaining redundant machinery.
+
+### Decision packet for the next independent review
+
+Author recommendations, 2026-10-22; **all decisions pending**. These are proposed
+answers to the five questions above, not accepted policy or a schema freeze.
+Review each against the pinned sources in section 1 and the full transitions and
+cases, not just the document's structure. A recommendation may be accepted in
+principle while its implementation gate remains closed.
+
+| Decision | Recommended direction and reason | Alternative / required exit evidence |
+| --- | --- | --- |
+| D01: association | Prefer a separate authenticated association of operation, intent revision, operation attempt, verification request, spool attempt and evidence digest. Preserve existing signed packet bytes and keep the coordinator outside candidate-controlled storage | Compare a versioned packet extension with an old/new-reader compatibility matrix. Reject a second mutable receipt. Require swapped-operation, swapped-attempt and altered-digest negative cases (OCV06-08/20); drop the association if it adds no demonstrated pilot value |
+| D02: representation | Freeze the semantic fields before selecting a signing codec. Require explicit version and domain separation; reject duplicate/unknown fields, ambiguous identifiers, integer overflow and oversize input before admission. Keep Base36 a display alias | Do not choose JSON formatting, canonical byte framing, namespace or numerical limits by implication. Reviewer must accept exact schema, byte-level golden vectors and field/total bounds, including cross-language integer behavior, before parser or signature implementation. Those artifacts are not supplied or approved here |
+| D03: pilot | Use private devtools, an explicit immutable revision and an existing trusted verification recipe as the candidate pilot. First consume retained evidence offline in shadow mode; later allow a separately approved report-only execution. Ubuntu is the proposed sole coordinator; Windows is a worker/client, never automatic fallback writer | No product rewrite, public-fork execution, model calls, recursive children, publication, integration or deployment. Propose one active operation and one attempt for the first execution trial. Policy owner must approve the exact recipe, principals, paths and numerical time/memory/process/output budgets; unset limits block dispatch. Report-only still executes code when a recipe runs and is not a sandbox guarantee |
+| D04: persistence | Keep verification claims/receipts in the existing spool. Keep operation-only facts under one logical writer with expected-revision checks; rebuild projections from retained authoritative facts. A cross-store association must not pretend to be one atomic transaction | Defer storage engine and commit protocol until a scoped design demonstrates crash boundaries, deduplication, writer exclusion and recoverable orphan associations. Require OCV05/14/16/17/21 on both native hosts before live effects. Neither hash chaining nor rename alone qualifies durability; no automatic lease takeover |
+| D05: completion | Preserve historical review evidence but derive current eligibility from exact intent, candidate, policy, suite, platform set and current authority. Report-only completion needs its admitted report/evidence criteria, not a PR; execution finished is not equivalent to accepted | A changed subject or revoked grant removes current eligibility without deleting the old review. Unknown required effects prevent successful completion. Reviewer must specify freshness/revocation behavior and the report-only acceptance requirement; mutation remains separately gated (OCV06/09/10/12/15) |
+
+### Counterexamples to resolve before reducer fixtures
+
+These are author-discovered specification gaps, not reproduced implementation
+failures. The transition table above is unchanged pending independent disposition.
+The suggested resolutions below must be reconciled into that table before it
+can serve as an executable oracle; do not implement both as competing rules.
+
+| Gap | Minimal trace exposing ambiguity | Proposed resolution for review |
+| --- | --- | --- |
+| Pause/resume destination | T04 starts an attempt, T06 pauses it after quiescence, then T07 revalidates; T07 does not say whether the attempt resumes or a new one starts | Record the suspended attempt and whether its executor is resumable. Resume that same attempt to active only with proof of retained ownership and quiescence. Otherwise reconcile and close it before a fresh attempt; no implicit re-execution. Paused-before-attempt returns to admitted |
+| Block/retry ownership | T05 blocks an active attempt; T04 permits beginning from blocked, while T13 also allocates retry attempts | A blocked phase alone must never authorize a second unresolved attempt. Require final disposition and writer/effect exclusion first. Have one attempt-allocation transition used by both initial start and retry, with T13 supplying retry-specific guards and an explicit destination |
+| Cancel before execution | T08 permits cancelling proposed/admitted work with no attempt; T09 says finalize cancelled without naming which record owns that disposition | Finish the operation with an operation-level cancellation reason and no fabricated attempt/receipt. Keep attempt disposition absent when none existed; separately specify operation finalization fields in D02 |
+| Revocation after acceptance | T14 records accepted; T16 finishes execution; later the accepting authority is revoked before any publication request | Historical acceptance remains auditable, but current eligibility becomes withheld on re-evaluation. No execution restart and no effect based on the old accepted label. Specify a revision-bound eligibility query or invalidation event rather than silently overwriting the signed decision |
+
+Review handoff: record the reviewed full head, reviewer independence, a separate
+accept/revise/defer for D01-D05, and a disposition for each counterexample. Name
+remaining evidence and its owner rather than treating silence as acceptance.
+A defer keeps the affected implementation gate closed. Once these dispositions
+are reconciled and independently accepted, claim the schema/golden-fixture slice
+under section 7; until then, no parser, reducer or service activation is cleared.
