@@ -1,7 +1,7 @@
 # Guild operation v1: contract reconciliation proposal
 
-Status: **PROPOSED, NOT IMPLEMENTED, NOT ADOPTED**. Semantic design revision 1,
-2026-10-22 UTC; continuation of `C158/codex-guild-blueprint-v1`.
+Status: **PROPOSED, NOT IMPLEMENTED, NOT ADOPTED**. Semantic design revision 2,
+2026-10-23 UTC; continuation of `C158/codex-guild-blueprint-v1`.
 This is not a wire schema, authority grant, new queue, or deployment instruction.
 Independent review must settle the decisions in section 8 before implementation.
 
@@ -78,6 +78,13 @@ adapter uses an authenticated, versioned association record outside candidate
 storage; its serialization/signature namespace must be reviewed before coding.
 An operation ID supplied by a worker cannot create that association.
 
+The proposed association signer is a registered coordinator principal. Its key,
+role, allowed repositories and revocation state must come from the policy-owner
+approved trust registry supplied to the verifier, never from candidate storage
+or the association itself. Actual enrollment, key identity and signature
+namespace remain unapproved deployment/schema inputs; no identity is created
+by this proposal.
+
 ## 3. Independent state dimensions
 
 Avoid a single enum that treats verified, approved, merged and deployed as
@@ -100,6 +107,23 @@ Overall success requires the admitted acceptance contract and all required
 effects confirmed, not merely `execution=finished`. Show the relevant pending
 or unknown dimension in the UI instead of a misleading green summary.
 
+Current effect eligibility is a pure function of the exact subject (including
+intent, head/base, suite and platforms), policy, current authority set and
+explicit time, using authenticated evidence references as supplied inputs.
+It is evaluated at every effect dispatch and never persisted as an eligibility
+boolean on an acceptance record. Historical acceptance remains immutable.
+The dispatch adapter must bind the evaluated revisions to its dispatch boundary;
+an intervening revocation/change requires another evaluation or a hold.
+If that ordering cannot be established, it must not dispatch.
+
+For the report-only pilot, admission must name a policy-owner-authorized report
+reviewer principal, independent of the implementer/producer under existing review
+rules, and the exact report/evidence criteria. That reviewer signs a decision
+bound to operation, intent revision, artifact digest and policy; the coordinator
+only records its reference. Missing identity, signature format or criteria blocks
+admission. No PR is required, but neither the worker nor an exit code accepts its
+own report. Selecting the actual principal/format remains a review prerequisite.
+
 ### Transition guards
 
 These proposed transitions require authenticated actors, expected state revision,
@@ -109,22 +133,66 @@ retained without granting permission to act on it.
 
 | ID | Event / source phase | Guard and result |
 | --- | --- | --- |
-| T01 | Submit / no operation | Validate bounded intent and deduplication key; record proposed, no execution |
-| T02 | Admit / proposed | Existing issuer authority, scope, acceptance, policy and budget valid; freeze intent, enter admitted |
+| T01 | Submit / no operation | Validate bounded intent and deduplication key; enter proposed, no execution |
+| T02 | Admit / proposed | Existing issuer authority, scope, named acceptance authority, policy and budget valid; freeze intent, enter admitted |
 | T03 | Reject / proposed | Record reasons and requester identity; enter rejected without candidate mutation |
-| T04 | Begin attempt / admitted or blocked | Blocker resolved, reservations available, no unresolved prior writer/effect; allocate attempt and enter active |
-| T05 | Block / admitted or active | Retain cause/evidence and next permitted action; stop further dispatch; any active effect must be stopped or fenced before releasing its reservation |
-| T06 | Pause request / admitted or active | Prevent new effects immediately; enter paused only after workers acknowledge quiescence or are fenced; otherwise use cancelling/reconciling as appropriate |
-| T07 | Resume / paused or blocked | Revalidate intent, head, policy, grant, budget and worker state; no replay of old effects or resetting spent cost |
-| T08 | Cancel request / nonterminal execution | Enter cancelling, revoke further dispatch; retain reservations until descendant/effect outcomes are known or safely fenced |
-| T09 | Cancel acknowledged / cancelling | Confirm stopped/fenced workers and reconciled effects; finalize cancelled and finish; unknown remote outcomes require reconciling instead |
-| T10 | Worker result / active | Authenticate full subject and current request/node/attempt; retain valid evidence; finalize attempt only when all required work/effects are resolved |
-| T11 | Timeout/disconnect/crash / active or cancelling | Preserve evidence, block new conflicting work, enter reconciling if an effect might have happened; lack of acknowledgement is not proof of failure |
-| T12 | Reconcile / reconciling | Authorized operator/adapter proves external outcome and writer exclusion; append resolution before any retry or disposition |
-| T13 | Retry / resolved failed or abandoned attempt | Record changed hypothesis or eligible transient cause, remaining aggregate budget, new attempt and fresh grant checks; retain prior evidence |
-| T14 | Independent judgment / artifact ready | Existing review authority evaluates exact subject and independence; update acceptance reference only, never auto-publish |
-| T15 | Publish/integrate/deploy / independently eligible subject | Separately scoped grant, unchanged subject, required gates and effect-specific concurrency control; persist intent before dispatch, reconcile unknown result |
-| T16 | Finish / resolved work | All required attempt outcomes and effects resolved; record final disposition and outstanding acceptance dimension; no hidden live descendants |
+| T04 | Begin attempt / admitted or blocked | Initial attempt only; blocker resolved, no previous attempt or unresolved writer/effect, reservations available. Use the sole allocation operation below; enter active |
+| T05 | Block / admitted or active | Enter blocked, retain cause/evidence and reservations, stop new dispatch; active effects must be stopped/fenced before reservation release |
+| T06 | Pause request / admitted or active | Stop new dispatch and record pause pending. If no open attempt/effect/reservation, or retained executor is provably quiescent and resumable with all effects known, enter paused; otherwise enter reconciling without releasing unknown resources |
+| T07 | Resume / paused or blocked | Require no cancel pending; revalidate subject, policy, authority, budget and resolved blocker. Successful resume clears pause pending. No open attempt or unresolved effect/reservation: enter admitted. Retained open attempt with proven resumable quiescence/ownership: resume same attempt and enter active. Otherwise reject; T11 is the recovery route. Never allocate an attempt here |
+| T08 | Cancel request / proposed, admitted, active, blocked, paused, cancelling or reconciling | Stop dispatch; record cancel pending (takes precedence over pause). No open attempt/effect/reservation: enter finished with operation cancellation reason, no fabricated attempt. Unknown effects: enter reconciling. Otherwise enter cancelling and retain resources |
+| T09 | Cancel acknowledged / cancelling | Unknown outcome: enter reconciling. Otherwise require all workers stopped/fenced and effects reconciled; settle reservations, finalize any open attempt cancelled, enter finished with operation cancellation reason. Preserve already-final dispositions |
+| T10 | Worker result / active | Authenticate full subject and current request/node/attempt; retain evidence, remain active. Finalize attempt only when all required work/effects are resolved; T16 separately finishes execution |
+| T11 | Timeout/disconnect/crash / active, blocked, paused or cancelling | Enter reconciling, preserve evidence and reservations, block conflicting work. Lack of acknowledgement never proves failure |
+| T12 | Reconcile / reconciling | Require proved outcomes and writer exclusion, or proved resumable quiescence under retained ownership. Append resolution and settle only known resources. Cancel pending: enter cancelling. Otherwise pause pending: enter paused only with no open attempt or a proven resumable one and no unknown effects. Otherwise enter blocked. Nonresumable open attempts require an evidence-bound final disposition before leaving reconciliation |
+| T13 | Retry / admitted or blocked | Prior attempt final failed/abandoned; no open attempt or unresolved writer/effect; changed hypothesis or eligible transient cause, remaining aggregate budget, fresh authority checks. Use T04's sole allocation operation and enter active; no reset of history/cost |
+| T14 | Independent judgment / active, blocked, paused or finished | Require artifact-ready authenticated evidence; named review authority evaluates exact subject and independence; append acceptance reference, retain source execution phase. Never auto-publish or cache eligibility on the acceptance record |
+| T15 | Publish/integrate/deploy / active | Scoped grant, unchanged subject, required gates, reserved effect resources and concurrency control; persist intent, remain active. Immediately before dispatch re-evaluate pure eligibility and current execution/cancel state. Denial withdraws an undispatched intent without calling target. Unknown already-dispatched outcome uses T11/T12 |
+| T16 | Finish / active or blocked | Require at least one attempt, all attempts final, effects resolved, reservations settled and no live descendants; enter finished with operation-level reason and separate acceptance references. Missing required confirmation cannot produce success |
+
+### Invariants and complete phase/event coverage
+
+Every committed transition must preserve at most one attempt without a final
+disposition per operation, monotonically increasing state/attempt revisions,
+retained settled cost and outstanding reservations, and no dispatch after a
+pause/cancel hold. Failed guards leave authoritative state unchanged. T04 and
+T13 invoke one allocation operation: atomically check expected revision, absence
+of an open attempt, writer/effect exclusion and available budget, then reserve
+and allocate exactly one attempt. T13 adds retry guards, not another allocator.
+Admission creates no execution reservation; acquisition starts at allocation.
+
+An operation finalization reason is separate from attempt disposition. Cancelling
+before any attempt/reservation/effect exists finishes directly; it creates no
+attempt, receipt or imaginary resource release. Cancellation of completed work
+does not rewrite that work's historical result. Pause/cancel intent and retained
+executor ownership must be explicit state, not inferred from the phase label.
+
+The matrix covers all 160 pairs of ten source states (including no operation)
+and sixteen events. G means apply that transition's guards and named destination;
+R means explicit rejection without state change. A failed G guard also rejects.
+Unknown events/phases reject. Duplicate submission is resolved by intake
+deduplication before this matrix: identical intent returns the existing handle
+without emitting T01 again; conflicting intent rejects. Late evidence outside
+T10's active phase may be retained as historical evidence but cannot mutate
+execution state. T14 in finished changes review references only, not final work.
+
+| Phase | T01 | T02 | T03 | T04 | T05 | T06 | T07 | T08 | T09 | T10 | T11 | T12 | T13 | T14 | T15 | T16 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| none | G | R | R | R | R | R | R | R | R | R | R | R | R | R | R | R |
+| proposed | R | G | G | R | R | R | R | G | R | R | R | R | R | R | R | R |
+| admitted | R | R | R | G | G | G | R | G | R | R | R | R | G | R | R | R |
+| active | R | R | R | R | G | G | R | G | R | G | G | R | R | G | G | G |
+| blocked | R | R | R | G | R | R | G | G | R | R | G | R | G | G | R | G |
+| paused | R | R | R | R | R | R | G | G | R | R | G | R | R | G | R | R |
+| cancelling | R | R | R | R | R | R | R | G | G | R | G | R | R | R | R | R |
+| reconciling | R | R | R | R | R | R | R | G | R | R | R | G | R | R | R | R |
+| finished | R | R | R | R | R | R | R | R | R | R | R | R | R | G | R | R |
+| rejected | R | R | R | R | R | R | R | R | R | R | R | R | R | R | R | R |
+
+This is a proposed specification matrix, not an executed reducer test. After
+independent acceptance, generate the first reducer fixture from all pairs, then
+test both passing and failing guards and every conditional destination. Matrix
+coverage alone does not prove guard exclusivity, runtime totality or safety.
 
 Scope conflicts are checked on actual canonical resources, not just spelling of
 paths. Aliases/symlinks, shared output directories and branch/ref writers must not
@@ -161,6 +229,12 @@ receipt before retrying. A matching observed effect confirms the existing intent
 a conflicting or unknowable result stays in reconciliation. This is not a claim
 of exactly-once delivery. Replaying recorded events rebuilds state but must never
 repeat external calls automatically.
+
+Revoking acceptance authority after intent persistence but before dispatch must
+withdraw the undispatched intent and deny the call. If dispatch may already have
+occurred, retain an unknown outcome and reconcile through T11/T12 rather than
+claiming withdrawal undid it. Execution-grant revocation and acceptance-authority
+revocation are distinct inputs to the same dispatch eligibility decision.
 
 ## 5. Enforcement ownership and qualification cases
 
@@ -200,6 +274,10 @@ the specification's structure, not any behavior below.
 | OCV20 | Legacy receipt with no authenticated operation association | Inspect/import as historical evidence only; no new authorization | Migration adapter |
 | OCV21 | Replay after cancellation or projection deletion | Rebuilt state matches authoritative events; zero external redispatch | Replay/projection |
 | OCV22 | Two authorized operators hand off on different hosts | Successor can identify exact state, evidence, budget and next permitted step without chat history | End-to-end handoff |
+| OCV23 | Pause/resume and block/resume, with no attempt, resumable attempt or uncertain executor; reconciliation with pause/cancel pending | Explicit T07/T12 destination; same attempt resumes only with ownership/quiescence proof; unknown work never implicitly re-executes | Reducer/recovery |
+| OCV24 | T04/T13 compete while an attempt is open, then retry after final disposition | Every committed transition preserves at most one unfinished attempt; one allocation operation, monotonic identity and retained cost | Reducer/store |
+| OCV25 | Cancel proposed/admitted work before allocation, and cancel with reserved or unknown work | Empty work finishes directly with operation reason and no fabricated attempt; reserved work cancels/reconciles before release | Reducer/accounting |
+| OCV26 | Acceptance authority revoked between persisted intent and dispatch, or after dispatch with lost acknowledgement | Re-evaluate eligibility with explicit time/current authority; deny and withdraw only undispatched intent; otherwise reconcile; retain historical acceptance | Pure eligibility/effect adapter |
 
 ## 6. Compatibility and recovery
 
@@ -231,7 +309,9 @@ Round Table is an alternate coordinator.
    Preserve current signed protocols; choose serialization and version negotiation
    deliberately before a parser or a signing namespace becomes public behavior.
 2. Implement a pure operation reducer and bounded reservation rules in the existing
-   policy boundary with OCV01-13/19 fixtures; no file, process or network effects.
+   policy boundary with OCV01-13/19/23-26 fixtures; begin with all 160 phase/event
+   pairs, guard failures and conditional destinations; no file, process or
+   network effects. Adapter fault qualification for these cases remains separate.
 3. Bind one report-only operation to existing request/receipt evidence in shadow
    mode. Reject legacy ambiguity and altered subjects; do not fork receipt writers.
 4. Qualify durable single-writer storage, cancellation and outbox adapters with
@@ -251,8 +331,23 @@ explicitly covers documentation/proposal status. Its reported contract reading
 covers sections 1 and 2; it does not record decisions on the items below or a
 deep review of sections 3-8. Preserve that acceptance as evidence for its stated
 scope, not as a contract freeze, runtime adoption or approval of a later head.
-The next independent review must address transition guards, qualification cases
-and each decision below explicitly before the implementation sequence starts.
+Subsequent [Claude delta review at c83161bd](https://github.com/Aarogaming/aaroneous-devtools/pull/243#issuecomment-6345051894)
+read sections 3-8, accepted documentation, and supplied design dispositions:
+D01 accepted in principle; D02 sequencing accepted, codec deferred; D03 shadow
+accepted, execution deferred; D04 direction accepted, engine/protocol deferred;
+D05 requires revision. One independent family is not final design approval.
+This revision responds with explicit transition destinations, global invariants,
+the 160-pair matrix, OCV23-26, association trust and report-review ownership,
+and dispatch-time pure eligibility. These changes need fresh independent review
+and a second independent family before the schema slice is claimed.
+
+D02 exit evidence must compare reuse/extension of the existing strict
+`steward/src/wire.rs` codec against a separate versioned association codec;
+show why the existing codec cannot carry the required facts unchanged before
+choosing another. Do not broaden existing v1 readers or signatures.
+D04's storage design must assess reuse of PR242's checkpoint validation and
+negative cases within the proper ownership boundary, not invent a parallel
+validation policy or equate its current tests with power-loss qualification.
 
 The owner has authorized preparing this groundwork, not bypassing independent
 review or enabling its runtime. Reviewers must record accept/revise/defer for:
@@ -279,7 +374,7 @@ report-only pilot, revise or drop it rather than retaining redundant machinery.
 
 ### Decision packet for the next independent review
 
-Author recommendations, 2026-10-22; **all decisions pending**. These are proposed
+Author recommendations, 2026-10-22; **final decisions pending**. These are proposed
 answers to the five questions above, not accepted policy or a schema freeze.
 Review each against the pinned sources in section 1 and the full transitions and
 cases, not just the document's structure. A recommendation may be accepted in
@@ -295,10 +390,11 @@ principle while its implementation gate remains closed.
 
 ### Counterexamples to resolve before reducer fixtures
 
-These are author-discovered specification gaps, not reproduced implementation
-failures. The transition table above is unchanged pending independent disposition.
-The suggested resolutions below must be reconciled into that table before it
-can serve as an executable oracle; do not implement both as competing rules.
+These are historical author-discovered specification gaps, not reproduced
+implementation failures. Revision 2 incorporates proposed resolutions and
+Claude's refinements into sections 2-4 and OCV23-26. The traces below preserve
+the review rationale; the revised transition table is the single proposed rule
+source, not this historical summary. Neither is independently frozen yet.
 
 | Gap | Minimal trace exposing ambiguity | Proposed resolution for review |
 | --- | --- | --- |
