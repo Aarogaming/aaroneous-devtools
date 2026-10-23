@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/devtools_ops",
     "crates/foundation_cli",
+    "crates/hud_core",
     "crates/maintenance_ui",
     "crates/steward",
 ]
