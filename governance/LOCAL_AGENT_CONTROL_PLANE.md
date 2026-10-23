@@ -4,6 +4,12 @@ The scheduler is deterministic. A local model may analyze bounded evidence and r
 but it cannot claim work, edit either repository, invoke a shell, alter a schedule, or decide that
 verification passed. The integration owner makes each claim after reviewing the proposal.
 
+Within the Foundry transition, this is the non-negotiable model boundary:
+the software control plane validates reservations, proposal shape, patch digest,
+gate records and reviewer separation; the model supplies only bounded proposal
+content. See [Foundry control transition](../architecture/FOUNDRY_CONTROL_TRANSITION.md)
+for the state model and adoption sequence.
+
 [`LOCAL_MODEL_AUTONOMY_POLICY.md`](LOCAL_MODEL_AUTONOMY_POLICY.md) builds on this: the tiered
 escalation ladder (high-risk allowlist, circuit breaker, when a cloud agent takes over from the
 local model, why auto-merge isn't authorized yet) and the adaptive-pacing principle behind

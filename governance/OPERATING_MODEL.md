@@ -98,6 +98,39 @@ metrics document.
 
 Prefer deterministic software for inventories, checks, parsing, deduplication, scheduling and bookkeeping. Use models for bounded interpretation and drafting. Reuse Git for branches, worktrees, diffs and history; do not implement competing version control. Local services do not automatically reproduce cloud CI or web research.
 
+## Foundry transition boundary
+
+The Foundry is the controlled devtools operator around a selected Aaroneous
+revision, not a second product runtime. It coordinates reservations, evidence,
+virtual patch sets, isolated worktrees, declared gates and review handoffs.
+Aaroneous continues to own product contracts, policy and native verification.
+The binding component map, state model and staged transition are in
+[the Foundry control transition](../architecture/FOUNDRY_CONTROL_TRANSITION.md).
+Until a transition increment is independently accepted, existing worker and
+scheduler components remain the maintained behavior; no new looping service is
+introduced merely by this documentation.
+
+Active coordination conflicts use the bounded
+[round-table decision board](ROUND_TABLE_DECISIONS.md), not an unstructured
+chat transcript or a second work queue.
+
+## Gap-to-lane rule
+
+Perception precedes design. A verified gap in a maintained boundary, service,
+policy, gate, or implementation is not a loose observation: before proposing
+replacement architecture or calling the work complete, record it in the
+[Foundry gap register](FOUNDRY_GAP_REGISTER.md) with source evidence and one
+of these dispositions: a bounded Ready corrective lane, an active claimed
+lane, a blocked dependency with its owner decision, or an explicit rejection.
+The register points to the queue; it never grants a claim itself. A lane that
+changes a reviewed boundary updates the register and its evidence in the same
+handoff. The required policy check for this loop is C83.
+
+The operational form of this rule is the
+[Evidence-First Living Operations standard](EVIDENCE_FIRST_LIVING_OPERATIONS.md).
+It applies to product code, capability/API contracts, verification gates,
+local-model operations, service procedures and governance itself.
+
 ## Daily operation and maintenance
 
 Start by checking repository state, running-service health and pending review debt. Review existing results before adding more jobs. Schedule only useful evidence-backed work; idle is a valid healthy state. Pause on missing tools, unavailable local models or spending limits rather than spinning indefinitely.
