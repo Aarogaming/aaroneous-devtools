@@ -1,0 +1,1229 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "foundation.topic-case",
+  "parent_digest": null,
+  "events": [
+    {
+      "id": "event-1",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-v2",
+          "parent": null,
+          "title": "HUD v2 and the guild hall",
+          "question": "How should the 127.0.0.1 HUD grow into the configurable, local-first operating surface for people and models, and how should the guild-hall operating model, hosting and compliance be built on Aaroneous before any rebuild starts?",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "guild-hall",
+            "proposal-set"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/README.md",
+              "revision": "c28aacd27d8e4f90ca3428d52aea29ecdcd2647a"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-2",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-01-settings-and-permissions",
+          "parent": "hud-v2",
+          "title": "Settings layers and the permission engine",
+          "question": "Layered settings and a permission engine so every behaviour is configuration and the default is read-only",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-01",
+            "pr-163"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/01-settings-and-permissions.md",
+              "revision": "8b2135e31d4dffea8bd3f5417320016ea04dccae"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-3",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-02-agent-door-and-mcp",
+          "parent": "hud-v2",
+          "title": "Agent door and MCP adapter",
+          "question": "A transport-free HUD core with an MCP adapter and a read-first agent API so models ping the hall for cards, work and availability",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-02",
+            "pr-164"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/02-agent-door-and-mcp.md",
+              "revision": "4f2a0560a90be700025d92cced3243dc21863037"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-4",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-03-lan-roster-and-domains",
+          "parent": "hud-v2",
+          "title": "LAN roster, wire and domains",
+          "question": "Run the hall on the local network with a roster of seats, guild workers and instances, and one hall per repository and machine",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-03",
+            "pr-165"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/03-lan-roster-and-domains.md",
+              "revision": "713c9d9b938ba9e82070c147f202ad79d7f07cf4"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-5",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-04-token-optimization",
+          "parent": "hud-v2",
+          "title": "Token optimization",
+          "question": "Cut token cost with tiered routing, content-addressed packs, conditional responses, caches and measured dense handles",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-04",
+            "pr-166"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/04-token-optimization.md",
+              "revision": "7d6cee08ad161622b933f2831f0b77bdf3801a79"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-6",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-05-model-profiles-and-prompt-adaptation",
+          "parent": "hud-v2",
+          "title": "Model profiles and prompt adaptation",
+          "question": "Per-model prompt profiles and adapters, chosen by measurement and reviewed as files",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-05",
+            "pr-167"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md",
+              "revision": "72536d4302f7242aa6cdd339b96e33f6f15a0a34"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-7",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-06-brief-compiler-and-packets",
+          "parent": "hud-v2",
+          "title": "Brief compiler and packets",
+          "question": "Turn an inquiry into a typed job and a survey into a pre-built brief that compiles deterministically into one background prompt",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-06",
+            "pr-168"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/06-brief-compiler-and-packets.md",
+              "revision": "13de7ae02c5f2128bf2b97845ad56395c5310150"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-8",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-07-guild-workers-staff-and-inspection",
+          "parent": "hud-v2",
+          "title": "Guild workers, staff roles and inspection",
+          "question": "Local models as advisory guild workers on a low-permission queue, staff roles as job cards, and inspection access",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-07",
+            "pr-169"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/07-guild-workers-staff-and-inspection.md",
+              "revision": "87454c9f8d6e819edcb7e17f94296f9e655a1940"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-9",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-08-roles-skills-and-trust",
+          "parent": "hud-v2",
+          "title": "Roles, skill gating and earned trust",
+          "question": "Roles, a taste-versus-correctness boundary, skill-gated delegation and trust earned from reviewed outcomes",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-08",
+            "pr-170"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/08-roles-skills-and-trust.md",
+              "revision": "31eeffc031f9f6851be88a304e95eda958e91309"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-10",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-09-visualizer-exploration-and-twin",
+          "parent": "hud-v2",
+          "title": "Visualizer, exploration and digital twin",
+          "question": "A 3D analogy-reference view, a light exploration layer, and a staged digital twin built from the owner's stated preferences",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-09",
+            "pr-171"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/09-visualizer-exploration-and-twin.md",
+              "revision": "91c06b65bfb0753f4eea599ab08b4c464e2446ea"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-11",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-10-native-app-operations-and-reuse",
+          "parent": "hud-v2",
+          "title": "Native application, operations panel and reuse",
+          "question": "A standard native Rust application embedding the core, an operations panel over Guild, and reuse of other Rust tools behind workspace traits",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-10",
+            "pr-172"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/10-native-app-operations-and-reuse.md",
+              "revision": "d2746de804cda910f4aee3e11053b3cfe1da4f21"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-12",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-11-hall-host-election-and-handoff",
+          "parent": "hud-v2",
+          "title": "Hall host election and handoff",
+          "question": "Let the most capable qualified machine host the hall, first by owner-pinned single-host leadership and manual fenced handoff, and only later by unattended failover once a durable fencing authority exists",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-11",
+            "pr-173"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-13",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-12-compliance-and-graduation",
+          "parent": "hud-v2",
+          "title": "Compliance with Aaroneous, a thin base and a thick frontier",
+          "question": "Build devtools modularly and Aaroneous-compliant by construction, with a thin stable base and a thick frontier, so proven components can graduate into Aaroneous",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-12",
+            "pr-174"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/12-compliance-and-graduation.md",
+              "revision": "c322498185746a1273b33195f07acebe9bb6b9cf"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-14",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "parent": "hud-v2",
+          "title": "Job-card schema, retrieval and plan graphs",
+          "question": "One job-card schema (card, record, evidence tiers), a retrieval order for context packs, and a validated plan graph for work that decomposes",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-13",
+            "pr-176"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-15",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-14-operating-review-gaps-and-bottlenecks",
+          "parent": "hud-v2",
+          "title": "Operating review: gaps and bottlenecks",
+          "question": "An operating review of the tasking, scheduling and delegation system: measured bottlenecks, missing components, time and tick design, departments, internal affairs, and how much model-driven work software can take over",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-14",
+            "pr-177"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-16",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-15-red-team-review",
+          "parent": "hud-v2",
+          "title": "Red-team review",
+          "question": "An adversarial review of the Round Table topics, the review and merge machinery, and the HUD proposals, with reproduced findings, severities and the fixes that already landed",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-15",
+            "pr-181"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/15-red-team-review.md",
+              "revision": "41b8b1419f28d54cb341e2124a0eadc4c184eb05"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-17",
+      "event": {
+        "type": "topic",
+        "topic": {
+          "id": "hud-16-rolling-window-critique-and-boundaries",
+          "parent": "hud-v2",
+          "title": "Rolling-window pipeline: critique, coverage and boundaries",
+          "question": "A critic's review of the rolling-window pipeline proposal, a map of what the existing pipeline already covers and where it does not, and the boundaries to hold while devtools is rebased onto Aaroneous",
+          "owner": "claude-seat-proposal",
+          "tags": [
+            "hud",
+            "proposal-16",
+            "pr-182"
+          ],
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/16-rolling-window-critique-and-boundaries.md",
+              "revision": "708ca1782c6061dbddca0fb5c0a51b9c5c81591d"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-18",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-01",
+          "topic": "hud-01-settings-and-permissions",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 01 (PR #163). Layered settings and a permission engine so every behaviour is configuration and the default is read-only. Review questions: Are the layers, locks and fail-safe reload the right shape, and is the precedence unambiguous? | Does deny-beats-ask-beats-allow, with an unmatched write refused in `read-only`, match the intent \"model it after your own default settings\"? | Is the floor (merge, push, review, attest) correctly placed in code and kept out of settings? | Is the `auto` gate (user layer only) strong enough? | The code for the first step is in lane C120 (`foundation/crates/hud_core`, contract `contracts/hud-settings-v1.md`); review that separately.",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/01-settings-and-permissions.md",
+              "revision": "8b2135e31d4dffea8bd3f5417320016ea04dccae"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-19",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-02",
+          "topic": "hud-02-agent-door-and-mcp",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 02 (PR #164). A transport-free HUD core with an MCP adapter and a read-first agent API so models ping the hall for cards, work and availability. Review questions: Is one core with several adapters (MCP, loopback HTTP, in-process) the right split? | Is the read-first agent API (card, work, availability, events, result) the right set, with `ETag`/304 and sequence-numbered events? | Are the security properties (separate human and agent doors, hashed per-seat tokens, body caps, data-not-instructions) sufficient? | Does folding the registrar's five MCP tools into core operations beat running two servers?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/02-agent-door-and-mcp.md",
+              "revision": "4f2a0560a90be700025d92cced3243dc21863037"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-20",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-03",
+          "topic": "hud-03-lan-roster-and-domains",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 03 (PR #165). Run the hall on the local network with a roster of seats, guild workers and instances, and one hall per repository and machine. Review questions: Is the operator-versus-instance split right, and is the roster in the table correct? | Is pull-and-heartbeat with hall-clock leases a sound way to handle two machines? | Are the wire requirements (named bind address, encrypted path, accepted Host list, per-instance hashed tokens) enough for a LAN? | Does the domain and crossplay arrangement keep the dependency direction (devtools on Aaroneous, never the reverse) and the product's gate intact?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/03-lan-roster-and-domains.md",
+              "revision": "713c9d9b938ba9e82070c147f202ad79d7f07cf4"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-21",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-04",
+          "topic": "hud-04-token-optimization",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 04 (PR #166). Cut token cost with tiered routing, content-addressed packs, conditional responses, caches and measured dense handles. Review questions: Is the ranking of the techniques sensible, and is accounting (item 8) the precondition for claiming any saving? | Is the dense-handle policy (measured per backend, opaque handles only, plain text where the model must read) the right use of the base-encoding idea? | Re-run Appendix A on another tokenizer if you have one; the finding depends on how a tokenizer splits digits.",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/04-token-optimization.md",
+              "revision": "7d6cee08ad161622b933f2831f0b77bdf3801a79"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-22",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-05",
+          "topic": "hud-05-model-profiles-and-prompt-adaptation",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 05 (PR #167). Per-model prompt profiles and adapters, chosen by measurement and reviewed as files. Review questions: Is moving per-model knowledge (such as the calibrated system prompt for Qwen) into data and a pure adapter the right design? | Do the guardrails (wording, format and parameters only; round-trip check that every confirmed slot reaches the prompt) hold? | Is tuning on one split and confirming on a held-out split enough to avoid overfitting the test?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md",
+              "revision": "72536d4302f7242aa6cdd339b96e33f6f15a0a34"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-23",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-06",
+          "topic": "hud-06-brief-compiler-and-packets",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 06 (PR #168). Turn an inquiry into a typed job and a survey into a pre-built brief that compiles deterministically into one background prompt. Review questions: Is \"the light model never writes the final prompt; it fills slots, software compiles\" the right division? | Are the slot states (`empty`, `derived`, `proposed`, `confirmed`, `unverified`) and the completeness gate enough to keep a wrong guess from slipping through? | Does this extend the C106 intake record and the existing packet types, rather than creating a third format?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/06-brief-compiler-and-packets.md",
+              "revision": "13de7ae02c5f2128bf2b97845ad56395c5310150"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-24",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-07",
+          "topic": "hud-07-guild-workers-staff-and-inspection",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 07 (PR #169). Local models as advisory guild workers on a low-permission queue, staff roles as job cards, and inspection access. Review questions: Are the four worker classes (W0 to W3) the right set, and is each cheaply checkable by software? | Is \"no repository writes, no branches, no PRs\" for workers the intended boundary for now? | Is the inspector role (specific actions, never the floor) the right meaning of \"admin\"? | The conflict with `LOCAL_MODEL_AUTONOMY_POLICY.md` (which lets the local model draft bounded changes and use `promote`): reconcile it, or keep the HUD's narrower default and record the difference.",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/07-guild-workers-staff-and-inspection.md",
+              "revision": "87454c9f8d6e819edcb7e17f94296f9e655a1940"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-25",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-08",
+          "topic": "hud-08-roles-skills-and-trust",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 08 (PR #170). Roles, a taste-versus-correctness boundary, skill-gated delegation and trust earned from reviewed outcomes. Review questions: Is the taste/correctness boundary right, including \"the system names the gate and offers the nearest option that passes\"? | Is a per-skill trust level, with promotion and demotion from independent reviewed outcomes, the right mechanism? Is `can_take` as a pure function with golden vectors the right form? | Is \"outside benchmarks are priors, promotion rests on our own deterministic milestone suites\" the right policy? | Are the identity and consent rules for users and contributors adequate for a first version on the owner's own machines?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/08-roles-skills-and-trust.md",
+              "revision": "31eeffc031f9f6851be88a304e95eda958e91309"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-26",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-09",
+          "topic": "hud-09-visualizer-exploration-and-twin",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 09 (PR #171). A 3D analogy-reference view, a light exploration layer, and a staged digital twin built from the owner's stated preferences. Review questions: Is the reading of \"analogy reference\" (concepts, documents, lanes and components linked by analogies with mappings, strength and evidence) right? CONFIRMED by the owner. | Is 3D one view next to 2D panels, with the same graph readable as a list, the right scope? | Do the exploration guardrails (rewards for confirmed evidence, no streaks or loss mechanics) and the psychology scope (elicitation of stated wants, no trait or mood inference) hold? | Is the staged twin (preference log, proposed slots only, measured acceptance, then maybe more) the right order, and is it correctly kept inside Aaroneous's `.si` twin concept?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/09-visualizer-exploration-and-twin.md",
+              "revision": "91c06b65bfb0753f4eea599ab08b4c464e2446ea"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-27",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-10",
+          "topic": "hud-10-native-app-operations-and-reuse",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 10 (PR #172). A standard native Rust application embedding the core, an operations panel over Guild, and reuse of other Rust tools behind workspace traits. Review questions: Is the native-app-embeds-the-core design right, with the webview kept only as a fallback? | Is the spike's pass condition (the packet editor first) the right test of a toolkit? | Are the seams (model backend, context store, event source, operation, classifier) the right traits to carve first? | Is the import policy (clean-room patterns over heavy runtimes; admission scoring for anything entering the product) respected?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/10-native-app-operations-and-reuse.md",
+              "revision": "d2746de804cda910f4aee3e11053b3cfe1da4f21"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-28",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-11",
+          "topic": "hud-11-hall-host-election-and-handoff",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 11 (PR #173). Let the most capable qualified machine host the hall, first by owner-pinned single-host leadership and manual fenced handoff, and only later by unattended failover once a durable fencing authority exists. Review questions: Is \"qualification selects, the fencing authority decides\" the right split, and is the compare-and-swap on `(term, host)` a sound linearization point? | Does write-ahead fencing of the incumbent close the recovery hole, and is every partial state covered? | Are the invariants (at most one valid writer across all terms; no duplicate observable operation; SafeHold on uncertainty) the right ones? | Is stage A a reasonable first version, with B and C gated on evidence?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-29",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-12",
+          "topic": "hud-12-compliance-and-graduation",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 12 (PR #174). Build devtools modularly and Aaroneous-compliant by construction, with a thin stable base and a thick frontier, so proven components can graduate into Aaroneous. Review questions: Are the rings and the flow (frontier, base, Aaroneous) the right structure for \"thin base, thick frontier\"? | Is the checklist a faithful reading of the product rules, and is it right to leave hot-path and memory-geometry rules to `kernel` crates? | Is the measured table honest about what the auditor does and does not prove? | Is running the product's tools on devtools in CI acceptable with respect to the dependency direction?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/12-compliance-and-graduation.md",
+              "revision": "c322498185746a1273b33195f07acebe9bb6b9cf"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-30",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-13",
+          "topic": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 13 (PR #176). One job-card schema (card, record, evidence tiers), a retrieval order for context packs, and a validated plan graph for work that decomposes. Review questions: Is \"thin card, thick evidence, attached by tier\" the right balance, and are the required fields the right minimum? | Is it right to extend the existing formats (steward card, intake, topic-case receipt) rather than define a new one? | Is the retrieval order (structural, lexical, then vector only if measured) right for this corpus, and is the citation rule enforceable? | Are the plan-validity rules enough to stop a model-proposed graph from bypassing the gates?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-31",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-14",
+          "topic": "hud-14-operating-review-gaps-and-bottlenecks",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 14 (PR #177). An operating review of the tasking, scheduling and delegation system: measured bottlenecks, missing components, time and tick design, departments, internal affairs, and how much model-driven work software can take over. Review questions: Do the findings follow from the evidence cited, and are there bottlenecks I missed? | Is incremental, bounded-parallel scanning the right first fix, and is the rate-limit risk handled? | Are tick classes and departments useful structure or needless ceremony at the current scale? | Is the internal-affairs design independent enough, and are consequences kept inside the trust ledger?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-32",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-15",
+          "topic": "hud-15-red-team-review",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 15 (PR #181). An adversarial review of the Round Table topics, the review and merge machinery, and the HUD proposals, with reproduced findings, severities and the fixes that already landed. Review questions: Are the severities right, and what did I miss (supply chain through dependencies, the Tailscale path, the steward's own `gh` calls)? | Is F4 correct about the pull request workflow semantics for same-repository branches, and does a repository setting already prevent it? | Is F5 as serious as I think given how the sessions are actually run? | Which of the not-run tests should run first, and where can they run safely?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/15-red-team-review.md",
+              "revision": "41b8b1419f28d54cb341e2124a0eadc4c184eb05"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-33",
+      "event": {
+        "type": "contribution",
+        "contribution": {
+          "id": "seed-16",
+          "topic": "hud-16-rolling-window-critique-and-boundaries",
+          "actor": "Claude",
+          "kind": "idea",
+          "text": "Seed proposal 16 (PR #182). A critic's review of the rolling-window pipeline proposal, a map of what the existing pipeline already covers and where it does not, and the boundaries to hold while devtools is rebased onto Aaroneous. Review questions: Is C1/C2 right that attestations cannot be the product-side evidence, and what should the product check instead? | Is B4 (freeze the gate) the right constraint, and does it block anything that cannot wait? | Is a bounded, enforced window the right interpretation of \"rolling\", or is the intent something else?",
+          "lineage": "c119-hud-v2-proposal-v1",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/16-rolling-window-critique-and-boundaries.md",
+              "revision": "708ca1782c6061dbddca0fb5c0a51b9c5c81591d"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-34",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-02-01",
+          "from": "hud-02-agent-door-and-mcp",
+          "to": "hud-01-settings-and-permissions",
+          "kind": "depends_on",
+          "reason": "Proposal 02 lists proposal 01 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/02-agent-door-and-mcp.md",
+              "revision": "4f2a0560a90be700025d92cced3243dc21863037"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-35",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-03-01",
+          "from": "hud-03-lan-roster-and-domains",
+          "to": "hud-01-settings-and-permissions",
+          "kind": "depends_on",
+          "reason": "Proposal 03 lists proposal 01 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/03-lan-roster-and-domains.md",
+              "revision": "713c9d9b938ba9e82070c147f202ad79d7f07cf4"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-36",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-03-02",
+          "from": "hud-03-lan-roster-and-domains",
+          "to": "hud-02-agent-door-and-mcp",
+          "kind": "depends_on",
+          "reason": "Proposal 03 lists proposal 02 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/03-lan-roster-and-domains.md",
+              "revision": "713c9d9b938ba9e82070c147f202ad79d7f07cf4"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-37",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-04-02",
+          "from": "hud-04-token-optimization",
+          "to": "hud-02-agent-door-and-mcp",
+          "kind": "depends_on",
+          "reason": "Proposal 04 lists proposal 02 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/04-token-optimization.md",
+              "revision": "7d6cee08ad161622b933f2831f0b77bdf3801a79"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-38",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-05-06",
+          "from": "hud-05-model-profiles-and-prompt-adaptation",
+          "to": "hud-06-brief-compiler-and-packets",
+          "kind": "depends_on",
+          "reason": "Proposal 05 lists proposal 06 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md",
+              "revision": "72536d4302f7242aa6cdd339b96e33f6f15a0a34"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-39",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-05-04",
+          "from": "hud-05-model-profiles-and-prompt-adaptation",
+          "to": "hud-04-token-optimization",
+          "kind": "depends_on",
+          "reason": "Proposal 05 lists proposal 04 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md",
+              "revision": "72536d4302f7242aa6cdd339b96e33f6f15a0a34"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-40",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-06-01",
+          "from": "hud-06-brief-compiler-and-packets",
+          "to": "hud-01-settings-and-permissions",
+          "kind": "depends_on",
+          "reason": "Proposal 06 lists proposal 01 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/06-brief-compiler-and-packets.md",
+              "revision": "13de7ae02c5f2128bf2b97845ad56395c5310150"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-41",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-07-01",
+          "from": "hud-07-guild-workers-staff-and-inspection",
+          "to": "hud-01-settings-and-permissions",
+          "kind": "depends_on",
+          "reason": "Proposal 07 lists proposal 01 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/07-guild-workers-staff-and-inspection.md",
+              "revision": "87454c9f8d6e819edcb7e17f94296f9e655a1940"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-42",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-07-03",
+          "from": "hud-07-guild-workers-staff-and-inspection",
+          "to": "hud-03-lan-roster-and-domains",
+          "kind": "depends_on",
+          "reason": "Proposal 07 lists proposal 03 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/07-guild-workers-staff-and-inspection.md",
+              "revision": "87454c9f8d6e819edcb7e17f94296f9e655a1940"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-43",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-08-01",
+          "from": "hud-08-roles-skills-and-trust",
+          "to": "hud-01-settings-and-permissions",
+          "kind": "depends_on",
+          "reason": "Proposal 08 lists proposal 01 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/08-roles-skills-and-trust.md",
+              "revision": "31eeffc031f9f6851be88a304e95eda958e91309"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-44",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-08-07",
+          "from": "hud-08-roles-skills-and-trust",
+          "to": "hud-07-guild-workers-staff-and-inspection",
+          "kind": "depends_on",
+          "reason": "Proposal 08 lists proposal 07 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/08-roles-skills-and-trust.md",
+              "revision": "31eeffc031f9f6851be88a304e95eda958e91309"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-45",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-09-06",
+          "from": "hud-09-visualizer-exploration-and-twin",
+          "to": "hud-06-brief-compiler-and-packets",
+          "kind": "depends_on",
+          "reason": "Proposal 09 lists proposal 06 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/09-visualizer-exploration-and-twin.md",
+              "revision": "91c06b65bfb0753f4eea599ab08b4c464e2446ea"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-46",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-09-10",
+          "from": "hud-09-visualizer-exploration-and-twin",
+          "to": "hud-10-native-app-operations-and-reuse",
+          "kind": "depends_on",
+          "reason": "Proposal 09 lists proposal 10 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/09-visualizer-exploration-and-twin.md",
+              "revision": "91c06b65bfb0753f4eea599ab08b4c464e2446ea"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-47",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-10-01",
+          "from": "hud-10-native-app-operations-and-reuse",
+          "to": "hud-01-settings-and-permissions",
+          "kind": "depends_on",
+          "reason": "Proposal 10 lists proposal 01 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/10-native-app-operations-and-reuse.md",
+              "revision": "d2746de804cda910f4aee3e11053b3cfe1da4f21"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-48",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-10-02",
+          "from": "hud-10-native-app-operations-and-reuse",
+          "to": "hud-02-agent-door-and-mcp",
+          "kind": "depends_on",
+          "reason": "Proposal 10 lists proposal 02 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/10-native-app-operations-and-reuse.md",
+              "revision": "d2746de804cda910f4aee3e11053b3cfe1da4f21"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-49",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-11-03",
+          "from": "hud-11-hall-host-election-and-handoff",
+          "to": "hud-03-lan-roster-and-domains",
+          "kind": "depends_on",
+          "reason": "Proposal 11 lists proposal 03 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-50",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-11-02",
+          "from": "hud-11-hall-host-election-and-handoff",
+          "to": "hud-02-agent-door-and-mcp",
+          "kind": "depends_on",
+          "reason": "Proposal 11 lists proposal 02 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-51",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-11-08",
+          "from": "hud-11-hall-host-election-and-handoff",
+          "to": "hud-08-roles-skills-and-trust",
+          "kind": "depends_on",
+          "reason": "Proposal 11 lists proposal 08 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/11-hall-host-election-and-handoff.md",
+              "revision": "588e4d655606d37a35977fbce29b9e7fb04037f7"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-52",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-12-01",
+          "from": "hud-12-compliance-and-graduation",
+          "to": "hud-01-settings-and-permissions",
+          "kind": "depends_on",
+          "reason": "Proposal 12 lists proposal 01 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/12-compliance-and-graduation.md",
+              "revision": "c322498185746a1273b33195f07acebe9bb6b9cf"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-53",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-13-01",
+          "from": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "to": "hud-01-settings-and-permissions",
+          "kind": "depends_on",
+          "reason": "Proposal 13 lists proposal 01 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-54",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-13-06",
+          "from": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "to": "hud-06-brief-compiler-and-packets",
+          "kind": "depends_on",
+          "reason": "Proposal 13 lists proposal 06 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-55",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-13-07",
+          "from": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "to": "hud-07-guild-workers-staff-and-inspection",
+          "kind": "depends_on",
+          "reason": "Proposal 13 lists proposal 07 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-56",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-13-08",
+          "from": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "to": "hud-08-roles-skills-and-trust",
+          "kind": "depends_on",
+          "reason": "Proposal 13 lists proposal 08 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md",
+              "revision": "28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-57",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-14-03",
+          "from": "hud-14-operating-review-gaps-and-bottlenecks",
+          "to": "hud-03-lan-roster-and-domains",
+          "kind": "depends_on",
+          "reason": "Proposal 14 lists proposal 03 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-58",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-14-07",
+          "from": "hud-14-operating-review-gaps-and-bottlenecks",
+          "to": "hud-07-guild-workers-staff-and-inspection",
+          "kind": "depends_on",
+          "reason": "Proposal 14 lists proposal 07 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "event-59",
+      "event": {
+        "type": "relationship",
+        "relationship": {
+          "id": "dep-14-13",
+          "from": "hud-14-operating-review-gaps-and-bottlenecks",
+          "to": "hud-13-card-schema-retrieval-and-plan-graphs",
+          "kind": "depends_on",
+          "reason": "Proposal 14 lists proposal 13 under depends-on in its front matter.",
+          "evidence": [
+            {
+              "reference": "governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md",
+              "revision": "2db5570dc924d396c94f3d6d83c5cd6099fa6880"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
