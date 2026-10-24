@@ -1,0 +1,231 @@
+{
+  "schema_version": "topic-projection-experiment-v1",
+  "synthetic": true,
+  "authority": "illustrative-only",
+  "source": "Synthetic topic-only navigation fixture; illustrative metadata, not existing runtime data",
+  "revision": 2,
+  "topics": [
+    {
+      "id": "root",
+      "parent": null,
+      "title": "Constellation",
+      "detail": "Independent topics share relationships without merging identities.",
+      "children": [
+        "server",
+        "intelligence",
+        "outcomes"
+      ],
+      "metadata": []
+    },
+    {
+      "id": "server",
+      "parent": "root",
+      "title": "Server",
+      "detail": "Stable topics, typed relationships and retained evidence form the server contract.",
+      "children": [
+        "topics",
+        "relations",
+        "history"
+      ],
+      "metadata": []
+    },
+    {
+      "id": "intelligence",
+      "parent": "root",
+      "title": "Intelligence",
+      "detail": "Raw observations, interpretations and exercised capability evidence remain distinct.",
+      "children": [
+        "observations",
+        "hypotheses",
+        "capabilities"
+      ],
+      "metadata": []
+    },
+    {
+      "id": "outcomes",
+      "parent": "root",
+      "title": "Outcomes",
+      "detail": "Bounded experiments and reviewed outcomes preserve authority and measurement boundaries.",
+      "children": [
+        "experiment",
+        "review",
+        "roi"
+      ],
+      "metadata": []
+    },
+    {
+      "id": "topics",
+      "parent": "server",
+      "title": "Topics",
+      "detail": "Each topic is a place: entering it reveals its immediate children.",
+      "children": [],
+      "metadata": [
+        "Identity",
+        "Parent",
+        "Contributions"
+      ]
+    },
+    {
+      "id": "relations",
+      "parent": "server",
+      "title": "Relations",
+      "detail": "Hierarchy and dependencies form DAGs; relatedness and dissent may cycle.",
+      "children": [],
+      "metadata": [
+        "Dependency",
+        "Dissent",
+        "Provenance"
+      ]
+    },
+    {
+      "id": "history",
+      "parent": "server",
+      "title": "History",
+      "detail": "Issue identity, attempt lineage and lifetime costs survive refinement.",
+      "children": [],
+      "metadata": [
+        "Issue",
+        "Attempts",
+        "Cost history"
+      ]
+    },
+    {
+      "id": "observations",
+      "parent": "intelligence",
+      "title": "Observations",
+      "detail": "Capture provenance, revision, permissions and evidence quality.",
+      "children": [],
+      "metadata": [
+        "Source",
+        "Permissions",
+        "Quality"
+      ]
+    },
+    {
+      "id": "hypotheses",
+      "parent": "intelligence",
+      "title": "Hypotheses",
+      "detail": "Interpretation remains a hypothesis; counterevidence stays visible.",
+      "children": [],
+      "metadata": [
+        "Assumptions",
+        "Counterevidence",
+        "Evidence check"
+      ]
+    },
+    {
+      "id": "capabilities",
+      "parent": "intelligence",
+      "title": "Capabilities",
+      "detail": "Typed contracts and verification evidence do not grant invocation authority.",
+      "children": [],
+      "metadata": [
+        "Inputs / outputs",
+        "Environment",
+        "Rollback"
+      ]
+    },
+    {
+      "id": "experiment",
+      "parent": "outcomes",
+      "title": "Experiment",
+      "detail": "A bounded proposal needs a baseline, cost limit and measurable success.",
+      "children": [],
+      "metadata": [
+        "Baseline",
+        "Budget",
+        "Success measure"
+      ]
+    },
+    {
+      "id": "review",
+      "parent": "outcomes",
+      "title": "Review",
+      "detail": "Frozen revision, explicit votes and retained objections; silence cannot approve.",
+      "children": [],
+      "metadata": [
+        "Frozen revision",
+        "Ballots",
+        "Objections"
+      ]
+    },
+    {
+      "id": "roi",
+      "parent": "outcomes",
+      "title": "ROI",
+      "detail": "Observed benefit and lifetime effort matter; savings remain unmeasured.",
+      "children": [],
+      "metadata": [
+        "Observed benefit",
+        "Total effort",
+        "Recurrence"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "root:relation:0",
+      "layer": "root",
+      "from": "intelligence",
+      "to": "server",
+      "type": "informs",
+      "status": "advisory-unverified"
+    },
+    {
+      "id": "root:relation:1",
+      "layer": "root",
+      "from": "server",
+      "to": "outcomes",
+      "type": "enables",
+      "status": "advisory-unverified"
+    },
+    {
+      "id": "server:relation:0",
+      "layer": "server",
+      "from": "topics",
+      "to": "relations",
+      "type": "anchors",
+      "status": "advisory-unverified"
+    },
+    {
+      "id": "server:relation:1",
+      "layer": "server",
+      "from": "history",
+      "to": "relations",
+      "type": "preserves",
+      "status": "advisory-unverified"
+    },
+    {
+      "id": "intelligence:relation:0",
+      "layer": "intelligence",
+      "from": "observations",
+      "to": "hypotheses",
+      "type": "grounds",
+      "status": "advisory-unverified"
+    },
+    {
+      "id": "intelligence:relation:1",
+      "layer": "intelligence",
+      "from": "hypotheses",
+      "to": "capabilities",
+      "type": "tests",
+      "status": "advisory-unverified"
+    },
+    {
+      "id": "outcomes:relation:0",
+      "layer": "outcomes",
+      "from": "experiment",
+      "to": "review",
+      "type": "evidence",
+      "status": "advisory-unverified"
+    },
+    {
+      "id": "outcomes:relation:1",
+      "layer": "outcomes",
+      "from": "review",
+      "to": "roi",
+      "type": "informs",
+      "status": "advisory-unverified"
+    }
+  ]
+}

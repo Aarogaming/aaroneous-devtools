@@ -1,0 +1,20 @@
+{
+  "contribution_id": "C108/codex-topic-path-experiment-v1",
+  "author": "Codex",
+  "author_session": "01a10f34-8947-76c0-b93e-478ba11ef3c1",
+  "role": "author",
+  "identity_assurance": "self-reported; existing GitHub review identity rules still apply",
+  "implementing_seats": [
+    "Codex"
+  ],
+  "verification": "verification.json",
+  "files_sha256": {
+    "README.md": "6e9a862cb183fe558654dc490c94d6e7aa6351b7229563f0d9dab3614c93c1b2",
+    "topic-path-core.cjs": "d7d418ecfa99a40cf195611c9f7c496ce8603047ea22986abe523e2d1848a225",
+    "topic-path-core.test.cjs": "1046ae6fd6b684c780ac2058da97c99992a75fad5ef449e35e1550f52517c1dc",
+    "topic-projection-fixture.json": "d0b209cf5ed1c1722aad10a0e5d074794232dc96dce446857f394f6e55995191",
+    "explorer.html": "5ee5ecc9cc7959c6b53d9e13c4e90b017d6dd32ebb5f438ad34994b20dd52f47"
+  },
+  "review": "pending independent review through existing PR workflow",
+  "rollout": false
+}
