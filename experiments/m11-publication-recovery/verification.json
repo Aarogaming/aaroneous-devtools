@@ -1,0 +1,18 @@
+{
+  "contribution_id": "C107/M11-recovery-v1",
+  "command": "python -B experiments/m11-publication-recovery/test_recovery.py",
+  "worktree": "C:\\Users\\aarog\\.codex\\worktrees\\m11-recovery-pr\\aaroneous-devtools",
+  "exit_code": 0,
+  "tests": 11,
+  "platform": "Windows / Python 3.12.10",
+  "log": "C:\\Users\\aarog\\.codex\\visualizations\\2026\\09\\30\\01a0f30a-4d6b-7703-9859-662e36299ca4\\m11-recovery\\pr-verification.log",
+  "log_sha256": "143ff227551e22cbd603f6233b76305b35f3389eebe65c710355904cc7ad7377",
+  "files": {
+    "board.py": "e12da9b03d7dce84800052fd78a41467836562f452e803e9f792646bf55f82cf",
+    "recovery.py": "710cb7f717cc3488e58db9a8d486d23091117b32c083c3b13b23c7c885a42b7a",
+    "test_recovery.py": "664be4868236f516c0fd36b9a5e038a1c1cf88597b2b5cb8a4ae18bc7530a316"
+  },
+  "syntax_encoding_links_exit_code": 0,
+  "independent_acceptance": false,
+  "rollout": false
+}

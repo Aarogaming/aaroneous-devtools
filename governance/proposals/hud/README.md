@@ -1,0 +1,230 @@
+---
+notation: v1
+purpose: Index, requirements and decision log for the HUD v2 and guild-hall proposal set
+authority: propose
+status: proposal, advisory, grants nothing
+relations:
+  - informs: doc:architecture/JOB_PIPELINE.md
+  - informs: doc:proposals/SUPPORTED_OPERATIONS_SERVER.md
+  - depends-on: doc:governance/UTILITY.md
+  - overlaps: lane:C106
+  - overlaps: lane:C112
+  - overlaps: lane:C113
+  - overlaps: lane:C118
+checked-by: none yet (see each document's "Not verified")
+---
+
+# HUD v2 and the guild hall: proposal set (lane C119)
+
+Contribution-ID: C119/claude-hud-v2-proposal-v1.
+Author seat: Claude Sonnet 5.5 (identity is a round-table roster claim, not cryptographic).
+Status: **proposals for review**. No code, no policy change, no workflow change. Nothing here is accepted until a reviewer
+other than the author records it. This directory was split into one document per feature so each can be reviewed, amended or
+rejected on its own; the umbrella pull request carries this index and the lane row, and each feature has its own pull request.
+
+Owner direction in chat, 2026-10-10 (summary): make the 127.0.0.1:8787 HUD better; local-first AI where software does the
+work and a local model is the glue; inquiries become jobs; user-assisted blueprint and research packets; run operations from
+the interface; every model pings it for cards, work and availability; fewer user interactions, more frequent work; token
+optimization; configuration instead of hard-coded behaviour; default read-only; a standard native application; a 3D view;
+the system as a guild hall with roles, skill-gated delegation and earned trust; local network first; local models as
+advisory guild workers.
+
+## The whole thing on one page
+
+If the system cannot be explained simply, it is not yet understood; and if it is understood, the safeguards are few enough to state in a line each. The sixteen documents below are the working
+detail. This page is the test of them.
+
+**What it is.** AI seats propose changes as pull requests. A checker that runs from `main`, not from the pull request, lets a change land only when CI is green on the exact commit and independent
+seats have accepted it. Local models do clerical work and never touch the repository. Aaroneous, the product, is separate: devtools feeds it through pull requests that keep their own gate, and the
+product never depends on devtools.
+
+**Five rules that make it safe, and where each stands (2026-10-11).**
+
+| # | Rule | Stands? | The one mechanical check that makes it true |
+|---|---|---|---|
+| 1 | The checker cannot be rewritten by what it checks. | Mostly. Gate scripts come from `main`. A pull request's own workflow definition could still run first, but only an actor holding the `workflows` permission can change one: my seat App was read from the API and has none; the owner's login does. | each seat's App permissions audited by its own setup check; the privileged runner limited to trusted definitions |
+| 2 | "Independent" means different custody **and** a different model. | **No.** One OS user holds the credentials of four seats; two seats are the same model; seat names match by prefix. | identities declare model family; the gate requires accepts from at least two distinct families and matches names exactly |
+| 3 | A claim is not evidence. Only a signed artifact and CI are. | Partly. Attestations are signed and head-bound; prose on the board and in pull requests is not checked. | board and pull request claims verified against the artifact they cite |
+| 4 | What the system may do is what `main` says, and `main` changes only through the gate. | Holds for devtools once rules 1 and 2 hold. The "owner said" quotes in `DECISIONS.md` were written by seats, so they are history, not authority. | authority-changing text counts only at a commit that passed the gate |
+| 5 | Untrusted text has no hands. | Not enforced in code. | workers that read outside text run without tools, emit structured output, and every citation is checked |
+
+Throughput is separate from safety: work in progress is capped at three in the scheduler's advice and enforced nowhere.
+
+**What I can stand behind today.** The settings engine (`hud_core`) for rules 1 and 4 at its own layer: a shared project or local file can never make any decision looser than the owner's own settings, never
+change where work or data goes, and never costs the owner their own settings if it fails to load. That is checked by 54 tests, the product's auditor (0 violations), and a property test over 4,000 random hostile
+files that fails when the filter is switched off. **What I cannot yet say is safe:** rules 2, 3 and 5, and rule 4 until rule 2 holds. Rule 2 is the shortest path to most of the rest.
+
+## The documents
+
+The sixteen documents are not in this tree: each lives on the branch of its own pull request, and those pull requests are closed. The links below are therefore **commit permalinks** to the exact head each document had when its pull request was closed (the source hash is in the URL), so they keep resolving without relying on a relative path that does not exist here.
+
+| # | Proposal | Pull request |
+|---|---|---|
+| 01 | [Settings layers and the permission engine](https://github.com/Aarogaming/aaroneous-devtools/blob/8b2135e31d4dffea8bd3f5417320016ea04dccae/governance/proposals/hud/01-settings-and-permissions.md) | [#163](https://github.com/Aarogaming/aaroneous-devtools/pull/163) |
+| 02 | [Agent door and MCP adapter](https://github.com/Aarogaming/aaroneous-devtools/blob/4f2a0560a90be700025d92cced3243dc21863037/governance/proposals/hud/02-agent-door-and-mcp.md) | [#164](https://github.com/Aarogaming/aaroneous-devtools/pull/164) |
+| 03 | [LAN roster, wire and domains](https://github.com/Aarogaming/aaroneous-devtools/blob/713c9d9b938ba9e82070c147f202ad79d7f07cf4/governance/proposals/hud/03-lan-roster-and-domains.md) | [#165](https://github.com/Aarogaming/aaroneous-devtools/pull/165) |
+| 04 | [Token optimization](https://github.com/Aarogaming/aaroneous-devtools/blob/7d6cee08ad161622b933f2831f0b77bdf3801a79/governance/proposals/hud/04-token-optimization.md) | [#166](https://github.com/Aarogaming/aaroneous-devtools/pull/166) |
+| 05 | [Model profiles and prompt adaptation](https://github.com/Aarogaming/aaroneous-devtools/blob/72536d4302f7242aa6cdd339b96e33f6f15a0a34/governance/proposals/hud/05-model-profiles-and-prompt-adaptation.md) | [#167](https://github.com/Aarogaming/aaroneous-devtools/pull/167) |
+| 06 | [Brief compiler and packets](https://github.com/Aarogaming/aaroneous-devtools/blob/13de7ae02c5f2128bf2b97845ad56395c5310150/governance/proposals/hud/06-brief-compiler-and-packets.md) | [#168](https://github.com/Aarogaming/aaroneous-devtools/pull/168) |
+| 07 | [Guild workers, staff roles and inspection](https://github.com/Aarogaming/aaroneous-devtools/blob/87454c9f8d6e819edcb7e17f94296f9e655a1940/governance/proposals/hud/07-guild-workers-staff-and-inspection.md) | [#169](https://github.com/Aarogaming/aaroneous-devtools/pull/169) |
+| 08 | [Roles, skill gating and earned trust](https://github.com/Aarogaming/aaroneous-devtools/blob/31eeffc031f9f6851be88a304e95eda958e91309/governance/proposals/hud/08-roles-skills-and-trust.md) | [#170](https://github.com/Aarogaming/aaroneous-devtools/pull/170) |
+| 09 | [Visualizer, exploration and digital twin](https://github.com/Aarogaming/aaroneous-devtools/blob/91c06b65bfb0753f4eea599ab08b4c464e2446ea/governance/proposals/hud/09-visualizer-exploration-and-twin.md) | [#171](https://github.com/Aarogaming/aaroneous-devtools/pull/171) |
+| 10 | [Native application, operations panel and reuse](https://github.com/Aarogaming/aaroneous-devtools/blob/d2746de804cda910f4aee3e11053b3cfe1da4f21/governance/proposals/hud/10-native-app-operations-and-reuse.md) | [#172](https://github.com/Aarogaming/aaroneous-devtools/pull/172) |
+| 11 | [Hall host election and handoff](https://github.com/Aarogaming/aaroneous-devtools/blob/588e4d655606d37a35977fbce29b9e7fb04037f7/governance/proposals/hud/11-hall-host-election-and-handoff.md) | [#173](https://github.com/Aarogaming/aaroneous-devtools/pull/173) |
+| 12 | [Compliance with Aaroneous, thin base and thick frontier](https://github.com/Aarogaming/aaroneous-devtools/blob/c322498185746a1273b33195f07acebe9bb6b9cf/governance/proposals/hud/12-compliance-and-graduation.md) | [#174](https://github.com/Aarogaming/aaroneous-devtools/pull/174) |
+| 13 | [Job-card schema, retrieval and plan graphs](https://github.com/Aarogaming/aaroneous-devtools/blob/28b5c3eb40991824a9d4e6951fe2ae6bb8cdd161/governance/proposals/hud/13-card-schema-retrieval-and-plan-graphs.md) | [#176](https://github.com/Aarogaming/aaroneous-devtools/pull/176) |
+| 14 | [Operating review: gaps and bottlenecks](https://github.com/Aarogaming/aaroneous-devtools/blob/2db5570dc924d396c94f3d6d83c5cd6099fa6880/governance/proposals/hud/14-operating-review-gaps-and-bottlenecks.md) | [#177](https://github.com/Aarogaming/aaroneous-devtools/pull/177) |
+| 15 | [Red-team review](https://github.com/Aarogaming/aaroneous-devtools/blob/1bbc65401f0a82241b71a5b58bc4836d43cb9f6e/governance/proposals/hud/15-red-team-review.md) | [#181](https://github.com/Aarogaming/aaroneous-devtools/pull/181) |
+| 16 | [Rolling-window pipeline: critique, coverage and boundaries](https://github.com/Aarogaming/aaroneous-devtools/blob/7ebb4f6fbf0366af9141b95ca8d16cbe5bea9c95/governance/proposals/hud/16-rolling-window-critique-and-boundaries.md) | [#182](https://github.com/Aarogaming/aaroneous-devtools/pull/182) |
+
+**Suggested review order:** 14 (where the system hurts today), 15 (what an attacker or a careless operator would do), 01, 02, 03 (foundations), 12 (how everything is built), then
+11 (hosting), 13 (cards, retrieval, plans), 06, 07, 08 (behaviour), 04, 05 (economy), and last 10, 09 (interface). Each document ends with a "Review focus" list, its own decisions and its own "Not verified" list.
+
+## Requirements
+
+- R1. Local-first: software answers whatever software can answer; a local model only glues, summarises and routes; cloud
+  models are asked only when the first two cannot.
+- R2. A user inquiry typed into the HUD becomes a job (a typed intake record), not a one-off prompt.
+- R3. Blueprint and research packets are edited with the user's help in the HUD (propose, correct, approve), not generated
+  and discarded.
+- R4. Operations (tick, verify-log, schedule, review queue, update) are run from the HUD.
+- R5. Every model and seat can ping the HUD for its card, available work and availability, and report back.
+- R6. Fewer human interactions, higher frequency of work: the default is that the system proceeds and asks the user only
+  at decisions that are theirs.
+- R7. Token cost is measured and reduced, not assumed.
+- R9. A human-to-machine translation layer: a survey and conversation with a light model fills a pre-built brief
+  (who, what, why, when, how, constraints, acceptance), and the finished brief becomes one prompt for a larger model
+  that works in the background pipeline. Owner direction, 2026-10-10.
+- R10. A visualizer for analogy-based references, in a 3D application, with the HUD as the main centre of operations.
+- R8. Behaviour comes from configuration, not code: every default (permissions, models, routing, limits, polling,
+  caches) is a setting that can be changed later in user settings without a release. Owner direction, 2026-10-10.
+
+## Layers
+
+Owner framing, 2026-10-10: the HUD-HUB manages a **stable Aaroneous core**, with devtools as an **operational layer**
+on top, and the **machine-dependent models** we host tied to their machine as local workers.
+
+| Layer | What it is | Rule |
+|---|---|---|
+| Aaroneous core | the product repository and its crates; the pinned base | changes only through its own gate; devtools depends on it, never the reverse |
+| Devtools (operational layer) | the hall: intake, queue, policy, steward and Guild, packets, settings | operates on repositories; holds no product authority |
+| Hosted models | the local model on each machine, served by Ollama, vLLM or LM Studio | bound to its machine and its sponsor seat; low permission |
+
+The user is the **guild manager**. The local model is the **staff** (secretary, organiser, bookkeeper, auditor, cleaner),
+taking work as job cards at its own level (see [07](https://github.com/Aarogaming/aaroneous-devtools/blob/87454c9f8d6e819edcb7e17f94296f9e655a1940/governance/proposals/hud/07-guild-workers-staff-and-inspection.md)).
+
+## Design principles
+
+1. **Software first, model second.** Every question goes through deterministic software (queue parsing, state collector,
+   search over retained evidence, templates) before any model. The local model receives a compact, pre-digested context
+   pack, never raw files. A cloud model receives only what the local model could not resolve, with the pack attached.
+2. **The HUD is a thin operating layer over existing tools** (Guild CLI, steward scripts, packets, queue), not a second
+   implementation. It calls them and shows their evidence; it does not replace their authority. This follows the
+   toolbelt rule in the product `AGENTS.md`.
+3. **Separation of church and state.** Devtools depends on Aaroneous, never the reverse. Nothing here adds a dependency
+   from the product repo to the HUD.
+4. **Same authority rules for models and people.** A model pinging the HUD gets cards and may report results; it does not
+   gain merge or review authority. Reviews and merges stay with the steward gate and signed attestations.
+5. **Silence on unchanged state.** Responses say "nothing new" in a few bytes (see [04](https://github.com/Aarogaming/aaroneous-devtools/blob/7d6cee08ad161622b933f2831f0b77bdf3801a79/governance/proposals/hud/04-token-optimization.md)). Quiet is the cheapest answer.
+6. **Model reliance only ratchets down.** This is the Aaroneous ratchet applied to model use. Every step that calls a model names the programmatic
+   step that comes first (a rule, a parser, a lookup, a compiler or type check, an audit), and the share of calls that reach the model is measured per task
+   type ([04](https://github.com/Aarogaming/aaroneous-devtools/blob/7d6cee08ad161622b933f2831f0b77bdf3801a79/governance/proposals/hud/04-token-optimization.md)). A model step may be added only with its programmatic predecessor and a metric, and its share may fall but not rise
+   without a recorded reason. A conversational survey is for what no repository, diff or metadata can answer, the person's goal, intent and taste, and never
+   asks for what software can read. When something can be proven by a compiler or enforced by a type or an auditor rule, no model is asked.
+
+## Overlap with existing lanes (reused, not duplicated)
+
+- **C106** typed job intake: the intake format. HUD v2 consumes it and must not invent a second one.
+- **C112** seat status/host availability: the availability record. HUD v2 serves it over HTTP (its Phase 3 mirror was
+  pending an owner decision on the transport; this proposal answers it with "the HUD's agent door").
+- **C113** Guild CLI: the operations behind the panel. HUD v2 calls it; it does not reimplement the scheduler.
+- **C118** tray + update check also edits `maintenance_ui`: P1 will rebase on it; no file-level conflict is expected
+  but sequencing is needed.
+- **C102 / PR #135** supported operations server: HUD v2 is the local face of that proposal; whether they become one
+  service or two is for the reviewers of #135 and this proposal.
+
+## Phases across the set
+
+| Phase | Document | Summary |
+|---|---|---|
+| P1a | 01 | settings layers and permission engine (lane C120, code in review) |
+| P1, P1b, P2 | 02 | agent door, MCP adapter, event stream |
+| G0b | 03 | LAN roster, register/heartbeat/lease, `network.*` settings |
+| P3, P3b, G3 to G5 | 06 | intake, brief compiler, triage, supervisor meeting, taste checkpoints |
+| W1 to W4 | 07 | worker queue, validators, traces and inspection, trials |
+| G1, G2, G6 | 08 | roles and profiles, `can_take` gate, progression ledger |
+| P4 | 04, 05 | token accounting and caches, model profiles and prompt adapters |
+| P5, P7 | 10 | operations panel, native application shell |
+| P7 (part), twin | 09 | 3D analogy view, exploration layer, preference log and twin |
+| K1 to K5 | 13 | card schema, structural then lexical then optional vector retrieval, plan graphs with node-level caching |
+| O1 to O8 | 14 | profile the tick, bounded-parallel scans, tick classes, deadlines and escalation, flow metrics, departments, internal affairs |
+| W1 to W6 | 16 | fix the rolling-window text, window manager, finding store, intake quarantine, graduation manifest, product pin and return path |
+| R1 to R5 | 15 | the settings-engine fixes (done), custody and workflow protection, independence classes, digest-bound plans, the untested attacks |
+| H1 to H6 | 11 | election and handoff reducer, qualification, signed certificates, handoff over the wire, failure handling, owner controls |
+| C1 to C4 | 12 | profile metadata, component inventory rings, advisory auditor in CI, first graduation candidate |
+| G7, P6 | 03, 08 | hosting for remote users, cloud dispatch; both deferred, each needing its own review |
+
+Each phase is its own lane and review; this set claims no code.
+
+## Where the discussion happens: sixteen parallel topics on the Round Table
+
+Owner direction in chat, 2026-10-10: put this discussion into the existing brainstorm as a series of parallel topics, so all
+the agents can work on it together before any full rebuild. The brainstorm is the local Round Table board (the loopback
+address is in its invitation) and its topic-case workflow (`contracts/topic-case-v1.md`, `foundation topic-case`).
+
+- **Topic ids.** One root topic, `hud-v2`, and one child topic per document: `hud-01-settings-and-permissions`,
+  `hud-02-agent-door-and-mcp`, and so on, matching the file names in the table above. The machine-readable map is
+  [brainstorm-topic-case-v1.json](brainstorm-topic-case-v1.json): one root topic and one topic per document, one seed contribution per
+  topic that cites the document at its pull request head, and the `depends_on` relationships taken from the documents' front matter. Check it with
+  `foundation topic-case review --case <absolute path>`; it is a proposal artifact, not a queue or an authority.
+- **How to contribute.** Post to the board as your own seat (kinds `idea`, `question`, `concern`, `evidence`). Start the text
+  with the topic id in square brackets, for example `[hud-07-guild-workers-staff-and-inspection]`, so contributions can be sorted by
+  topic. Say what you observed, any alternative, any disagreement or counterexample, and one **NOT RUN** experiment that could
+  prove the proposal wrong, as the invitation asks. Cite file and line, or command, exit code and log. Mark anything you did not
+  run NOT VERIFIED. Do not speak for another seat. Formal review of a document stays on its pull request.
+- **Parallel by design.** Take any topic; topics with a `depends_on` link are best read after the topic they depend on, but none
+  blocks another. Contributions are advisory: they approve nothing, claim no lane and grant no permission.
+- **From discussion to decision.** The board is the intake. When a topic has contributions from at least two seats other than
+  its author, or the owner calls it, someone compiles the topic's entries into the topic case with `revise`, one event at a time,
+  records dissent as dissent, turns the best falsifying experiments into proposals through the existing intake, and revises the
+  document. Receipts of what the experiments found go back under the same topic.
+- **The refactoring plan runs beside this set.** The Codex seat's `rebasing-and-refactoring` family (board entries 83 to 92, with its consolidated plan in a comment on PR #177) moves devtools
+  onto a pinned Aaroneous base in stages S0 to S7 and prefers interchangeable micro crates. The HUD set is its devtools-side design; [12](https://github.com/Aarogaming/aaroneous-devtools/blob/c322498185746a1273b33195f07acebe9bb6b9cf/governance/proposals/hud/12-compliance-and-graduation.md) maps the two, with measured
+  duplication and a first-consumer probe, and the seat responses are on the board under that family's topic ids.
+- **No rebuild before synthesis.** The only code in flight is lane C120 (the settings engine, PRs #160 and #175). I propose
+  no further code lane for this set until the topic it depends on has a synthesis; the owner can overrule.
+
+## Decision log (recorded from chat, 2026-10-10)
+
+This records chat instructions; it is not an attestation. "OPEN" items are listed again in the document they belong to.
+
+| Decision | State | Document |
+|---|---|---|
+| Default permission mode is read-only; all behaviour is configuration | DECIDED | 01 |
+| Native Rust application, not a webview; toolkit chosen by a spike | DECIDED | 10 |
+| Glue model is a setting; the existing Ollama endpoint is its initial value | DECIDED | 05 |
+| Local area network first; remote strangers deferred | DECIDED | 03 |
+| Roster: `mimo` (Windows, OpenCode) and `ubuntu-worker-01` (Ubuntu, OpenCode) are seats; MiMo is the model behind OpenCode; local models are guild workers | DECIDED | 03, 07 |
+| Local models do advisory work, not the pull-request stack | DECIDED | 07 |
+| 3D is the analogy view inside a mostly 2D native app; the reading of "analogy reference" | DECIDED, CONFIRMED | 09 |
+| Code lands in separate lanes, starting with C120 | DECIDED | 01 |
+| First brief templates: research, blueprint, build | DEFAULT | 06 |
+| Which machine hosts the hall and how machines are joined; which agents are local sessions; domain arrangement and merge rights in Aaroneous | OPEN | 03 |
+| Inspector role holders, sampling rates, trace retention | OPEN | 07 |
+| Taste boundary, levels, who promotes, stranger's program location, fine-tuning off, outside benchmarks as priors | OPEN | 08 |
+| The most capable qualified machine hosts operations; leadership moves by a handoff protocol and no session is shut down | DECIDED in principle | 11 |
+| Score weights, certificate signer, leadership per domain, git tie-breaker, hot standby | OPEN | 11 |
+| Build modularly and Aaroneous-compliant by construction; thin base, thick frontier; library grows from what survives the frontier | DECIDED in principle | 12 |
+| Rings, auditors in devtools CI, first graduation candidate, attestation-namespace exception | OPEN | 12 |
+| Cards are thin pointers with evidence attached by tier; retrieval is structural first; plans are validated graphs | PROPOSED | 13 |
+| Parallel scans, tick classes, departments, internal affairs, per-lane queue files | OPEN | 14 |
+| Credential custody, workflow protection on `main`, model-family independence for higher-risk review, evidence-linked board claims | OPEN | 15 |
+| Boundaries B1 to B11 for the rebase; Stage 4 is automated up to a verified candidate pull request, the product merge keeps its own gate | DECIDED by the author seat as operator, awaiting a recorded review | 16 |
+| Prompts as reviewed files | OPEN | 05 |
+| Twin and exploration scope questions | OPEN | 09 |
+
+## Not verified (whole set)
+
+- No code was written or run for these proposals, except the settings crate in lane C120 and the token-encoding probe in
+  document 04. Numbers elsewhere are targets.
+- Each document lists its own unverified items; read those before accepting it.
