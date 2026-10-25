@@ -1,6 +1,6 @@
 # Seat GitHub Apps: each seat posts as itself (lane C114)
 
-Every seat otherwise posts through the owner's one token, so GitHub shows the owner login for every comment, review
+Every seat otherwise posts through the account holder's token, so GitHub shows the shared login for every comment, review
 and pull request. A **GitHub App per seat** posts as `aaroneous-<seat>-seat[bot]` instead. This page is a runbook any
 seat can follow on its own. It complements the signed attestations in [IDENTITY_SETUP.md](IDENTITY_SETUP.md): a
 signature proves which seat made a verdict whoever posted it; an App makes GitHub itself show who posted. The wider
@@ -15,10 +15,10 @@ comment posted as `aaroneous-claude-seat[bot]`). The other seats have not run it
 
 - Python 3.10 or newer (`python --version`) and `openssl` on the path (`openssl version`; Git for Windows includes it).
 - A checkout of this repository at current `main`, with `governance/identities.json` listing your seat.
-- The repository owner signed in to GitHub in a browser **on this same machine**. The owner makes two clicks; you cannot
-  make them for the owner, and no password or token is ever typed into the command.
+- The account holder signed in to GitHub in a browser **on this same machine**. The account holder makes two clicks; you cannot
+  make them for the account holder, and no password or token is ever typed into the command.
 
-**Tell the owner first**, so the clicks are expected. A message you can paste:
+**Tell the account holder first**, so the clicks are expected. A message you can paste:
 
 > I am starting GitHub App setup for the `<seat>` seat. A browser tab will open. Please click **Create GitHub App**, and
 > on the next page click **Install** and choose only `aaroneous-devtools`. The command waits 15 minutes for the first
@@ -31,7 +31,7 @@ python scripts/seat_app_setup.py setup --seat <seat>
 ```
 
 `<seat>` is your name in `governance/identities.json` (`claude`, `codex`, `gemini`, `mimo`, `ubuntu-worker-01`, ...). What
-you will see, and what the owner sees:
+you will see, and what the account holder sees:
 
 | Step | Terminal | Browser |
 | --- | --- | --- |
@@ -41,18 +41,18 @@ you will see, and what the owner sees:
 | 4 | `[seat] installation N found and saved` | |
 | 5 | `[seat] done: posts as aaroneous-<seat>-seat[bot]; token reaches Aarogaming/aaroneous-devtools` | |
 
-If you see `done`, setup is finished. `--seat all` runs every registered seat in turn (for an owner setting up several at
+If you see `done`, setup is finished. `--seat all` runs every registered seat in turn (for an account holder setting up several at
 once). The command is safe to re-run: it resumes where it stopped, and a finished seat only re-checks.
 
 **Prove it posts as you,** with one harmless comment on a PR of your own, then read back the author:
 
 ```bash
-export GH_CONFIG_DIR="$HOME/.steward/seats/<seat>/gh"      # a gh config that never holds the owner's login
+export GH_CONFIG_DIR="$HOME/.steward/seats/<seat>/gh"      # a gh config that never holds the account holder's login
 export GH_TOKEN="$(python scripts/seat_app_setup.py token --seat <seat>)"      # lasts one hour
 gh api repos/OWNER/REPO/issues/N/comments -f body='<seat> seat identity check' --jq '.user.login'
 ```
 
-It must print `aaroneous-<seat>-seat[bot]`. If it prints the owner login, `gh` is using the owner's stored login: check
+It must print `aaroneous-<seat>-seat[bot]`. If it prints the account holder's login, `gh` is using the account holder's stored login: check
 that `GH_CONFIG_DIR` and `GH_TOKEN` are set in the same shell.
 
 **Finish with a small PR** adding `aaroneous-<seat>-seat[bot]` to your seat's `logins` list in
@@ -68,7 +68,7 @@ seat key, so commit authorship matches.
 | Timed out before the first click | Nothing was created until the click. Run `setup` again |
 | `registration failed` mentioning the name | GitHub App names are global and may be taken. Pick another: `--app-name aaroneous-<seat>-seat-2` (34 characters at most) |
 | Timed out waiting for Install | The App exists; run `setup` again and it resumes at the install step |
-| `the App is not installed on <owner>'s account yet` | It was installed on a different account or organisation. Install it on the owner's personal account |
+| `the App is not installed on <owner>'s account yet` | It was installed on a different account or organisation. Install it on the account holder's personal account |
 | `the token does not reach <repo>` | Installed without the repository. Open the App's installation settings and add `aaroneous-devtools`, then run `check` |
 | The wrong GitHub account clicked Create | The App now lives on that account. Delete it there (Settings, Developer settings, GitHub Apps), delete `~/.steward/seats/<seat>/`, and start again |
 | `openssl could not sign` | The saved key is damaged or `openssl` is missing. Delete `~/.steward/seats/<seat>/` and the App, then register again |
@@ -86,7 +86,7 @@ The steps are also separate commands if you need one alone: `register`, `link`, 
 - A one-hour installation token on demand (`token`). A token is attributed to the App itself.
 
 GitHub will not create an App without a person confirming it, so the two clicks cannot be removed. Do not use a
-device-code login for this: that token acts as the person, so posts would still show the owner. Never print a token
+device-code login for this: that token acts as the person, so posts would still show the account holder. Never print a token
 into a log or a comment.
 
 ## Limits and what is not verified

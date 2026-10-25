@@ -14,10 +14,10 @@ This cadence governs `Aarogaming/aaroneous-devtools` end to end,
 autonomously, under `AUTOMATED_MERGE_POLICY.md`'s Tier B. It also covers
 `Aarogaming/aaroneous` for audit *purposes* — reading it, reporting drift,
 proposing a fix — but auditing Aaroneous never implies authority to merge
-there. Aaroneous stays entirely owner-gated until something graduates into
-it via the component-graduation process in
-`LOCAL_MODEL_AUTONOMY_POLICY.md`; that graduation merge is the owner's
-checkpoint, not this cadence's. An audit finding something wrong in
+there. Aaroneous stays owner-gated (phase boundary, AUTOMATED_MERGE_POLICY.md
+Scope amendment 2026-10-11) until the pipeline can automate product
+merges; the graduation merge is the recorded checkpoint
+(`OWNER_DELEGATION_LADDER.md` R5), not this cadence's. An audit finding something wrong in
 Aaroneous produces a report and, if warranted, a PR proposing a fix —
 never a direct push, never an autonomous merge, regardless of how clean
 the finding is.

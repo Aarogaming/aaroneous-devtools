@@ -94,7 +94,10 @@ get that benefit. For each one found:
 2. Let Aaroneous's real CI run — the actual authority, not a duplicate.
 3. Review the diff. Confident and in scope → drive it to green and sign off.
    Ambiguous, or the diff doesn't match its stated intent → close with a
-   comment explaining why, or escalate to the owner if genuinely stuck.
+   comment explaining why, or escalate to an independent seat if genuinely
+   stuck (reserved decisions go to an escalation record per
+   `OWNER_DELEGATION_LADDER.md` R4; automation-debt: reserved-decision
+   adjudication).
 4. **Never auto-merge**, even on green CI plus a clean review, for now. See
    below for why and when that might change.
 
@@ -153,7 +156,7 @@ next delay — doubling on quiet up to a 30-minute ceiling, resetting to the
 any other scheduling this pipeline grows: never fire on a blind interval
 when the previous outcome tells you something about the next one.
 
-## What still needs a human (not delegated to any tier above)
+## What has no mechanism yet (not delegated to any tier above)
 
 - **M34 acceptance.** Nothing above is "accepted" in the queue's own terms
   until the C10-C19 review backlog gets an actual independent verdict — see
@@ -176,9 +179,10 @@ when the previous outcome tells you something about the next one.
   clearing it — this only closes the *reporting* gap, not the judgment
   call.
 - **Raising the auto-merge bar** described above.
-- **Anything a cloud agent's own review explicitly flags as needing owner
-  judgment** — that escalation path already exists in the PR-babysitting
-  protocol those agents run under; this policy doesn't change it.
+- **Anything a cloud agent's own review explicitly flags as a reserved
+  decision** — escalation records route those to independent seat
+  adjudication (`OWNER_DELEGATION_LADDER.md` R4; automation-debt:
+  reserved-decision adjudication until R4 lands).
 
 ## Guardrails this policy does not relax
 

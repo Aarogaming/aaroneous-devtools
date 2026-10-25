@@ -16,7 +16,7 @@ framework primer -> component profile -> bounded change -> product verification 
    report on dependencies, API shape, hot-path rule coverage, test topology, configuration reach,
    and existing measurements.
 3. **Plan:** turn one confirmed concern into a small worklist item with paths, invariant,
-   acceptance evidence, rollback, and a named owner.
+   acceptance evidence, rollback, and a named responsible seat.
 4. **Change:** claim the exact product files, make the smallest viable Rust change, and keep any
    generated draft or model output in devtools scratch space.
 5. **Verify:** run Aaroneous's native gates. Devtools can summarize their results but cannot

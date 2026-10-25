@@ -21,4 +21,4 @@ only where they express an external contract or platform boundary.
 - `stacks/analysis.toml`: read-only audit commands and report outputs.
 - `stacks/local-model.toml`: optional private model endpoint settings; never loaded by Aaroneous.
 
-Every manifest declares inputs, commands, expected artifacts, failure behavior, and owner.
+Every manifest declares inputs, commands, expected artifacts, failure behavior, and a responsible seat.

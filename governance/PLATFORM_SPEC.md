@@ -1,6 +1,6 @@
 # Platform Spec v0 (PROPOSAL)
 
-Status: **proposal for owner approval.** Nothing here changes behaviour, policy or the ledger until
+Status: **proposal for review.** Nothing here changes behaviour, policy or the ledger until
 accepted and implemented in later PRs. Source: owner/steward discussion of 2026-10-03.
 
 ## 1. Goal
@@ -30,7 +30,7 @@ product library. Devtools is the beta channel and orchestrator that uses and bui
 
 Ratchet baselines, rollback and versioning replace manual sign-off. The only human gate that remains
 is loosening a crate's compliance profile whose stricter rules the auditor cannot prove unnecessary;
-provable loosenings are automated and unproven ones go to the owner (section 6; AGENTS.md section 1).
+provable loosenings are automated and unproven ones go to the owner (section 6; Aaroneous AGENTS.md section 1; OWNER_DELEGATION_LADDER.md R5 is the path to graduate that).
 
 ## 3. Review coverage rule
 
@@ -85,7 +85,7 @@ reproduction need the log hashes, counts, inspected claims and failure details.
 
 The profile is the declared truth. A raised flag means repair the code (default) or change the
 profile. Repair if the flagged behaviour is incidental; reprofile only if it is the crate's actual
-job. Loosening a profile needs owner sign-off.
+job. Loosening a profile needs owner sign-off recorded in the product PR (Aaroneous AGENTS.md section 1; OWNER_DELEGATION_LADDER.md R5 is the path to change that).
 
 **Owner decision (2026-10-03): automated loosening is accepted with a guard.** The auditor may
 auto-allow a loosening only when it proves the stricter rules no longer apply (no hot-path code, no

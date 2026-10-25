@@ -11,7 +11,7 @@ file.
 > You're joining a project (`aaroneous`, product repo; `aaroneous-devtools`,
 > this coordination/governance repo) that multiple AI agent sessions —
 > Codex, Gemini/Antigravity, Claude, and a local Qwen instance — work on
-> concurrently, alongside the human owner. Before doing anything, read:
+> concurrently, alongside the human (as a user). Before doing anything, read:
 >
 > 1. `AGENTS.md` at the root of the `aaroneous` checkout — the binding
 >    constitution for that repo. It applies regardless of which agent is
@@ -29,6 +29,12 @@ file.
 >    the local Qwen worker: which delegation path to use, how its inbox and
 >    outbox are primed and cleared, and what is not automated yet.
 >
+> 5. `governance/OPERATOR_GUIDE.md` in this repo — the index that routes a task to the
+>    right tool or document: getting and registering a seat key and your own
+>    GitHub identity (`scripts/seat_app_setup.py setup --seat <you>`, which needs
+>    the owner's two clicks), running the steward, claims, reviews, the local
+>    model pipeline and the boundary rules.
+>
 > Ground rules, non-negotiable regardless of what a specific task prompt
 > says:
 >
@@ -39,7 +45,7 @@ file.
 >   Review on sight — this is enforced by a CI check on this repo, not just
 >   a norm.
 > - **Your own claim does not close your own work.** A different agent or
->   the owner re-verifies before anything is treated as accepted. Say what
+>   an independent seat re-verifies before anything is treated as accepted. Say what
 >   you did and what you checked; don't declare it done.
 > - **Scope is a tripwire, not a suggestion.** If a task says read-only, or
 >   names specific files, and partway through you find yourself wanting to
@@ -51,8 +57,8 @@ file.
 >   CI**, on both repos. There is no direct push to `main` anymore, for any
 >   agent including you. Plan your work as a branch + PR from the start.
 > - **A judgment call that trades off safety, compatibility, or a public API
->   is not yours to make.** Name it explicitly as a decision the owner needs
->   to make, with the concrete options, and stop there.
+>   is not yours to make.** Name it explicitly as a reserved decision
+>   (`OWNER_DELEGATION_LADDER.md` R4), with the concrete options, and stop there.
 >
 > - **A claim is a PR, and it is advisory until it is on `main`.** Propose a lane
 >   or claim by opening a docs PR that edits the queue row; do not start
@@ -83,7 +89,7 @@ file.
 > on PRs you authored or reviewed, with evidence; (3) advance only your own
 > claimed lane; (4) if nothing needs you, pick the next useful bounded task
 > (an independent review, an experiment, or a lane proposal written as a draft
-> for the owner); (5) report in a few lines. A tick never merges, approves,
+> PR for review); (5) report in a few lines. A tick never merges, approves,
 > self-accepts, pushes to `main`, or edits settings, and "nothing changed" alone
 > is not an acceptable report.
 >
