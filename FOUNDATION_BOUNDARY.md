@@ -6,7 +6,7 @@ private experiments that support Aaroneous without becoming part of its product 
 
 It is not a generic archive for retired framework source. Aaroneous Git history is authoritative
 for removed product artifacts. A transferred item must have a maintained foundation or operations
-use case, a named owner, documented inputs and outputs, and no dependency path back into the
+use case, a named responsible seat, documented inputs and outputs, and no dependency path back into the
 Aaroneous workspace, CI, release, or runtime.
 
 ## Dependency direction and proving ground

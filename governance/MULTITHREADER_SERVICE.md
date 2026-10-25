@@ -21,9 +21,9 @@ Each evidence file is bounded to 32 KiB and the complete prompt to 64 KiB. Queue
 ## Outcomes and ownership
 
 - `no-new-work`: model returned a null proposal; this is not proof the repository has no defects.
-- `pending-owner-review`: structural, declared-source, existing-file, dependency, portfolio ID and queue checks passed. A human or primary owner must still reproduce the defect and approve its priority and acceptance criterion.
-- `rejected`: proposal overlaps a queue scope or fails contextual checks. Completed queue references also require explicit owner reconciliation before repeat work.
-- `duplicate-inbox-candidate`: an existing pending record has the same ID or exact ordered file scope. Semantically similar proposals with different scopes still require owner review.
+- `pending-owner-review` (status name retained verbatim): structural, declared-source, existing-file, dependency, portfolio ID and queue checks passed. A seat independent of the submitter must still reproduce the defect and approve its priority and acceptance criterion.
+- `rejected`: proposal overlaps a queue scope or fails contextual checks. Completed queue references also require explicit reconciliation before repeat work.
+- `duplicate-inbox-candidate`: an existing pending record has the same ID or exact ordered file scope. Semantically similar proposals with different scopes still require independent review.
 - `failed`: model/protocol failure; an inbox failure record is written and the executable returns nonzero. Invalid configs or input acquisition failures return nonzero before creating a report.
 
 Records are `review-NNNNNN.json`; they retain the exact evidence bundle and queue diagnostics. A `review.lock` prevents simultaneous service runs. After an interrupted process, inspect activity before removing a stale lock. Review and archive records weekly; automatic retention, unchanged-input caching, claim dispatch, and semantic duplicate detection are future work. Do not delete pending records before their disposition is recorded.

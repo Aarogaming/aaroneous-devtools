@@ -111,7 +111,7 @@ For a given PR head commit, before anything merges it automatically:
 2a. **Base is the repository's default branch.** A PR stacked on a
     non-default base (a sequencing branch like `codex/foundry-transition`)
     is never auto-merge-eligible, regardless of path or trust status —
-    stacked-landing sequencing stays an explicit owner or author-seat
+    stacked-landing sequencing stays an explicit author-seat
     decision, matching the steward-grant precedent in `#44`.
 3. **≥2 independent accept verdicts** at that exact head, from reviewer
    seats that are not the implementer and not each other (the honour-system

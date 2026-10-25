@@ -2,7 +2,7 @@
 
 Why: every seat posts under one shared GitHub login, so a pasted attestation block is indistinguishable
 from a real one. Unsigned coverage is therefore "attested-only". A signed attestation proves the seat
-holding the private key made the verdict. Each seat sets up its own key; no network service is involved.
+holding the private key made the verdict. Each seat sets up its own key; this is a self-service setup (see SEAT_APPS.md); no network service is involved.
 
 ## One-time, per seat (run on the machine where that seat works)
 

@@ -13,7 +13,7 @@ Read [the companion operating model](governance/OPERATING_MODEL.md) for the ligh
 - Rust changes must pass `cargo fmt`, `cargo test`, and strict Clippy for `foundation/`.
 - Foundation commands require explicit input and output paths. Do not add ambient path discovery,
   product dependencies, or automatic Aaroneous source mutation.
-- Treat migration content as historical input. Promote a tool only after documenting its owner,
+- Treat migration content as historical input. Promote a tool only after documenting its responsible seat,
   inputs, outputs, and maintenance cost.
 
 ## Definition of done

@@ -25,8 +25,10 @@ Done/PASS/"gate green" without a commit hash, exit code, log path, or command bl
 `scripts/check_coordination_evidence.py` and the "Standing rule: evidence retention" section at
 the top of that file).
 
-If this is blocking urgent work and needs to be relaxed or removed, that's the owner's call to
-make directly in GitHub's branch protection settings — don't route around it by force-pushing
+If this is blocking urgent work and needs to be relaxed or removed, that's a reserved-decision
+request (OWNER_DELEGATION_LADDER.md R4; automation-debt: branch-protection admin) — an account
+administrator applies it in GitHub's branch protection settings — don't route around it by
+force-pushing
 or disabling it from inside an agent session.
 
 ## Hobby cadence
