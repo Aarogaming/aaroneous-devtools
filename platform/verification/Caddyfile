@@ -1,0 +1,32 @@
+{
+	admin off
+	auto_https disable_redirects
+	servers {
+		timeouts {
+			read_header 5s
+			read_body 10s
+			write 30s
+			idle 30s
+		}
+	}
+}
+
+https://{$VERIFICATION_HOST}:8443 {
+	bind {$VERIFICATION_BIND_IP}
+	tls internal
+	request_body {
+		max_size 32MiB
+	}
+	@jobs path /v1/jobs /v1/claim /v1/results
+	handle @jobs {
+		reverse_proxy 127.0.0.1:31493 {
+			transport http {
+				dial_timeout 2s
+				response_header_timeout 15s
+			}
+		}
+	}
+	handle {
+		respond 404
+	}
+}

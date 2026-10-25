@@ -31,13 +31,15 @@ struct Fixture {
 }
 impl Fixture {
     fn new(argv: &[&str], timeout: u32) -> Self {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../../tmp")
-            .join(format!(
-                "local-gate-test-{}-{}",
-                std::process::id(),
-                COUNTER.fetch_add(1, Ordering::SeqCst)
-            ));
+        let base = std::env::var_os("DEVTOOLS_TEST_SUPPORT_DIR")
+            .or_else(|| std::env::var_os("DEVTOOLS_TEST_TMP"))
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../tmp"));
+        let root = base.join(format!(
+            "local-gate-test-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
         let root = root.canonicalize().unwrap_or_else(|_| {
             fs::create_dir_all(&root).unwrap();
             root.canonicalize().unwrap()

@@ -1,0 +1,8 @@
+# The base must be an explicitly approved digest, supplied at build time.
+ARG CADDY_BASE=docker.io/library/caddy@sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772
+FROM ${CADDY_BASE}
+USER root
+# Official Caddy carries a file capability for low ports; remove it so cap_drop
+# ALL and no-new-privileges can execute the binary on our high port 8443.
+RUN setcap -r /usr/bin/caddy
+USER 10001:10001

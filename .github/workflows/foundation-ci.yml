@@ -59,6 +59,7 @@ jobs:
         env:
           DEVTOOLS_TEST_GIT: /usr/bin/git
           DEVTOOLS_TEST_SSH_KEYGEN: /usr/bin/ssh-keygen
+          DEVTOOLS_TEST_CURL: /usr/bin/curl
         run: cargo test --manifest-path foundation/Cargo.toml --workspace --all-targets --locked
       - name: Lint
         if: steps.changes.outputs.build == 'true'
