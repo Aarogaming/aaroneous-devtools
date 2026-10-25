@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 2
       # A pull request that touches no Rust, stack or CI path (a document, a queue row, a script) has nothing for cargo to
@@ -47,7 +47,7 @@ jobs:
         if: steps.changes.outputs.build == 'true'
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c
         if: steps.changes.outputs.build == 'true'
         with:
           workspaces: foundation
@@ -56,6 +56,9 @@ jobs:
         run: cargo fmt --manifest-path foundation/Cargo.toml --all -- --check
       - name: Test
         if: steps.changes.outputs.build == 'true'
+        env:
+          DEVTOOLS_TEST_GIT: /usr/bin/git
+          DEVTOOLS_TEST_SSH_KEYGEN: /usr/bin/ssh-keygen
         run: cargo test --manifest-path foundation/Cargo.toml --workspace --all-targets --locked
       - name: Lint
         if: steps.changes.outputs.build == 'true'
