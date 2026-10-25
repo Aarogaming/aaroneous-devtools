@@ -1,0 +1,33 @@
+name: Foundation CI (Windows)
+
+# Needs a self-hosted Windows runner labelled `devtools-windows` (the owner's Windows machine). Not part of the pull-request
+# gate: it runs after merge and nightly, so a powered-off machine never blocks a merge. If that machine is always on, add a
+# `pull_request` trigger here and drop it from nowhere else: the gate then requires it like any other check.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-ci-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    name: Foundation (windows-self-hosted)
+    runs-on: [self-hosted, devtools-windows]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Format
+        run: cargo fmt --manifest-path foundation/Cargo.toml --all -- --check
+      - name: Test
+        run: cargo test --manifest-path foundation/Cargo.toml
+      - name: Lint
+        run: cargo clippy --manifest-path foundation/Cargo.toml -- -D warnings

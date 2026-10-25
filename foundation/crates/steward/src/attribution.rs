@@ -13,7 +13,7 @@ pub struct Attribution {
 }
 
 // Python's `\s` also counts the ASCII separators U+001C to U+001F, which Rust's does not.
-const DECLARED: &str = r"(?:Seat[\s\x1c-\x1f]*/[\s\x1c-\x1f]*agent|Reviewer(?:[\s\x1c-\x1f]*/[\s\x1c-\x1f]*Seat|[\s\x1c-\x1f]+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity)";
+const DECLARED: &str = r"(?:Seat[\s\x1c-\x1f]*/[\s\x1c-\x1f]*agent|Reviewer(?:[\s\x1c-\x1f]*/[\s\x1c-\x1f]*Seat|[\s\x1c-\x1f]+seat)?)[^\w\r\n]{0,24}(Claude|Mimo|Codex|Gemini|Antigravity|ubuntu-worker-01|Ubuntu)";
 
 impl Attribution {
     /// # Errors
@@ -22,13 +22,13 @@ impl Attribution {
         // A seat name that opens a line, optionally after a markdown heading mark and the word "Independent",
         // is how the seats title their reviews.
         let in_text = format!(
-            r"(?im){DECLARED}|^[\s\x1c-\x1f]*(?:#{{1,6}}[\s\x1c-\x1f]*)?(?:Independent[\s\x1c-\x1f]+)?(Claude|Codex|Gemini|Mimo|Antigravity)\b"
+            r"(?im){DECLARED}|^[\s\x1c-\x1f]*(?:#{{1,6}}[\s\x1c-\x1f]*)?(?:Independent[\s\x1c-\x1f]+)?(Claude|Codex|Gemini|Mimo|Antigravity|ubuntu-worker-01|Ubuntu)\b"
         );
         Ok(Self {
             lexicon: Lexicon::new()?,
             in_text: Regex::new(&in_text)?,
             seat_word: Regex::new(
-                r"(?i)\b(Claude|Mimo|Codex|Gemini|Antigravity)[\s\x1c-\x1f]+seat\b",
+                r"(?i)\b(Claude|Mimo|Codex|Gemini|Antigravity|ubuntu-worker-01|Ubuntu)[\s\x1c-\x1f]+seat\b",
             )?,
             declared: Regex::new(&format!("(?i){DECLARED}"))?,
             receipt_prefix: Regex::new(
@@ -75,10 +75,11 @@ impl Attribution {
         let Some(name) = found else {
             return String::new();
         };
-        if name == "antigravity" {
-            "gemini".to_owned()
-        } else {
-            name
+        match name.as_str() {
+            "antigravity" => "gemini".to_owned(),
+            "qwen" => "mimo".to_owned(),
+            "ubuntu" => "ubuntu-worker-01".to_owned(),
+            _ => name,
         }
     }
 }
@@ -104,6 +105,11 @@ mod tests {
             ),
             "gemini"
         );
+        assert_eq!(seat("Reviewer seat: Ubuntu", false), "ubuntu-worker-01");
+        assert_eq!(
+            seat("Seat / agent: ubuntu-worker-01", false),
+            "ubuntu-worker-01"
+        );
     }
 
     #[test]
@@ -111,5 +117,25 @@ mod tests {
         assert_eq!(seat("My note.\nMimo reviewed this earlier.\n", true), "");
         assert_eq!(seat("intro\nSeat / agent: Codex\n", true), "codex");
         assert_eq!(seat("Claude seat: done", true), "claude");
+        assert_eq!(seat("Ubuntu seat: done", true), "ubuntu-worker-01");
+        assert_eq!(
+            seat("ubuntu-worker-01 seat: done", true),
+            "ubuntu-worker-01"
+        );
+    }
+
+    #[test]
+    fn declaration_padding_does_not_cross_line_boundaries() {
+        for newline in ["\n", "\r\n"] {
+            let body =
+                format!("Seat / agent:{newline}------------{newline}Claude reviewed this earlier");
+            assert_eq!(seat(&body, true), "");
+            assert_eq!(seat(&body, false), "claude");
+        }
+        assert_eq!(seat("Seat / agent:        Claude", true), "claude");
+        assert_eq!(
+            seat(&format!("Seat / agent:{}Claude", " ".repeat(40)), true),
+            ""
+        );
     }
 }

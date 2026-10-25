@@ -289,8 +289,11 @@ existed:
 - Self-certification is still banned. An implementer's own "looks good to
   me" never counts toward condition 3, automated or not.
 - `Aarogaming/aaroneous` stays entirely owner-gated, with no path or
-  category that becomes automatic under this document — that's a
-  permanent floor, revisit only by explicit owner decision recorded here.
+  category that becomes automatic under this document today — as amended on
+  2026-10-11, this is an early-development phase boundary (lifted only by an
+  explicit owner decision once the graduation criteria in
+  `proposals/OWNER_DELEGATION_LADDER.md` are satisfied), not a permanent
+  architectural impossibility.
 - A human can still merge anything by hand at any time; this policy only
   adds a path that doesn't require them to.
 - The circuit breaker, once tripped by any party for any reason, blocks

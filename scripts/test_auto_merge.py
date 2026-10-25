@@ -48,7 +48,7 @@ class Merging(unittest.TestCase):
         merge_fn = mock.Mock(return_value=fake_merge_result(0))
         with mock.patch.object(am.mg, "evaluate_all", return_value=decisions):
             exit_code, lines = am.run(ALLOWED, "/tmp/x", "governance/identities.json", None, False, merge_fn=merge_fn)
-        merge_fn.assert_called_once_with(ALLOWED, 1)
+        merge_fn.assert_called_once_with(ALLOWED, 1, "a" * 40)
         self.assertEqual(exit_code, 0)
         self.assertTrue(any("BLOCKED" in l and "not covered" in l for l in lines))
         self.assertTrue(any("merged #1" in l for l in lines))
@@ -64,6 +64,25 @@ class Merging(unittest.TestCase):
         with mock.patch.object(am.mg, "evaluate_all", return_value=[]) as ev:
             am.run(ALLOWED, "/tmp/x", "governance/identities.json", 42, True)
         ev.assert_called_once_with(ALLOWED, "/tmp/x", "governance/identities.json", 42, False)
+
+    def test_head_change_is_refused_and_reported(self):
+        checked_head, live_head = "a" * 40, "b" * 40
+
+        def guarded_merge(repo, pr, expected_head):
+            self.assertEqual(expected_head, checked_head)
+            return fake_merge_result(1, "head changed") if expected_head != live_head else fake_merge_result(0)
+
+        with mock.patch.object(am.mg, "evaluate_all", return_value=[decision(7, True, head=checked_head)]):
+            code, lines = am.run(ALLOWED, "/tmp/x", "ids.json", None, False, merge_fn=guarded_merge)
+        self.assertEqual(code, 1)
+        self.assertFalse(any("merged #7" in line for line in lines))
+
+    def test_cli_merge_requires_full_evaluated_sha(self):
+        head = "abcdef01" * 5
+        with mock.patch.object(am.subprocess, "run", return_value=fake_merge_result(0)) as run:
+            am.merge(ALLOWED, 7, head)
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[argv.index("--match-head-commit") + 1], head)
 
 
 if __name__ == "__main__":

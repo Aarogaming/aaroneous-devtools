@@ -1,0 +1,142 @@
+# HUD settings contract, v1
+
+Lane C120 (HUD v2 phase P1a). Implemented by the `hud_core` crate (`foundation/crates/hud_core`); design in
+`governance/proposals/hud/01-settings-and-permissions.md`. This file is the format a person edits and a test can check.
+
+## Layers
+
+Lowest to highest precedence. Every layer is a TOML file; a missing file is the same as an empty one.
+
+| Layer | Who writes it | Where the application looks (chosen by the caller, not by `hud_core`) |
+|---|---|---|
+| `defaults` | built in; the file is `foundation/crates/hud_core/src/defaults.toml` | embedded in the binary |
+| `user` | the owner, for this machine and account | `~/.steward/hud/settings.toml` |
+| `project` | committed with the repository, shared | `<repo>/.devtools/hud.toml` |
+| `local` | uncommitted overrides | `<repo>/.devtools/hud.local.toml` |
+
+`hud_core` reads no files and no environment variables. The adapter that embeds it reads the files and passes each
+layer's text in, in the order user, project, local. The paths above are the proposed conventions, not enforced here.
+
+Scalars and tables from a higher layer replace or merge into the lower layer. Arrays replace, except
+`permissions.rules`, which **adds up** across layers (a higher layer cannot remove a lower layer's rule).
+
+## Locks
+
+A layer may start with `locked = ["dotted.path", ...]`. The listed paths, and everything under them, can no longer
+be set by any **higher** layer; the layer that locks a path may set it itself. A higher layer that tries is
+refused as a whole, with an error naming the path, the locking layer and the offending layer. Locks cannot be
+removed by a higher layer, and `permissions.rules` can be locked to stop higher layers adding rules.
+
+## Fail-safe loading
+
+A file that does not parse, uses an unknown key, has a wrong type, is out of range, or contradicts another setting is
+refused with an error naming the setting. When a **reload** is refused the previous good configuration stays active
+(`Manager::reload`, `Reload { applied: false, error }`). Start-up has three cases:
+
+1. The shared layers (project, local) are refused: they are dropped and the trusted user settings stay active, with a
+   warning and the error kept for display (`Manager::last_error`). A broken shared file therefore never costs the owner
+   their own deny rule, lock or limit, and never loosens anything.
+2. The trusted layers (defaults, user) are refused: the manager starts in **safe-hold**. Every request is refused with
+   `Reason::SafeHold`, reads included, until a valid policy is applied by `reload`. The built-in defaults are still
+   loaded so that a settings screen has values to show, but they decide nothing, because they could be looser than the
+   policy the owner wrote. `Loaded::is_safe_hold` tells an adapter which state it is in.
+3. Everything loads: normal operation.
+
+An unreadable policy is therefore never a looser one.
+
+## Permissions
+
+`permissions.mode` is the default for writes nobody has written a rule about:
+
+| Mode | Unmatched read | Unmatched write |
+|---|---|---|
+| `read-only` (default) | allow | deny |
+| `ask` | allow | ask |
+| `auto` | allow | allow if the action's `risk` is `low`, else ask |
+
+`auto` takes effect only when `permissions.auto_enabled = true` is set **in the user layer**; otherwise the effective
+mode is `read-only` and a warning is reported.
+
+Rules: `"<allow|ask|deny> <actor> <action> [scope]"`.
+
+- actor: `*`, `human`, `seat:*`, or `seat:<name>` (lower-case letters, digits, `-`).
+- action: `*`, an exact name, or a prefix ending in `*` (for example `report_*`). An exact name must be registered under
+  `[actions.<name>]` (or be a floor name).
+- scope: omitted or `*` (any), `self` (the acting seat is the target), or a literal compared to the scope the caller passes.
+
+When several rules match, **deny beats ask beats allow**, whichever layer wrote them. If none matches, the action
+registry decides: a read is allowed, an unknown action is denied, a write follows the mode.
+
+Actors: `human` is the person using the application; a `seat:<name>` is a model or agent identified by the adapter
+(the adapter authenticates the seat; this crate only decides). The default rules give `human` everything except the
+floor. Ownership checks other than `self` belong to the adapter.
+
+### The floor
+
+`merge`, `push`, `review` and `attest` are refused for every actor whatever the settings or rules say
+(`hud_core::FLOOR_DENIED`). They stay with the steward gate and signed attestations. An action with one of these names
+cannot be registered. This is a safety invariant in code, not a setting.
+
+## Shared layers cannot loosen the owner's machine
+
+The project and local layers are shared or copied with a repository, so a cloned repository must not be able to change
+what the owner's machine does with permissions, destinations or spending. Settings are filtered **while the layers are merged**,
+and each ignored setting produces a warning that names the layer and the path. The file itself still loads.
+
+Always ignored from the project and local layers (only the user layer may set them): `permissions.auto_enabled` and
+`permissions.trust_shared_layers`.
+
+Ignored from those layers unless `permissions.trust_shared_layers = true` is set in the **user** layer:
+
+- `routing` (tiers, the cloud switch, confidence), `models` (backend endpoints and roles), `budgets`, `agent_door`, and
+  `operations.run_without_approval`: where work and data go, what may be spent, what is exposed, what runs unasked;
+- the `kind` and `risk` of an **existing action**, whether built in or added by the user layer (a shared layer may add new
+  actions);
+- `allow` rules (`deny` and `ask` rules still apply) and a looser `permissions.mode` (a stricter mode is honoured).
+
+Everything else (display options, cache sizes, event limits, tightening) can be set freely by shared layers. A setting that
+should never change from a shared file but is not listed here is protected by a `locked` entry in the user layer. The
+effective value that `Loaded::effective()` and the decision engine use is the filtered value; a user interface must show
+the ignored list (`Loaded::warnings`) next to it and must not present an ignored shared setting as active policy.
+
+An action that is not registered is refused before any rule is consulted, so a wildcard or prefix `allow` cannot grant it.
+The floor is checked before that.
+
+## Input limits and failure behaviour
+
+- A layer larger than 256 KiB, or more than 2,000 permission rules in total, is refused (`MAX_LAYER_BYTES`, `MAX_RULES`). A measured flood of 400,000
+  rules cost about 4 ms per decision and 227 ms to load; the limits are in code on purpose.
+- `Manager::start`: if the layers do not load, the **project and local layers are dropped first** and the owner's own layers are kept (with a warning and the
+  error). Only if the owner's layers also fail does it start from the built-in defaults. A broken or hostile shared file therefore cannot cost the owner a deny
+  rule, a lock or a tighter limit. `Manager::reload` keeps the previous good configuration.
+- In project and local layers, any key whose name contains a dot is ignored (with a warning): it is not a setting and would otherwise look like a nested path to
+  the filters.
+
+## Settings groups
+
+| Table | Purpose |
+|---|---|
+| `permissions` | `mode`, `auto_enabled`, `trust_shared_layers`, `rules` |
+| `actions.<name>` | registry: `kind` (`read`/`write`), `risk` (`low`/`high`, default `high`) |
+| `agent_door` | `enabled`, `token_lifetime_secs`, `rate_per_minute`, `max_body_bytes` |
+| `routing` | `tiers` (software, local, cloud), `cloud_enabled`, `min_confidence` |
+| `models.backends.<name>` | `kind` (`ollama`, `openai-compatible`), `endpoint`, `model`, `context_tokens`, `timeout_secs` |
+| `models.roles` | role to backend name; `glue` is required while the `local` tier is on |
+| `budgets` | `accounting`, `per_seat_daily_tokens` (0 = no cap), `on_exhaustion` (`queue`, `ask`, `refuse`) |
+| `cache` | `enabled`, `max_entries`, `ttl_secs` |
+| `events` | `long_poll_timeout_secs`, `retention`, `heartbeat_secs` |
+| `operations` | `visible`, `run_without_approval` (a subset of `visible`) |
+| `ui`, `ui.visualizer` | `theme`, `notification_level`; `enabled`, `max_fps`, `fallback_2d_when_model_busy` |
+
+Ranges are checked at load (see `Config::validate`). The initial values are in `defaults.toml`.
+
+## Effective-value view
+
+`Loaded::effective()` returns every setting with its final value and the layer that set it, so the application can
+show where a value came from. `Loaded::rules()` lists rules with their layers.
+
+## Not covered by this version
+
+Transport, authentication of seats, token issue and revocation, rate limiting and the audit log are later phases
+(P1 agent door, P1b MCP adapter). File watching and the hot-reload trigger belong to the adapter; this crate provides
+the reload step. Not verified: behaviour with the real adapters, which do not exist yet.

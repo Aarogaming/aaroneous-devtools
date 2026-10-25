@@ -69,6 +69,8 @@ class Rejections(unittest.TestCase):
         self.assertEqual(cs.comment_seat("### Review\n**Seat / Agent**: Antigravity (Gemini 2.5 Pro)\n"), "gemini")
         self.assertEqual(cs.comment_seat("Seat / agent: Mimo (mimo-v2.6-flash-free, opencode)"), "mimo")
         self.assertEqual(cs.comment_seat("Codex independent delta re-review at abc"), "codex")
+        self.assertEqual(cs.comment_seat("Reviewer seat: Ubuntu"), "ubuntu-worker-01")
+        self.assertEqual(cs.comment_seat("Seat / agent: ubuntu-worker-01"), "ubuntu-worker-01")
         self.assertEqual(cs.comment_seat("no seat is named here"), "")
 
     def test_rejection_reasons_are_stated_in_words_an_author_can_act_on(self):
@@ -163,6 +165,7 @@ class Rejections(unittest.TestCase):
         receipt = f"[done:fix_threads:62:{head}]"
         for tail, seat in ((" Claude Sonnet 5.5 \u2014 all threads answered", "claude"), (" Claude seat: done", "claude"),
                            (": Mimo: done", "mimo"), (" Seat / agent: Codex", "codex"),
+                           (" Ubuntu seat: done", "ubuntu-worker-01"), (" Seat / agent: ubuntu-worker-01", "ubuntu-worker-01"),
                            (" thanks Mimo for the review", ""), (" all done, Claude", ""), ("", "")):
             self.assertEqual(cs.comment_seat(receipt + tail, strict=True), seat, tail)
 
@@ -190,6 +193,25 @@ class Rejections(unittest.TestCase):
         for body in ("Independent review by Codex", "Independently, Codex said it passes", "Review of Codex's change",
                      "### Independent review", "Independent verdict: ACCEPT"):
             self.assertEqual(cs.comment_seat(body, strict=True), "", body)
+
+    def test_a_column_aligned_declaration_still_attributes_the_comment(self):
+        # Fixed-width review packets pad the label to a column ("Seat / agent:        Claude"): eight blanks sit
+        # between the label and the seat, more than the old six-character gap allowed (seen on PR #68, comment 10).
+        for body, seat in (("REVIEW PACKET\nSeat / agent:        Claude (this session, Sonnet 5)\n", "claude"),
+                           ("```text\nReviewer / Seat:          Gemini\n```\n", "gemini"),
+                           ("Reviewer seat:\t\t\tCodex\n", "codex")):
+            self.assertEqual(cs.comment_seat(body, strict=True), seat, body)
+            self.assertEqual(cs.comment_seat(body, strict=False), seat, body)
+
+    def test_a_declaration_label_far_from_a_seat_name_does_not_attribute_the_comment(self):
+        far = "Seat / agent:" + " " * 40 + "Claude"
+        self.assertEqual(cs.comment_seat(far, strict=True), "", far)
+
+    def test_declaration_padding_does_not_cross_newlines(self):
+        # Found by Codex review finding on PR #141: an empty declaration followed by markdown underline/separator
+        # and a subsequent line mentioning a seat should not attribute the comment in strict mode.
+        text = "Seat / agent:\n------------\nClaude reviewed this earlier"
+        self.assertEqual(cs.comment_seat(text, strict=True), "")
 
     def test_a_seat_name_further_down_a_comment_does_not_attribute_it(self):
         self.assertEqual(cs.comment_seat("My note.\nMimo reviewed this earlier.\n", strict=True), "")

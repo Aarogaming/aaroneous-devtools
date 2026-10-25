@@ -1,0 +1,100 @@
+<div id="information-depth">
+<style>
+#information-depth .space{position:relative;overflow:hidden;min-height:330px;touch-action:pan-y}
+#information-depth .links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#information-depth .links text{font-size:12px;fill:var(--foreground)}
+#information-depth .links path{stroke:var(--border);stroke-width:1.5;fill:none}
+#information-depth .links path.dissent{stroke:var(--viz-series-2);stroke-dasharray:5 4}
+#information-depth .node{position:absolute;transform:translate(-50%,-50%);text-align:center}
+#information-depth .node small{display:block;margin-top:5px;color:var(--muted-foreground)}
+#information-depth .layer{position:absolute;inset:0;transition:transform 350ms ease,opacity 350ms ease;transform-origin:var(--origin,50% 50%)}
+#information-depth .layer.entering{transform:scale(.7);opacity:0}
+#information-depth .layer.departing{transform:scale(1.65);opacity:0}
+#information-depth .detail{min-height:3em;margin:12px 0}
+@media(prefers-reduced-motion:reduce){#information-depth .layer{transition:none}}
+</style>
+<h2 style="padding-right:90px">Information in depth</h2>
+<div class="viz-row"><span class="viz-badge">Synthetic topic fixture</span><span class="text-small">Select a node · scroll up to enter · scroll down to return</span></div>
+<nav class="viz-row" aria-label="Topic path" data-path style="margin-top:14px"></nav>
+<div class="space" aria-label="Current topic layer" data-space></div>
+<div class="viz-controls"><button class="btn" type="button" data-back>Up one layer</button><button class="btn btn-primary" type="button" data-enter>Enter Server</button><span class="text-small tabular-nums" data-level></span></div>
+<div class="detail text-small" aria-live="polite" data-detail></div>
+<span class="text-small text-muted">Existing topics determine depth · metadata describes topics · links determine relationships</span>
+</div>
+<script>
+(()=>{
+const root=document.getElementById('information-depth'),space=root.querySelector('[data-space]'),ns='http://www.w3.org/2000/svg',q=s=>root.querySelector(s);
+const projection={"schema_version":"topic-projection-experiment-v1","synthetic":true,"authority":"illustrative-only","source":"Synthetic topic-only navigation fixture; illustrative metadata, not existing runtime data","revision":2,"topics":[{"id":"root","parent":null,"title":"Constellation","detail":"Independent topics share relationships without merging identities.","children":["server","intelligence","outcomes"],"metadata":[]},{"id":"server","parent":"root","title":"Server","detail":"Stable topics, typed relationships and retained evidence form the server contract.","children":["topics","relations","history"],"metadata":[]},{"id":"intelligence","parent":"root","title":"Intelligence","detail":"Raw observations, interpretations and exercised capability evidence remain distinct.","children":["observations","hypotheses","capabilities"],"metadata":[]},{"id":"outcomes","parent":"root","title":"Outcomes","detail":"Bounded experiments and reviewed outcomes preserve authority and measurement boundaries.","children":["experiment","review","roi"],"metadata":[]},{"id":"topics","parent":"server","title":"Topics","detail":"Each topic is a place: entering it reveals its immediate children.","children":[],"metadata":["Identity","Parent","Contributions"]},{"id":"relations","parent":"server","title":"Relations","detail":"Hierarchy and dependencies form DAGs; relatedness and dissent may cycle.","children":[],"metadata":["Dependency","Dissent","Provenance"]},{"id":"history","parent":"server","title":"History","detail":"Issue identity, attempt lineage and lifetime costs survive refinement.","children":[],"metadata":["Issue","Attempts","Cost history"]},{"id":"observations","parent":"intelligence","title":"Observations","detail":"Capture provenance, revision, permissions and evidence quality.","children":[],"metadata":["Source","Permissions","Quality"]},{"id":"hypotheses","parent":"intelligence","title":"Hypotheses","detail":"Interpretation remains a hypothesis; counterevidence stays visible.","children":[],"metadata":["Assumptions","Counterevidence","Evidence check"]},{"id":"capabilities","parent":"intelligence","title":"Capabilities","detail":"Typed contracts and verification evidence do not grant invocation authority.","children":[],"metadata":["Inputs / outputs","Environment","Rollback"]},{"id":"experiment","parent":"outcomes","title":"Experiment","detail":"A bounded proposal needs a baseline, cost limit and measurable success.","children":[],"metadata":["Baseline","Budget","Success measure"]},{"id":"review","parent":"outcomes","title":"Review","detail":"Frozen revision, explicit votes and retained objections; silence cannot approve.","children":[],"metadata":["Frozen revision","Ballots","Objections"]},{"id":"roi","parent":"outcomes","title":"ROI","detail":"Observed benefit and lifetime effort matter; savings remain unmeasured.","children":[],"metadata":["Observed benefit","Total effort","Recurrence"]}],"relations":[{"id":"root:relation:0","layer":"root","from":"intelligence","to":"server","type":"informs","status":"advisory-unverified"},{"id":"root:relation:1","layer":"root","from":"server","to":"outcomes","type":"enables","status":"advisory-unverified"},{"id":"server:relation:0","layer":"server","from":"topics","to":"relations","type":"anchors","status":"advisory-unverified"},{"id":"server:relation:1","layer":"server","from":"history","to":"relations","type":"preserves","status":"advisory-unverified"},{"id":"intelligence:relation:0","layer":"intelligence","from":"observations","to":"hypotheses","type":"grounds","status":"advisory-unverified"},{"id":"intelligence:relation:1","layer":"intelligence","from":"hypotheses","to":"capabilities","type":"tests","status":"advisory-unverified"},{"id":"outcomes:relation:0","layer":"outcomes","from":"experiment","to":"review","type":"evidence","status":"advisory-unverified"},{"id":"outcomes:relation:1","layer":"outcomes","from":"review","to":"roi","type":"informs","status":"advisory-unverified"}]};
+// Isolated projection adapter. No I/O, persistence or authority decisions.
+function createIndex(projection) {
+  if (projection.schema_version !== 'topic-projection-experiment-v1') throw Error('unsupported projection');
+  const topics = new Map();
+  for (const topic of projection.topics) {
+    if (!topic.id || topics.has(topic.id)) throw Error('duplicate or missing topic identity');
+    topics.set(topic.id, topic);
+  }
+  for (const topic of topics.values()) {
+    const seen = new Set(); let next = topic;
+    while (next) {
+      if (seen.has(next.id)) throw Error('parent cycle');
+      seen.add(next.id);
+      if (next.parent === null) break;
+      next = topics.get(next.parent);
+      if (!next) throw Error('missing parent');
+    }
+    for (const id of topic.children) if (topics.get(id)?.parent !== topic.id) throw Error('inconsistent child');
+    if (topic.parent !== null && !topics.get(topic.parent).children.includes(topic.id)) throw Error('missing containment');
+  }
+  return {
+    pathTo(id) {
+      const path=[]; let topic=topics.get(id);
+      if (!topic) throw Error('unknown topic');
+      while (topic) { path.unshift(topic.id); topic=topics.get(topic.parent); }
+      return path;
+    },
+    enter(path,id) {
+      const current=topics.get(path.at(-1));
+      if (!current?.children.includes(id)) throw Error('not a contained topic');
+      const expected=this.pathTo(current.id);
+      if(path.length!==expected.length || path.some((part,i)=>part!==expected[i])) throw Error('invalid topic path');
+      return [...path,id];
+    },
+    related(id) {
+      if (!topics.has(id)) throw Error('unknown topic');
+      return projection.relations.filter(e=>e.from===id||e.to===id).map(e=>({
+        assertionId:e.id,type:e.type,direction:e.from===id?'outgoing':'incoming',
+        target:e.from===id?e.to:e.from,resolved:topics.has(e.from===id?e.to:e.from),
+        status:e.status,containment:false
+      }));
+    }
+  };
+}
+
+
+const topicIndex=createIndex(projection);
+const nodes=Object.fromEntries(projection.topics.map(t=>[t.id,[t.title,t.children,t.detail]]));
+const relations={};for(const e of projection.relations){const ids=nodes[e.layer][1];(relations[e.layer]||=[]).push([ids.indexOf(e.from),ids.indexOf(e.to),e.type]);}
+let path=['root'],selected='server',wheel=0,lastMove=0,timer=null;
+const current=()=>path[path.length-1],children=()=>nodes[current()][1];
+function save(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{topicPath:path,selectedTopic:selected,synthetic:true},privateContent:{path,selected}}).catch(()=>{});}
+function se(tag,attrs={},text=''){const e=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));if(text)e.textContent=text;return e;}
+function points(w,h){return children().map((_,i)=>({x:w*.30,y:60+i*125}));}
+function detail(){const valid=children().includes(selected),n=nodes[selected];q('[data-enter]').disabled=!valid||!n?.[1].length;q('[data-enter]').textContent=valid&&n?.[1].length?'Enter '+n[0]:'Topic detail';q('[data-back]').disabled=path.length===1;q('[data-level]').textContent='Depth '+(path.length-1);const topic=projection.topics.find(t=>t.id===(valid?selected:current()));const links=topicIndex.related(valid?selected:current());q('[data-detail]').textContent=(valid?n[2]:nodes[current()][2])+(topic?.metadata?.length?' Metadata fields (illustrative): '+topic.metadata.join(' · '):'')+(links.length?' Relationships: '+links.map(e=>e.assertionId+' ['+e.status+'] '+e.direction+' '+e.type+' → '+(nodes[e.target]?.[0]||e.target)+(e.resolved?'':' (unresolved)')).join(' · '):'');}
+function draw(){
+const w=Math.max(300,space.clientWidth),h=Math.max(180,children().length*125+25),p=points(w,h);space.style.height=h+'px';space.replaceChildren();
+const layer=document.createElement('div');layer.className='layer';space.append(layer);
+const svg=se('svg',{class:'links',viewBox:`0 0 ${w} ${h}`,role:'img','aria-label':'Typed relationships in '+nodes[current()][0]});layer.append(svg);
+const defs=se('defs'),marker=se('marker',{id:'depth-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto'});marker.append(se('polygon',{points:'0,0 10,5 0,10',fill:'var(--muted-foreground)'}));defs.append(marker);svg.append(defs);
+(relations[current()]||[]).forEach(([a,b,label],i)=>{const s=p[a],t=p[b],bend=w*(.65+i*.09),sx=s.x+65,tx=t.x+65;svg.append(se('path',{d:`M ${sx} ${s.y} C ${bend} ${s.y}, ${bend} ${t.y}, ${tx} ${t.y}`,class:label==='contradicts'?'dissent':'','marker-end':'url(#depth-arrow)'}));svg.append(se('text',{x:bend,y:(s.y+t.y)/2-8,'text-anchor':'middle'},label));});
+children().forEach((id,i)=>{const wrap=document.createElement('div');wrap.className='node';wrap.style.left=p[i].x+'px';wrap.style.top=p[i].y+'px';const b=document.createElement('button');b.type='button';b.className='btn';b.textContent=nodes[id][0];b.setAttribute('aria-pressed',id===selected);b.setAttribute('aria-label',`${nodes[id][0]}, ${nodes[id][1].length} subtopics`);b.onclick=()=>{selected=id;detail();layer.querySelectorAll('button').forEach(other=>other.setAttribute('aria-pressed',other===b));save();};b.ondblclick=()=>{selected=id;enter();};b.onkeydown=e=>{if(e.key==='ArrowDown'){e.preventDefault();selected=id;enter();}else if(e.key==='ArrowUp'){e.preventDefault();back();}};const sub=document.createElement('small');sub.className='text-small';sub.textContent=nodes[id][1].length?nodes[id][1].length+' subtopics':'topic record';wrap.append(b,sub);layer.append(wrap);});
+}
+function render(){const nav=q('[data-path]');nav.replaceChildren();path.forEach((id,i)=>{if(i){const sep=document.createElement('span');sep.textContent='›';nav.append(sep);}const b=document.createElement('button');b.className='btn btn-ghost';b.type='button';b.textContent=nodes[id][0];if(i===path.length-1)b.setAttribute('aria-current','location');b.onclick=()=>{clearTimeout(timer);path=path.slice(0,i+1);selected=children()[0]||null;draw();render();save();};nav.append(b);});detail();}
+function move(change){if(Date.now()-lastMove<400)return;const layer=space.querySelector('.layer'),index=children().indexOf(selected),p=points(space.clientWidth,space.clientHeight)[index];if(layer){if(p)layer.style.setProperty('--origin',`${p.x}px ${p.y}px`);layer.classList.add('departing');}lastMove=Date.now();wheel=0;clearTimeout(timer);timer=setTimeout(()=>{change();draw();const next=space.querySelector('.layer');next.classList.add('entering');requestAnimationFrame(()=>requestAnimationFrame(()=>next.classList.remove('entering')));render();save();},matchMedia('(prefers-reduced-motion:reduce)').matches?0:180);}
+function enter(){if(!children().includes(selected)||!nodes[selected][1].length)return;const id=selected;move(()=>{path=topicIndex.enter(path,id);selected=children()[0]||null;});}
+function back(){if(path.length<2)return;const id=current();move(()=>{path.pop();selected=id;});}
+q('[data-enter]').onclick=enter;q('[data-back]').onclick=back;
+space.addEventListener('wheel',e=>{const can=e.deltaY<0?children().includes(selected)&&nodes[selected]?.[1].length:path.length>1;if(!can)return;e.preventDefault();if(Date.now()-lastMove<700)return;wheel+=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?200:1);if(wheel< -80)enter();else if(wheel>80)back();},{passive:false});
+function restore(saved){const s=saved?.privateContent;if(Array.isArray(s?.path)&&s.path.length&&s.path[0]==='root'&&s.path.every((id,i)=>nodes[id]&&(i===0||nodes[s.path[i-1]][1].includes(id)))){path=[...s.path];selected=children().includes(s.selected)?s.selected:children()[0]||null;}draw();render();}
+window.addEventListener('openai:set_globals',e=>{if(e.detail?.globals?.widgetState)restore(e.detail.globals.widgetState);});restore(window.openai?.widgetState);new ResizeObserver(draw).observe(space);
+})();
+</script>

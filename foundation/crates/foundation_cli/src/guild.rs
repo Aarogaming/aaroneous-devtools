@@ -205,13 +205,64 @@ pub fn render_card(c: &Value) -> String {
     lines.join("\n")
 }
 
-/// Read and verify the cryptographic SHA-256 chain of an existing event log.
-pub fn read_and_verify_log(log_path: &Path) -> Result<(Vec<Value>, String)> {
-    if !log_path.exists() {
-        return Ok((Vec::new(), steward::chain::GENESIS.to_owned()));
+#[derive(Deserialize)]
+struct LogCheckpoint {
+    count: u64,
+    tip: String,
+}
+
+/// Validate any retained checkpoint, including when the log has disappeared.
+/// Missing checkpoints remain supported for first runs and unanchored legacy logs.
+/// A mismatch is a recovery hold, never permission to rewrite the checkpoint.
+fn verify_checkpoint(log_path: &Path, count: u64, tip: &str) -> Result<()> {
+    let tip_path = PathBuf::from(format!("{}.tip", log_path.display()));
+    let raw = match fs::read_to_string(&tip_path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("cannot read checkpoint {}", tip_path.display()));
+        }
+    };
+    let trimmed = raw.trim();
+    // The verify-log command historically also accepted a plain SHA-256 digest.
+    let recorded_tip = if trimmed.len() == 64 && trimmed.bytes().all(|b| b.is_ascii_hexdigit()) {
+        trimmed.to_owned()
+    } else {
+        let checkpoint: LogCheckpoint = serde_json::from_str(trimmed).with_context(|| {
+            format!(
+                "invalid checkpoint {}; preserve the log and checkpoint for recovery",
+                tip_path.display()
+            )
+        })?;
+        if checkpoint.count != count {
+            bail!(
+                "checkpoint count mismatch at {}: log has {count}, checkpoint has {}; preserve both for recovery",
+                tip_path.display(),
+                checkpoint.count
+            );
+        }
+        checkpoint.tip
+    };
+    if recorded_tip != tip {
+        bail!(
+            "checkpoint tip mismatch at {}; preserve the log and checkpoint for recovery",
+            tip_path.display()
+        );
     }
-    let content = fs::read_to_string(log_path)
-        .with_context(|| format!("failed to read event log at {}", log_path.display()))?;
+    Ok(())
+}
+
+/// Read and verify the SHA-256 chain and any retained checkpoint.
+pub fn read_and_verify_log(log_path: &Path) -> Result<(Vec<Value>, String)> {
+    let content = match fs::read_to_string(log_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to read event log at {}", log_path.display()));
+        }
+    };
 
     let mut events = Vec::new();
     let mut expected_prev = steward::chain::GENESIS.to_owned();
@@ -243,10 +294,12 @@ pub fn read_and_verify_log(log_path: &Path) -> Result<(Vec<Value>, String)> {
         events.push(val);
     }
 
+    verify_checkpoint(log_path, events.len() as u64, &expected_prev)?;
     Ok((events, expected_prev))
 }
 
-/// Append one event line to the log file and update the tip sidecar atomically.
+/// Append one event line, then update its checkpoint in a separate write.
+/// These writes are not an atomic transaction; a mismatch must halt for recovery.
 pub fn append_event_line(
     log_path: &Path,
     seq: u64,
@@ -255,23 +308,11 @@ pub fn append_event_line(
     ts: &str,
     prev_tip: &str,
 ) -> Result<String> {
-    // Validate existing tip sidecar if present to catch truncation
+    let previous_count = seq
+        .checked_sub(1)
+        .context("checkpoint append sequence must start at one")?;
+    verify_checkpoint(log_path, previous_count, prev_tip)?;
     let tip_path = PathBuf::from(format!("{}.tip", log_path.display()));
-    if tip_path.exists() {
-        let raw = fs::read_to_string(&tip_path)?;
-        let trimmed = raw.trim();
-        if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
-            if let Some(recorded_tip) = parsed.get("tip").and_then(Value::as_str) {
-                if prev_tip != recorded_tip && prev_tip != steward::chain::GENESIS {
-                    bail!(
-                        "sidecar tip mismatch before append: expected prev '{}', recorded in sidecar '{}'",
-                        prev_tip,
-                        recorded_tip
-                    );
-                }
-            }
-        }
-    }
 
     let line = steward::chain::event_line(seq, ts, event_type, data, prev_tip);
     let new_tip = steward::chain::digest(&line);
@@ -333,24 +374,6 @@ pub fn write_card_atomically(
 pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
     let now_ts = format_iso8601(unix_secs_now());
     let (events, mut current_tip) = read_and_verify_log(&args.log)?;
-
-    // Verify sidecar matches current tip before proceeding to detect truncation
-    let tip_path = PathBuf::from(format!("{}.tip", args.log.display()));
-    if tip_path.exists() {
-        let raw = fs::read_to_string(&tip_path)?;
-        let trimmed = raw.trim();
-        if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
-            if let Some(recorded_tip) = parsed.get("tip").and_then(Value::as_str) {
-                if current_tip != recorded_tip && current_tip != steward::chain::GENESIS {
-                    bail!(
-                        "tip sidecar mismatch: expected '{}', sidecar recorded '{}'",
-                        current_tip,
-                        recorded_tip
-                    );
-                }
-            }
-        }
-    }
 
     // Determine current tick count from events if not explicitly passed
     let derived_tick = if let Some(t) = args.tick {
@@ -543,7 +566,8 @@ pub fn run_tick(args: &TickArgs) -> Result<TickOutcome> {
         &current_tip,
     )?;
 
-    // Publish cards to outbox only after durable log append succeeded
+    // Publish cards only after the validated append and checkpoint write succeeded.
+    // This ordering alone is not a power-loss durability guarantee.
     let mut written_files = Vec::new();
     if let Some(ref outbox_dir) = args.outbox {
         for card in &cards {
@@ -588,44 +612,11 @@ pub fn run_verify_log(args: &VerifyLogArgs) -> Result<()> {
         events.len(),
         tip
     );
-    let tip_path = PathBuf::from(format!("{}.tip", args.log.display()));
     if let Some(ref expected) = args.expect_tip {
         if &tip != expected {
             bail!("tip mismatch: expected '{}', got '{}'", expected, tip);
         }
         println!("Tip matches expected hash exactly.");
-    } else if tip_path.exists() {
-        let raw = fs::read_to_string(&tip_path)?;
-        let trimmed = raw.trim();
-        let expected_tip = if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
-            if let Some(recorded_count) = parsed.get("count").and_then(Value::as_u64) {
-                if recorded_count != events.len() as u64 {
-                    bail!(
-                        "tip sidecar event count mismatch vs {}: expected {}, recorded {}",
-                        tip_path.display(),
-                        events.len(),
-                        recorded_count
-                    );
-                }
-            }
-            parsed
-                .get("tip")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string()
-        } else {
-            trimmed.to_string()
-        };
-
-        if tip != expected_tip {
-            bail!(
-                "tip mismatch vs {}: expected '{}', got '{}'",
-                tip_path.display(),
-                expected_tip,
-                tip
-            );
-        }
-        println!("Tip matches sidecar {} exactly.", tip_path.display());
     }
     Ok(())
 }

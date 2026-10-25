@@ -1,0 +1,77 @@
+name: CI smoke (self-hosted runners)
+
+# Run once after installing the runners, and again after any change to ci/ubuntu/. It proves the runners are alive, are the
+# right kind, and cannot read the seats' credentials. Manual only.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci-runner:
+    name: devtools-ci runner
+    runs-on: [self-hosted, devtools-ci]
+    timeout-minutes: 10
+    steps:
+      - name: No file from a previous job survived
+        run: |
+          set -euo pipefail
+          work="$(cd "$RUNNER_WORKSPACE/.." && pwd)"
+          # this job's own workspace and the runner's per-job bookkeeping exist; nothing else may
+          stale="$(find "$work" -mindepth 1 -maxdepth 3 \( -name marker -o -name sentinel \) -print)"
+          if [ -n "$stale" ]; then echo "FAIL: left over from an earlier job:"; echo "$stale"; exit 1; fi
+          echo "ok: no sentinel from an earlier job"
+      - name: Identity and toolchain
+        run: |
+          set -euo pipefail
+          test "$(id -un)" = "devtools-ci"
+          uname -a
+          cargo --version
+          rustc --version
+      - name: Cannot read other accounts
+        run: |
+          set -euo pipefail
+          for path in /home/*/.steward /home/*/.ssh /root /etc/shadow /var/lib/devtools-merge; do
+            [ -e "$path" ] || continue
+            if [ -r "$path" ]; then echo "FAIL: $path is readable by $(id -un)"; exit 1; fi
+          done
+          echo "ok: no other account's files are readable"
+      - name: The runner and its toolchain cannot be changed by a job
+        run: |
+          set -euo pipefail
+          runner_dir="$(cd "$RUNNER_WORKSPACE/../.." && pwd)"
+          for path in "$runner_dir/run.sh" "$runner_dir/.env" "$runner_dir/.runner" "$runner_dir/bin" /opt/devtools-ci/job-completed.sh "$(command -v cargo)" "$(rustc --print sysroot)/bin/rustc"; do
+            if [ -w "$path" ]; then echo "FAIL: $path is writable by $(id -un)"; exit 1; fi
+          done
+          echo "ok: runner program, configuration, hook and toolchain are read-only to the job"
+      - name: Leave a sentinel for the next job
+        run: |
+          set -euo pipefail
+          # The hook wipes all of _work after this job. The next run of this workflow's first step fails if anything survived.
+          mkdir -p "$RUNNER_WORKSPACE/../_tool/sentinel" "$RUNNER_WORKSPACE/../_temp"
+          echo "from-previous-job" > "$RUNNER_WORKSPACE/../_tool/sentinel/marker"
+          echo "from-previous-job" > "$RUNNER_WORKSPACE/../_temp/marker"
+          echo "sentinels written; the next job must not see them"
+
+  merge-runner:
+    name: devtools-merge runner
+    runs-on: [self-hosted, devtools-merge]
+    timeout-minutes: 10
+    steps:
+      - name: Identity
+        run: |
+          set -euo pipefail
+          test "$(id -un)" = "devtools-merge"
+          python3 --version
+          git --version
+          gh --version | head -1
+      - name: Cannot read the other runner or any seat
+        run: |
+          set -euo pipefail
+          for path in /home/*/.steward /home/*/.ssh /root /etc/shadow /var/lib/devtools-ci; do
+            [ -e "$path" ] || continue
+            if [ -r "$path" ]; then echo "FAIL: $path is readable by $(id -un)"; exit 1; fi
+          done
+          echo "ok"
