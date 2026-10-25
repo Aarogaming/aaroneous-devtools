@@ -7,8 +7,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 import queue_collisions as qc  # noqa: E402
 
 
-def row(lane, status="Ready", scope="scope"):
-    return f"| {lane} | {scope} | {status} | claude | branch | 2026-10-07T00:00:00Z | evidence |"
+def row(lane, status="Ready", scope="scope", cid=None):
+    cid_part = f" Contribution-ID: {cid}." if cid else ""
+    return f"| {lane} | {scope} | {status} | claude | branch | 2026-10-07T00:00:00Z | evidence.{cid_part} |"
 
 
 def patch(*rows):
@@ -33,6 +34,10 @@ class AddedRows(unittest.TestCase):
         escaped = "| C2 | a \\| b | Blocked | claude | br | t | e |"
         self.assertEqual(qc.status_of(escaped), "Blocked")
         self.assertEqual(qc.status_of("| C3 | only two |"), "?")
+
+    def test_contribution_id_extracted_when_present(self):
+        self.assertEqual(qc.contribution_id_of(row("C1", cid="C1/test-task-v1")), "C1/test-task-v1")
+        self.assertIsNone(qc.contribution_id_of(row("C1")))
 
 
 class Collisions(unittest.TestCase):
@@ -69,6 +74,48 @@ class Collisions(unittest.TestCase):
     def test_two_versions_shared_by_several_prs_group_their_pr_numbers(self):
         found = qc.collisions({1: {"C1": [row("C1", "A")]}, 2: {"C1": [row("C1", "A")]}, 3: {"C1": [row("C1", "B")]}})
         self.assertEqual([v["prs"] for v in found[0]["versions"]], [[1, 2], [3]])
+
+
+class NamespaceCollisions(unittest.TestCase):
+    def test_two_unrelated_stacks_allocate_same_short_id_with_distinct_contribution_ids(self):
+        # Codex test requirement: PR198 has C133/claude-model-hub-v1, PR204 has C133/codex-local-integration-authority-v1
+        by_pr = {
+            198: {"C133": [row("C133", scope="model hub", cid="C133/claude-model-hub-v1")]},
+            204: {"C133": [row("C133", scope="local authority", cid="C133/codex-local-integration-authority-v1")]},
+        }
+        found = qc.namespace_collisions(by_pr)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["lane"], "C133")
+        cids = [c["contribution_id"] for c in found[0]["claims"]]
+        self.assertIn("C133/claude-model-hub-v1", cids)
+        self.assertIn("C133/codex-local-integration-authority-v1", cids)
+
+    def test_legitimate_child_updates_same_contribution(self):
+        # Child branch on a stack updates status of the same Contribution-ID: NOT a collision
+        by_pr = {
+            10: {"C5": [row("C5", status="Ready", cid="C5/task-v1")]},
+            11: {"C5": [row("C5", status="Review", cid="C5/task-v1")]},
+        }
+        found = qc.namespace_collisions(by_pr)
+        self.assertEqual(found, [])
+
+    def test_identical_content_in_multiple_branches(self):
+        by_pr = {
+            1: {"C5": [row("C5", cid="C5/task-v1")]},
+            2: {"C5": [row("C5", cid="C5/task-v1")]},
+        }
+        self.assertEqual(qc.namespace_collisions(by_pr), [])
+
+    def test_missing_identity_with_differing_rows_flags_collision(self):
+        # Two PRs add differing rows for C5 without Contribution-ID: flagged for reconciliation
+        by_pr = {
+            1: {"C5": [row("C5", scope="scope A")]},
+            2: {"C5": [row("C5", scope="scope B")]},
+        }
+        found = qc.namespace_collisions(by_pr)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["lane"], "C5")
+        self.assertTrue(any(c["contribution_id"] == "(missing)" for c in found[0]["claims"]))
 
 
 class Live(unittest.TestCase):
@@ -112,6 +159,11 @@ class Live(unittest.TestCase):
     def test_render_names_unreadable_prs_and_says_so_when_there_is_nothing(self):
         self.assertIn("NOT CHECKED", qc.render([], [9]))
         self.assertIn("no lane row", qc.render([], []))
+
+    def test_render_labels_same_base_and_namespace_distinctly(self):
+        rendered = qc.render([], [], [])
+        self.assertIn("direct same-base", rendered)
+        self.assertIn("no cross-stack claim namespace collision", rendered)
 
 
 if __name__ == "__main__":
