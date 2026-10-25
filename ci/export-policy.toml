@@ -1,0 +1,28 @@
+# DRAFT for owner review. This file GRANTS NOTHING: no public repository exists, and nothing reads this file to publish anything.
+# It is the input to the dry run (`release-plan`), which only reports what an export would contain.
+#
+# Rules: a trailing `/` means everything below that directory; anything else is one exact file. Nothing is published unless an
+# include rule names it; an exclude rule beats any include. Paths that are unsafe on some platform, links, and anything shaped
+# like a credential are withheld whatever this file says, and each blocks a release until the owner resolves it.
+#
+# The private repository stays authoritative. Governance, the work queue, attestations, operational scripts, migrations and
+# worker jobs are deliberately not listed: they are the private record of how the project is run, not the product.
+
+include = [
+    "foundation/",
+    "gui/",
+    "contracts/",
+    "stacks/",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "FOUNDATION_BOUNDARY.md",
+    ".gitignore",
+    ".gitattributes",
+    ".editorconfig",
+]
+
+exclude = [
+    "foundation/target/",
+]

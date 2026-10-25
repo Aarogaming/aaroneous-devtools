@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "contribution_id": "C108/codex-topic-path-experiment-v1",
+  "status": "synthetic-checks-only",
+  "worktree": "D:/aaroneous-devtools/tmp/topic-path-pr",
+  "base_revision": "5f3ec0933e23f02f9b989cc7fd6edf5dd3d74c2c",
+  "command": [
+    "node",
+    "--test",
+    "--test-isolation=none",
+    "experiments/topic-path-navigation/topic-path-core.test.cjs"
+  ],
+  "exit_code": 0,
+  "output": "✔ paths use identity despite duplicate titles (1.095ms)\n✔ enter and return preserve parent path (0.1216ms)\n✔ shared tags and relevance cannot establish containment (0.2374ms)\n✔ forged prefix cannot enter a valid child (0.0826ms)\n✔ cross-path dissent preserves direction and identity (0.138ms)\n✔ dangling relationship remains visible (0.2555ms)\n✔ cycles fail explicitly (0.131ms)\n✔ missing parents fail explicitly (0.1016ms)\n✔ duplicate identity fails explicitly (0.1036ms)\n✔ navigation cannot mutate captured projection (0.1527ms)\n✔ captured topic fixture has valid paths and no metadata child records (0.6695ms)\n✔ explorer embeds exactly the published fixture and path adapter (0.9869ms)\n✔ explorer script parses without starting the browser or server (0.4783ms)\nℹ tests 13\nℹ suites 0\nℹ pass 13\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 14.991\n",
+  "files_sha256": {
+    "README.md": "6e9a862cb183fe558654dc490c94d6e7aa6351b7229563f0d9dab3614c93c1b2",
+    "topic-path-core.cjs": "d7d418ecfa99a40cf195611c9f7c496ce8603047ea22986abe523e2d1848a225",
+    "topic-path-core.test.cjs": "1046ae6fd6b684c780ac2058da97c99992a75fad5ef449e35e1550f52517c1dc",
+    "topic-projection-fixture.json": "d0b209cf5ed1c1722aad10a0e5d074794232dc96dce446857f394f6e55995191",
+    "explorer.html": "5ee5ecc9cc7959c6b53d9e13c4e90b017d6dd32ebb5f438ad34994b20dd52f47"
+  },
+  "encoding": "UTF-8 without BOM; LF; no unexpected controls",
+  "link_check": "three external GitHub PR references structurally checked; no relative Markdown links",
+  "not_run": [
+    "browser layout/keyboard/wheel acceptance",
+    "live server",
+    "migration/replay",
+    "authentication",
+    "deployment",
+    "ROI measurement"
+  ],
+  "independent_acceptance": "pending existing review system"
+}

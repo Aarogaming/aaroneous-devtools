@@ -194,6 +194,25 @@ class Rejections(unittest.TestCase):
                      "### Independent review", "Independent verdict: ACCEPT"):
             self.assertEqual(cs.comment_seat(body, strict=True), "", body)
 
+    def test_a_column_aligned_declaration_still_attributes_the_comment(self):
+        # Fixed-width review packets pad the label to a column ("Seat / agent:        Claude"): eight blanks sit
+        # between the label and the seat, more than the old six-character gap allowed (seen on PR #68, comment 10).
+        for body, seat in (("REVIEW PACKET\nSeat / agent:        Claude (this session, Sonnet 5)\n", "claude"),
+                           ("```text\nReviewer / Seat:          Gemini\n```\n", "gemini"),
+                           ("Reviewer seat:\t\t\tCodex\n", "codex")):
+            self.assertEqual(cs.comment_seat(body, strict=True), seat, body)
+            self.assertEqual(cs.comment_seat(body, strict=False), seat, body)
+
+    def test_a_declaration_label_far_from_a_seat_name_does_not_attribute_the_comment(self):
+        far = "Seat / agent:" + " " * 40 + "Claude"
+        self.assertEqual(cs.comment_seat(far, strict=True), "", far)
+
+    def test_declaration_padding_does_not_cross_newlines(self):
+        # Found by Codex review finding on PR #141: an empty declaration followed by markdown underline/separator
+        # and a subsequent line mentioning a seat should not attribute the comment in strict mode.
+        text = "Seat / agent:\n------------\nClaude reviewed this earlier"
+        self.assertEqual(cs.comment_seat(text, strict=True), "")
+
     def test_a_seat_name_further_down_a_comment_does_not_attribute_it(self):
         self.assertEqual(cs.comment_seat("My note.\nMimo reviewed this earlier.\n", strict=True), "")
         self.assertEqual(cs.comment_seat("Mimo reviewed this earlier.\n", strict=False), "mimo")

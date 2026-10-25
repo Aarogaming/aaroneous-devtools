@@ -4,6 +4,7 @@ Aaroneous's private development companion: reusable Rust maintenance tools, a gu
 
 ## Start here
 
+- [Operator guide](governance/OPERATOR_GUIDE.md): one index that routes a task to the right tool or document, including getting a seat key and running the steward.
 - [Companion operating model](governance/OPERATING_MODEL.md): organization, standards and everyday use.
 - [Foundation boundary](FOUNDATION_BOUNDARY.md): what belongs here and what stays in Aaroneous.
 - [Agent guide](AGENTS.md) and [contributing](CONTRIBUTING.md): ownership, verification and handoffs.

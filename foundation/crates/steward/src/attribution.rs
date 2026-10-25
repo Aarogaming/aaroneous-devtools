@@ -13,7 +13,7 @@ pub struct Attribution {
 }
 
 // Python's `\s` also counts the ASCII separators U+001C to U+001F, which Rust's does not.
-const DECLARED: &str = r"(?:Seat[\s\x1c-\x1f]*/[\s\x1c-\x1f]*agent|Reviewer(?:[\s\x1c-\x1f]*/[\s\x1c-\x1f]*Seat|[\s\x1c-\x1f]+seat)?)\W{0,6}(Claude|Mimo|Codex|Gemini|Antigravity|ubuntu-worker-01|Ubuntu)";
+const DECLARED: &str = r"(?:Seat[\s\x1c-\x1f]*/[\s\x1c-\x1f]*agent|Reviewer(?:[\s\x1c-\x1f]*/[\s\x1c-\x1f]*Seat|[\s\x1c-\x1f]+seat)?)[^\w\r\n]{0,24}(Claude|Mimo|Codex|Gemini|Antigravity|ubuntu-worker-01|Ubuntu)";
 
 impl Attribution {
     /// # Errors
@@ -121,6 +121,21 @@ mod tests {
         assert_eq!(
             seat("ubuntu-worker-01 seat: done", true),
             "ubuntu-worker-01"
+        );
+    }
+
+    #[test]
+    fn declaration_padding_does_not_cross_line_boundaries() {
+        for newline in ["\n", "\r\n"] {
+            let body =
+                format!("Seat / agent:{newline}------------{newline}Claude reviewed this earlier");
+            assert_eq!(seat(&body, true), "");
+            assert_eq!(seat(&body, false), "claude");
+        }
+        assert_eq!(seat("Seat / agent:        Claude", true), "claude");
+        assert_eq!(
+            seat(&format!("Seat / agent:{}Claude", " ".repeat(40)), true),
+            ""
         );
     }
 }

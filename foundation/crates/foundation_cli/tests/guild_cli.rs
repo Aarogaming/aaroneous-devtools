@@ -27,6 +27,196 @@ fn test_guild_help() {
     assert!(stdout.contains("daemon"));
 }
 
+struct CheckpointFixture {
+    _temp: tempfile::TempDir,
+    log: PathBuf,
+    tip: PathBuf,
+    outbox: PathBuf,
+}
+
+impl CheckpointFixture {
+    fn new() -> Self {
+        let temp = tempfile::tempdir().expect("fixture directory");
+        let fixture = Self {
+            log: temp.path().join("events.jsonl"),
+            tip: temp.path().join("events.jsonl.tip"),
+            outbox: temp.path().join("outbox"),
+            _temp: temp,
+        };
+        let output = fixture.tick();
+        assert!(output.status.success(), "first tick: {output:?}");
+        fixture
+    }
+
+    fn tick(&self) -> Output {
+        let snapshot = vectors_dir().join("covered_clean_pr_gets_the_merge_brief.in.json");
+        cli(&[
+            "guild",
+            "tick",
+            "--snapshot",
+            snapshot.to_str().unwrap(),
+            "--log",
+            self.log.to_str().unwrap(),
+            "--outbox",
+            self.outbox.to_str().unwrap(),
+        ])
+    }
+
+    fn cards(&self) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut cards: Vec<_> = fs::read_dir(&self.outbox)
+            .unwrap()
+            .map(|entry| {
+                let path = entry.unwrap().path();
+                let bytes = fs::read(&path).unwrap();
+                (path, bytes)
+            })
+            .collect();
+        cards.sort_by(|a, b| a.0.cmp(&b.0));
+        cards
+    }
+
+    fn assert_rejected_without_writes(&self) {
+        let log_before = fs::read(&self.log).ok();
+        let tip_before = fs::read(&self.tip).unwrap();
+        let cards_before = self.cards();
+        let output = self.tick();
+        assert!(
+            !output.status.success(),
+            "damaged checkpoint must stop the tick: {output:?}"
+        );
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            error.contains("checkpoint") || error.contains("sidecar"),
+            "must explain the recovery hold: {output:?}"
+        );
+        assert_eq!(fs::read(&self.log).ok(), log_before);
+        assert_eq!(fs::read(&self.tip).unwrap(), tip_before);
+        assert_eq!(self.cards(), cards_before);
+        for action in ["status", "verify-log"] {
+            let output = cli(&["guild", action, "--log", self.log.to_str().unwrap()]);
+            assert!(
+                !output.status.success(),
+                "{action} must reject damaged evidence: {output:?}"
+            );
+            assert!(!String::from_utf8_lossy(&output.stdout).contains("verified"));
+        }
+        assert_eq!(fs::read(&self.log).ok(), log_before);
+        assert_eq!(fs::read(&self.tip).unwrap(), tip_before);
+        assert_eq!(self.cards(), cards_before);
+    }
+}
+
+#[test]
+fn checkpoint_deleted_log_does_not_start_a_new_chain() {
+    let fixture = CheckpointFixture::new();
+    fs::remove_file(&fixture.log).unwrap();
+    fixture.assert_rejected_without_writes();
+}
+
+#[test]
+fn checkpoint_empty_log_does_not_start_a_new_chain() {
+    let fixture = CheckpointFixture::new();
+    fs::write(&fixture.log, b"").unwrap();
+    fixture.assert_rejected_without_writes();
+}
+
+#[test]
+fn checkpoint_malformed_json_is_not_overwritten() {
+    let fixture = CheckpointFixture::new();
+    fs::write(&fixture.tip, b"{\"count\":1,\"tip\":").unwrap();
+    fixture.assert_rejected_without_writes();
+}
+
+#[test]
+fn checkpoint_missing_digest_is_not_overwritten() {
+    let fixture = CheckpointFixture::new();
+    fs::write(&fixture.tip, br#"{"count":1}"#).unwrap();
+    fixture.assert_rejected_without_writes();
+}
+
+#[test]
+fn checkpoint_wrong_count_is_not_overwritten() {
+    let fixture = CheckpointFixture::new();
+    let mut tip: Value = serde_json::from_slice(&fs::read(&fixture.tip).unwrap()).unwrap();
+    tip["count"] = Value::from(7);
+    fs::write(&fixture.tip, serde_json::to_vec(&tip).unwrap()).unwrap();
+    fixture.assert_rejected_without_writes();
+}
+
+#[test]
+fn checkpoint_invalid_count_is_not_overwritten() {
+    let fixture = CheckpointFixture::new();
+    let mut tip: Value = serde_json::from_slice(&fs::read(&fixture.tip).unwrap()).unwrap();
+    tip["count"] = Value::from("1");
+    fs::write(&fixture.tip, serde_json::to_vec(&tip).unwrap()).unwrap();
+    fixture.assert_rejected_without_writes();
+}
+
+#[test]
+fn checkpoint_stale_after_append_is_not_repaired_implicitly() {
+    let fixture = CheckpointFixture::new();
+    let first_tip = fs::read(&fixture.tip).unwrap();
+    assert!(fixture.tick().status.success());
+    fs::write(&fixture.tip, first_tip).unwrap();
+    fixture.assert_rejected_without_writes();
+}
+
+#[test]
+fn checkpoint_legacy_digest_can_continue_without_losing_history() {
+    let fixture = CheckpointFixture::new();
+    let tip: Value = serde_json::from_slice(&fs::read(&fixture.tip).unwrap()).unwrap();
+    fs::write(&fixture.tip, tip["tip"].as_str().unwrap()).unwrap();
+    assert!(fixture.tick().status.success());
+    let continued: Value = serde_json::from_slice(&fs::read(&fixture.tip).unwrap()).unwrap();
+    assert_eq!(continued["count"], 2);
+}
+
+#[test]
+fn checkpoint_absent_legacy_log_can_continue() {
+    let fixture = CheckpointFixture::new();
+    fs::remove_file(&fixture.tip).unwrap();
+    assert!(fixture.tick().status.success());
+    let continued: Value = serde_json::from_slice(&fs::read(&fixture.tip).unwrap()).unwrap();
+    assert_eq!(continued["count"], 2);
+}
+
+#[test]
+fn checkpoint_json_requires_count_and_rejects_ambiguous_fields() {
+    for malformed in [
+        r#"{"tip":"DIGEST"}"#,
+        r#"{"count":1,"count":1,"tip":"DIGEST"}"#,
+        r#"{"count":1,"tip":"DIGEST","tip":"DIGEST"}"#,
+        "null",
+        "[]",
+    ] {
+        let fixture = CheckpointFixture::new();
+        let tip: Value = serde_json::from_slice(&fs::read(&fixture.tip).unwrap()).unwrap();
+        let malformed = malformed.replace("DIGEST", tip["tip"].as_str().unwrap());
+        fs::write(&fixture.tip, malformed).unwrap();
+        fixture.assert_rejected_without_writes();
+    }
+}
+
+#[test]
+fn checkpoint_external_digest_cannot_override_damaged_sidecar() {
+    let fixture = CheckpointFixture::new();
+    let tip: Value = serde_json::from_slice(&fs::read(&fixture.tip).unwrap()).unwrap();
+    fs::write(&fixture.tip, b"{broken").unwrap();
+    let output = cli(&[
+        "guild",
+        "verify-log",
+        "--log",
+        fixture.log.to_str().unwrap(),
+        "--expect-tip",
+        tip["tip"].as_str().unwrap(),
+    ]);
+    assert!(
+        !output.status.success(),
+        "sidecar must still be validated: {output:?}"
+    );
+    assert_eq!(fs::read(&fixture.tip).unwrap(), b"{broken");
+}
+
 #[test]
 fn test_guild_tick_with_snapshot_and_outbox() {
     let temp = tempfile::tempdir().expect("tempdir");

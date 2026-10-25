@@ -34,6 +34,88 @@ pub struct ExportPolicy {
     pub exclude: Vec<String>,
 }
 
+impl ExportPolicy {
+    /// Parse `ci/export-policy.toml`: `include = [...]` and `exclude = [...]`, nothing else. Strict, because this file decides what
+    /// leaves the private repository: unknown keys, an empty include list, a rule that is not a repository-relative path (absolute,
+    /// drive-qualified, backslash, control character, `..` or `.` or empty segment), an over-long rule, a duplicate rule, or a rule
+    /// listed as both included and excluded are errors, not warnings. A rule ending in `/` covers everything below that directory;
+    /// any other rule is one exact file.
+    ///
+    /// # Errors
+    /// A sentence naming the first problem.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let table: toml::Table = text
+            .parse()
+            .map_err(|e| format!("export policy is not valid TOML: {e}"))?;
+        if let Some(extra) = table
+            .keys()
+            .find(|k| !matches!(k.as_str(), "include" | "exclude"))
+        {
+            return Err(format!("export policy: unknown key {extra:?}"));
+        }
+        let rules = |key: &str| -> Result<Vec<String>, String> {
+            let Some(value) = table.get(key) else {
+                return Ok(Vec::new());
+            };
+            let list = value
+                .as_array()
+                .ok_or_else(|| format!("export policy: {key} must be a list of strings"))?;
+            if list.len() > 256 {
+                return Err(format!("export policy: {key} has more than 256 rules"));
+            }
+            let mut out: Vec<String> = Vec::new();
+            for item in list {
+                let rule = item
+                    .as_str()
+                    .ok_or_else(|| format!("export policy: {key} entries must be strings"))?;
+                if let Some(problem) = rule_problem(rule) {
+                    return Err(format!("export policy: {key} rule {rule:?}: {problem}"));
+                }
+                if out.iter().any(|seen| seen == rule) {
+                    return Err(format!("export policy: {key} lists {rule:?} twice"));
+                }
+                out.push(rule.to_owned());
+            }
+            Ok(out)
+        };
+        let include = rules("include")?;
+        let exclude = rules("exclude")?;
+        if include.is_empty() {
+            return Err("export policy: include must list at least one rule (nothing is published by default)".to_owned());
+        }
+        if let Some(both) = include.iter().find(|r| exclude.contains(r)) {
+            return Err(format!(
+                "export policy: {both:?} is both included and excluded"
+            ));
+        }
+        Ok(Self { include, exclude })
+    }
+}
+
+/// Why `rule` cannot be a path rule, or `None`. A trailing `/` marks a directory prefix; the rest must be a canonical relative path.
+fn rule_problem(rule: &str) -> Option<String> {
+    let body = rule.strip_suffix('/').unwrap_or(rule);
+    if body.is_empty() || rule.len() > 200 {
+        return Some("empty or over 200 characters".to_owned());
+    }
+    if rule
+        .chars()
+        .any(|c| c == '\0' || c.is_control() || c == '\\')
+    {
+        return Some("contains a control character or a backslash".to_owned());
+    }
+    if body.starts_with('/') || body.as_bytes().get(1) == Some(&b':') {
+        return Some("absolute or drive-qualified".to_owned());
+    }
+    if body
+        .split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return Some("has an empty, '.' or '..' segment".to_owned());
+    }
+    None
+}
+
 /// Why a path is not published.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Withheld {
@@ -1242,5 +1324,86 @@ mod tests {
         ] {
             assert!(!valid_tag(bad), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn a_valid_policy_parses_into_exact_rules() {
+        let policy = ExportPolicy::parse(
+            "include = [\"foundation/\", \"README.md\"]\nexclude = [\"foundation/target/\", \"foundation/secrets.txt\"]\n",
+        )
+        .unwrap();
+        assert_eq!(policy.include, vec!["foundation/", "README.md"]);
+        assert_eq!(
+            policy.exclude,
+            vec!["foundation/target/", "foundation/secrets.txt"]
+        );
+        assert_eq!(
+            ExportPolicy::parse("include = [\"a/\"]").unwrap().exclude,
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_policy_that_could_publish_more_than_intended_is_refused() {
+        let many = format!(
+            "include = [{}]",
+            (0..257)
+                .map(|i| format!("\"d{i}/\""))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let long = format!("include = [\"{}\"]", "a".repeat(201));
+        let cases: Vec<(&str, String)> = vec![
+            ("not toml", "include = [".to_owned()),
+            (
+                "unknown key",
+                "include = [\"a/\"]\nallow = [\"b/\"]".to_owned(),
+            ),
+            ("include not a list", "include = \"a/\"".to_owned()),
+            ("non-string entry", "include = [1]".to_owned()),
+            ("no include", "exclude = [\"a/\"]".to_owned()),
+            ("empty include", "include = []".to_owned()),
+            ("absolute rule", "include = [\"/etc/\"]".to_owned()),
+            ("drive rule", "include = [\"C:/x/\"]".to_owned()),
+            ("backslash", "include = ['a\\b']".to_owned()),
+            ("parent segment", "include = [\"a/../b/\"]".to_owned()),
+            ("dot segment", "include = [\"./a/\"]".to_owned()),
+            ("empty segment", "include = [\"a//b/\"]".to_owned()),
+            ("bare slash", "include = [\"/\"]".to_owned()),
+            ("empty rule", "include = [\"\"]".to_owned()),
+            ("control character", "include = [\"a\\u0007b\"]".to_owned()),
+            ("duplicate", "include = [\"a/\", \"a/\"]".to_owned()),
+            (
+                "both lists",
+                "include = [\"a/\"]\nexclude = [\"a/\"]".to_owned(),
+            ),
+            ("too many rules", many),
+            ("rule too long", long),
+        ];
+        for (why, text) in cases {
+            assert!(ExportPolicy::parse(&text).is_err(), "{why} must be refused");
+        }
+    }
+
+    #[test]
+    fn a_parsed_policy_drives_the_plan_like_a_hand_built_one() {
+        let policy =
+            ExportPolicy::parse("include = [\"foundation/\"]\nexclude = [\"foundation/private/\"]")
+                .unwrap();
+        let entry = |path: &str| Entry {
+            path: path.to_owned(),
+            mode: 0o100_644,
+            oid: "a".repeat(40),
+        };
+        let plan = plan_export(
+            &policy,
+            &[
+                entry("foundation/a.rs"),
+                entry("foundation/private/b.rs"),
+                entry("other.md"),
+            ],
+        );
+        assert_eq!(plan.publish, vec!["foundation/a.rs"]);
+        assert_eq!(plan.withheld.len(), 2);
     }
 }
