@@ -25,6 +25,7 @@ pub mod engagement;
 pub mod gate;
 pub mod heads;
 pub mod independence;
+pub mod local_authority;
 pub mod local_verification;
 pub mod model_hub;
 pub mod receipts;
