@@ -256,9 +256,18 @@ fn exclusive_claim_restart_retry_and_wrong_recovery() {
             .recover(&fixture.request, "other-node", first.attempt)
             .is_err()
     );
+    let dir = fixture.spool.join(fixture.request.id());
+    let abandoned = dir.join(format!("abandoned-{}.json", first.attempt));
+    let claim_json = serde_json::json!({
+        "request_id": fixture.request.id(),
+        "node": "test-node",
+        "attempt": first.attempt,
+    });
+    fs::write(&abandoned, serde_json::to_vec(&claim_json).unwrap()).unwrap();
     restarted
         .recover(&fixture.request, "test-node", first.attempt)
         .unwrap();
+    assert!(!dir.join("claim.json").exists());
     let second = restarted.claim(&fixture.request, "other-node").unwrap();
     assert_eq!(second.attempt, 2);
     assert_eq!(restarted.latest_attempt(&fixture.request).unwrap(), 2);

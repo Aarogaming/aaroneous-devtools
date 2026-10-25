@@ -1,0 +1,8 @@
+# Local authority bootstrap template. No production keys or authority are enrolled.
+# The owner must review and commit enrollment on the trusted base before collection can pass.
+version = 1
+integration_ref = "refs/heads/main"
+required_suites = ["foundation-ci"]
+minimum_reviewers = 2
+minimum_families = 2
+principals = []

@@ -330,10 +330,15 @@ impl Store {
         if self.latest_attempt(request)? != expected_attempt {
             return Err("attempt history and claim disagree".into());
         }
-        put(
-            &directory.join(format!("abandoned-{expected_attempt}.json")),
-            &serde_json::to_vec(&record).map_err(|e| e.to_string())?,
-        )?;
+        let abandoned_path = directory.join(format!("abandoned-{expected_attempt}.json"));
+        let bytes = serde_json::to_vec(&record).map_err(|e| e.to_string())?;
+        if abandoned_path.exists() {
+            if read(&abandoned_path)? != bytes {
+                return Err("existing abandonment record does not match recovery".into());
+            }
+        } else {
+            put(&abandoned_path, &bytes)?;
+        }
         fs::remove_file(path).map_err(|e| e.to_string())
     }
     pub fn receipt_path(
