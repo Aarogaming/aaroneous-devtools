@@ -305,9 +305,23 @@ def main() -> int:
                 print(f"  {failure}")
             print("\nKeep each ID in one file: move the row, do not copy it.")
             return 1
+    # Validate gap register unconditionally when present
+    gap_register_path = "governance/FOUNDRY_GAP_REGISTER.md"
+    if os.path.isfile(gap_register_path) and os.path.isfile(TARGET_FILE):
+        try:
+            import check_gap_register
+            gap_errors = check_gap_register.check(gap_register_path, TARGET_FILE)
+            if gap_errors:
+                print(f"\nGap register check failed for {gap_register_path}:", file=sys.stderr)
+                for err in gap_errors:
+                    print(f"  {err}", file=sys.stderr)
+                return 1
+        except ImportError:
+            pass
+
     diff = get_diff(base, head)
     if not diff:
-        print("No changes to governance/COORDINATION_QUEUE.md; nothing to check.")
+        print("No changes to governance/COORDINATION_QUEUE.md; gap register validation passed.")
         return 0
 
     diff_lines = diff.splitlines()

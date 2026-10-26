@@ -68,6 +68,35 @@ class GapRegisterTests(unittest.TestCase):
         errors = cgr.check(self.register_path, self.queue_path)
         self.assertEqual(errors, [])
 
+    def test_reject_vague_evidence_keywords(self):
+        self.write_queue([("C79", "Ready")])
+        for vague in ["No evidence observed yet", "review", "command", "observed"]:
+            self.write_register([
+                {
+                    "id": "G-2026-01",
+                    "boundary": "Some boundary",
+                    "evidence": vague,
+                    "risk": "Some risk",
+                    "disposition": "**C79 Ready**",
+                }
+            ])
+            errors = cgr.check(self.register_path, self.queue_path)
+            self.assertTrue(any("missing evidence" in e for e in errors), f"Expected rejection for '{vague}': {errors}")
+
+    def test_reject_stale_review_disposition_when_done(self):
+        self.write_queue([("C83", "Done")])
+        self.write_register([
+            {
+                "id": "G-2026-05",
+                "boundary": "Boundary",
+                "evidence": "`some/file.rs:1` evidence",
+                "risk": "Risk",
+                "disposition": "**C83 Review** — stale review claim",
+            }
+        ])
+        errors = cgr.check(self.register_path, self.queue_path)
+        self.assertTrue(any("unupdated entry" in e for e in errors), errors)
+
     def test_reject_missing_evidence(self):
         self.write_queue([("C79", "Ready")])
         # Completely missing evidence

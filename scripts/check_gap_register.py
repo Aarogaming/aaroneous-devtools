@@ -9,7 +9,7 @@ Mechanizes the governance gap-to-lane rule (G-2026-05, C83):
    a blocked owner decision, or an explicit rejection).
 4. Verifies queue lane existence and prevents false Done linkages (claiming a lane
    is done/accepted when the queue row is not Done, or leaving an entry marked
-   Ready/Claimed after the corrective lane is marked Done).
+   Ready/Claimed/Review after the corrective lane is marked Done).
 5. Does not infer task ownership or auto-create claims.
 
 Usage:
@@ -126,8 +126,9 @@ def has_concrete_evidence(text: str) -> bool:
         return False
     # Look for paths, backticks, line ranges, commits, or command markers
     evidence_indicators = re.compile(
-        r"(`[^`]+`|\b[a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]{1,4}(?::\d+(?:-\d+)?)?|"
-        r"\b[0-9a-f]{7,40}\b|\bexit\s*\d+\b|\bPR\s*#?\d+\b|\breview\b|\bobserved\b|\bcommand\b)",
+        r"(`[^`]+`|[a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]{1,4}(?::\d+(?:-\d+)?)?|"
+        r"\b[0-9a-f]{7,40}\b|\bexit\s*\d+\b|\bPR\s*#?\d+\b|\b[A-Z]\d+\b|"
+        r"\b(?:(?:[a-zA-Z]+-)?(?:component|code|architecture|peer|steward|guild)\s+review|review\s+(?:by|from|thread|#\d+|at|comment|finding|established)|command\s+(?:exit|output|result|run|`)|observed\s+(?:in|at|by|exit|output))\b)",
         re.IGNORECASE,
     )
     return bool(evidence_indicators.search(stripped))
@@ -196,10 +197,10 @@ def validate_entry(entry: dict, queue_lanes: dict[str, str]) -> list[str]:
 
         # Unupdated entry check:
         # If queue status is Done, but disposition still marks that lane as Ready or Claimed:
-        pending_claim_re = re.compile(rf"\b{lane_id}\s+(?:Ready|Claimed)\b", re.IGNORECASE)
+        pending_claim_re = re.compile(rf"\b{lane_id}\s+(?:Ready|Claimed|Review)\b", re.IGNORECASE)
         if pending_claim_re.search(disposition) and q_status == "Done":
             errors.append(
-                f"{gap_id}: unupdated entry: corrective lane {lane_id} is Done in queue, but disposition still marks it as Ready/Claimed"
+                f"{gap_id}: unupdated entry: corrective lane {lane_id} is Done in queue, but disposition still marks it as Ready/Claimed/Review"
             )
 
     return errors
