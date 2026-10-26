@@ -44,8 +44,9 @@ Do not create empty scaffolding for every possible tool. Add a directory when a 
 - `WORKLIST.md`: historical task briefs and links into current planning; old labels are not current certification.
 - `SCHEDULE.md`: intended recurring cadence; actual installed state comes from service records.
 - `DECISIONS.md`: durable choices and reasons, not another task list.
+- `FOUNDRY_GAP_REGISTER.md`: verified boundary and governance gaps citing evidence, risk, and a corrective queue lane, blocked decision, or explicit rejection. Mechanically checked against the queue by `scripts/check_gap_register.py`.
 
-Generated findings enter an inbox first. A reviewed finding gets a canonical portfolio ID and a bounded acceptance criterion. A Ready queue row is created only when dependencies, exact scope and reviewer capacity are available. Do not copy the full roadmap into README, agent prompts or new audit documents.
+Generated findings enter an inbox first. A reviewed finding gets a canonical portfolio ID and a bounded acceptance criterion. Architectural and governance gaps are recorded in `governance/FOUNDRY_GAP_REGISTER.md` with cited evidence and an explicit queue, blocked, or rejected disposition, mechanically verified by `scripts/check_gap_register.py`. A Ready queue row is created only when dependencies, exact scope and reviewer capacity are available. Do not copy the full roadmap into README, agent prompts or new audit documents.
 
 ## Independent continuability
 

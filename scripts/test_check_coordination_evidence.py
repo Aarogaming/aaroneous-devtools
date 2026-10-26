@@ -436,5 +436,44 @@ class EndToEndWithNonAsciiRows(unittest.TestCase):
         self.assertNotIn("UnicodeDecodeError", result.stderr)
 
 
+class GapRegisterIntegration(unittest.TestCase):
+    SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_coordination_evidence.py")
+
+    def git(self, repo, *args):
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_fails_when_gap_register_has_errors(self):
+        with tempfile.TemporaryDirectory() as repo:
+            os.makedirs(os.path.join(repo, "governance"))
+            queue = os.path.join(repo, "governance", "COORDINATION_QUEUE.md")
+            with open(queue, "w", encoding="utf-8") as f:
+                f.write("| ID | Scope | Status |\n| --- | --- | --- |\n| C1 | s | Ready | o | b | t | e |\n")
+            # Write an invalid gap register (missing evidence and disposition)
+            gap_reg = os.path.join(repo, "governance", "FOUNDRY_GAP_REGISTER.md")
+            with open(gap_reg, "w", encoding="utf-8") as f:
+                f.write("## G-2026-01 — Bad gap\n- Boundary: test\n- Risk: test\n")
+
+            self.git(repo, "init", "-q")
+            self.git(repo, "add", "-A")
+            self.git(repo, "commit", "-qm", "base")
+            self.git(repo, "tag", "base")
+
+            # Add an evidenced row to trigger check_coordination_evidence
+            with open(queue, "a", encoding="utf-8") as f:
+                f.write("| C2 | s | Ready | o | b | t | e |\n")
+            self.git(repo, "commit", "-qam", "add row")
+
+            result = subprocess.run([sys.executable, self.SCRIPT, "base", "HEAD"], cwd=repo, capture_output=True,
+                                  text=True, encoding="utf-8")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Gap register check failed", result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
