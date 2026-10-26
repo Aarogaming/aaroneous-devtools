@@ -19,6 +19,7 @@ Exits 1 and prints each offending line/block if a claim lacks evidence or a lane
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -387,6 +388,19 @@ def main() -> int:
             "commit hash a reviewer can re-check."
         )
         return 1
+
+    gap_register_path = "governance/FOUNDRY_GAP_REGISTER.md"
+    if os.path.isfile(gap_register_path) and os.path.isfile(TARGET_FILE):
+        try:
+            import check_gap_register
+            gap_errors = check_gap_register.check(gap_register_path, TARGET_FILE)
+            if gap_errors:
+                print(f"\nGap register check failed for {gap_register_path}:", file=sys.stderr)
+                for err in gap_errors:
+                    print(f"  {err}", file=sys.stderr)
+                return 1
+        except ImportError:
+            pass
 
     print("Evidence-retention check passed.")
     return 0

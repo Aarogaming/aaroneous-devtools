@@ -73,7 +73,7 @@ second queue; `COORDINATION_QUEUE.md` remains the sole claim authority.
   disposition.
 - Risk: reviews discover defects that remain chat-only and drift away from the
   queue before design or implementation begins.
-- Disposition: **C83 Ready** — add a deterministic register-to-queue policy
+- Disposition: **C83 Review** — add a deterministic register-to-queue policy
   checker and fixtures; no agent may self-certify that a finding is closed.
 
 ## G-2026-06 — verification is comprehensive but lacks a cost-layered contract
@@ -103,10 +103,10 @@ second queue; `COORDINATION_QUEUE.md` remains the sole claim authority.
 - Risk: a crate can be classified without a mechanically inspectable record of
   what it is allowed to do, what must verify it, or how it advances, retires or
   is superseded.
-- Disposition: **C87 Blocked on C79, C85, C88 and C89** — C89 must first move
-  Cratify profile assignments from the specification-table fallback into each
-  crate manifest; then derive a build sheet from accepted product facts rather
-  than introducing a parallel handwritten inventory.
+- Disposition: **C87 Blocked on C79, C85 and C88 (C89 accepted in PR #111)** —
+  C89 landed in product PR #111 moving Cratify profile assignments into crate
+  manifests; C87 derives a build sheet from accepted product facts once C79,
+  C85 and C88 land.
 
 ## G-2026-08 — Base36 notation is a stated design intent, not an implemented contract
 
