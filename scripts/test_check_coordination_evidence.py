@@ -440,7 +440,13 @@ class GapRegisterIntegration(unittest.TestCase):
     SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_coordination_evidence.py")
 
     def git(self, repo, *args):
-        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
     def test_fails_when_gap_register_has_errors(self):
         with tempfile.TemporaryDirectory() as repo:
