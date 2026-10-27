@@ -1,5 +1,21 @@
 # Multithread Program
 
+## Owner priority override - 2026-10-27 UTC
+
+The owner makes operating-spine reconciliation and qualification the highest
+priority, followed by aligning Devtools on qualified current Aaroneous components.
+The [dated plan update](../architecture/GUILD_INITIALIZATION_PLAN.md#owner-priority-and-source-reconciliation-2026-10-27)
+records the three supplied analyses, verified baseline, corrections and ordered
+exit criteria. C170 records this documentation increment; subsequent source work
+requires its own bounded claim and independent review capacity.
+
+Use the existing Guild/Steward lifecycle and product component homes. Dependency
+alignment means Devtools consumes selected, pinned Aaroneous capabilities while
+Aaroneous remains independently buildable, testable and releasable. It does not
+mean rebasing unrelated repository histories. Existing safety holds and active
+ownership remain effective; this priority does not adopt proposed schemas or
+authorize deployment. Older priority dates below are historical context.
+
 ## Guild qualification routing - 2026-10-20
 
 The owner-requested document/source comparison and full-depth operational plan

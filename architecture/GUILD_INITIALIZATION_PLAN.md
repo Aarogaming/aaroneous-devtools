@@ -13,6 +13,117 @@ The [queue](../governance/COORDINATION_QUEUE.md) alone records live claims.
 
 ## 1. Decision in plain terms
 
+### Owner priority and source reconciliation 2026-10-27
+
+The owner directs this work ahead of other planned expansion, followed by
+Devtools alignment on the current Aaroneous operational base. This section
+updates sequencing; the existing stages and contract decisions remain the
+qualification authority. No model-authored implementation sketch is adopted
+merely because it appears in the supplied documents.
+
+#### Source provenance and fresh baseline
+
+Three owner-supplied responses were compared with current source. Their original
+attachment IDs and SHA-256 digests identify the exact inputs without copying
+private operational details into the repository:
+
+| Source | Attachment ID | SHA-256 | Evidence limit |
+| --- | --- | --- | --- |
+| Access & Evidence Declaration | c55d0aab-c3fd-4fc9-ba0a-8e972db7ffd6 | b9cfba03caeaa6c3d0cdbc5453bb2407c362357401abb5fd2aa9ade48ecafaa4 | Design only; declared no repository access |
+| Evidence & Inspection Status Update | 32f8c9a9-52e6-424d-89bf-1b8dd5bd88ca | 4ea999b851431a6746e956f693cea938e3fadd7e981ee5673e1d4a96dbeb16ca | Archive path inventory; explicitly did not inspect source bodies |
+| Dossier critique | 2e006afe-0f6b-4955-b06a-35b7d1883414 | d1534bfa375b388459eb83d78c763f138e552dd98d5835bb849fa866b1f76ce4 | Proposed corrections; runtime and PR assertions need independent refresh |
+
+GitHub branch/PR reads on 2026-10-27 UTC confirm product main
+`175e93966bec40b119048143054ad8a38b34e861` and Devtools main
+`f553f1f25a7e795ce796840e9669bf198e9d626b`. PR242, PR243 and PR246
+are merged. PR243 merge `c4c7fd95866e4330c937c22719c71728bf243048`
+does not convert its explicitly proposed contract into implemented behavior.
+The older baseline in this plan remains dated evidence, not current PR status.
+
+READ evidence at the Devtools pin: `foundation_cli/src/guild.rs` exposes Tick,
+VerifyLog, Status and Daemon. The operation contract still says PROPOSED, NOT
+IMPLEMENTED, NOT ADOPTED. Its 26 cases and 160 phase/event cells remain specified
+qualification targets, not a test result. Paths use prefix `foundation/crates/`.
+READ evidence in the clean product files at the product pin: `compute`'s
+`automata.rs` uses Vec/HashMap/HashSet; `si_macro.rs` performs filesystem work and
+uses Instant; `compute/Cargo.toml` includes substantial compute/JIT dependencies.
+These are reuse candidates requiring boundary qualification, not a ready-made
+bounded, allocation-free reducer. Product paths use prefix `crates/`.
+No Rust tests, host health checks or performance measurements were run for this
+documentation increment.
+
+#### Disposition of the supplied recommendations
+
+| Recommendation | Disposition and necessary correction |
+| --- | --- |
+| Shared operating spine, specialized engines | Retain: shared intent/evidence/review relationships, with domain-specific execution and recovery. No universal runtime or AST. |
+| Reuse Guild, Steward, Cratify and existing automata | Retain as the first inspection route. Existence is not behavioral qualification; neither a new guild_core nor foundation_macro crate is justified yet. |
+| Four independent status dimensions | Preserve the existing operation contract, including per-effect records and review references. The supplied single effect/status sketch loses multi-effect history; its nine-state enum also fails to represent the advertised ten-state matrix. |
+| Core and named facades | Core remains a minimal contract candidate with no implicit authority. Reuse core-contracts/wire where appropriate; do not introduce the prohibited aaroneous_core prefix or promote UI-specific ASTs into shared contracts. |
+| Fuel-bounded synthesis | Qualify node, edge, loop, call-depth, input, output and aggregate descendant budgets. Flat storage alone proves neither Copy, panic freedom nor termination. Validate cycles by graph semantics, not numeric index direction. |
+| Single writer and lease recovery | Retain the goal; do not equate scheduler seat rotation with effect fencing. Expiry alone cannot prove an old worker stopped. SQLite/WAL and epoch fields alone do not establish cross-host fencing. |
+| Eliminate duplicate orchestrators | Investigate callers, re-exports, features, contracts and consumers first. Similar filenames do not authorize deletion or moving product policy into Devtools. |
+| Model critic as verifier | Reject. Model output is a proposal; deterministic checks and independently authorized acceptance remain separate. A Rust signature, AST lint, cargo --offline or a Git worktree is not a security sandbox. |
+| Simplified report-only recovery | Narrow: builds can execute build scripts/procedural macros and write caches or artifacts. Explicit confinement, output scope and surviving-child reconciliation are still required. |
+| Rollback by deleting ledger/sidecar state | Reject for maintained operation evidence. Preserve journals, associations and recovery history; disable execution and restore a qualified version through an explicit migration. |
+| Desktop zero-leak guarantees | Defer until isolated-target qualification. Focus checks have races, timestamps need host-local semantics, and cleanup inputs are effects too. No hard timing or no-leak promise follows from filenames. |
+| C150 and old PR merge order | Do not reuse C150: it identifies an existing attribution repair. Refresh each PR and claim before scheduling; the dossier is not merge authority. |
+
+One supplied source includes a plaintext credential. Do not reproduce it in
+prompts, commits or handoffs. Its validity and containment status are unknown;
+the responsible service operator must assess revocation/rotation without
+distributing the literal. No credential or service was changed here.
+
+#### Ordered execution and exit criteria
+
+1. **Reconcile and qualify the operating contract first.** Resolve section 8
+   of [guild-operation-v1](../contracts/guild-operation-v1.md) with independent
+   review; map each proposed transition and case to current Guild/Steward code
+   or an explicit missing capability. Preserve fixed-field legacy wire records.
+   Exit: accepted decisions, exact implementation scope, reproducible fixtures,
+   and no claims that scheduler ticks implement operation admission/cancellation.
+2. **Qualify one bounded execution component.** Trace existing automata/si_ir
+   callers and loading/evaluation boundaries. Select a narrow existing home;
+   add malformed-index, cycle, fuel exhaustion, output-capacity and cancellation
+   counterexamples under product-native gates. Keep domain storage and I/O out
+   of the reducer. Exit: independently reviewed contract and measured bounded
+   behavior; a new crate requires evidence that an existing home cannot serve it.
+3. **Run one report-only operation end to end.** Reuse existing local verification
+   and job-service paths. Bind intent, attempt, exact subject, evidence and
+   independent judgment; test restart, corrupt state, late results, revocation
+   and unchanged aggregate budgets. Exit: retained success and negative-case
+   evidence without repository publication or desktop actuation.
+4. **Align Devtools on qualified Aaroneous capabilities.** For each selected
+   component record product commit/package/API, enabled features, transitive
+   dependencies, license/admission result, target support and update policy.
+   Prefer existing explicit CLI boundaries where a stable library boundary is
+   not available. Do not import compute or a host wholesale just to reuse one
+   function. Product fixes land and qualify independently before the consumer
+   pin advances; migrate one consumer at a time, preserving rollback evidence.
+5. **Qualify Ubuntu-primary and Windows operation.** Verify the same contracts
+   on both platforms with explicit endpoints, credentials, storage and output
+   roots. Exercise disconnect, duplicate delivery, stale writer, crash recovery
+   and operator stop. Exit: Ubuntu coordinates and Windows remains a supported
+   worker/client, with no automatic authority promotion after lost contact.
+
+For step 4, inspect Cargo metadata/tree for normal, build, dev and target-specific
+edges, including feature activation and duplicate versions. Verify product build,
+tests and release without a Devtools checkout or service. Check workflow scripts,
+generated artifacts and runtime calls too: an acyclic Cargo graph alone is not
+the complete boundary. Devtools may depend on qualified Aaroneous components;
+Aaroneous must not acquire a dependency on Devtools. Shared package versions do
+not create shared runtime resources: composition roots explicitly own and inject
+handles. Git rebases, if needed, stay within each repository's own history.
+
+The next source-work packet is step 1's mapping and decision closure, followed
+by the smallest approved implementation. These steps are proposed work, not new
+Ready claims. Confirm reviewer capacity and current ownership first. Route any
+new verified gaps through the existing Foundry gap register, not this source
+comparison. No fleet service, model dispatch, dependency or live effect is enabled
+by this priority update.
+
+### Existing operating direction
+
 Build Guild as a **supervised software-development operations system**, not a new
 operating-system kernel and not one enormous autonomous agent. Use the existing
 Rust Foundation and Steward implementation. Ubuntu is the proposed primary

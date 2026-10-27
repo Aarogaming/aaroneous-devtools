@@ -1,5 +1,11 @@
 # Parallel Coordination Queue
 
+## Owner priority intake - 2026-10-27
+
+| ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
+| --- | --- | --- | --- | --- | --- | --- |
+| C170 | Owner-directed operating-spine source reconciliation, then Devtools consumption of qualified Aaroneous components. Exact paths: architecture/GUILD_INITIALIZATION_PLAN.md (dated source reconciliation and ordered qualification), governance/MULTITHREAD_PROGRAM.md (priority routing), own queue row. Documentation only. | Review | Codex; independent reviewer unassigned | codex/operating-spine-priority; isolated C:/Users/aarog/.codex/worktrees/operating-spine-priority/aaroneous-devtools | 2026-10-27T01:18:19Z | Contribution-ID C170/codex-operating-spine-priority-v1. Ready recorded and acknowledged before claim. User supplied three architectural responses and made reconciliation highest priority, followed by dependency-safe Devtools alignment. Evidence: product main 175e93966bec40b119048143054ad8a38b34e861, devtools main f553f1f25a7e795ce796840e9669bf198e9d626b; live PR242/243/246 merged. Gate: UTF8/LF, links, diff check, coordination evidence check. Delivered priority routing and source reconciliation in existing plan. Documentation check via python -c exit 0: UTF8/LF, whitespace, fences and 14 local links. git diff --check exit 0. Reproduce in isolated worktree; commit recorded in follow-up. No Rust tests, source/schema adoption, build, deployment or history rewrite. Paths released. Next: independent documentation review and contract section 8 decisions; separately claim exact transition-to-code mapping before implementation. |
+
 ## Current dispatch - 2026-09-25 UTC
 
 Owner direction: coordinate Codex, Gemini/Antigravity, Claude and bounded local Qwen support, reconcile the queue, then review unfinished branches. The [dispatch plan](PARALLEL_RECONCILIATION_2026-09-25.md) contains pinned evidence, full lane instructions, acceptance criteria and ready-to-send prompts.
