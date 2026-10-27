@@ -195,6 +195,184 @@ create a chain of code PRs against invented schemas or use a draft to reserve
 another owner's files. These packets enable parallel preparation, not a claim
 that downstream implementation or industrial qualification is complete.
 
+#### Cold-handoff procedure for every packet
+
+1. Read the applicable `AGENTS.md`, the [master playbook](../governance/MASTER_PLAYBOOK.md),
+   the canonical local queue named there, current remote queue, and the packet's
+   cited sources. Record repository, full base/head, dirty paths, input hashes,
+   existing PR and owner. Do not assume this dated plan is the live queue.
+2. Run [schedule review](../governance/SCHEDULER_MAINTAINER.md#command) with
+   explicit absolute queue/program/output paths. Resolve stale rows and check
+   the current owner before using its capacity result; it is advisory, not a
+   claim. A blocked packet can be analyzed in scratch but cannot be claimed for
+   maintained edits until its dependencies and review capacity are available.
+3. Convert a packet to one exact Ready scope, then record owner, branch,
+   worktree, UTC time, concrete paths, evidence and gate in the queue before
+   editing. Respect other claims and the product pre-edit native gate. Do not
+   create placeholder implementations or undocumented authorities.
+4. Capture a failing or missing-behavior case before changing code where
+   practical. Implement one boundary, preserve existing data and verify the
+   relevant positive and negative cases. Use an explicit scratch build target;
+   coordinate expensive builds. Product: `cargo xtask gate` before editing and
+   before completion per product `AGENTS.md`. Foundation: relevant workspace
+   tests, formatting, strict Clippy and any contract/CI checks. Documentation:
+   UTF-8/LF, links, fence and diff checks.
+5. Commit scoped paths only. PR text names base/head, prerequisite PRs, exact
+   commands/results, platform, retained logs, known limits and rollback.
+   Release the claim to Review; an independent reviewer assesses it. If a
+   prerequisite or gate fails, preserve evidence and hand off the exact blocker.
+   Updating a parent requires rechecking a dependent PR at its new head.
+
+#### Packet implementation briefs
+
+**P01 — product capability export (existing C79).** Start with the current
+C79 owner/branch and `xtask` workspace metadata, not a competing exporter.
+Inputs must identify the selected repository root and resolved full commit;
+output describes only declared product capabilities, profiles and allowed gate
+identifiers with a version and fingerprint. Review fixtures for wrong root,
+moved revision, duplicate or unknown gates, stable sorting and changed inputs.
+The export is descriptive, never a grant. Handoff its accepted schema, exact
+revision, examples and compatibility policy to P09; a draft is not an API freeze.
+
+**P02 — caller authorization (C80).** Trace `mcp_service/http_api.rs`,
+`mcp_service/service.rs`, `mcp_service/auth.rs` and `capability_broker.rs` at
+the selected product revision, including direct, batch and notification paths.
+Define a trusted context derived from authenticated transport credentials,
+with current principal, scope, revocation and injected time; do not trust
+caller-supplied principal/scope fields. Test missing/bad credentials, modified
+identity and scope, expiry, revocation, wildcard escalation, cross-principal
+reuse and read-only versus mutating dispatch. Assert rejected calls perform no
+effect and thermal checks still run. Review compatibility and credential
+handling without printing secrets. C80's full scope and product gate govern.
+
+**P03 — strict explicit inputs (C81).** Trace product `paths` and
+`llm_gateway` constructors, configuration and current callers. Define an
+explicit strict construction route with named missing-input errors and a
+separately named legacy/bootstrap route where compatibility is required. Test
+missing root, endpoint, model and model path independently, supplied values,
+invalid values and absence of ambient fallback on the strict route. Record a
+caller migration table before changing defaults; do not claim the legacy route
+is strict.
+
+**P04 — product gate tiers (C85).** Read product `xtask/src/gate.rs`, its CI
+drift tests, native/dependency audits and current CI workflows. Inventory each
+full-gate step with prerequisites, output and failure behavior. Define a
+machine-readable preflight as a strict subset with explicit revision/root and
+stable ordering. Test first failure, omitted or unknown gates, bad root/revision
+and full-gate parity. The full gate remains mandatory; coordinate the `xtask`
+scope with C79 and don't launch simultaneous full builds without a reservation.
+
+**P05 — operation decisions.** Read the complete proposed
+`contracts/guild-operation-v1.md`, especially sections 3-8, and independent
+review history referenced there. For each D01-D05 record accept/revise/defer,
+reason, reviewer identity and exact revision; separately resolve resume,
+overlapping allocation, pre-allocation cancel and post-acceptance revocation.
+Name the association signer and trust anchor and the report acceptance owner.
+Return open codec, numerical and storage choices as explicit blockers. Review
+is not authority to publish or mutate code.
+
+**P06 — semantic fixtures.** After P05, take the transition table and
+phase/event matrix as the reviewed oracle, then define language-neutral cases
+for every phase/event pair plus OCV01-26 guards and conditional destinations.
+Each fixture names prior state, event, supplied authority/time/subject, expected
+state or rejection, attempt history, effect set and budget changes. Include
+truncated, duplicate-key, unknown-field, oversize and integer-boundary cases at
+the byte parser layer; a parsed map cannot detect an already discarded duplicate.
+Select exact schema paths only in the later Ready claim. Preserve existing wire
+and receipt bytes and provide old/new-reader compatibility vectors.
+
+**P07 — operation reducer.** Inspect existing Steward request/admission/outcome
+and Guild scheduler code first. Implement only accepted pure decisions in the
+existing approved home; use P06 fixtures without I/O or trust claims from workers.
+Prove a shared T04/T13 allocator prevents two unfinished attempts, T07 never
+allocates, pre-allocation cancellation creates no attempt, and acceptance does
+not authorize a later effect without current eligibility. Keep multiple effects
+and historical review records separate. Fault/host tests belong to adapters.
+
+**P08 — durability and recovery.** Map existing `local_verification::Store`,
+Guild checkpoint and `contracts/platform-jobs-v1.md` before selecting storage.
+Draw each persisted-write/dispatch/acknowledgement boundary; enumerate crash
+before and after every boundary and an orphan association. Test full disk,
+corrupt/truncated log, lost checkpoint, stale revision, surviving child, duplicate
+delivery and lost acknowledgement. A retry stays blocked until the old executor
+is excluded and effects are known. Record storage assumptions and rollback;
+do not infer atomic cross-store commit from separate writes or a lease TTL.
+
+**P09 — Foundry adapter (C82).** Await C79's accepted schema; read
+`architecture/FOUNDRY_CONTROL_TRANSITION.md` and G-2026-04. Prepare a mock only
+in scratch, clearly marked provisional. The claimed adapter binds explicit
+product root, full revision, manifest fingerprint, declared gate, result
+reference and actor attribution; it must reject mismatch, unknown fields/gates,
+stale reports, modified manifest and absent inputs. Keep status read-only and
+transport data separate from authority. Do not write a scheduler or product code.
+
+**P10 — tier consumption (C86).** Compare accepted C79 manifest, P09 adapter
+and C85 tier contract. Pass selected explicit inputs to the product-owned gate;
+record tier, exact command, target revision, platform, result and log digest.
+Reject undeclared/skipped gates, stale or missing receipts and substituted
+partial checks. A fast preflight may guide iteration; only the declared final
+gate can satisfy final product verification. Test native Windows and Ubuntu
+handling before claiming platform equivalence.
+
+**P11 — Base36 and build sheet (C88/C87).** C88 decides alphabet, case,
+width, ordering, reserved values, invalid forms and versioning for its real
+consumer. Cover zero, maximum, overflow, leading zero, bad case and round trip;
+keep operation identity distinct from a display alias. C87 then binds each
+product crate's accepted manifest identity/profile, dependencies, lifecycle,
+owner, capabilities and required verification to a revision. Reject stale or
+missing facts and do not fabricate owners or retrofit historical identifiers.
+
+**P12 — report-only pilot.** Begin with retained signed evidence and a selected
+immutable subject; replay it offline and compare outcomes to existing Steward
+rules without dispatch. Choose the trusted suite, issuer, independent reviewer,
+checkout, spool, outputs, time/memory/process limits and network policy only
+through the authorized owner. Then test exact-subject success, failing receipt,
+self-review, revocation, cancellation, crash, stale attempt and replay. A
+successful process exit is not acceptance; report-only execution may run build
+scripts. Keep publication and model calls disabled for the first pilot.
+
+**P13 — product capability consumer.** Pick one Devtools workflow with a
+measurable need and compare existing product APIs, including `scan_core`, to an
+explicit CLI boundary. Record API/semver stability, owner, product commit,
+features, normal/build/dev/target dependencies, license, platforms and removal
+strategy. Test current and unsupported revisions, absent capability, malformed
+response and rollback. Verify product gates without the Devtools checkout or
+service. No use is justified solely by a small dependency count.
+
+**P14 — cross-host coordination.** Read `contracts/platform-jobs-v1.md`,
+existing service/worker tests and the actual approved deployment runbooks.
+Use explicit host endpoints, identity files, spool and output paths; collect no
+credentials in reports. Exercise wrong role/platform, duplicate or late result,
+coordinator restart, partition with a live old worker, disk failure, operator
+stop and independently witnessed recovery on Windows and Ubuntu. Verify an
+unknown effect cannot be repeated and no second writer takes over merely
+because time passed. A live deployment requires its own authorization.
+
+**P15 — Chimera proposal route.** Trace `virtual_patch` and `local_proposal`
+contracts plus the accepted verification adapter. Define immutable source
+revision and file digests, allowed paths, proposal provenance and resource
+limits. Test malformed output, stale base, path escape, patch outside scope,
+failed gates and a passing proposal awaiting independent judgment. Apply only
+to an isolated claimed worktree after admission; never execute model text as
+authority, write to shared product paths or claim clean-room provenance from a
+rewrite. Retain evidence and the rollback path.
+
+**P16 — Marionette.** Trace actual platform capture, target selection, input
+and stop paths before composing a test. Define a disposable isolated target,
+window/process identity, approved actions, observation-age limit and local stop.
+Test lost focus, stale frame, process exit, delayed input, stuck key, worker
+disconnect and crash; measure observation age and stop/release latency. A
+focus check cannot make the operating-system input queue atomic; unknown target
+state requires reconciliation. No live actuation is granted by this packet.
+
+**P17 — graduation and release.** For each candidate record origin/license,
+owner, existing equivalent, accepted public contract, profile, tests, feature
+flag/shadow plan, migration and origin-copy retirement. Product graduation is
+its own change under product-native gates; verify independent product build,
+test, release and runtime without Devtools. Separately record release authority,
+artifact provenance, support runbook, rollback and independently reviewed
+evidence. Do not equate a tested component with an industrial certification.
+
 ### Existing operating direction
 
 Build Guild as a **supervised software-development operations system**, not a new
