@@ -122,6 +122,42 @@ new verified gaps through the existing Foundry gap register, not this source
 comparison. No fleet service, model dispatch, dependency or live effect is enabled
 by this priority update.
 
+### Execution work packets and acceptance gates - 2026-10-27
+
+This continuation turns the owner priority above into sequenced work packets;
+it does not grant claims, settle the Guild proposal, or authorize deployment.
+The [queue](../governance/COORDINATION_QUEUE.md) remains the source of live
+ownership and the [gap register](../governance/FOUNDRY_GAP_REGISTER.md) routes
+verified gaps. All packet owners refresh both before editing. Product main was
+`1f8c4ed59ee580c7e5ac94df6ceed96029e8818f` and devtools main was
+`400e304279b9aefcae7461cee3c2129057b60d31` at this comparison; these are
+dated evidence, not moving branch identifiers.
+
+| Order | Work packet and existing lane | Required exit evidence |
+| --- | --- | --- |
+| 0 | Reconcile current main, worktrees, claims and reviews; preserve dirty work and qualify every lane ID. | Pinned heads, active ownership, scoped handoffs and reviewer capacity; never infer adoption from a merged documentation PR. |
+| 1 | Independently decide Guild contract D01-D05 and its four counterexamples. Compare existing Steward codec and authority boundaries before choosing formats. | Per-decision disposition at the exact contract revision; signer/trust anchor, review authority and unresolved fields recorded. Generic PR acceptance is not a schema decision. |
+| 2 | Complete product trust and truth prerequisites: C79 capability manifest, C80 caller-bound MCP authority and C85 cost-layered verification. | C79 binds explicit root, revision, capabilities and gates. C80 rejects absent, expired or over-broad authority. C85 preserves the full final native gate. Each requires its own claim, native verification and independent review; serialize overlapping `xtask` paths. |
+| 3 | After contract decisions, claim language-neutral fixtures and a pure operation reducer. Evaluate an existing bounded product component for one concrete need; specify Base36 only for its actual record. | Matrix and guard coverage, malformed inputs, concurrent allocation, cancellation, late results and revocation. Product component work passes native gates. Do not presume `scan_core` makes arbitrary reducers pure or bounded. |
+| 4 | Replay retained verification evidence in shadow mode, then separately authorize one report-only pilot with explicit identity, subject, suite and resource budgets. | Retained successful and negative cases, independent report review, crash/restart and stale-subject handling. Existing receipt formats remain intact. Report-only does not imply sandboxed execution. |
+| 5 | Integrate one qualified product capability into a concrete Devtools consumer. | Pin product revision and interface; inspect feature, license, target and transitive normal/build/dev dependencies. Verify product build, test and release without Devtools checkout or service; check scripts and runtime edges as well as Cargo. Record compatibility and rollback. |
+| 6 | Qualify Ubuntu-primary coordination and Windows worker/client behavior. | Both native platforms pass relevant tests; demonstrate authenticated handoff, stop, restart, partition, duplicate delivery, stale writer and unknown-effect reconciliation. Expired leases do not prove old workers stopped. Installation or authority cutover remains separately authorized. |
+| 7 | Expand to bounded patches, model proposals and isolated desktop actuation only after their prerequisites. | Explicit scopes, independent evidence, reversible rollout, measured cancellation and applicable effect-boundary checks. No model output grants itself authority. |
+
+At the comparison above, the remote queue records C79 claimed by Gemini for a
+revision-bound capability manifest. Check its current ownership and handoff
+before touching its product paths; this document does not assign another worker.
+C80 addresses the product MCP service's self-issued broad dispatch token, so an
+external controller must not assume that endpoint already provides caller-bound
+least privilege. C79's manifest is information, not an authorization grant.
+
+For each packet, retain the exact subject revision, actual commands and exit
+codes, logs or reproducible worktree, reviewer, unresolved limits and rollback.
+Product and Foundation gates are distinct. Windows-only tests, filenames,
+signature shapes or a green documentation check cannot establish industrial
+readiness or cross-host safety. Route verified new gaps through the existing
+register and claim each bounded change separately; do not duplicate C79-C85.
+
 ### Existing operating direction
 
 Build Guild as a **supervised software-development operations system**, not a new
