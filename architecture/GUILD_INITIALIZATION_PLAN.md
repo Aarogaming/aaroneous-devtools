@@ -158,6 +158,43 @@ signature shapes or a green documentation check cannot establish industrial
 readiness or cross-host safety. Route verified new gaps through the existing
 register and claim each bounded change separately; do not duplicate C79-C85.
 
+### Prepared downstream PR packets - 2026-10-27
+
+Owner direction: prepare the full delivery chain now rather than serially
+rediscovering each step. These are **proposed packets, not Ready claims**.
+An owner may prepare design and fixtures in isolated scratch immediately; a
+maintained edit or draft PR needs the queue's exact Ready claim, available
+review capacity, current source and applicable native pre-edit gate. Preserve
+existing C79-C89 identities. Record unknowns instead of inventing interfaces.
+
+| Packet / proposed PR boundary | Preload now | Dependency and merge exit |
+| --- | --- | --- |
+| P01 C79 capability export (product; existing Gemini claim) | Review checklist: root/revision mismatch, deterministic ordering and digest, unknown gate, schema version, path bounds, no Devtools edge. | Gemini's existing lane and product gate; independent exact-head review. Do not edit claimed `xtask` paths. |
+| P02 C80 caller authority (product) | Map HTTP, direct and batch/notification callers; draft scope and principal/revocation tests. `mcp_service/auth.rs` token verification checks key/expiry but its use as an authorization context needs caller and scope binding review. | Existing C80 Ready lane after queue/capacity reconciliation; product native gates and independent review. Preserve local compatibility through an explicitly authorized adapter, not a wildcard fallback. |
+| P03 C81 explicit inputs (product) | Identify every strict-versus-bootstrap constructor and prepare missing root, endpoint, model and path negative cases. | Existing C81 claim; no ambient fallback in the strict path; native gates, migration notes and review. |
+| P04 C85 verification tiers (product) | Design stop-on-first-failure table, typed result and fixture cases; map each tier to the existing gate. | Coordinate C79 ownership of `xtask`; no final-gate weakening; product gate and CI-parity evidence. |
+| P05 Guild decisions (devtools, review only) | Request separate exact-revision D01-D05 and four counterexample dispositions; prepare signer/anchor, codec alternatives and report-reviewer questions. | Independent family and policy decisions as required in [Guild contract section 8](../contracts/guild-operation-v1.md#8-review-decisions-and-adversarial-critique). No self-acceptance or schema adoption. |
+| P06 Guild semantic fixtures (devtools) | Draft adversarial examples for OCV01-26 and all 160 phase/event pairs in scratch; distinguish guard cases from adapter faults. | P05 accepted; separately claim existing contract/fixture homes. Review explicit version, byte limits and golden vectors before parser/signature implementation. |
+| P07 Guild reducer (devtools) | Sketch pure state-transition responsibilities and test inputs, retaining separate attempt, review and per-effect facts. | P06 accepted; one unfinished attempt, shared allocator, cancellation/resume/revocation and unknown-effect cases pass. No service/effect activation. |
+| P08 Guild persistence/recovery (devtools) | Draft crash-point, writer-exclusion, orphan-association and reservation-settlement fault matrix; compare existing spool/checkpoint mechanisms. | P07 and independently decided D04; explicit commit and fencing protocol, both native host fault tests. No automatic lease takeover from elapsed time alone. |
+| P09 C82 Foundry adapter (devtools) | Prepare consumer questions and provisional mock manifest; distinguish observed data from authorization, receipt and effect authority. | Existing C82 remains blocked until C79 format and revision binding are accepted. Bind exact subject/fingerprint and preserve legacy receipts; no scheduler or product writes. |
+| P10 C85/C86 gate routing (product then devtools) | Draft comparison of gate declarations, inputs, result references, platform matrix and full-gate evidence. | C79, C82 and C85 accepted; C86 consumes declared tiers and never substitutes a partial diagnostic for the final native gate. |
+| P11 C88/C87 notation and build sheets (product) | Draft canonical Base36 edge cases and a build-sheet data inventory; do not rewrite historical IDs. | C88 semantics accepted before C87 consumes them; C87 also depends on accepted product capability/profile/verification contracts and its own native gate. |
+| P12 report-only vertical slice (devtools) | Select candidate retained-evidence examples; draft budget, signer, stale-subject, self-review, crash and replay scenarios without dispatch. | P05-P08 and P09 as applicable; offline shadow first. Policy owner must specify and authorize exact live recipe, paths, principals and numeric budgets before execution. |
+| P13 selected component consumer (devtools/product) | Inventory a real consumer and compare qualified `scan_core`/other product interfaces with CLI boundaries, versioning and transitive feature costs. | Accepted component and concrete need; pin revision; test both platforms and product independence; one consumer per reviewable change. Prior three-test Windows scan result is not product certification. |
+| P14 Ubuntu/Windows coordination (devtools) | Prepare deployment-free test design: lost connectivity, stale worker, duplicate upload, cancellation, disk failure, operator handoff and restart. | P08/P12 accepted; prove actual fencing and effect reconciliation on both hosts. Explicit installation, credentials, endpoint and authority decisions precede a live pilot. |
+| P15 Chimera proposal workflow (devtools) | Draft isolated worktree, provenance, bounded model output, deterministic validation and independent review cases. | P12/P13 and authorized mutation policy; no generated patch self-acceptance, shared-worktree writes or autonomous merge. |
+| P16 Marionette isolated use (product/devtools) | Draft target identity, observation freshness, focus-race, stuck-input, emergency stop and unknown-effect tests against an isolated application. | Qualified platform components, P14 and separately authorized actuation. Measure real cancellation and leakage limits; do not claim hard real-time or guaranteed zero leakage from a focus check. |
+| P17 graduation and release (both repositories) | Prepare source/license review, contract tests, feature/shadow rollout, migration and origin-copy retirement checklist per product graduation rules. | Each capability independently qualified, integrated and reviewed; release/deployment authority and rollback are separate. Keep Aaroneous build, test, release and runtime independent of Devtools. |
+
+For each later draft PR, record its exact parent commit and prerequisite PRs,
+the evidence available **now**, the missing acceptance evidence, and rollback.
+After a parent lands, refresh the diff and rerun affected checks before review;
+an old acceptance does not automatically transfer to a changed head. Do not
+create a chain of code PRs against invented schemas or use a draft to reserve
+another owner's files. These packets enable parallel preparation, not a claim
+that downstream implementation or industrial qualification is complete.
+
 ### Existing operating direction
 
 Build Guild as a **supervised software-development operations system**, not a new
