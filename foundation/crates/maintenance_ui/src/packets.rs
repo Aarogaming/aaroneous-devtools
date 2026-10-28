@@ -165,7 +165,7 @@ fn complete(blueprint: &Blueprint) -> bool {
             .all(|step| !step.title.is_empty() && !step.expected_evidence.is_empty())
 }
 fn reserved(config: &WorkerConfig, paths: &[String]) -> Result<bool> {
-    let queue = read_text(&config.queue, 262144)?;
+    let queue = read_text(&config.queue, 1048576)?;
     Ok(queue.lines().filter(|row| row.starts_with('|')).any(|row| {
         let columns: Vec<_> = row.split('|').map(str::trim).collect();
         if columns

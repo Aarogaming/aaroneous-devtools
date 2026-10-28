@@ -25,6 +25,10 @@ struct Config {
     /// existing worker.toml behaves exactly as before. `[[0, 59]]` allows continuous dispatch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     dispatch_windows: Option<Vec<(u32, u32)>>,
+    /// TTL in seconds after which a reservation lock with `started_at_secs` is considered stale
+    /// and reclaimed. Defaults to 3600 seconds (1 hour).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lock_ttl_secs: Option<u64>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -272,6 +276,21 @@ where
         return Ok(());
     }
     let lock = c.reservation_directory.join("review.lock");
+    let lock_ttl_secs = c.lock_ttl_secs.unwrap_or(3600);
+    if lock.exists() {
+        if let Ok(content) = fs::read_to_string(&lock) {
+            if let Some(started_at) = parse_started_at_secs(&content) {
+                if now >= started_at && now - started_at > lock_ttl_secs {
+                    println!(
+                        "local worker: reclaiming stale reservation lock (age {}s > {}s)",
+                        now - started_at,
+                        lock_ttl_secs
+                    );
+                    let _ = fs::remove_file(&lock);
+                }
+            }
+        }
+    }
     let mut reservation_file = match fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -305,7 +324,7 @@ where
             &path, 1048576,
         )?)?);
     }
-    let queue = read_bounded(&c.queue, 262144)?;
+    let queue = read_bounded(&c.queue, 1048576)?;
 
     // Last-attempt time per job id, derived from records already on disk
     // (no separate state file needed) — the newest submitted_at_secs across
@@ -723,6 +742,13 @@ fn read_status_outcome(path: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
+fn parse_started_at_secs(content: &str) -> Option<u64> {
+    content
+        .lines()
+        .find_map(|line| line.strip_prefix("started_at_secs="))
+        .and_then(|val| val.trim().parse::<u64>().ok())
+}
+
 /// `true` if this tick had nothing to show for itself: either it never
 /// reached `save_status` at all (out of the dispatch window, or
 /// `review.lock` already held by another run — `before != after` on
@@ -870,6 +896,7 @@ mod tests {
             endpoint: "http://127.0.0.1:1".into(),
             max_pending: 2,
             dispatch_windows: None,
+            lock_ttl_secs: None,
         };
         for path in [
             &c.checkout,
@@ -1363,6 +1390,7 @@ instruction = \"x\"
             endpoint: "http://127.0.0.1:1".into(),
             max_pending: 4,
             dispatch_windows: None,
+            lock_ttl_secs: None,
         };
         for path in [
             &c.checkout,
@@ -1462,6 +1490,20 @@ instruction = \"x\"
             fs::read_to_string(c.reservation_directory.join("review.lock")).expect("lock"),
             "owner"
         );
+    }
+    #[test]
+    fn stale_lock_is_reclaimed_after_ttl() {
+        let (_d, c, config) = fixture();
+        let lock_path = c.reservation_directory.join("review.lock");
+        fs::write(
+            &lock_path,
+            "owner=foundation.local-worker\nstarted_at_secs=100\n",
+        )
+        .expect("write stale lock");
+        // now is 3800, so age is 3700 > default ttl 3600
+        tick_with(&config, 10, 3800, |_, _| Ok(draft()))
+            .expect("tick should reclaim stale lock and run");
+        assert_eq!(files(&c.results_directory, "json").unwrap().len(), 1);
     }
     #[test]
     fn failure_is_retained_and_not_retried_unchanged() {

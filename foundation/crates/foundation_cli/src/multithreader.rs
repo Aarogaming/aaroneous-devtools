@@ -101,7 +101,7 @@ pub(crate) fn run(config_path: &Path) -> Result<()> {
         .open(&lock)
         .context("review.lock exists: inspect active/stale run before removal")?;
     let _lock = RunLock(lock);
-    let queue = read_bounded(&c.queue, 262144)?;
+    let queue = read_bounded(&c.queue, 1048576)?;
     let (mut ids, diagnostics) = queue_ids(&queue);
     let program = read_bounded(&c.program, 65536)?;
     for row in program.lines().filter(|r| r.starts_with('|')) {
