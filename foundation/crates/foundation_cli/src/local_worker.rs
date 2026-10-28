@@ -305,7 +305,7 @@ where
             &path, 1048576,
         )?)?);
     }
-    let queue = read_bounded(&c.queue, 262144)?;
+    let queue = read_bounded(&c.queue, crate::intake::MAX_COORDINATION_QUEUE_BYTES)?;
 
     // Last-attempt time per job id, derived from records already on disk
     // (no separate state file needed) — the newest submitted_at_secs across
@@ -899,6 +899,36 @@ mod tests {
         fs::write(&config, toml::to_string(&c).expect("config")).expect("write config");
         (d, c, config)
     }
+    #[test]
+    fn large_queue_still_reserves_evidence_and_oversize_fails_closed() {
+        let (_d, c, config) = fixture();
+        let queue = format!(
+            "{}\n| C1 | `lib.rs` | Claimed | owner |\n",
+            "x".repeat(262_144)
+        );
+        fs::write(&c.queue, queue).expect("large queue");
+        tick_with(&config, 10, 1, |_, _| {
+            panic!("reserved evidence must not run")
+        })
+        .expect("large queue is accepted");
+        assert!(
+            files(&c.results_directory, "json")
+                .expect("results")
+                .is_empty()
+        );
+        fs::write(
+            &c.queue,
+            "x".repeat(crate::intake::MAX_COORDINATION_QUEUE_BYTES as usize + 1),
+        )
+        .expect("oversized queue");
+        let err = tick_with(&config, 10, 2, |_, _| {
+            panic!("oversized queue must not run")
+        })
+        .expect_err("oversized queue is rejected");
+        assert!(err.to_string().contains("input exceeds"));
+        assert!(!c.reservation_directory.join("review.lock").exists());
+    }
+
     #[test]
     fn archive_history_suppresses_regeneration_and_partial_files_are_ignored() {
         let (_d, c, config) = fixture();

@@ -101,7 +101,7 @@ pub(crate) fn run(config_path: &Path) -> Result<()> {
         .open(&lock)
         .context("review.lock exists: inspect active/stale run before removal")?;
     let _lock = RunLock(lock);
-    let queue = read_bounded(&c.queue, 262144)?;
+    let queue = read_bounded(&c.queue, crate::intake::MAX_COORDINATION_QUEUE_BYTES)?;
     let (mut ids, diagnostics) = queue_ids(&queue);
     let program = read_bounded(&c.program, 65536)?;
     for row in program.lines().filter(|r| r.starts_with('|')) {
@@ -336,8 +336,11 @@ mod pipeline_tests {
         fs::create_dir(&inbox).expect("inbox");
         fs::write(checkout.join("README.md"), "A concrete fixture failure").expect("evidence");
         let queue = d.path().join("queue.md");
-        let original = "| OLD | other.rs | Done | owner |\n";
-        fs::write(&queue, original).expect("queue");
+        let original = format!(
+            "{}\n| OLD | other.rs | Done | owner |\n",
+            "x".repeat(262_144)
+        );
+        fs::write(&queue, &original).expect("queue");
         let program = d.path().join("program.md");
         fs::write(&program, "| P1 | PLANNED-1 | other task | none | owner |").expect("program");
         let proposal=serde_json::json!({"proposal":{"schema_version":1,"id":"NEW-1","source":"README.md","priority":"P2","scope":["README.md"],"dependencies":[],"verification":["fixture criterion"],"decision":"fixture defect"}}).to_string();
@@ -371,6 +374,12 @@ mod pipeline_tests {
                     .contains(&serde_json::json!("PLANNED-1"))
             );
             assert!(report["requires_owner_review"].as_bool().expect("boolean"));
+            assert!(
+                report["known_ids"]
+                    .as_array()
+                    .expect("ids")
+                    .contains(&serde_json::json!("OLD"))
+            );
             assert!(!inbox.join("review.lock").exists());
             assert_eq!(fs::read_to_string(&queue).expect("queue"), original);
         }
