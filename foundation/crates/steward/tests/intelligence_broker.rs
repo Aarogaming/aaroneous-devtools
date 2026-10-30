@@ -245,3 +245,29 @@ fn retry_does_not_restore_budget_or_inherit_eligibility() {
     j.authorized.clear();
     hold(&j, p, HoldReason::Unauthorized);
 }
+
+#[test]
+fn principal_identifiers_fail_closed_for_noncanonical_forms() {
+    let base = provider("codex");
+    let mut j = job(std::slice::from_ref(&base));
+    j.excluded_principals.push("codex".into());
+    hold(&j, base.clone(), HoldReason::PrincipalExcluded);
+    for invalid in [
+        "Codex",
+        "codex ",
+        " codex",
+        "codex\u{200b}",
+        "",
+        "codex/other",
+    ] {
+        let mut p = base.clone();
+        p.principal = invalid.into();
+        assert!(assess(&j, &[p]).is_err(), "provider principal: {invalid:?}");
+        let mut invalid_job = j.clone();
+        invalid_job.excluded_principals = vec![invalid.into()];
+        assert!(
+            assess(&invalid_job, std::slice::from_ref(&base)).is_err(),
+            "excluded principal: {invalid:?}"
+        );
+    }
+}

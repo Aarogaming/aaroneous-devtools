@@ -118,6 +118,16 @@ fn nonempty(s: &str) -> bool {
     !s.trim().is_empty() && s.len() <= 1024 && !s.chars().any(char::is_control)
 }
 
+// Canonical opaque principal IDs are ASCII lowercase and contain no whitespace or
+// format characters. A trusted identity adapter must still resolve distinct aliases.
+fn canonical_principal(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && s.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'_' | b'.' | b':')
+        })
+}
+
 /// Deterministic recommendation only. Malformed or ambiguous identities fail the
 /// entire report; a lack of eligibility produces explicit per-provider holds.
 pub fn assess(job: &Job, providers: &[Provider]) -> Result<Report, &'static str> {
@@ -129,6 +139,10 @@ pub fn assess(job: &Job, providers: &[Provider]) -> Result<Report, &'static str>
         || providers.len() > 256
         || job.authorized.len() > 256
         || job.excluded_principals.len() > 256
+        || job
+            .excluded_principals
+            .iter()
+            .any(|p| !canonical_principal(p))
         || job.deadline < job.now
     {
         return Err("invalid or oversized job/provider set");
@@ -155,7 +169,7 @@ pub fn assess(job: &Job, providers: &[Provider]) -> Result<Report, &'static str>
     for p in providers {
         if !nonempty(&p.key.provider)
             || !nonempty(&p.key.revision)
-            || !nonempty(&p.principal)
+            || !canonical_principal(&p.principal)
             || !nonempty(&p.interface)
             || p.evidence.len() > 256
             || !identities.insert(&p.key)
