@@ -11,6 +11,8 @@ without replacing `model_hub::choose` or building another provider gateway.
 
 ## Inputs and trust
 
+Principal identifiers must be nonempty canonical ASCII lowercase IDs (at most 128 bytes; letters, digits, `-`, `_`, `.`, `:`). Both provider and excluded principal IDs are validated; malformed IDs fail the whole report. The trusted identity adapter must resolve distinct aliases to the same canonical principal before calling the broker; syntax validation cannot establish identity or reviewer independence.
+
 The caller supplies job identity, immutable subject revision, time, deadline,
 remaining aggregate budget, interface, requirements and excluded principals.
 The authorized profile list comes from trusted policy evaluation for this exact
