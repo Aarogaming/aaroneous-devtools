@@ -43,6 +43,47 @@ Translate human intent into validated, structured machine-readable records and r
 
 Digital twins may model software, devices or processes. Human-behavior testing can use explicitly chosen simulation parameters such as response intervals or fatigue; inferred psychological traits are not established facts about a person. Game automation is an independent experimental consumer and may be connected to qualified components later; a simulator or recorded fixture can test the intended interface without claiming permission to operate a particular third-party application.
 
+## Hardware-aware operation and resource planning
+
+The intended suite should adapt work to the user's selected hardware and priorities. Guild routes bounded work using measured available resources and explicit configuration; Merlin selects a suitable model or non-model capability; target-specific adapters report resources without silently discovering credentials or granting authority. Devices may have their own operation centers and cooperate over authorized local, LAN or remote links. Foreground responsiveness, resource budgets, consent and independent acceptance remain distinct from scheduling.
+
+### Operating modes
+
+| Mode | Intended behavior |
+| --- | --- |
+| Idle | Event-driven waiting and lightweight status; models may be unloaded. No assumption that a continuous inference loop is needed. |
+| Observe | Bounded watchers or deterministic analysis; invoke heavier components when an event or task warrants them. |
+| Assist | One selected small model or deterministic capability handles interactive requests within configured resource limits. |
+| Work | Explicitly admitted specialists run tests, builds, indexing, screen processing or model inference; concurrency is budgeted. |
+| Escalate | Route a bounded task to a larger local or remote model or another authorized machine when policy allows. |
+| Constrain | Reduce concurrency, defer work or preserve a hold when resource limits, foreground priorities or safety conditions require it. |
+
+A platform profile selects only compatible components. A desktop or server may run the operations suite; a PLC or microcontroller may run a small deterministic component and use a separate coordinator when appropriate. Neither AI connectivity nor every service is required on a constrained target. Industrial timing and assurance remain separate qualification requirements.
+
+### Illustrative workstation planning ranges
+
+These are rough **whole-machine starting points for one active user**, not measured Aaroneous requirements, guarantees of responsiveness, minimum specifications, or purchased-hardware recommendations. Actual use depends on the operating system, application, local versus hosted models, context and cache, screen rate, build parallelism and concurrent users.
+
+| Example workload | Starting point to benchmark | Likely pressure |
+| --- | --- | --- |
+| Idle operation center | 2-4 CPU cores; 8-16 GB system RAM; no dedicated GPU needed | Background services, storage and network |
+| Study assistant with hosted model | 4 CPU cores; 8-16 GB system RAM; no dedicated GPU needed | Documents, browser, network and remote latency |
+| Study assistant with small local model | 6-8 CPU cores; 16-32 GB RAM; GPU helpful | Model and context memory |
+| Coding assistant with one local model and modest builds | 8-12 CPU cores; 32 GB RAM; 8-12 GB GPU memory helpful | Inference, compilation, indexing and disk |
+| Game-like observer and local decisions | 8-12 CPU cores; 32 GB RAM; GPU depends on game, screen analysis and model | Application rendering and AI competing for GPU memory |
+| Desktop/browser software tester | 8-12 CPU cores; 16-32 GB RAM; more for parallel environments | Target apps, screenshots, test runners and vision |
+| Several concurrent code/test workers | 12-16+ CPU cores; 64 GB+ RAM and fast SSD; GPU sized for actual model concurrency | Parallel builds, isolated environments, inference and I/O |
+
+Examples of model package sizes illustrate why configuration matters: Ollama lists Qwen3 8B Q4 at about 5.2 GB and Qwen3.5 9B variants around 6.6-7.6 GB. Package size is not total runtime RAM or VRAM: execution overhead, context, cache, vision processing, offload and other GPU users add to it. Sources: [Qwen3 tags](https://ollama.com/library/qwen3/tags) and [Qwen3.5 library](https://ollama.com/library/qwen3.5). Verify the selected artifact and runtime on the actual host; these examples are not mandated models.
+
+The Ubuntu operations host's RTX 4060 is an intended test resource. Do not assume its exact VRAM or available headroom without measuring it. Keep screen-observation frequency separate from model-decision frequency and measure each against the target application's responsiveness. Windows and Ubuntu can execute independent jobs and exchange bounded requests and evidence, subject to existing ownership and review; current worker recovery is not qualified for unrestricted unattended dispatch.
+
+### Measurements and qualification
+
+Before publishing resource requirements or declaring a profile supported, run reproducible idle, interactive and worker workloads on each target. Record machine and OS, software revision, selected components, model artifact and quantization, context and concurrency, CPU and system RAM, GPU/VRAM, disk and network use, latency and throughput, thermal state and power where measurable. Record test inputs, duration, results and limitations, plus responsiveness and restart/recovery behavior. Measure a machine's actual energy consumption rather than equating GPU nameplate power with whole-system average.
+
+Monthly electricity consumption can be estimated as `average system watts × hours per day × days / 1,000` kWh; multiply by the user's actual tariff. Retention and cleanup policies for model artifacts, logs, recordings and build caches must preserve required evidence. These profiles are goals for future qualification, not a deployment, benchmark result or a claim that the current worker is reliable.
+
 ## Qualification sequence
 
 1. Preserve existing ownership and independent review; reconcile this owner direction with the suite composition blueprint and current product constitution before adopting names or policy.
