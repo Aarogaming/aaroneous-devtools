@@ -118,11 +118,11 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn reopen_replays_same_attempt_without_second_debit() {
+fn reopen_cannot_duplicate_a_live_claim_or_debit_again() {
     let f = Fixture::new();
     let first = f.claim().unwrap();
-    let again = f.claim().unwrap();
-    assert_eq!(first.attempt, again.attempt);
+    assert_eq!(first.attempt, 1);
+    assert!(f.claim().err().unwrap().contains("already claimed"));
     assert_eq!(fs::read_dir(f.operation()).unwrap().count(), 2);
     let mut other = f.job.clone();
     other.id = "wrong".into();
@@ -196,13 +196,37 @@ fn concurrent_requests_cannot_overspend_operation() {
 
 #[test]
 fn reservation_before_claim_survives_restart_prefix() {
-    let f = Fixture::new();
+    let mut f = Fixture::new();
     f.claim().unwrap();
     // Persisted prefix after reservation, before claim/attempt publication.
     fs::remove_file(f.spool.join(f.request.id()).join("claim.json")).unwrap();
     fs::remove_file(f.spool.join(f.request.id()).join("attempt-1.json")).unwrap();
+    f.providers[0].cost_bound = Some(6);
+    assert!(f.claim().err().unwrap().contains("binding differs"));
+    f.providers[0].cost_bound = Some(7);
+    f.job.deadline = 109;
+    assert!(f.claim().err().unwrap().contains("binding differs"));
+    f.job.deadline = 110;
     assert_eq!(f.claim().unwrap().attempt, 1);
     assert_eq!(fs::read_dir(f.operation()).unwrap().count(), 2);
+}
+
+#[test]
+fn explicit_recovery_creates_new_charged_attempt() {
+    let f = Fixture::new();
+    let store = Store::open(&f.spool).unwrap();
+    let mut a = f.admission();
+    a.limit = 14;
+    let first = store.claim_admitted(&f.request, "worker-1", &a).unwrap();
+    assert!(store.claim_admitted(&f.request, "worker-1", &a).is_err());
+    drop(first); // The operator has stopped the prior executor before recovery.
+    store.recover(&f.request, "worker-1", 1).unwrap();
+    let second = store.claim_admitted(&f.request, "worker-1", &a).unwrap();
+    assert_eq!(second.attempt, 2);
+    drop(second);
+    store.recover(&f.request, "worker-1", 2).unwrap();
+    assert!(store.claim_admitted(&f.request, "worker-1", &a).is_err());
+    assert_eq!(fs::read_dir(f.operation()).unwrap().count(), 3);
 }
 
 #[test]
@@ -212,6 +236,7 @@ fn partial_attempt_publication_is_repaired_only_for_matching_reservation() {
     fs::remove_file(f.spool.join(f.request.id()).join("attempt-1.json")).unwrap();
     assert_eq!(f.claim().unwrap().attempt, 1);
     assert!(f.spool.join(f.request.id()).join("attempt-1.json").exists());
+    assert!(f.claim().err().unwrap().contains("already claimed"));
     let g = Fixture::new();
     Store::open(&g.spool)
         .unwrap()

@@ -46,13 +46,19 @@ job service's trusted-base/suite/platform checks before using this API.
    the existing per-job exclusive claim and fence the reserved attempt against
    the latest attempt history. Sync the claim, then write/sync the attempt record.
    Only then return the existing `Claim` type to the caller.
-5. On a matching replay, repair a missing attempt record only when the retained
-   claim and reservation agree. A legacy claim without a reservation is refused.
+5. An existing complete claim is refused, including calls from the same worker.
+   Never issue a second executable handle for that attempt. After stopping the
+   old worker, explicit `Store::recover` allows a new attempt with a new charge.
+   A matching incomplete publication may repair a missing attempt record only
+   when the claim and reservation agree; subsequent calls are refused. A legacy
+   claim without a reservation is refused.
 
 All charges are retained, including failed claim publication, cancelled jobs and
 abandoned attempts. The first version provides no settlement or refund API.
 Over-reservation is preferable to an unaccounted external effect. Retry attempts
-consume additional budget. Changed replay bindings require explicit reconciliation.
+consume additional budget. Quote and deadline are immutable replay bindings;
+changes require explicit reconciliation. An empty claim left by a failed attempt
+fence is intentionally retained for operator inspection, never auto-unlocked.
 
 A process crash can leave `transaction.lock`, an incomplete file, or a reservation
 without a claim. They cannot authorize new execution. After stopping every user

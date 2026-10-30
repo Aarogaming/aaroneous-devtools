@@ -200,6 +200,11 @@ impl Store {
         if existing_claim.is_some() && previous.is_none() {
             return Err("existing claim has no matching reservation".into());
         }
+        if existing_claim.is_some() && latest == attempt {
+            return Err(
+                "job already claimed; stop the worker and explicitly recover before retry".into(),
+            );
+        }
         let mut job = a.job.clone();
         job.remaining_budget = a.limit - total + previous.as_ref().map_or(0, |(_, c)| *c);
         let report = broker::assess(&job, a.providers).map_err(str::to_owned)?;
