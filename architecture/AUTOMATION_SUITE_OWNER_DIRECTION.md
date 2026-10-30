@@ -55,4 +55,3 @@ Digital twins may model software, devices or processes. Human-behavior testing c
 ## Canonical adoption handoff
 
 The intended long-term home for the owner's decisions is `governance/DECISIONS.md` with the architecture and navigation cross-references reconciled under a non-overlapping claimed lane. At the time of drafting, C163 has `governance/DECISIONS.md` in Review, while C158/C170/C171 cover the main Guild plan. Consult the canonical local coordination queue identified by the agent guide; recheck it, remote main, open PRs, path ownership, capacity and current heads before editing. Contribution-ID: C177/codex-owner-suite-direction-v1. Do not create a duplicate Ready row. The C177 claim covers this new architecture record only. Reconcile authoritative documents in separately scoped lanes and retain independent review before treating new policy or interfaces as adopted.
-
