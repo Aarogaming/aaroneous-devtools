@@ -25,6 +25,7 @@ pub mod engagement;
 pub mod gate;
 pub mod heads;
 pub mod independence;
+pub mod intelligence_broker;
 pub mod job_service;
 pub mod local_authority;
 pub mod local_verification;
