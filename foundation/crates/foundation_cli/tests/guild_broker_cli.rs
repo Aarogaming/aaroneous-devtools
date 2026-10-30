@@ -148,3 +148,89 @@ fn empty_inventory_is_an_explicit_hold_and_unknown_quote_never_dispatches() {
     assert_eq!(report["excluded"][0]["reasons"][0]["code"], "unknown_quote");
     assert_eq!(report["dispatch_authorized"], false);
 }
+
+#[test]
+fn principal_variants_fail_without_candidate_reports() {
+    for invalid in [
+        "Codex",
+        "codex ",
+        " codex",
+        "codex\u{200b}",
+        "c\u{043e}dex",
+        "",
+    ] {
+        for field in ["provider", "exclusion"] {
+            let mut input = snapshot();
+            input["providers"][0]["principal"] = json!("codex");
+            input["job"]["excluded_principals"] = json!(["codex"]);
+            if field == "provider" {
+                input["providers"][0]["principal"] = json!(invalid);
+            } else {
+                input["job"]["excluded_principals"] = json!([invalid]);
+            }
+            let out = run(&serde_json::to_vec(&input).unwrap());
+            assert!(!out.status.success(), "{field}: {invalid:?}");
+            assert!(out.stdout.is_empty());
+        }
+    }
+    let mut input = snapshot();
+    input["job"]["excluded_principals"] = json!(["principal-1"]);
+    let out = run(&serde_json::to_vec(&input).unwrap());
+    assert!(out.status.success());
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["decision"], "hold");
+    assert_eq!(
+        report["excluded"][0]["reasons"][0]["code"],
+        "principal_excluded"
+    );
+}
+
+#[test]
+fn directory_input_is_rejected() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = cli(temp.path());
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("regular file"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn fifo_without_writer_is_rejected_before_open() {
+    use std::{
+        process::Stdio,
+        time::{Duration, Instant},
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let fifo = temp.path().join("snapshot.fifo");
+    assert!(
+        Command::new("/usr/bin/mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let mut child = Command::new(env!("CARGO_BIN_EXE_foundation"))
+        .args(["guild", "broker-preview", "--input"])
+        .arg(&fifo)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if child.try_wait().unwrap().is_some() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("preview blocked opening FIFO without a writer");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("regular file"));
+}

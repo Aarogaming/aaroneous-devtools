@@ -180,6 +180,14 @@ pub fn run(args: &Args) -> Result<()> {
     if !args.input.is_absolute() {
         bail!("input must be an explicit absolute path");
     }
+    // Reject special files before opening: a FIFO can block even before read().
+    // The caller must keep this local path stable during the check/open window.
+    if !std::fs::metadata(&args.input)
+        .context("inspect broker snapshot")?
+        .is_file()
+    {
+        bail!("snapshot must be a regular file");
+    }
     let file = File::open(&args.input).context("open broker snapshot")?;
     if !file.metadata()?.is_file() {
         bail!("snapshot must be a regular file");

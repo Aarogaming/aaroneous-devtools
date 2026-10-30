@@ -14,6 +14,11 @@ the file grows. The parser rejects duplicate struct keys, unknown fields,
 unsupported versions, wrong types and missing required fields. Missing or null
 cost/duration bounds are unknown quotes, producing holds. JSON recursion limits
 remain enabled. Semantic collection limits come from the broker contract.
+Principal IDs follow the broker's canonical ASCII grammar; invalid provider or
+exclusion IDs fail the entire preview rather than producing candidates.
+File type is checked before open and again on the opened handle. The caller must
+keep the path and its parent directories stable: this is not protection against
+a hostile concurrent replacement between metadata inspection and open.
 
 Minimal illustrative snapshot (identities and evidence references are examples,
 not credentials or qualified providers):
@@ -45,6 +50,8 @@ Provider kind is `model`, `human`, `tool` or `other`. All policy, identity,
 resource and evidence assertions here are unverified input. The adapter never
 reads credential stores or treats a snapshot's authorized list as an actual
 grant. Use sanitized metadata only: the report retains the full snapshot.
+Reports are as sensitive as their input, including policy exclusions; keep them
+within the same authorized audience as the snapshot.
 
 ## Output and replay
 
@@ -82,6 +89,28 @@ operation's remaining budget with a durable claim. Cancellation, unknown effects
 late results and restart recovery require integration tests. Existing job-service
 claims do not by themselves implement aggregate operation budget reservations.
 Never submit this preview report to a claim endpoint as an authorization token.
+
+### Next implementation boundary (proposed, not implemented)
+
+The existing `/v1/claim` branch in `job_service::Service::handle` authenticates a
+worker, filters platform cards, checks trusted base policy and calls
+`local_verification::Store::claim`. Integrate admission immediately before a new
+claim, and validate resumed claims against their retained admission. Do not route
+LLM jobs through platform verification requests: those execute pinned suites,
+not arbitrary provider tasks.
+
+| Increment | Required behavior and evidence |
+| --- | --- |
+| Trusted admission input | Bind exact request/subject, profile revision, enrolled worker principal, policy revision, evidence digest, quote and expiry. Resolve aliases through enrollment, not display names. Verify provenance before calling the broker; test forged binding, stale evidence and revoked roles. |
+| Durable reservation | One serialized operation transition binds the selected candidate, attempt and upper-bound cost before execution can become visible. Concurrent claims cannot overspend; replay of the same attempt cannot debit twice. Test contention and crashes at each publication boundary. |
+| Claim and resume adapter | Recheck subject, policy and expiry at claim time; persisted admission must match the authenticated worker and exact request. Recovery retains the reservation when effects are unknown; test reconnect, restart and mismatched worker/attempt. |
+| Settlement | Bind signed result and actual cost to the reservation. Duplicate or late results cannot release budget twice; cancellation alone cannot refund uncertain external effects. Test late completion, cancellation and reconciliation. |
+
+Use the existing service and spool ownership boundary. A separate budget file
+written after `Store::claim` is insufficient: a crash could expose executable
+work without reserving its cost. Specify the recoverable transaction and failure
+states before enabling the endpoint. Each increment needs an exact queue claim,
+tests and independent review; this table grants no runtime authority.
 
 Rollback: remove the additive preview action/module, tests and contract. No
 persistent runtime state or existing wire format changes. No dependency on
