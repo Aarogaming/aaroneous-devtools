@@ -118,6 +118,68 @@ class NamespaceCollisions(unittest.TestCase):
         self.assertTrue(any(c["contribution_id"] == "(missing)" for c in found[0]["claims"]))
 
 
+class DescriptionClaims(unittest.TestCase):
+    def test_lane_of_contribution_id_needs_a_leading_short_id(self):
+        self.assertEqual(qc.lane_of_contribution_id("C176/gemini-x-v1"), "C176")
+        self.assertEqual(qc.lane_of_contribution_id("C99b/x"), "C99b")
+        self.assertEqual(qc.lane_of_contribution_id("C5"), "C5")
+        self.assertIsNone(qc.lane_of_contribution_id("declares"))
+        self.assertIsNone(qc.lane_of_contribution_id("XC5/x"))
+        self.assertIsNone(qc.lane_of_contribution_id(None))
+
+    def test_declarations_are_read_from_descriptions_with_crlf_and_trailing_punctuation(self):
+        bodies = {256: "Reconcile rows.\r\n\r\nContribution-ID: C176/codex-rust-ownership-reconciliation-v1. Review needed.",
+                  300: "Contribution-ID: nothing useful here", 301: None}
+        self.assertEqual(qc.description_claims(bodies), {"C176": {"C176/codex-rust-ownership-reconciliation-v1": [256]}})
+
+    def test_the_issue_256_versus_250_case_is_caught_although_256_adds_no_row_for_the_lane(self):
+        # Scout 2026-10-31: #250 adds a C176 row with a gemini ID; draft #256 only declares a codex C176 ID.
+        by_pr = {250: {"C176": [row("C176", "Review", cid="C176/gemini-cascading-automata-reducer-v1")]},
+                 256: {"C132": [row("C132", "Done")]}}
+        bodies = {250: "Registers the lane.", 256: "Contribution-ID: C176/codex-rust-ownership-reconciliation-v1."}
+        self.assertEqual(qc.namespace_collisions(by_pr), [])  # the row views cannot see it
+        found = qc.description_collisions(by_pr, bodies)
+        self.assertEqual([e["lane"] for e in found], ["C176"])
+        self.assertEqual([(c["contribution_id"], c["prs"], c["sources"]) for c in found[0]["claims"]],
+                         [("C176/gemini-cascading-automata-reducer-v1", [250], ["queue row"]),
+                          ("C176/codex-rust-ownership-reconciliation-v1", [256], ["description"])])
+
+    def test_the_same_id_in_a_row_and_a_description_or_across_a_stack_is_one_claim(self):
+        by_pr = {10: {"C5": [row("C5", "Ready", cid="C5/task-v1")]}, 11: {"C5": [row("C5", "Review", cid="C5/task-v1")]}}
+        bodies = {10: "Contribution-ID: C5/task-v1", 11: "Contribution-ID: C5/task-v1."}
+        self.assertEqual(qc.description_collisions(by_pr, bodies), [])
+
+    def test_two_different_ids_that_are_both_only_in_rows_are_left_to_the_row_views(self):
+        by_pr = {1: {"C7": [row("C7", cid="C7/a-v1")]}, 2: {"C7": [row("C7", cid="C7/b-v1")]}}
+        self.assertEqual(qc.description_collisions(by_pr, {1: "", 2: ""}), [])
+        self.assertEqual(len(qc.namespace_collisions(by_pr)), 1)
+
+    def test_two_descriptions_claiming_one_short_id_collide_and_lanes_sort_numerically(self):
+        bodies = {1: "Contribution-ID: C100/a-v1", 2: "Contribution-ID: C100/b-v1",
+                  3: "Contribution-ID: C9/a-v1", 4: "Contribution-ID: C9/b-v1"}
+        found = qc.description_collisions({}, bodies)
+        self.assertEqual([e["lane"] for e in found], ["C9", "C100"])
+        self.assertEqual([c["sources"] for c in found[0]["claims"]], [["description"], ["description"]])
+
+    def test_a_row_whose_contribution_id_names_another_lane_is_not_counted_for_this_lane(self):
+        by_pr = {1: {"C8": [row("C8", cid="C9/other-v1")]}}
+        self.assertEqual(qc.description_collisions(by_pr, {2: "Contribution-ID: C8/x-v1"}), [])
+
+    def test_render_names_the_claims_and_says_so_when_there_is_nothing(self):
+        found = qc.description_collisions({}, {1: "Contribution-ID: C3/a-v1", 2: "Contribution-ID: C3/b-v1"})
+        rendered = qc.render([], [], [], found)
+        self.assertIn("Description-declared claim collisions", rendered)
+        self.assertIn("#1  Contribution-ID=C3/a-v1  from=description", rendered)
+        self.assertIn("no description-declared claim collision", qc.render([], [], [], []))
+        self.assertNotIn("description-declared", qc.render([], [], []))
+
+    def test_declared_bodies_reads_open_pr_descriptions_and_tolerates_a_null_body(self):
+        listing = [{"number": 5, "body": "Contribution-ID: C1/x-v1"}, {"number": 6, "body": None}, {"number": 7}]
+        with mock.patch.object(qc.rc, "gh_json", return_value=listing) as gh:
+            self.assertEqual(qc.declared_bodies("o/r"), {5: "Contribution-ID: C1/x-v1", 6: "", 7: ""})
+        self.assertIn("number,body", gh.call_args.args)
+
+
 class Live(unittest.TestCase):
     def run_live(self, listing, files):
         def fake(*args):
