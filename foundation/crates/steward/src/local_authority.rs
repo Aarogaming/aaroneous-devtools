@@ -222,11 +222,7 @@ impl Policy {
 
 fn git(git: &Path, repo: &Path, args: &[&str]) -> Result<std::process::Output, String> {
     let mut command = Command::new(absolute(git)?);
-    for (key, _) in std::env::vars_os() {
-        if key.to_string_lossy().starts_with("GIT_") {
-            command.env_remove(key);
-        }
-    }
+    crate::git_env::scrub_inherited(&mut command);
     command
         .arg("-C")
         .arg(absolute(repo)?)
