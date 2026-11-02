@@ -23,6 +23,7 @@ pub mod checklist;
 pub mod coverage;
 pub mod engagement;
 pub mod gate;
+pub mod git_env;
 pub mod heads;
 pub mod independence;
 pub mod job_service;
