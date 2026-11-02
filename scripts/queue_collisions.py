@@ -10,6 +10,9 @@ It provides two complementary views:
 1. Direct same-base row collisions: PRs targeting the same base that propose differing rows.
 2. Cross-stack claim namespace view: short lane IDs claimed by multiple PRs across different base branches with
    distinct Contribution-IDs (distinguishing legitimate parent/child status updates from competing allocations).
+3. Description-declared claims: a `Contribution-ID: Cnnn/slug` line in an open PR's description counts as a claim on
+   that short ID even when the PR's patch adds no queue row for it (scout 2026-10-31: draft #256 declared
+   C176/codex-... in its description while #250 added a C176/gemini-... row; views 1 and 2 saw only the rows).
 A PR whose patch GitHub did not return is reported as unreadable, never skipped. Read-only; it never posts or edits.
 
 Usage:
@@ -29,6 +32,7 @@ QUEUE = "governance/COORDINATION_QUEUE.md"
 ADDED = re.compile(r"^\+\|\s*(C\d+[a-z]?)\s*\|")
 STATUS_COLUMN = 2  # | ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
 CONTRIBUTION_ID_RE = re.compile(r"Contribution-ID:?\s*([A-Za-z0-9_./-]+)", re.IGNORECASE)
+LANE_OF_CID = re.compile(r"^(C\d+[a-z]?)(?:/|$)")
 
 
 def split_cells(line):
@@ -152,6 +156,57 @@ def namespace_collisions(by_pr):
     return found
 
 
+def lane_of_contribution_id(cid):
+    """The short lane ID a Contribution-ID such as ``C176/slug-v1`` claims, or None when it does not start with one."""
+    match = LANE_OF_CID.match(cid or "")
+    return match.group(1) if match else None
+
+
+def description_claims(bodies):
+    """{lane: {contribution id: [pr, ...]}} for the ``Contribution-ID:`` declarations in PR descriptions ({pr: body})."""
+    claims = {}
+    for pr, body in bodies.items():
+        for token in CONTRIBUTION_ID_RE.findall((body or "").replace("\r\n", "\n")):
+            cid = token.rstrip(".,; ")
+            lane = lane_of_contribution_id(cid)
+            if lane and pr not in claims.setdefault(lane, {}).setdefault(cid, []):
+                claims[lane][cid].append(pr)
+    return claims
+
+
+def description_collisions(by_pr, bodies):
+    """Lanes claimed with more than one distinct Contribution-ID when PR descriptions are counted as claims.
+
+    A claim is a Contribution-ID found in a queue row an open PR adds or in an open PR's description. A lane is
+    reported only when at least one of its claims comes from a description (row-versus-row cases are the other two
+    views' business) and the claims are not all the same ID: the same ID in a row and a description, or repeated
+    across a stack, is one claim. Each entry is ``{"lane": ..., "claims": [{"contribution_id", "prs", "sources"}]}``."""
+    claims = {}
+    for pr, lanes in by_pr.items():
+        for lane, rows in lanes.items():
+            for row in rows:
+                cid = contribution_id_of(row)
+                if cid and lane_of_contribution_id(cid) == lane:
+                    entry = claims.setdefault(lane, {}).setdefault(cid, {"prs": set(), "sources": set()})
+                    entry["prs"].add(pr)
+                    entry["sources"].add("queue row")
+    for lane, by_cid in description_claims(bodies).items():
+        for cid, prs in by_cid.items():
+            entry = claims.setdefault(lane, {}).setdefault(cid, {"prs": set(), "sources": set()})
+            entry["prs"].update(prs)
+            entry["sources"].add("description")
+    found = []
+    for lane in sorted(claims, key=lane_key):
+        by_cid = claims[lane]
+        if len(by_cid) < 2 or not any("description" in c["sources"] for c in by_cid.values()):
+            continue
+        listed = [{"contribution_id": cid, "prs": sorted(c["prs"]), "sources": sorted(c["sources"])}
+                  for cid, c in by_cid.items()]
+        listed.sort(key=lambda c: (c["prs"][0], c["contribution_id"]))
+        found.append({"lane": lane, "claims": listed})
+    return found
+
+
 def live(repo):
     """({base: {pr: {lane: [rows]}}}, [PRs whose queue patch could not be read]) from the GitHub files API."""
     by_base, unreadable = {}, []
@@ -168,7 +223,13 @@ def live(repo):
     return by_base, sorted(unreadable)
 
 
-def render(by_base_collisions, ns_collisions=None, unreadable=None):
+def declared_bodies(repo):
+    """{pr number: description} for the open PRs, so ``Contribution-ID:`` declarations outside queue rows are visible."""
+    listing = rc.gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json", "number,body")
+    return {item["number"]: item.get("body") or "" for item in listing}
+
+
+def render(by_base_collisions, ns_collisions=None, unreadable=None, desc_collisions=None):
     if unreadable is None and isinstance(ns_collisions, list) and (not ns_collisions or isinstance(ns_collisions[0], int)):
         unreadable = ns_collisions
         ns_collisions = None
@@ -194,6 +255,17 @@ def render(by_base_collisions, ns_collisions=None, unreadable=None):
     elif ns_collisions is not None:
         lines.append("no cross-stack claim namespace collision (unique Contribution-ID per short ID across open PRs)")
 
+    if desc_collisions:
+        lines.append("\nDescription-declared claim collisions (queue rows plus PR descriptions):")
+        for entry in desc_collisions:
+            lines.append(f"  {entry['lane']}: {len(entry['claims'])} competing Contribution-IDs")
+            for claim in entry["claims"]:
+                lines.append("    " + ", ".join(f"#{n}" for n in claim["prs"])
+                             + f"  Contribution-ID={claim['contribution_id']}  from={'+'.join(claim['sources'])}")
+    elif desc_collisions is not None:
+        lines.append("no description-declared claim collision (no short ID claimed by different Contribution-IDs "
+                     "once PR descriptions are counted)")
+
     for pr in unreadable:
         lines.append(f"#{pr}: queue patch not returned by GitHub (diff too large?); NOT CHECKED")
     return "\n".join(lines)
@@ -212,11 +284,13 @@ def main(argv):
         for pr, lanes in pr_map.items():
             all_by_pr[pr] = lanes
     ns_found = namespace_collisions(all_by_pr)
+    desc_found = description_collisions(all_by_pr, declared_bodies(args.repo))
 
     if args.json:
-        print(json.dumps({"collisions": by_base_found, "namespace_collisions": ns_found, "unreadable": unreadable}, indent=2))
+        print(json.dumps({"collisions": by_base_found, "namespace_collisions": ns_found,
+                          "description_collisions": desc_found, "unreadable": unreadable}, indent=2))
     else:
-        print(render(by_base_found, ns_found, unreadable))
+        print(render(by_base_found, ns_found, unreadable, desc_found))
     return 0
 
 
