@@ -447,6 +447,86 @@ def registry_version_checksum_update(before_text, after_text):
     return changed
 
 
+WORKFLOW_PIN_PATHS = frozenset({
+    ".github/workflows/foundation-ci.yml",
+    ".github/workflows/foundation-ci-windows.yml",
+})
+
+
+# Exact reviewed templates from PR251's merge base. Unknown templates stay held;
+# the line matcher is not a general YAML parser (quoted multiline scalars exist).
+WORKFLOW_PIN_BASE_BLOBS = {
+    ".github/workflows/foundation-ci.yml": "e09f973e1e271c1f4ee5a26de4e88ac4f2473bbc",
+    ".github/workflows/foundation-ci-windows.yml": "d807c5633ea5db41fe5f568398b6223b78bb2520",
+}
+
+
+def workflow_pin_update(before, after):
+    """Only checkout pin substitutions in existing, unquoted step entries."""
+    old, new = before.splitlines(keepends=True), after.splitlines(keepends=True)
+    if len(old) != len(new):
+        return False
+    pattern = re.compile(r"^( +)- uses: actions/checkout@([0-9a-f]{40})(\r?\n)?$")
+    steps_indent = None
+    changed = False
+    block_indent = None
+    for a, b in zip(old, new):
+        indent = len(a) - len(a.lstrip(" "))
+        if block_indent is not None and a.strip() and indent <= block_indent:
+            block_indent = None
+        if block_indent is not None:
+            if a != b:
+                return False
+            continue
+        if re.search(r"[:\-]\s*[|>][0-9+\-]*\s*(?:#.*)?$", a.rstrip("\r\n")):
+            block_indent = indent
+            if a != b:
+                return False
+            continue
+        marker = re.fullmatch(r"( +)steps:\s*\n?", a)
+        if marker:
+            steps_indent = len(marker[1])
+        if a == b:
+            continue
+        x, y = pattern.fullmatch(a), pattern.fullmatch(b)
+        if (not x or not y or steps_indent is None
+                or len(x[1]) != steps_indent + 2
+                or x[1] != y[1] or x[3] != y[3]
+                or x[2] == y[2] or int(x[2], 16) == 0 or int(y[2], 16) == 0):
+            return False
+        changed = True
+    return changed
+
+
+def workflow_revertibility(repo_dir, base, head, paths):
+    if not paths or any(p not in WORKFLOW_PIN_PATHS for p in paths):
+        return None
+    try:
+        common = rc.git(repo_dir, "--no-replace-objects", "merge-base", base, head)
+        if common.returncode or not re.fullmatch(r"[0-9a-f]{40}", common.stdout.strip()):
+            return None
+        if not re.fullmatch(r"[0-9a-f]{40}", head):
+            return None
+        for path in paths:
+            texts = []
+            for rev in (common.stdout.strip(), head):
+                entry = rc.git(repo_dir, "--no-replace-objects", "ls-tree", rev, "--", path)
+                if entry.returncode or not re.fullmatch(
+                        r"100644 blob [0-9a-f]{40}\t" + re.escape(path) + r"\n?", entry.stdout):
+                    return None
+                if rev == common.stdout.strip() and entry.stdout.split()[2] != WORKFLOW_PIN_BASE_BLOBS[path]:
+                    return None
+                blob = subprocess.run(["git", "-C", repo_dir, "--no-replace-objects", "show", f"{rev}:{path}"], capture_output=True)
+                if blob.returncode:
+                    return None
+                texts.append(blob.stdout.decode("utf-8"))
+            if not workflow_pin_update(*texts):
+                return None
+        return True
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 def repository_revertibility(repo_dir, base, head, paths):
     """Classify tracked content only. Unknown shapes remain blocked by checklist box 6."""
     def documentation(path):
@@ -454,6 +534,8 @@ def repository_revertibility(repo_dir, base, head, paths):
 
     if paths and all(documentation(path) for path in paths):
         return True  # Preserve the existing documentation classification.
+    if paths and all(p in WORKFLOW_PIN_PATHS for p in paths):
+        return workflow_revertibility(repo_dir, base, head, paths)
     lock = "foundation/Cargo.lock"
     if not paths or lock not in paths or any(p != lock and not documentation(p) for p in paths):
         return None
