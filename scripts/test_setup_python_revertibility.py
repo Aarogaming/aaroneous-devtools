@@ -65,7 +65,7 @@ class SetupPinGit(unittest.TestCase):
         self.git("add", ".")
         self.git("commit", "-qm", "new input")
         self.assertIsNone(self.classify([PATH], head=self.git("rev-parse", "HEAD")))
-        blob = self.git("hash-object", "-w", "--", PATH)
+        blob = self.git("rev-parse", self.head + ":" + PATH)
         self.git("update-index", "--cacheinfo", "120000," + blob + "," + PATH)
         self.git("commit", "-qm", "symlink")
         self.assertIsNone(self.classify([PATH], head=self.git("rev-parse", "HEAD")))
