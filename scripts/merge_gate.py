@@ -447,7 +447,13 @@ def registry_version_checksum_update(before_text, after_text):
     return changed
 
 
-WORKFLOW_PIN_PATHS = frozenset({
+SETUP_PYTHON_PATHS = frozenset({
+    ".github/workflows/auto-merge.yml",
+    ".github/workflows/python-scripts.yml",
+    ".github/workflows/security.yml",
+})
+
+WORKFLOW_PIN_PATHS = SETUP_PYTHON_PATHS | frozenset({
     ".github/workflows/foundation-ci.yml",
     ".github/workflows/foundation-ci-windows.yml",
 })
@@ -456,6 +462,9 @@ WORKFLOW_PIN_PATHS = frozenset({
 # Exact reviewed templates from PR251's merge base. Unknown templates stay held;
 # the line matcher is not a general YAML parser (quoted multiline scalars exist).
 WORKFLOW_PIN_BASE_BLOBS = {
+    ".github/workflows/auto-merge.yml": "9db3355a2f046ef43c18b2ad4e3c9060590329fa",
+    ".github/workflows/python-scripts.yml": "0084fd73d07a4d1fc07b11b9b59c7eaa7ce2782d",
+    ".github/workflows/security.yml": "749db73d2b45dd97e823c563a8b57053c53c239a",
     ".github/workflows/foundation-ci.yml": "e09f973e1e271c1f4ee5a26de4e88ac4f2473bbc",
     ".github/workflows/foundation-ci-windows.yml": "d807c5633ea5db41fe5f568398b6223b78bb2520",
 }
@@ -498,6 +507,28 @@ def workflow_pin_update(before, after):
     return changed
 
 
+
+def setup_python_pin_update(before, after):
+    """Qualify only the reviewed v7.0.0-to-v7.1.0 substitution, no new inputs."""
+    old_pin = "5fda3b95a4ea91299a34e894583c3862153e4b97"
+    new_pin = "6d4fd22b20465ccc0f7354476588e8df7c9ca0e0"
+    old, new = before.splitlines(keepends=True), after.splitlines(keepends=True)
+    if len(old) != len(new):
+        return False
+    changed = False
+    pattern = re.compile(r"^ +- uses: actions/setup-python@" + old_pin + r"( # v7\.0\.0)?(\r?\n)?$")
+    for a, b in zip(old, new):
+        if a == b:
+            continue
+        if not pattern.fullmatch(a):
+            return False
+        expected = a.replace(old_pin, new_pin).replace(" # v7.0.0", " # v7.1.0")
+        if b != expected:
+            return False
+        changed = True
+    return changed
+
+
 def workflow_revertibility(repo_dir, base, head, paths):
     if not paths or any(p not in WORKFLOW_PIN_PATHS for p in paths):
         return None
@@ -520,7 +551,8 @@ def workflow_revertibility(repo_dir, base, head, paths):
                 if blob.returncode:
                     return None
                 texts.append(blob.stdout.decode("utf-8"))
-            if not workflow_pin_update(*texts):
+            classifier = setup_python_pin_update if path in SETUP_PYTHON_PATHS else workflow_pin_update
+            if not classifier(*texts):
                 return None
         return True
     except (OSError, ValueError, TypeError):
