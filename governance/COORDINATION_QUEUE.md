@@ -1,5 +1,11 @@
 # Parallel Coordination Queue
 
+## Local test environment - 2026-11-03
+
+| ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
+| --- | --- | --- | --- | --- | --- | --- |
+| C188 | Document all four native test inputs the steward integration tests require. `governance/LOCAL_VERIFICATION_GATE.md` Verification section names only `DEVTOOLS_TEST_GIT` and `DEVTOOLS_TEST_SSH_KEYGEN`, but `job_service` also needs `DEVTOOLS_TEST_CURL` and, on Windows, `DEVTOOLS_TEST_SYSTEM_ROOT`, and the working Windows values live only in `.github/workflows/foundation-ci-windows.yml` and in each lane's queue row. Exact paths: `governance/LOCAL_VERIFICATION_GATE.md` (Verification paragraph only), this queue row. Docs only; no test, workflow, product or runtime change. | Review | Claude | `claude/c188-windows-test-env` | 2026-11-03T10:30Z | Contribution-ID: C188/claude-windows-test-env-doc-v1. Found while reviewing #264/#265: running the steward tests on Windows failed to find the right variables until I copied them from a Codex queue row. Duplicate check: no open PR or branch touches `LOCAL_VERIFICATION_GATE.md`; C188 unused in queue, open PR text and refs (highest was C187). Independent review required; no code change. |
+
 ## Test isolation - 2026-10-30
 
 | ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
