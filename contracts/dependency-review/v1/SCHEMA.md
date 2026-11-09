@@ -3,7 +3,14 @@
 Produced by `foundation dependency-review --checkout <path> --output <path>`
 (`foundation/crates/foundation_cli/src/dependency_review.rs`). Read-only: the
 command runs `cargo audit --json` and `cargo metadata` as external processes
-against the given checkout and never writes to it. See
+against the given checkout and never writes to it. This is enforced: before any
+external command runs, `--output`'s directory must resolve (symlinks, Windows
+junctions and letter case included) to a place outside the checkout, and the
+report is written as a new file that is never allowed to replace or write
+through an existing one (a hard link to a checkout file is refused). The output
+path must therefore not exist yet, and its filesystem must support hard links.
+The check assumes the operator controls the output directory; it does not
+claim to resist someone swapping that directory concurrently. See
 `governance/DOGFOOD_PROTOCOL.md` — this is the "External runner" level, and
 the report itself is a "Read-only" contract-fixture artifact.
 

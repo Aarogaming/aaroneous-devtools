@@ -5,7 +5,14 @@
 //! documented Aaroneous-side command, never links against it) and writes a
 //! versioned report conforming to the schema documented at
 //! `contracts/dependency-review/v1/SCHEMA.md`. Never touches Cargo.lock or
-//! any other file in the checkout — this command only reads.
+//! any other file in the checkout — this command only reads. That is enforced,
+//! not just stated: before any external command runs, the report destination
+//! must resolve (symlinks, junctions and letter case included) to a directory
+//! outside the checkout, and the report is published as a brand-new file that
+//! never replaces or writes through an existing one, hard links included. The
+//! check is a pre-flight under the trusted-directory model (the operator
+//! controls the output directory); it does not claim to defeat a concurrent
+//! attacker who swaps the directory afterwards.
 //!
 //! One thing `cargo-audit` alone gets wrong for this workspace: it matches
 //! advisories by package name and version against the *whole* lockfile,
@@ -39,6 +46,7 @@ pub fn run(checkout: &Path, output: &Path) -> Result<()> {
         .parent()
         .context("output path must have an existing parent directory")?;
     crate::require_absolute_directory("output parent", parent)?;
+    reject_output_inside_checkout(checkout, parent)?;
 
     let revision = git_rev_parse_head(checkout)?;
     let audit_tool_version = cargo_audit_version(checkout)?;
@@ -81,7 +89,7 @@ pub fn run(checkout: &Path, output: &Path) -> Result<()> {
 
     let json = serde_json::to_vec_pretty(&report)
         .context("failed to serialize dependency review report")?;
-    std::fs::write(output, json)
+    crate::intake::publish_new_bytes(output, &json)
         .with_context(|| format!("failed to write {}", output.display()))?;
 
     println!(
@@ -91,6 +99,29 @@ pub fn run(checkout: &Path, output: &Path) -> Result<()> {
         report.summary.local_workspace_name_collisions,
         report.revision
     );
+    Ok(())
+}
+
+/// Refuse a report destination whose directory is, or resolves to a place
+/// inside, the checkout. Both sides are canonicalized so a symlink, a Windows
+/// junction or a differently cased spelling of the same directory cannot slip
+/// past a textual comparison.
+fn reject_output_inside_checkout(checkout: &Path, output_parent: &Path) -> Result<()> {
+    let checkout_real = std::fs::canonicalize(checkout)
+        .with_context(|| format!("cannot resolve checkout {}", checkout.display()))?;
+    let parent_real = std::fs::canonicalize(output_parent).with_context(|| {
+        format!(
+            "cannot resolve output directory {}",
+            output_parent.display()
+        )
+    })?;
+    if parent_real.starts_with(&checkout_real) {
+        bail!(
+            "output must be outside the read-only checkout: {} resolves inside {}",
+            output_parent.display(),
+            checkout.display()
+        );
+    }
     Ok(())
 }
 
@@ -440,5 +471,68 @@ mod tests {
         let round_tripped: DependencyReviewReport =
             serde_json::from_slice(&json).expect("deserialize");
         assert_eq!(report, round_tripped);
+    }
+
+    fn fixture_checkout() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join(".git"), "gitdir: nowhere\n").expect(".git");
+        std::fs::write(dir.path().join("Cargo.lock"), b"original lock bytes").expect("lock");
+        std::fs::create_dir(dir.path().join("sub")).expect("sub");
+        dir
+    }
+
+    fn assert_rejected_and_untouched(checkout: &Path, output: &Path) {
+        let err = run(checkout, output).expect_err("output inside the checkout must be refused");
+        assert!(
+            err.to_string().contains("outside the read-only checkout"),
+            "unexpected error: {err:#}"
+        );
+        assert_eq!(
+            std::fs::read(checkout.join("Cargo.lock")).expect("lock"),
+            b"original lock bytes"
+        );
+    }
+
+    #[test]
+    fn refuses_to_overwrite_a_checkout_file_before_running_any_tool() {
+        let dir = fixture_checkout();
+        assert_rejected_and_untouched(dir.path(), &dir.path().join("Cargo.lock"));
+        assert_rejected_and_untouched(dir.path(), &dir.path().join("sub").join("report.json"));
+        assert!(!dir.path().join("sub").join("report.json").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn refuses_a_differently_cased_spelling_of_the_checkout() {
+        let dir = fixture_checkout();
+        let alias = std::path::PathBuf::from(dir.path().display().to_string().to_uppercase());
+        assert_ne!(alias.as_os_str(), dir.path().as_os_str());
+        assert_rejected_and_untouched(dir.path(), &alias.join("Cargo.lock"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn refuses_a_junction_that_points_into_the_checkout() {
+        let dir = fixture_checkout();
+        let outside = tempfile::tempdir().expect("outside");
+        let junction = outside.path().join("alias");
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&junction)
+            .arg(dir.path())
+            .output()
+            .expect("run mklink");
+        assert!(status.status.success(), "mklink /J failed: {status:?}");
+        assert_rejected_and_untouched(dir.path(), &junction.join("Cargo.lock"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_symlink_that_points_into_the_checkout() {
+        let dir = fixture_checkout();
+        let outside = tempfile::tempdir().expect("outside");
+        let link = outside.path().join("alias");
+        std::os::unix::fs::symlink(dir.path(), &link).expect("symlink");
+        assert_rejected_and_untouched(dir.path(), &link.join("Cargo.lock"));
     }
 }
