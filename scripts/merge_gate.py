@@ -561,7 +561,7 @@ def workflow_revertibility(repo_dir, base, head, paths):
 
 REVERSIBLE_CODE_PREFIXES = (
     "foundation/crates/", "crates/", "core/", "dev/",
-    "tests/", "benches/", "stacks/", "worker-jobs/",
+    "tests/", "benches/", "stacks/",
 )
 REVERSIBLE_CODE_EXTENSIONS = (
     ".rs", ".toml", ".md", ".json", ".txt",
@@ -609,8 +609,8 @@ def repository_revertibility(repo_dir, base, head, paths):
         except (OSError, ValueError, TypeError):
             return None
 
-    # Fail closed on CI workflows (except audited pins above), scripts/gates, and irreversible keywords.
-    if any(p.startswith(".github/") or p.startswith("scripts/") for p in paths):
+    # Fail closed on CI workflows (except audited pins above), scripts/gates, active worker inboxes, and irreversible keywords.
+    if any(p.startswith(".github/") or p.startswith("scripts/") or p.startswith("worker-jobs/") for p in paths):
         return None
     if any(any(kw in p.lower() for kw in IRREVERSIBLE_KEYWORDS) for p in paths):
         return None
