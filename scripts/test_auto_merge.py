@@ -7,7 +7,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(__file__))
 import auto_merge as am  # noqa: E402
 
-ALLOWED = am.ALLOWED_REPO
+ALLOWED = am.ALLOWED_REPOS[0]
 
 
 def decision(pr, eligible, reasons=(), head="a" * 40):
@@ -20,14 +20,16 @@ def fake_merge_result(returncode, stderr=""):
 
 
 class RepoGuard(unittest.TestCase):
-    def test_refuses_any_repo_other_than_devtools(self):
+    def test_refuses_unauthorized_repository(self):
         with mock.patch.object(am.mg, "evaluate_all") as ev:
-            exit_code, lines = am.run("Aarogaming/aaroneous", "/tmp/x", "governance/identities.json", None, False)
+            exit_code, lines = am.run("Unauthorized/untrusted-repo", "/tmp/x", "governance/identities.json", None, False)
         ev.assert_not_called()
         self.assertEqual(exit_code, 1)
-        self.assertTrue(any("refusing" in l and "aaroneous" in l for l in lines), lines)
+        self.assertTrue(any("refusing" in l for l in lines), lines)
 
-    def test_the_allowed_repo_is_the_devtools_repo(self):
+    def test_allowed_repos_include_devtools_and_product(self):
+        self.assertIn("Aarogaming/aaroneous-devtools", am.ALLOWED_REPOS)
+        self.assertIn("Aarogaming/aaroneous", am.ALLOWED_REPOS)
         self.assertEqual(ALLOWED, "Aarogaming/aaroneous-devtools")
 
 

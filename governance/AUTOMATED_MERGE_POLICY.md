@@ -45,6 +45,19 @@ The same decision removes owner participation from the devtools pipeline
 entirely ("devtools ... should not require owner anywhere"): routine devtools
 work is not to be routed through the owner.
 
+**Amendment, owner decision 2026-11-08 (Zero Owner Gating / Rung R5 Graduation).**
+The owner explicitly directed the complete elimination of operational owner-gating
+and manual human reviews across all autonomous model pipelines: *"please do not include
+me in the review process, eliminate that immediately, by force if necessary. That blocker
+will be there until the end of time if you're waiting on me. This is a model only operation,
+i just work as the intent/direction provider, with guidance."*
+Rung R5 of [`proposals/OWNER_DELEGATION_LADDER.md`](proposals/OWNER_DELEGATION_LADDER.md)
+is formally activated: `Aarogaming/aaroneous` is graduated to automatic merging via
+`scripts/auto_merge.py` under the unchanged evidence bar (all hosted CI status checks passing,
+>=2 independent signed accept verdicts from >=2 distinct model families, zero blocking threads,
+revertibility and conflict-free trial merge). The repository owner is permanently non-operational
+(intent and guidance provider only) and is never an assigned reviewer, approver, or button-presser.
+
 ## Why gate here instead of relaxing the evidence bar
 
 The existing process (draft PR + CI + independent review packets, see
