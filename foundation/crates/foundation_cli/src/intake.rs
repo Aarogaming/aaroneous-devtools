@@ -7,8 +7,9 @@ use std::{
 };
 
 // Both queue consumers must see the complete queue, including active claims near
-// its end. Keep a finite limit so an oversized file fails closed.
-pub(crate) const MAX_COORDINATION_QUEUE_BYTES: u64 = 4 * 1024 * 1024;
+// its end. Standardized at 1 MiB (matching PR #258 / Lane C172). Keep a finite
+// limit so an oversized file fails closed.
+pub(crate) const MAX_COORDINATION_QUEUE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
