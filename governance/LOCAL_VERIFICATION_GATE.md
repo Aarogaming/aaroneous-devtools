@@ -113,9 +113,26 @@ Before switching live integration to local authority:
 
 ## Verification
 
-Native tests declare `DEVTOOLS_TEST_GIT` and `DEVTOOLS_TEST_SSH_KEYGEN` as
-absolute executable inputs. Hosted Foundation workflows supply them explicitly;
-local callers do the same. Tests create fresh isolated repositories and
+Native tests declare their external inputs as explicit variables. Hosted Foundation workflows supply them explicitly; local callers do the
+same. Required by the steward integration tests (`local_verification`,
+`local_authority` and `job_service`): `DEVTOOLS_TEST_GIT` and
+`DEVTOOLS_TEST_SSH_KEYGEN` (native executables). Required additionally by
+`job_service`: `DEVTOOLS_TEST_CURL` (native executable) and, on Windows only,
+`DEVTOOLS_TEST_SYSTEM_ROOT` (the Windows directory, passed to the client as
+`SYSTEMROOT`). Optional: `DEVTOOLS_TEST_SUPPORT_DIR`, else `DEVTOOLS_TEST_TMP`,
+else a `tmp` directory beside the repository checkout (the checkout's parent
+directory), as the root for fixture directories. A missing required variable
+fails the test; there is no fallback to `PATH`. The values the hosted Windows workflow uses, for a Windows
+workstation (adjust the Git path to the local install):
+
+```text
+DEVTOOLS_TEST_GIT=C:/Program Files/Git/cmd/git.exe
+DEVTOOLS_TEST_SSH_KEYGEN=C:/Windows/System32/OpenSSH/ssh-keygen.exe
+DEVTOOLS_TEST_CURL=C:/Windows/System32/curl.exe
+DEVTOOLS_TEST_SYSTEM_ROOT=C:/Windows
+```
+
+Tests create fresh isolated repositories and
 throwaway SSH keys; they never use workstation signing credentials.
 Coverage includes real command pass/fail, actual timeout, exclusive claims,
 restart/recovery and attempt fencing, dirty checkout, stale request/digest,

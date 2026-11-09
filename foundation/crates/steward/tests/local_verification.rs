@@ -444,6 +444,54 @@ fn actual_process_timeout_is_a_failure_not_a_pass() {
 }
 
 #[test]
+fn caller_environment_git_dir_in_any_case_cannot_redirect_the_adapter() {
+    let fixture = Fixture::new(&["git", "--version"], 5);
+    let decoy = fixture.root.join("decoy");
+    fs::create_dir_all(&decoy).unwrap();
+    assert!(
+        Command::new(&fixture.git)
+            .args(["init", "-q"])
+            .arg(&decoy)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let binary = PathBuf::from(env!("CARGO_BIN_EXE_local-verification"));
+    // Only the child's environment is set; the test runner's own environment is untouched. Windows folds the case of
+    // environment names, so the lower-case spelling redirects git there exactly as GIT_DIR does.
+    for name in ["GIT_DIR", "git_dir", "Git_Dir"] {
+        let output = Command::new(&binary)
+            .env(name, decoy.join(".git"))
+            .args([
+                "issue",
+                "--git",
+                fixture.git.to_str().unwrap(),
+                "--repo",
+                fixture.repo.to_str().unwrap(),
+                "--repo-name",
+                "test/devtools",
+                "--head",
+                &fixture.request.head,
+                "--base",
+                &fixture.request.base_sha,
+                "--suite",
+                "test-suite",
+                "--spool",
+                fixture.spool.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{name} must not redirect the adapter: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let cards: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(cards["cards"][0]["card"].is_string());
+    }
+}
+
+#[test]
 fn cli_issues_runs_signs_and_shadows_without_github() {
     let fixture = Fixture::new(&["git", "--version"], 5);
     let binary = PathBuf::from(env!("CARGO_BIN_EXE_local-verification"));
