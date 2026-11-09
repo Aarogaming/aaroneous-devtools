@@ -26,8 +26,13 @@ use std::time::Duration;
 
 use crate::maintenance_pipeline::{format_iso8601, unix_secs_now};
 
+#[path = "guild_broker.rs"]
+mod broker_preview;
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum Action {
+    /// Evaluate an explicit intelligence snapshot; print a report, never dispatch
+    BrokerPreview(broker_preview::Args),
     /// Execute one Guild tick (card dispatch + tamper-evident event log append)
     Tick(TickArgs),
     /// Verify the cryptographic SHA-256 chain of an event log
@@ -755,6 +760,7 @@ pub fn run_daemon(args: &DaemonArgs) -> Result<()> {
 
 pub fn dispatch(action: Action) -> Result<()> {
     match action {
+        Action::BrokerPreview(args) => broker_preview::run(&args),
         Action::Tick(args) => {
             run_tick(&args)?;
             Ok(())
