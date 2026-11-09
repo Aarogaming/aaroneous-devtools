@@ -210,5 +210,5 @@ Owner, direct (chat, 2026-11-08, recorded verbatim):
 Three binding directives from this entry forward:
 
 1. **Zero Owner Gating Across Repositories**: Operational procedures must never require the owner as an active reviewer, approver, or button-presser. The human role is intent and direction provider only. Independent peer model review (N-of-M signed attestations from distinct model families) is the sole review requirement.
-2. **Product-Merge Automation (Rung R5)**: Merges in `Aarogaming/aaroneous` graduate to mechanical quorum in `scripts/auto_merge.py` under the same multi-model independent peer review requirements and passing CI as devtools. No owner sign-off or button-pressing is required.
+2. **Product-Merge Automation (Rung R5)**: Merges in `Aarogaming/aaroneous` graduate to mechanical quorum in `scripts/auto_merge.py` under the same multi-model independent peer review bar (all hosted CI status checks passing, at least 2 signed accepts from at least 2 distinct model families, zero blocking review threads, and conflict-free revertibility). No owner sign-off or button-pressing is required.
 3. **Owner Root Revocation Fail-Safe (Rung R6)**: The owner retains root revocation authority as a standing fail-safe, but is never polled or waited on in normal operational loops.
