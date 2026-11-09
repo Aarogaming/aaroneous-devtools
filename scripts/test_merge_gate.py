@@ -172,9 +172,17 @@ class RevertibilityFromGit(unittest.TestCase):
                                                       ["foundation/migrations/001.sql"]))
         self.assertIsNone(mg.repository_revertibility(self.directory, self.base, head_commit,
                                                       ["foundation/crates/test_crate/src/lib.rs", "credentials/secret.key"]))
-        # Worker inbox manifests trigger external worker execution and cannot be reversed by tree restoration
-        self.assertIsNone(mg.repository_revertibility(self.directory, self.base, head_commit,
-                                                      ["worker-jobs/10-reducer-fixtures.toml"]))
+
+    def test_worker_inbox_manifest_requires_human_classification(self):
+        path = "worker-jobs/10-reducer-fixtures.toml"
+        manifest = os.path.join(self.directory, path)
+        os.makedirs(os.path.dirname(manifest))
+        with open(manifest, "w", encoding="utf-8") as stream:
+            stream.write('instruction = "Review reducer fixtures"\n')
+        self.git("add", path)
+        self.git("commit", "-q", "-m", "add worker inbox manifest")
+        head = self.git("rev-parse", "HEAD")
+        self.assertIsNone(mg.repository_revertibility(self.directory, self.base, head, [path]))
 
     def test_checklist_still_requires_every_other_gate(self):
         reversible = self.classify()
