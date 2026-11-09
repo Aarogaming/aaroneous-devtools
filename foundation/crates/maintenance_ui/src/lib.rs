@@ -314,7 +314,7 @@ pub fn approve_job(config: &WorkerConfig, job: NewJob) -> Result<()> {
     if list_files(&config.jobs_directory, "toml")?.len() >= 256 {
         bail!("Job limit reached");
     }
-    let queue = read_text(&config.queue, 262144)?;
+    let queue = read_text(&config.queue, 1048576)?;
     let mut total = job.instruction.len();
     for evidence in &job.evidence {
         let relative = Path::new(evidence);

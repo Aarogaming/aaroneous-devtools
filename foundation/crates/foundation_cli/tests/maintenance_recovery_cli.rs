@@ -13,9 +13,36 @@ fn cli(root: &Path, action: &str) -> Output {
         .unwrap()
 }
 
+/// A runtime root nested one level below a private temporary directory. The
+/// maintenance router takes its shared reservation lock at
+/// `<runtime-root parent>/reservation/review.lock`; a root created directly in the
+/// system temporary directory would make every test (and any other process on
+/// the host) contend for the same `<temp>/reservation/review.lock`, so `advance`
+/// and `daemon` could report "reserved" instead of reaching the state under test.
+struct RuntimeDir {
+    _outer: tempfile::TempDir,
+    root: std::path::PathBuf,
+}
+
+impl RuntimeDir {
+    fn path(&self) -> &Path {
+        &self.root
+    }
+}
+
+fn runtime_dir() -> RuntimeDir {
+    let outer = tempfile::tempdir().unwrap();
+    let root = outer.path().join("runtime");
+    fs::create_dir(&root).unwrap();
+    RuntimeDir {
+        _outer: outer,
+        root,
+    }
+}
+
 #[test]
 fn corrupt_state_is_retained_and_never_treated_as_a_new_cycle() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = runtime_dir();
     let pipeline = dir.path().join("pipeline");
     fs::create_dir(&pipeline).unwrap();
     let path = pipeline.join("state.json");
@@ -40,7 +67,7 @@ fn corrupt_state_is_retained_and_never_treated_as_a_new_cycle() {
 
 #[test]
 fn invalid_control_is_reported_instead_of_hidden() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = runtime_dir();
     let path = dir.path().join("loop-control.json");
     for bytes in [
         b"{\"state\":\"pause\"".as_slice(),
@@ -57,7 +84,7 @@ fn invalid_control_is_reported_instead_of_hidden() {
 
 #[test]
 fn absent_state_is_a_fresh_runtime_and_valid_controls_remain_readable() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = runtime_dir();
     let result = cli(dir.path(), "status");
     assert!(result.status.success());
     let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
@@ -79,7 +106,7 @@ fn absent_state_is_a_fresh_runtime_and_valid_controls_remain_readable() {
 #[test]
 fn a_directory_cannot_masquerade_as_absent_state_or_control() {
     for relative in ["pipeline/state.json", "loop-control.json"] {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = runtime_dir();
         fs::create_dir_all(dir.path().join(relative)).unwrap();
         let result = cli(dir.path(), "status");
         assert!(!result.status.success(), "{relative} treated as absent");
@@ -98,7 +125,7 @@ fn valid_state() -> serde_json::Value {
 
 #[test]
 fn persisted_stage_version_and_retry_budget_are_not_silently_accepted() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = runtime_dir();
     fs::create_dir(dir.path().join("pipeline")).unwrap();
     let path = dir.path().join("pipeline/state.json");
     for (key, value) in [
@@ -121,7 +148,7 @@ fn persisted_stage_version_and_retry_budget_are_not_silently_accepted() {
 
 #[test]
 fn daemon_refuses_corrupt_control_before_refresh_or_worker_dispatch() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = runtime_dir();
     fs::write(dir.path().join("worker.toml"), "unused test sentinel").unwrap();
     fs::write(dir.path().join("loop-control.json"), "{").unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_foundation"))
@@ -152,7 +179,7 @@ fn daemon_refuses_corrupt_control_before_refresh_or_worker_dispatch() {
 #[test]
 fn oversized_persistent_inputs_are_retained_and_rejected() {
     for relative in ["pipeline/state.json", "loop-control.json"] {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = runtime_dir();
         let path = dir.path().join(relative);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let bytes = vec![b' '; 65537];
@@ -166,7 +193,7 @@ fn oversized_persistent_inputs_are_retained_and_rejected() {
 
 #[test]
 fn atomic_replacement_leaves_no_temporary_sidecars_and_updates_content() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = runtime_dir();
     let control_file = dir.path().join("loop-control.json");
 
     // Control writes loop-control.json via save_json_atomic / write_atomic
@@ -215,7 +242,7 @@ fn atomic_replacement_leaves_no_temporary_sidecars_and_updates_content() {
 
 #[test]
 fn daemon_accepts_explicit_checkout_flag() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = runtime_dir();
     let fake_checkout = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("worker.toml"), "unused test sentinel").unwrap();
     fs::write(
