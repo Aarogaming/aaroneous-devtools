@@ -1,6 +1,8 @@
 //! Explicit-input local verification adapter. No GitHub calls and no ambient credentials.
 //! This executor is for owner-trusted local code, not a sandbox for public contributions.
 
+pub mod admission;
+
 use crate::{chain, checklist, suite, verification, wire};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
