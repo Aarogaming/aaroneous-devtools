@@ -10,9 +10,11 @@
 //! must resolve (symlinks, junctions and letter case included) to a directory
 //! outside the checkout, and the report is published as a brand-new file that
 //! never replaces or writes through an existing one, hard links included. The
-//! check is a pre-flight under the trusted-directory model (the operator
-//! controls the output directory); it does not claim to defeat a concurrent
-//! attacker who swaps the directory afterwards.
+//! directory is resolved once, before any external command runs, and the
+//! report is later published into that resolved directory, not through the
+//! spelling the caller gave, so retargeting a junction or symlink alias while
+//! the audit runs cannot redirect it. This is the trusted-directory model: it
+//! does not claim to defeat someone replacing the resolved directory itself.
 //!
 //! One thing `cargo-audit` alone gets wrong for this workspace: it matches
 //! advisories by package name and version against the *whole* lockfile,
@@ -25,7 +27,7 @@
 //! those separately so they don't get "fixed" by mistake.
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
@@ -46,7 +48,7 @@ pub fn run(checkout: &Path, output: &Path) -> Result<()> {
         .parent()
         .context("output path must have an existing parent directory")?;
     crate::require_absolute_directory("output parent", parent)?;
-    reject_output_inside_checkout(checkout, parent)?;
+    let destination = resolve_output_outside_checkout(checkout, output)?;
 
     let revision = git_rev_parse_head(checkout)?;
     let audit_tool_version = cargo_audit_version(checkout)?;
@@ -89,12 +91,12 @@ pub fn run(checkout: &Path, output: &Path) -> Result<()> {
 
     let json = serde_json::to_vec_pretty(&report)
         .context("failed to serialize dependency review report")?;
-    crate::intake::publish_new_bytes(output, &json)
-        .with_context(|| format!("failed to write {}", output.display()))?;
+    crate::intake::publish_new_bytes(&destination, &json)
+        .with_context(|| format!("failed to write {}", destination.display()))?;
 
     println!(
         "dependency review written: {} ({} external, {} local-name-collision, revision {})",
-        output.display(),
+        destination.display(),
         report.summary.external,
         report.summary.local_workspace_name_collisions,
         report.revision
@@ -102,11 +104,20 @@ pub fn run(checkout: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Refuse a report destination whose directory is, or resolves to a place
-/// inside, the checkout. Both sides are canonicalized so a symlink, a Windows
-/// junction or a differently cased spelling of the same directory cannot slip
-/// past a textual comparison.
-fn reject_output_inside_checkout(checkout: &Path, output_parent: &Path) -> Result<()> {
+/// Resolve where the report will be written and refuse a destination inside
+/// the checkout. The output directory is canonicalized once (symlinks, Windows
+/// junctions and letter case included) and compared with the canonical
+/// checkout; the returned path is that resolved directory joined with the
+/// requested file name. The caller must publish to the returned path, not to
+/// `output`, so an alias retargeted after this check (for example while the
+/// audit subprocess runs) cannot redirect the write.
+fn resolve_output_outside_checkout(checkout: &Path, output: &Path) -> Result<PathBuf> {
+    let output_parent = output
+        .parent()
+        .context("output path must have an existing parent directory")?;
+    let file_name = output
+        .file_name()
+        .with_context(|| format!("output must name a file: {}", output.display()))?;
     let checkout_real = std::fs::canonicalize(checkout)
         .with_context(|| format!("cannot resolve checkout {}", checkout.display()))?;
     let parent_real = std::fs::canonicalize(output_parent).with_context(|| {
@@ -122,7 +133,7 @@ fn reject_output_inside_checkout(checkout: &Path, output_parent: &Path) -> Resul
             checkout.display()
         );
     }
-    Ok(())
+    Ok(parent_real.join(file_name))
 }
 
 fn classify(
@@ -534,5 +545,64 @@ mod tests {
         let link = outside.path().join("alias");
         std::os::unix::fs::symlink(dir.path(), &link).expect("symlink");
         assert_rejected_and_untouched(dir.path(), &link.join("Cargo.lock"));
+    }
+
+    #[test]
+    fn resolved_destination_is_a_new_path_outside_and_keeps_the_file_name() {
+        let dir = fixture_checkout();
+        let outside = tempfile::tempdir().expect("outside");
+        let wanted = outside.path().join("report.json");
+        let resolved = resolve_output_outside_checkout(dir.path(), &wanted).expect("outside ok");
+        assert_eq!(resolved.file_name(), wanted.file_name());
+        assert!(!resolved.starts_with(std::fs::canonicalize(dir.path()).expect("canon")));
+    }
+
+    #[cfg(windows)]
+    fn link_dir(link: &Path, target: &Path) {
+        let out = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .expect("run mklink");
+        assert!(out.status.success(), "mklink /J failed: {out:?}");
+    }
+
+    #[cfg(unix)]
+    fn link_dir(link: &Path, target: &Path) {
+        std::os::unix::fs::symlink(target, link).expect("symlink");
+    }
+
+    #[cfg(any(windows, unix))]
+    #[test]
+    fn retargeting_the_alias_after_resolution_cannot_redirect_the_report() {
+        let checkout = fixture_checkout();
+        let outside = tempfile::tempdir().expect("outside");
+        let holder = tempfile::tempdir().expect("holder");
+        let alias = holder.path().join("alias");
+        link_dir(&alias, outside.path());
+        let resolved = resolve_output_outside_checkout(checkout.path(), &alias.join("report.json"))
+            .expect("alias to an outside directory is accepted");
+        // The alias is swapped to point into the checkout while the audit runs.
+        std::fs::remove_dir(&alias)
+            .or_else(|_| std::fs::remove_file(&alias))
+            .expect("drop alias");
+        link_dir(&alias, checkout.path());
+        crate::intake::publish_new_bytes(&resolved, b"report").expect("publish to resolved path");
+        assert_eq!(
+            std::fs::read(outside.path().join("report.json")).expect("outside report"),
+            b"report"
+        );
+        assert!(!checkout.path().join("report.json").exists());
+        assert_eq!(
+            std::fs::read(checkout.path().join("Cargo.lock")).expect("lock"),
+            b"original lock bytes"
+        );
+        // And the exclusive publisher still refuses to replace it.
+        crate::intake::publish_new_bytes(&resolved, b"other").expect_err("no replace");
+        assert_eq!(
+            std::fs::read(outside.path().join("report.json")).expect("outside report"),
+            b"report"
+        );
     }
 }

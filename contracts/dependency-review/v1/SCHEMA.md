@@ -9,8 +9,12 @@ junctions and letter case included) to a place outside the checkout, and the
 report is written as a new file that is never allowed to replace or write
 through an existing one (a hard link to a checkout file is refused). The output
 path must therefore not exist yet, and its filesystem must support hard links.
-The check assumes the operator controls the output directory; it does not
-claim to resist someone swapping that directory concurrently. See
+The directory is resolved once, before any external command runs, and the
+report is published into that resolved directory (the printed path is the
+resolved one), so retargeting a symlink or junction alias while the audit runs
+cannot redirect the write. The check assumes the operator controls the output
+directory; it does not claim to resist someone replacing the resolved
+directory itself. See
 `governance/DOGFOOD_PROTOCOL.md` — this is the "External runner" level, and
 the report itself is a "Read-only" contract-fixture artifact.
 
