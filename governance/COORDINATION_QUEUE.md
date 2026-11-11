@@ -1,5 +1,11 @@
 # Parallel Coordination Queue
 
+## Dependency-review output guard - 2026-11-09
+
+| ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
+| --- | --- | --- | --- | --- | --- | --- |
+| C193 | Close devtools issue 277: `foundation dependency-review` can write its report into the checkout it documents as read-only (for example `--output <checkout>/Cargo.lock`, or through a hard link, junction, symlink or differently cased spelling). Exact paths: `foundation/crates/foundation_cli/src/dependency_review.rs` (a pre-flight that canonicalizes the checkout and the output directory and refuses an output directory inside the checkout before any external command runs; report written with the new shared publisher); `foundation/crates/foundation_cli/src/intake.rs` (new `publish_new_bytes`, the existing staging-file-plus-exclusive-hard-link publisher moved here without behaviour change, plus its tests); `foundation/crates/foundation_cli/src/topic_case.rs` (its private `publish` now calls the shared function; staging file prefix `.topic-case-` becomes `.publish-`); `contracts/dependency-review/v1/SCHEMA.md` (states the enforced guarantee); this queue row. No workflow, script, gate, product or runtime-state change. | Review | Claude | `claude/c193-dependency-review-output` | 2026-11-09T08:30Z | Contribution-ID: C193/claude-dependency-review-output-v1. Source: Codex seat's issue 277 and its three controls (hard link, junction and case alias, failed-write retry); implements its proposed bounded scope, which has no claim, branch or PR (duplicate check 2026-11-09: no lane, queue row, branch or open or merged PR mentions it; C193 is unused on main and in open PRs 255, 262, 263, 264, 265, 278). Behaviour change to note: the report path must now not exist (previously overwritten); no script or workflow in this repository calls the command (grep). Not done: no claim of race-proof confinement (trusted output directory model); a failed external command still leaves no partial report because the report is only published at the end. Evidence: see the PR description for the commands and exit codes. Independent recheck required; no self-acceptance. |
+
 ## Local test environment - 2026-11-03
 
 | ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |

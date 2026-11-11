@@ -4,8 +4,6 @@ use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
-    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -548,44 +546,7 @@ fn publish(path: &Path, value: &impl Serialize, limit: usize) -> Result<()> {
     let mut bytes = serde_json::to_vec_pretty(value)?;
     bytes.push(b'\n');
     ensure!(bytes.len() <= limit, "output exceeds {limit} bytes");
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    struct Staging(PathBuf);
-    impl Drop for Staging {
-        fn drop(&mut self) {
-            let _ = fs::remove_file(&self.0);
-        }
-    }
-    let mut stage = None;
-    for _ in 0..16 {
-        let candidate = path.parent().context("output parent")?.join(format!(
-            ".topic-case-{}-{}.tmp",
-            std::process::id(),
-            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
-        {
-            Ok(file) => {
-                stage = Some((Staging(candidate), file));
-                break;
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
-        }
-    }
-    let (stage, mut file) = stage.context("could not reserve staging file")?;
-    file.write_all(&bytes)?;
-    file.sync_all()?;
-    drop(file);
-    fs::hard_link(&stage.0, path).with_context(|| {
-        format!(
-            "output must be new and filesystem must support hard links: {}",
-            path.display()
-        )
-    })?;
-    Ok(())
+    crate::intake::publish_new_bytes(path, &bytes)
 }
 
 pub(crate) fn run(action: Action) -> Result<()> {
