@@ -27,7 +27,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import merge_gate as mg  # noqa: E402
 
-ALLOWED_REPO = "Aarogaming/aaroneous-devtools"
+ALLOWED_REPOS = ("Aarogaming/aaroneous-devtools", "Aarogaming/aaroneous")
 
 
 def merge(repo, pr_number, expected_head):
@@ -40,8 +40,8 @@ def merge(repo, pr_number, expected_head):
 
 def run(repo, repo_dir, identities_path, only_pr, dry_run, merge_fn=merge):
     """Returns (exit_code, report_lines). Never calls merge_fn when dry_run is True."""
-    if repo != ALLOWED_REPO:
-        return 1, [f"refusing: this pipeline only merges in {ALLOWED_REPO}, got {repo!r}"]
+    if repo not in ALLOWED_REPOS:
+        return 1, [f"refusing: this pipeline only merges in {ALLOWED_REPOS}, got {repo!r}"]
     lines = []
     exit_code = 0
     decisions = mg.evaluate_all(repo, repo_dir, identities_path, only_pr, False)

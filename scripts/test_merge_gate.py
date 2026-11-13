@@ -136,6 +136,54 @@ class RevertibilityFromGit(unittest.TestCase):
         self.git("commit", "-q", "-m", "dependency change")
         self.assertIsNone(self.classify(head=self.git("rev-parse", "HEAD")))
 
+    def test_code_paths_are_mechanically_revertible_when_trial_merge_clean(self):
+        # Create a new commit modifying a Rust source file in foundation/crates/
+        rs_dir = os.path.join(self.directory, "foundation", "crates", "test_crate", "src")
+        os.makedirs(rs_dir, exist_ok=True)
+        rs_path = os.path.join(rs_dir, "lib.rs")
+        with open(rs_path, "w", encoding="utf-8") as f:
+            f.write("pub fn added() {}\n")
+        self.git("add", "foundation/crates/test_crate/src/lib.rs")
+        self.git("commit", "-q", "-m", "add rust code")
+        head_commit = self.git("rev-parse", "HEAD")
+        paths = ["foundation/crates/test_crate/src/lib.rs"]
+        res = mg.repository_revertibility(self.directory, self.base, head_commit, paths)
+        self.assertTrue(res)
+
+    def test_code_paths_with_irreversible_side_effects_fail_revertibility(self):
+        # Create commit modifying a Rust file
+        rs_dir = os.path.join(self.directory, "foundation", "crates", "test_crate", "src")
+        os.makedirs(rs_dir, exist_ok=True)
+        rs_path = os.path.join(rs_dir, "lib.rs")
+        with open(rs_path, "w", encoding="utf-8") as f:
+            f.write("pub fn added() {}\n")
+        self.git("add", "foundation/crates/test_crate/src/lib.rs")
+        self.git("commit", "-q", "-m", "add rust code")
+        head_commit = self.git("rev-parse", "HEAD")
+
+        # Probes from peer review: fail closed on workflow changes, scripts, deploy, migrations
+        self.assertIsNone(mg.repository_revertibility(self.directory, self.base, head_commit,
+                                                      [".github/workflows/release-publish.yml"]))
+        self.assertIsNone(mg.repository_revertibility(self.directory, self.base, head_commit,
+                                                      ["scripts/merge_gate.py"]))
+        self.assertIsNone(mg.repository_revertibility(self.directory, self.base, head_commit,
+                                                      ["scripts/deploy_prod.sh"]))
+        self.assertIsNone(mg.repository_revertibility(self.directory, self.base, head_commit,
+                                                      ["foundation/migrations/001.sql"]))
+        self.assertIsNone(mg.repository_revertibility(self.directory, self.base, head_commit,
+                                                      ["foundation/crates/test_crate/src/lib.rs", "credentials/secret.key"]))
+
+    def test_worker_inbox_manifest_requires_human_classification(self):
+        path = "worker-jobs/10-reducer-fixtures.toml"
+        manifest = os.path.join(self.directory, path)
+        os.makedirs(os.path.dirname(manifest))
+        with open(manifest, "w", encoding="utf-8") as stream:
+            stream.write('instruction = "Review reducer fixtures"\n')
+        self.git("add", path)
+        self.git("commit", "-q", "-m", "add worker inbox manifest")
+        head = self.git("rev-parse", "HEAD")
+        self.assertIsNone(mg.repository_revertibility(self.directory, self.base, head, [path]))
+
     def test_checklist_still_requires_every_other_gate(self):
         reversible = self.classify()
         self.assertTrue(reversible)
