@@ -1,5 +1,16 @@
 # Foundry gap register
 
+## G-2026-09 — resource fit is not job-specific provider qualification
+
+- Boundary: Steward job-to-intelligence selection.
+- Evidence: `foundation/crates/steward/src/model_hub.rs`, `choose`, at
+  `513a246e76aac42b9d49fd522bc14e7c67d5ffc7` ranks GPU-fitting models by weight;
+  it does not assess task evidence, data eligibility or human/tool candidates.
+- Risk: a resource-fit recommendation can be mistaken for competence or permission.
+- Disposition: **C178 Review** — add a pure report-only capability broker with
+  explicit policy inputs and adversarial tests. Live dispatch and adaptive
+  translation remain outside this increment; independent review is required.
+
 This register converts verified boundary and governance gaps into maintained
 work. It is the perception layer: design and implementation follow only after
 the evidence, affected contract and queue disposition are visible. It is not a
