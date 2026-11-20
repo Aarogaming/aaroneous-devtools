@@ -422,6 +422,30 @@ where
                 if let Some(code) = &proposal.rust_draft {
                     flags.extend(crate::conformance::draft_flags(code));
                 }
+                // C93: a quote that fails anchoring (C76) or its cited line range
+                // rejects the draft before `pending-owner-review`. Observations
+                // with no citation and no quote are unverifiable: logged, kept.
+                let unverifiable =
+                    crate::conformance::unverifiable_observations(&proposal.observations);
+                for index in &unverifiable {
+                    println!(
+                        "local worker: observation {index} has no citation or quote (unverifiable, kept)"
+                    );
+                }
+                if flags.iter().any(|flag| {
+                    let hard = flag.contains("not anchored in any declared evidence file")
+                        || flag.contains("cited line range");
+                    if !hard {
+                        return false;
+                    }
+                    let index = flag
+                        .strip_prefix("observation ")
+                        .and_then(|rest| rest.split(':').next())
+                        .and_then(|n| n.parse::<usize>().ok());
+                    !index.is_some_and(|i| unverifiable.contains(&i))
+                }) {
+                    record.outcome = "rejected".into();
+                }
                 record.conformance_flags = flags;
                 record.proposal = Some(proposal);
             }
@@ -434,11 +458,19 @@ where
         save_status(&c, now, &record.outcome)?;
         println!("local worker: {} {}", record.job_id, record.outcome);
         if !record.conformance_flags.is_empty() {
-            println!(
-                "local worker: {} validators flagged {} item(s) (shadow mode, draft kept)",
-                record.job_id,
-                record.conformance_flags.len()
-            );
+            if record.outcome == "rejected" {
+                println!(
+                    "local worker: {} conformance rejected {} item(s) before pending-owner-review (draft retained)",
+                    record.job_id,
+                    record.conformance_flags.len()
+                );
+            } else {
+                println!(
+                    "local worker: {} validators flagged {} item(s) (shadow mode, draft kept)",
+                    record.job_id,
+                    record.conformance_flags.len()
+                );
+            }
         }
         if record.outcome == "failed" {
             bail!("local job failed; retained result requires owner review");
@@ -994,7 +1026,7 @@ mod tests {
         }
     }
     #[test]
-    fn false_observations_are_flagged_in_shadow_mode_and_the_draft_is_kept() {
+    fn false_observations_reject_the_draft_before_owner_review() {
         let (_d, c, config) = fixture();
         fs::write(c.checkout.join("lib.rs"), "fn reduce() {}\nfn walk() {}\n").expect("source");
         tick_with(&config, 10, 1, |_, _| {
@@ -1012,13 +1044,40 @@ mod tests {
         let record: serde_json::Value =
             serde_json::from_slice(&fs::read(&results[0]).expect("read")).expect("json");
         assert_eq!(
-            record["outcome"], "pending-owner-review",
-            "shadow mode keeps the draft"
+            record["outcome"], "rejected",
+            "anchoring/range failure rejects before pending-owner-review; draft retained as evidence"
+        );
+        assert!(
+            record["proposal"].is_object(),
+            "the rejected draft is kept for owner inspection"
         );
         let flags = record["conformance_flags"].as_array().expect("flags");
         assert_eq!(flags.len(), 2, "{flags:?}");
         assert!(flags[0].as_str().expect("s").starts_with("observation 1:"));
         assert!(flags[1].as_str().expect("s").starts_with("observation 2:"));
+    }
+
+    #[test]
+    fn unverifiable_observations_are_logged_and_still_persist() {
+        let (_d, c, config) = fixture();
+        tick_with(&config, 10, 1, |_, _| {
+            let mut d = draft();
+            d.observations = vec!["No citation and no quoted excerpt at all.".into()];
+            Ok(d)
+        })
+        .expect("tick");
+        let results = files(&c.results_directory, "json").expect("results");
+        assert_eq!(results.len(), 1);
+        let record: serde_json::Value =
+            serde_json::from_slice(&fs::read(&results[0]).expect("read")).expect("json");
+        assert_eq!(
+            record["outcome"], "pending-owner-review",
+            "unverifiable is logged, not rejected (C93 policy)"
+        );
+        assert!(
+            record["proposal"].is_object(),
+            "the draft is retained for owner review"
+        );
     }
 
     #[test]

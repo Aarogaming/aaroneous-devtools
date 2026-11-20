@@ -201,6 +201,21 @@ pub(crate) fn unanchored_observations(observations: &[String], evidence: &str) -
     unanchored_with_paths(observations, evidence, &[])
 }
 
+/// Returns indices of observations that carry neither a line citation nor a
+/// backtick quote of at least [`MIN_ANCHOR_LEN`] characters. Nothing in
+/// [`unanchored_observations`] or [`out_of_range_observations`] can check such an
+/// observation, so callers log it as unverifiable instead of rejecting it (C93).
+pub(crate) fn unverifiable_observations(observations: &[String]) -> Vec<usize> {
+    observations
+        .iter()
+        .enumerate()
+        .filter(|(_, observation)| {
+            backtick_quotes(observation).is_empty() && cited_line_range(observation).is_none()
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
 fn unanchored_with_paths(
     observations: &[String],
     evidence: &str,
