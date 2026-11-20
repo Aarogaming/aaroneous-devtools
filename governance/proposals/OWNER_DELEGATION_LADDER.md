@@ -32,7 +32,7 @@ owner keeps one fail-safe.
 | R2. Signature enforcement | Signed independent accepts are the only accepts the merge gate counts; the steward/report `--require-signatures` flag exists for its own outputs | **On at the merge gate** (correction 2026-10-11: the gate already refuses unsigned accepts; only the steward-side report flag was ever "unflipped") |
 | R3. Mechanical quorum | N-of-M signed independent accepts + `auto_merge.py` as the only button-presser (devtools) | **Live** for devtools |
 | R4. Scoped delegation record | A signed, owner-held instrument enumerating which owner powers move to which quorum and for how long | **Missing — this is "the solution"** |
-| R5. Product-merge graduation | Aaroneous merges graduate to the gate **by category** (new proposed requirement: test-only first, graduating incrementally), owner checkpoint shrinking to the category-graduation PR | Not started |
+| R5. Product-merge graduation | Aaroneous merges graduate to the gate via `auto_merge.py` under >=2 signed independent model accepts + passing hosted CI | **Live** (activated 2026-11-08 per owner hands-off directive) |
 | R6. Fail-safe | Owner retains root revocation until the quorum is proven over a recorded trust-building period. Demotion means never using the power, not deleting it | Standing rule |
 
 ## R4 in detail: the delegation record

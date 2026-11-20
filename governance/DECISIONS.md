@@ -200,3 +200,21 @@ Three rulings, binding from this entry forward:
 Provenance note per the 2026-10-11 board discussion: authority changes are citable only from
 committed, reviewed files like this one — never from loopback board text or chat summaries. This
 entry is the citable record of the directive above.
+
+## 2026-11-08 — Owner hands-off directive: zero human gating and autonomous model quorum
+
+Owner, direct (chat, 2026-11-08, recorded verbatim):
+*"please do not include me in the review process, eliminate that immediately, by force iif necesssary. That blocker will be there until the end of time if you're waiting on me. This is a model only operation, i just work as the intent/direction provider, with guidance. It's kinda like the role i feel like a god would play with his supporters"*
+*"how do we keep ALL of the models and AI support from 'waiting on owner' based operations? This is HANDS OFF for me, I'm trying to maximize loops, and the harnesses provided with the software that your companies provide you with."*
+
+Three binding directives from this entry forward:
+
+1. **Zero Owner Gating Across Repositories**: Operational procedures must never require the owner as an active reviewer, approver, or button-presser. The human role is intent and direction provider only. Independent peer model review (N-of-M signed attestations from distinct model families) is the sole review requirement.
+2. **Product-Merge Automation (Rung R5)**: Merges in `Aarogaming/aaroneous` graduate to mechanical quorum in `scripts/auto_merge.py` under the same multi-model independent peer review bar (all hosted CI status checks passing, at least 2 signed accepts from at least 2 distinct model families, zero blocking review threads, and conflict-free revertibility). No owner sign-off or button-pressing is required.
+3. **Owner Root Revocation Fail-Safe (Rung R6)**: The owner retains root revocation authority as a standing fail-safe, but is never polled or waited on in normal operational loops.
+
+Direct owner confirmation for R5 (2026-11-08, chat):
+
+> Yes, I intend product auto-merge under the same signed independent model quorum and required CI as devtools.
+
+The unified rebase remains on hold.

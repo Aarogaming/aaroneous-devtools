@@ -559,36 +559,87 @@ def workflow_revertibility(repo_dir, base, head, paths):
         return None
 
 
+REVERSIBLE_CODE_PREFIXES = (
+    "foundation/crates/", "crates/", "core/", "dev/",
+    "tests/", "benches/", "stacks/",
+)
+REVERSIBLE_CODE_EXTENSIONS = (
+    ".rs", ".toml", ".md", ".json", ".txt",
+)
+IRREVERSIBLE_KEYWORDS = (
+    "migration", "secret", "credential", "deploy", "publish",
+    "release", "token", "password",
+)
+
+
 def repository_revertibility(repo_dir, base, head, paths):
     """Classify tracked content only. Unknown shapes remain blocked by checklist box 6."""
+    if not paths:
+        return None
+
     def documentation(path):
         return path.endswith((".md", ".json")) and path.startswith(DOCS_ALLOWLIST)
 
-    if paths and all(documentation(path) for path in paths):
+    if all(documentation(path) for path in paths):
         return True  # Preserve the existing documentation classification.
-    if paths and all(p in WORKFLOW_PIN_PATHS for p in paths):
+    if any(p in WORKFLOW_PIN_PATHS for p in paths):
         return workflow_revertibility(repo_dir, base, head, paths)
     lock = "foundation/Cargo.lock"
-    if not paths or lock not in paths or any(p != lock and not documentation(p) for p in paths):
+    if lock in paths:
+        if any(p != lock and not documentation(p) for p in paths):
+            return None
+        # Resolve immutable commits and the actual diff base, not the caller's worktree files.
+        try:
+            common = rc.git(repo_dir, "--no-replace-objects", "merge-base", base, head)
+            if common.returncode or not re.fullmatch(r"[0-9a-f]{40}", common.stdout.strip()):
+                return None
+            revisions = (common.stdout.strip(), head)
+            texts = []
+            for revision in revisions:
+                if not re.fullmatch(r"[0-9a-f]{40}", revision):
+                    return None
+                entry = rc.git(repo_dir, "--no-replace-objects", "ls-tree", revision, "--", lock)
+                if entry.returncode or not re.fullmatch(r"100644 blob [0-9a-f]{40}\tfoundation/Cargo.lock\n?", entry.stdout):
+                    return None
+                contents = rc.git(repo_dir, "--no-replace-objects", "show", f"{revision}:{lock}")
+                if contents.returncode:
+                    return None
+                texts.append(contents.stdout)
+            return True if registry_version_checksum_update(*texts) else None
+        except (OSError, ValueError, TypeError):
+            return None
+
+    # Fail closed on CI workflows (except audited pins above), scripts/gates, active worker inboxes, and irreversible keywords.
+    if any(p.startswith(".github/") or p.startswith("scripts/") or p.startswith("worker-jobs/") for p in paths):
         return None
-    # Resolve immutable commits and the actual diff base, not the caller's worktree files.
+    if any(any(kw in p.lower() for kw in IRREVERSIBLE_KEYWORDS) for p in paths):
+        return None
+    if any(not any(p.endswith(ext) for ext in REVERSIBLE_CODE_EXTENSIONS) for p in paths):
+        return None
+    if not all(p.startswith(REVERSIBLE_CODE_PREFIXES) or documentation(p) for p in paths):
+        return None
+
+    # Mathematical 3-way revert equality check:
+    # A change is mechanically revertible via plain `git revert` if and only if
+    # reversing the forward merge tree back to the base tree reproduces the exact base tree.
     try:
         common = rc.git(repo_dir, "--no-replace-objects", "merge-base", base, head)
         if common.returncode or not re.fullmatch(r"[0-9a-f]{40}", common.stdout.strip()):
             return None
-        revisions = (common.stdout.strip(), head)
-        texts = []
-        for revision in revisions:
-            if not re.fullmatch(r"[0-9a-f]{40}", revision):
-                return None
-            entry = rc.git(repo_dir, "--no-replace-objects", "ls-tree", revision, "--", lock)
-            if entry.returncode or not re.fullmatch(r"100644 blob [0-9a-f]{40}\tfoundation/Cargo.lock\n?", entry.stdout):
-                return None
-            contents = rc.git(repo_dir, "--no-replace-objects", "show", f"{revision}:{lock}")
-            if contents.returncode:
-                return None
-            texts.append(contents.stdout)
-        return True if registry_version_checksum_update(*texts) else None
+        forward = rc.git(repo_dir, "--no-replace-objects", "merge-tree", "--write-tree", base, head)
+        if forward.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", forward.stdout.strip()):
+            return None
+        forward_tree = forward.stdout.strip()
+        revert = rc.git(repo_dir, "--no-replace-objects", "merge-tree", "--write-tree", "--merge-base", head, forward_tree, base)
+        if revert.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", revert.stdout.strip()):
+            return None
+        revert_tree = revert.stdout.strip()
+        base_tree = rc.git(repo_dir, "--no-replace-objects", "show", "-s", "--format=%T", base)
+        if base_tree.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", base_tree.stdout.strip()):
+            return None
+        if revert_tree == base_tree.stdout.strip():
+            return True
+        return None
     except (OSError, ValueError, TypeError):
         return None
 
