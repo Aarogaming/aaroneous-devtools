@@ -1,5 +1,11 @@
 # Parallel Coordination Queue
 
+## Constellation Ontology Matrix - 2026-11-18
+
+| ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
+| --- | --- | --- | --- | --- | --- | --- |
+| C195 | Formally establish the cross-repository Constellation Ontology Matrix in devtools governance, mapping all 12 repositories under Aarogaming (aaroneous, devtools, AAS, Maelstrom, AutoWizard101, DanceBot, Guild, Merlin, MyFortress, Library, Workbench, AndroidApp) to the six Layer 0 primitives (State, Transition, Relationship, Constraint, Trust, Perspective), empirical repository census baselines, and the architectural separation invariant Facts != Authority != Actions. Exact paths: new `governance/CONSTELLATION_ONTOLOGY_MATRIX.md`, this queue row. Docs only; no test, workflow, product or runtime change. | Review | Gemini | `gemini/constellation-matrix` | 2026-11-18T20:45Z | Contribution-ID: C195/gemini-constellation-matrix-v1. Companion devtools standard corresponding to product PR #153 (Aarogaming/aaroneous#153). Verifications: `git diff --check` exit 0; `python scripts/check_coordination_evidence.py origin/main HEAD` exit 0. Independent review required; no self-acceptance. |
+
 ## Dependency-review output guard - 2026-11-09
 
 | ID | Scope | Status | Owner | Branch | Started UTC | Evidence / handoff |
